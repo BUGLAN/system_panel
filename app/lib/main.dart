@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import 'design/tokens.dart';
 import 'screens/boot_screen.dart';
+import 'stage/ring_painter.dart';
 import 'state/host_state.dart';
 import 'state/goal.dart';
 import 'state/quest.dart';
@@ -133,6 +134,19 @@ class _AppShellState extends State<AppShell>
     final bool fail = _moment == Moment.fail;
     final bool sheet = _moment == Moment.sheet;
     final bool onboard = _moment == Moment.onboard;
+
+    /// 各状态用的相机预设（flows.js 里各流程自己调的 `Stage.setCam`）
+    final String camOf = switch (_moment) {
+      Moment.boot => 'boot',
+      Moment.lobby => 'lobby',
+      Moment.onboard => 'boot',
+      Moment.dispatch => 'talk',
+      Moment.exec => 'exec',
+      Moment.result => 'result',
+      Moment.fail => 'fail',
+      Moment.sheet => 'panel',
+      Moment.main => 'full',
+    };
     final bool main = _moment == Moment.main;
     final bool boot = _moment == Moment.boot;
     // focus+dim：派单与结算都会把 HUD/底栏收走、天幕压暗
@@ -191,6 +205,20 @@ class _AppShellState extends State<AppShell>
                 ),
                 // 投影光束（在面板之下、天幕之上）
                 SheetBeam(visible: sheet),
+                // 环场：她脚下到头顶那 8 个环。**画在独立画布上，与 Live2D 无关**
+                // （`stage.js` L127 `cv.id='ringCv'`），启动时 `App.boot()` 会把
+                // 8 个环全部 showRing，所以之后一直可见。
+                RingField(
+                  goal: _goal,
+                  cam: camOf,
+                  t: 0,
+                  dim: boot
+                      ? .34 // 开机态的全息参数
+                      : fail
+                      ? .6 // flows.js L530
+                      : 1,
+                  scan: .2, // settings.holo → Stage.scanT
+                ),
                 // TODO(step8+): 1 · 舞台 —— Live2D 角色 + 套在她身上的主线环 + 环挂签/环标签
                 // 2 · 界面
                 //    ⚠️ 原型的层级：`#veil` 是 z-auto（在 #ui 之后绘制），而 `.line` z=3、

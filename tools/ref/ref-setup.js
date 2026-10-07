@@ -48,3 +48,20 @@ JSON.stringify({
   queue: Store.S.queue.length,
   items: Store.S.items,
 });
+/* ── 藏掉 Live2D 模型，但**留下环** ──────────────────────────────
+   环画在 #stage 里的一张独立 canvas 上（stage.js L127 `cv.id='ringCv'`），
+   直接把 #stage 设成 display:none 会把环一起藏掉 —— 之前 13 张参考图都缺这一层。
+   把环画布挪到 #app 下面（两者都是 inset:0，几何不变）即可。 */
+(function () {
+  var cv = document.getElementById('ringCv');
+  if (cv && cv.parentElement && cv.parentElement.id === 'stage') {
+    document.getElementById('app').appendChild(cv);
+  }
+})();
+
+/* 开机态把全息参数调成了 bright:.34，恢复它靠 tick 补间 —— 清掉 onTick 后
+   会永远停在 .34（环只有 34% 亮）。这里直接落到位。 */
+if (typeof Stage !== 'undefined' && Stage.holoTo) {
+  Stage.holoTo({ sat: 1, bright: 1, rim: .55, scan: .2, lift: .5 });
+  Object.assign(Stage.fx, Stage.fxT);
+}
