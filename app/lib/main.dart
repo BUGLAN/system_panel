@@ -16,6 +16,7 @@ import 'widgets/dock.dart';
 import 'widgets/exec_panel.dart';
 import 'widgets/fail_layer.dart';
 import 'widgets/fx_layer.dart';
+import 'widgets/fx_particles.dart';
 import 'widgets/hud.dart';
 import 'widgets/line_layer.dart';
 import 'widgets/main_view.dart';
@@ -98,6 +99,9 @@ class _AppShellState extends State<AppShell>
     vsync: this,
     duration: const Duration(milliseconds: 180),
   );
+
+  /// 屏幕空间特效（#fx 画布）
+  final FxController _fx = FxController();
 
   /// 震屏
   int _shake = 0;
@@ -271,6 +275,18 @@ class _AppShellState extends State<AppShell>
                   // `FX.flash('#bff6ff', .24, 280)` + `FX.shake(4, 220)`
                   onSubmit: () {
                     _pulse(color: const Color(0xFFBFF6FF), a: .24, ms: 280);
+                    // 钤印那一下：涟漪 + 火花 + 爆散（ui.js L346-347 / L358）
+                    _fx.ripple(
+                      195,
+                      726,
+                      r1: 300,
+                      flat: .38,
+                      color: const Color(0xFFBFF6FF),
+                      w: 3,
+                      ms: 700,
+                    );
+                    _fx.spark(195, 726, n: 18);
+                    _fx.burst(195, 540, n: 60);
                     setState(() => _moment = Moment.result);
                   },
                   onQuit: () => setState(() => _moment = Moment.fail),
@@ -283,6 +299,8 @@ class _AppShellState extends State<AppShell>
                   remedy: Remedy.demo,
                   visible: fail,
                 ),
+                // 屏幕空间特效（#fx 在 DOM 里排在 #ui 之后、#veil 之前）
+                FxField(controller: _fx),
                 Veil(opacity: fail ? .6 : 0),
                 // 亮帧（`#flash` 在 DOM 里排在 veil 之后；正 z 的那些会盖在它上面）
                 // ⚠️ 必须判 isAnimating —— 控制器停在 0 时 `1 - easeOut(0) = 1`，
@@ -445,6 +463,7 @@ class _AppShellState extends State<AppShell>
   @override
   void dispose() {
     _flashC.dispose();
+    _fx.dispose();
     _ask.dispose();
     super.dispose();
   }
