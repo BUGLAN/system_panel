@@ -1,11 +1,18 @@
 import 'package:flutter/material.dart';
+
+import 'dart:async';
+import 'dart:math' as math;
+
 import 'package:flutter/services.dart';
 
+import 'data/content.dart';
+import 'data/format.dart';
 import 'design/tokens.dart';
 import 'screens/boot_screen.dart';
 import 'stage/ring_painter.dart';
 import 'state/host_state.dart';
 import 'state/goal.dart';
+import 'state/app_clock.dart';
 import 'state/quest.dart';
 import 'state/result.dart';
 import 'widgets/bg_layer.dart';
@@ -120,6 +127,102 @@ class _AppShellState extends State<AppShell>
   /// 投影面板当前停在哪一页
   SheetKind _sheetKind = SheetKind.archive;
 
+  /// ⏱ 每秒时钟（原型 `setInterval(App.second, 1000)`）
+  final AppClock _clock = AppClock();
+
+  /// 她主动开口的排期（原型 `App.nextIdle` / `nextComment`）
+  final ChatterScheduler _chatter = ChatterScheduler();
+
+  /// 这一单是什么时候接的 —— 计时**由它推导**，不是累加
+  /// （原型 `Clock.now() - A.startAt`，息屏回来照样对）
+  late DateTime _execStart = DateTime.now();
+
+  /// 她插话时临时顶掉页面字幕（原型是 `Line.say().then(hide)`，
+  /// 我们是状态驱动的，所以用一个带截止时间的覆盖）
+  String? _aside;
+  DateTime? _asideUntil;
+
+  /// 上一次宿主操作（原型 `App.lastAct`）
+  DateTime _lastAct = DateTime.now();
+
+  /// 进执行态时把计时归零重算（原型 `Store.accept()` 里记 startAt）
+  void _beginExec() {
+    setState(() {
+      _execStart = DateTime.now().subtract(
+        const Duration(minutes: 7),
+      ); // 演示档：已执行 7 分钟
+      _moment = Moment.exec;
+      _chatter.resetExec(Duration.zero);
+    });
+    _clock.startFast();
+  }
+
+  /// 她插一句（`hold` 之后自己收）
+  void _sayAside(String text, {int holdMs = 3200}) {
+    setState(() {
+      _aside = text;
+      _asideUntil = DateTime.now().add(Duration(milliseconds: holdMs));
+    });
+  }
+
+  /// 原型 `App.second()`：换日之外的那几件事
+  void _onSecond() {
+    final DateTime now = DateTime.now();
+    if (_asideUntil != null && now.isAfter(_asideUntil!)) {
+      setState(() {
+        _aside = null;
+        _asideUntil = null;
+      });
+    }
+    // ⚠️ 原型这里是 `!$('#line').classList.contains('on')` —— 它的页面字幕
+    //    说完就 hide 了，所以大部分时候是「关着的」。我们的演示档让页面字幕常驻，
+    //    所以改成「她没有正在插话」（见 BEHAVIOR-GAPS.md D 组）
+    // 超时判负（原型 Exec.tick() 末尾： >= lim → App.fail('timeout')）
+    if (_moment == Moment.exec && _execReadout().timedOut) {
+      _clock.stopFast();
+      setState(() => _moment = Moment.fail);
+      return;
+    }
+    final bool lineQuiet = _aside == null;
+    if (_moment == Moment.lobby &&
+        now.difference(_lastAct) > ChatterScheduler.quietAfterAction &&
+        lineQuiet) {
+      final Duration up = now.difference(_sessionStart);
+      if (up >= _chatter.idleNextAt) {
+        final int h = now.hour;
+        final String text = (h >= 23 || h < 5)
+            ? LINES.idleNight
+            : (h < 10 && _rnd.nextDouble() < .4)
+            ? LINES.idleMorning
+            : LINES.idle.first;
+        _chatter.resetIdle(up);
+        _sayAside(text, holdMs: 3200);
+      }
+    }
+    if (_moment == Moment.exec) {
+      final Duration up = now.difference(_sessionStart);
+      if (up >= _chatter.execNextAt && lineQuiet) {
+        _chatter.resetExec(up);
+        final ExecReadout r = _execReadout();
+        _sayAside(
+          r.remaining.inMinutes < 3 && !r.remaining.isNegative
+              ? LINES.execNear.replaceFirst('[[{t}]]', fmtDur(r.remaining))
+              : LINES.exec.first,
+          holdMs: 2600,
+        );
+      }
+    }
+  }
+
+  ExecReadout _execReadout() => ExecReadout.of(
+    startAt: _execStart,
+    now: _clock.now,
+    limit: Duration(minutes: _quest.minutes),
+  );
+
+  late final DateTime _sessionStart = DateTime.now();
+  final math.Random _rnd = math.Random();
+
   /// 单位矩阵（fail 滤镜动画的起点）
   static const List<double> _identity = <double>[
     1, 0, 0, 0, 0, //
@@ -210,11 +313,15 @@ class _AppShellState extends State<AppShell>
                     ),
                   ),
                 ),
-                // 点背景 = 跳过打字机（原型 Tap 忽略 button/input/sheet/tag 上的点）
+                // 任意按下都算「宿主还在」（原型 main.js L40 的捕获阶段监听）
+                // 同时：点背景 = 跳过打字机（原型 Tap 忽略 button/input/sheet/tag 上的点）
                 Positioned.fill(
                   child: GestureDetector(
                     behavior: HitTestBehavior.opaque,
-                    onTap: () => setState(() => _tap++),
+                    onTap: () => setState(() {
+                      _tap++;
+                      _lastAct = DateTime.now();
+                    }),
                   ),
                 ),
                 // 投影光束（在面板之下、天幕之上）
@@ -271,35 +378,44 @@ class _AppShellState extends State<AppShell>
                   quest: _quest,
                   host: _host,
                   visible: dispatch,
-                  onAccept: () => setState(() => _moment = Moment.exec),
+                  onAccept: _beginExec,
                 ),
                 // 执行面板
-                ExecPanel(
-                  quest: _quest,
-                  elapsed: const Duration(minutes: 7),
-                  critChance: .12,
-                  itemCount: 3,
-                  evidenceCount: 0,
-                  visible: exec,
-                  // 指纹钤印那一下：原型 `Plate.seal()` 是
-                  // `FX.flash('#bff6ff', .24, 280)` + `FX.shake(4, 220)`
-                  onSubmit: () {
-                    _pulse(color: const Color(0xFFBFF6FF), a: .24, ms: 280);
-                    // 钤印那一下：涟漪 + 火花 + 爆散（ui.js L346-347 / L358）
-                    _fx.ripple(
-                      195,
-                      726,
-                      r1: 300,
-                      flat: .38,
-                      color: const Color(0xFFBFF6FF),
-                      w: 3,
-                      ms: 700,
-                    );
-                    _fx.spark(195, 726, n: 18);
-                    _fx.burst(195, 540, n: 60);
-                    setState(() => _moment = Moment.result);
-                  },
-                  onQuit: () => setState(() => _moment = Moment.fail),
+                // ⚠️ 必须包一层 ListenableBuilder 订阅时钟 —— 否则 `_clock` 每 250ms
+                //    通知了没人听，计时器会一直停在进页面那一刻（实机踩过：等了 12 秒还是 07:00）
+                ListenableBuilder(
+                  listenable: _clock,
+                  builder: (BuildContext context, Widget? child) => ExecPanel(
+                    quest: _quest,
+                    elapsed: _execReadout().elapsed,
+                    critChance: .12,
+                    itemCount: 3,
+                    evidenceCount: 0,
+                    visible: exec,
+                    // 指纹钤印那一下：原型 `Plate.seal()` 是
+                    // `FX.flash('#bff6ff', .24, 280)` + `FX.shake(4, 220)`
+                    onSubmit: () {
+                      _clock.stopFast();
+                      _pulse(color: const Color(0xFFBFF6FF), a: .24, ms: 280);
+                      // 钤印那一下：涟漪 + 火花 + 爆散（ui.js L346-347 / L358）
+                      _fx.ripple(
+                        195,
+                        726,
+                        r1: 300,
+                        flat: .38,
+                        color: const Color(0xFFBFF6FF),
+                        w: 3,
+                        ms: 700,
+                      );
+                      _fx.spark(195, 726, n: 18);
+                      _fx.burst(195, 540, n: 60);
+                      setState(() => _moment = Moment.result);
+                    },
+                    onQuit: () => setState(() {
+                      _clock.stopFast();
+                      _moment = Moment.fail;
+                    }),
+                  ),
                 ),
                 // 结算
                 ResultPanel(result: _result, visible: result, onSave: () {}),
@@ -332,15 +448,18 @@ class _AppShellState extends State<AppShell>
                 ),
                 LineLayer(
                   // 文案真源：content.js L298 `holding` / L397 `mainline`
-                  text: dispatch
-                      ? '接不接？'
-                      : fail
-                      ? '补救的路，我给你留着：明天 20:02 前，做一半。做到了，这次不算。'
-                      : main
-                      ? '${_goal.doneCount}/${_goal.rings.length} 环。顶上那个，是你的目标。'
-                      : onboard
-                      ? '说吧。你想变成什么样？一句话。'
-                      : '我手里有 ${_host.queue} 单。都是给你的。',
+                  // 她主动开口时会临时顶掉页面字幕（原型是 Line.say().then(hide)）
+                  text:
+                      _aside ??
+                      (dispatch
+                          ? '接不接？'
+                          : fail
+                          ? '补救的路，我给你留着：明天 20:02 前，做一半。做到了，这次不算。'
+                          : main
+                          ? '${_goal.doneCount}/${_goal.rings.length} 环。顶上那个，是你的目标。'
+                          : onboard
+                          ? '说吧。你想变成什么样？一句话。'
+                          : '我手里有 ${_host.queue} 单。都是给你的。'),
                   mood: onboard
                       ? '专注'
                       : dispatch
@@ -472,7 +591,15 @@ class _AppShellState extends State<AppShell>
   }
 
   @override
+  @override
+  void initState() {
+    super.initState();
+    _clock.startSeconds(_onSecond); // 原型 setInterval(App.second, 1000)
+  }
+
+  @override
   void dispose() {
+    _clock.dispose();
     _flashC.dispose();
     _fx.dispose();
     _ask.dispose();

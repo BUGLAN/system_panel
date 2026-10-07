@@ -112,4 +112,36 @@ void main() {
       expect(em.style!.color!.r, closeTo(0xD5 / 255, .01));
     });
   });
+  group('换文本（实机崩过的那条路径）', () {
+    testWidgets('打字打到一半整句换掉，不炸且从头开始', (WidgetTester tester) async {
+      // ⚠️ 本 State 用 SingleTickerProviderStateMixin，一辈子只允许一个 ticker。
+      // 曾经在换文本时 dispose 再新建控制器 → 实机直接红屏：
+      // 「_TypeTextState is a SingleTickerProviderStateMixin but multiple tickers
+      //  were created」。单测原来只覆盖"同文本重建"，漏了这条。
+      await _mount(tester, const TypeText(text: '甲。乙'));
+      await tester.pump(const Duration(milliseconds: 150));
+      expect(_alphas(tester)[2], 0);
+      await _mount(tester, const TypeText(text: '丙。丁'));
+      await tester.pump();
+      expect(tester.takeException(), isNull);
+      // 新的一句从第一个字重新打
+      expect(_alphas(tester).first, 0);
+      await tester.pump(const Duration(milliseconds: 40));
+      expect(_alphas(tester).first, greaterThan(0));
+      await tester.pumpAndSettle();
+      expect(_alphas(tester).every((double a) => a == 1), isTrue);
+    });
+
+    testWidgets('换文本后再跳过也正常', (WidgetTester tester) async {
+      await _mount(tester, const TypeText(text: '甲乙丙', skipToken: 0));
+      await tester.pump(const Duration(milliseconds: 40));
+      await _mount(tester, const TypeText(text: '丁戊己庚', skipToken: 0));
+      await tester.pump(const Duration(milliseconds: 40));
+      await _mount(tester, const TypeText(text: '丁戊己庚', skipToken: 1));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 130));
+      expect(_alphas(tester).every((double a) => a == 1), isTrue);
+      expect(tester.takeException(), isNull);
+    });
+  });
 }

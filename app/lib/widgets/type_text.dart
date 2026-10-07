@@ -107,25 +107,30 @@ class _TypeTextState extends State<TypeText>
     }
     _total = t <= 0 ? 1 : t;
     _done = false;
-    _c?.dispose();
+    // ⚠️ **不能 dispose 再新建控制器** —— 本 State 用的是
+    //    `SingleTickerProviderStateMixin`，一辈子只允许一个 ticker。
+    //    台词是会变的（她插话时整句换掉），一换就崩：
+    //    「_TypeTextState is a SingleTickerProviderStateMixin but multiple
+    //     tickers were created」——单测没覆盖"换文本"这条路径，实机才抓到。
     // 控制器多留 120ms 尾巴：最后一个字自己也要淡完，
-    // 否则控制器停在 total 时它永远停在淡入中途
-    _c =
-        AnimationController(
-          vsync: this,
-          duration: Duration(microseconds: ((_total + 120) * 1000).round()),
-        )..addListener(() {
-          // 打字结束点（不含那 120ms 淡入尾巴）
-          if (!_done && _c!.value * (_total + 120) >= _total) {
-            _done = true;
-            widget.onDone?.call();
-          }
-        });
+    // 否则控制器停在 total 时它永远停在淡入中途。
+    _c ??= AnimationController(vsync: this)..addListener(_tick);
+    _c!
+      ..duration = Duration(microseconds: ((_total + 120) * 1000).round())
+      ..value = 0;
     if (widget.skipToken == 0) {
       _c!.forward();
     } else {
       _c!.value = 1;
       _done = true;
+    }
+  }
+
+  /// 打字结束点（不含那 120ms 淡入尾巴）
+  void _tick() {
+    if (!_done && _c!.value * (_total + 120) >= _total) {
+      _done = true;
+      widget.onDone?.call();
     }
   }
 
