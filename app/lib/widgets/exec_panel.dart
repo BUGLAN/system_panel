@@ -34,6 +34,7 @@ class ExecPanel extends StatelessWidget {
     required this.itemCount,
     required this.evidenceCount,
     this.visible = true,
+    this.onSubmit,
   });
 
   final Quest quest;
@@ -51,6 +52,9 @@ class ExecPanel extends StatelessWidget {
   final int evidenceCount;
 
   final bool visible;
+
+  /// 点「提交 · 让她验收」（原型的验收演出是行为，先只留入口）
+  final VoidCallback? onSubmit;
 
   @override
   Widget build(BuildContext context) {
@@ -335,7 +339,8 @@ class ExecPanel extends StatelessWidget {
     return Container(
       key: const Key('exec.item'),
       height: 54,
-      padding: const EdgeInsets.symmetric(horizontal: 20),
+      // Border 占布局、CSS 的 inset 阴影不占 → padding 各减 1px 才与原型同宽
+      padding: const EdgeInsets.symmetric(horizontal: 19),
       decoration: BoxDecoration(
         color: const Color(0xB3040E20), // rgba(4,14,32,.7)
         borderRadius: BorderRadius.circular(27),
@@ -375,41 +380,45 @@ class ExecPanel extends StatelessWidget {
   /// .btn.main —— 提交 · 让她验收
   Widget _submitButton() {
     return Expanded(
-      child: Container(
-        key: const Key('exec.go'),
-        height: 54,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: C.blue,
-          borderRadius: BorderRadius.circular(27),
-          boxShadow: <BoxShadow>[
-            BoxShadow(color: C.blue.withAlpha(102), blurRadius: 28),
-          ],
-        ),
-        child: Stack(
-          children: <Widget>[
-            // inset 0 1px 0 rgba(255,255,255,.6)
-            Positioned(
-              left: 0,
-              right: 0,
-              top: 0,
-              height: 1,
-              child: DecoratedBox(
-                decoration: BoxDecoration(color: Colors.white.withAlpha(153)),
-              ),
-            ),
-            Text(
-              '提交 · 让她验收',
-              style: fs(
-                family: F.cn,
-                size: 15,
-                wght: 600,
-                ls: .9,
+      child: GestureDetector(
+        onTap: onSubmit,
+        behavior: HitTestBehavior.opaque,
+        child: Container(
+          key: const Key('exec.go'),
+          height: 54,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: C.blue,
+            borderRadius: BorderRadius.circular(27),
+            boxShadow: <BoxShadow>[
+              BoxShadow(color: C.blue.withAlpha(102), blurRadius: 28),
+            ],
+          ),
+          child: Stack(
+            children: <Widget>[
+              // inset 0 1px 0 rgba(255,255,255,.6)
+              Positioned(
+                left: 0,
+                right: 0,
+                top: 0,
                 height: 1,
-                color: C.deep,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(color: Colors.white.withAlpha(153)),
+                ),
               ),
-            ),
-          ],
+              Text(
+                '提交 · 让她验收',
+                style: fs(
+                  family: F.cn,
+                  size: 15,
+                  wght: 600,
+                  ls: .9,
+                  height: 1,
+                  color: C.deep,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -420,7 +429,8 @@ class ExecPanel extends StatelessWidget {
     return Container(
       key: const Key('exec.quit'),
       height: 40,
-      padding: const EdgeInsets.symmetric(horizontal: 18),
+      // Border 占布局、CSS 的 inset 阴影不占 → padding 各减 1px
+      padding: const EdgeInsets.symmetric(horizontal: 17),
       alignment: Alignment.center,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(20),

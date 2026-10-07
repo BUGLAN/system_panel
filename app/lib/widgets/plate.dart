@@ -794,7 +794,8 @@ class PlateAlt extends StatelessWidget {
               if (i > 0) const SizedBox(width: 10),
               Container(
                 height: 36,
-                padding: const EdgeInsets.symmetric(horizontal: 15),
+                // Border 占布局、CSS 的 inset 阴影不占 → padding 各减 1px
+                padding: const EdgeInsets.symmetric(horizontal: 14),
                 decoration: BoxDecoration(
                   color: const Color(0xDB040C1C), // rgba(4,12,28,.86)
                   borderRadius: BorderRadius.circular(18),

@@ -5,12 +5,14 @@ import 'design/tokens.dart';
 import 'screens/boot_screen.dart';
 import 'state/host_state.dart';
 import 'state/quest.dart';
+import 'state/result.dart';
 import 'widgets/bg_layer.dart';
 import 'widgets/dock.dart';
 import 'widgets/exec_panel.dart';
 import 'widgets/hud.dart';
 import 'widgets/line_layer.dart';
 import 'widgets/plate.dart';
+import 'widgets/result_panel.dart';
 
 /// 宿主 SYSTEM —— Flutter 客户端。
 /// 设计真源：prototype/opus-v2-dir（原型即规格）。
@@ -46,13 +48,13 @@ class SysApp extends StatelessWidget {
 /// 每个状态叠加在 `#app` 上的类名决定谁出现谁消失（flows.js L15）：
 ///   boot → booting（HUD/底栏收走）· lobby → 无
 ///   dispatch → focus+dim（HUD/底栏收走、天幕压暗）
-///   exec → panel（只收底栏）
-enum Moment { boot, lobby, dispatch, exec }
+///   exec → panel（只收底栏）· result → focus+dim
+enum Moment { boot, lobby, dispatch, exec, result }
 
 /// 所有页面的共同外壳，对应原型的 `#app` + `#shake`：
 ///   天幕（#bg）→ 舞台（#stage）→ 界面（#ui）→ 覆盖层
 ///
-/// 每一步复刻一页。当前已复刻：开机自检、大厅、派单板、执行面板。
+/// 每一步复刻一页。当前已复刻：开机自检、大厅、派单板、执行面板、结算。
 class AppShell extends StatefulWidget {
   const AppShell({super.key});
 
@@ -64,6 +66,7 @@ class _AppShellState extends State<AppShell> {
   /// 行为逻辑未定，先用与原型「老宿主 · 第 23 天」一致的演示档
   static const HostState _host = HostState.demo;
   static const Quest _quest = Quest.demo;
+  static const QuestResult _result = QuestResult.demo;
 
   Moment _moment = Moment.boot;
 
@@ -78,7 +81,10 @@ class _AppShellState extends State<AppShell> {
     final bool lobby = _moment == Moment.lobby;
     final bool dispatch = _moment == Moment.dispatch;
     final bool exec = _moment == Moment.exec;
+    final bool result = _moment == Moment.result;
     final bool boot = _moment == Moment.boot;
+    // focus+dim：派单与结算都会把 HUD/底栏收走、天幕压暗
+    final bool dim = dispatch || result;
 
     return Scaffold(
       backgroundColor: C.voidBg,
@@ -88,11 +94,11 @@ class _AppShellState extends State<AppShell> {
           // 0 · 天幕（她身后的世界）
           //   开机时写 SYSTEM，进大厅后写宿主的目标（flows.js `setWord`）
           AnimatedOpacity(
-            opacity: dispatch ? .35 : 1, // #app.dim #bg
+            opacity: dim ? .35 : 1, // #app.dim #bg
             duration: const Duration(milliseconds: 800),
             child: BgLayer(word: boot ? 'SYSTEM' : '半马', latin: boot),
           ),
-          // TODO(step5+): 1 · 舞台 —— Live2D 角色 + 套在她身上的主线环 + 环挂签/环标签
+          // TODO(step7+): 1 · 舞台 —— Live2D 角色 + 套在她身上的主线环 + 环挂签/环标签
           // 2 · 界面
           Hud(state: _host, visible: lobby || exec),
           LineLayer(
@@ -122,7 +128,10 @@ class _AppShellState extends State<AppShell> {
             itemCount: 3,
             evidenceCount: 0,
             visible: exec,
+            onSubmit: () => setState(() => _moment = Moment.result),
           ),
+          // 结算
+          ResultPanel(result: _result, visible: result, onSave: () {}),
           // 3 · 覆盖层：开机自检（她醒来之前压在最上面）
           if (boot)
             BootScreen(

@@ -266,7 +266,9 @@ class _Coin extends StatelessWidget {
     return Container(
       key: const Key('hud.coin'),
       height: 30,
-      padding: const EdgeInsets.fromLTRB(9, 0, 11, 0),
+      // ⚠️ Flutter 的 Border 会占布局空间，CSS 的 inset box-shadow 不会 ——
+      // 所以用 Border 模拟 inset 描边时，padding 要各减 1px 才与原型同宽。
+      padding: const EdgeInsets.fromLTRB(8, 0, 10, 0),
       decoration: BoxDecoration(
         color: const Color(0x8C08142A), // rgba(8,20,42,.55)
         borderRadius: BorderRadius.circular(15),
