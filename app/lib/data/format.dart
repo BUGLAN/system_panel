@@ -19,3 +19,14 @@ String fmtMin(int min) {
   if (min % 60 != 0) return '${min ~/ 60} 小时 ${min % 60} 分';
   return '${min ~/ 60} 小时';
 }
+
+/// `fmtDur`（util.js L37）—— 一段时长：秒 → 分 → 小时 → 天
+String fmtDur(Duration d) {
+  final int s = d.inSeconds < 0 ? 0 : d.inSeconds;
+  if (s < 60) return '$s 秒';
+  final int m = s ~/ 60;
+  if (m < 60) return s % 60 != 0 ? '$m 分 ${s % 60} 秒' : '$m 分';
+  final int h = m ~/ 60;
+  if (h < 48) return m % 60 != 0 ? '$h 小时 ${m % 60} 分' : '$h 小时';
+  return '${h ~/ 24} 天';
+}

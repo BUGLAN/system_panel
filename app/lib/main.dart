@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'design/tokens.dart';
 import 'screens/boot_screen.dart';
 import 'state/host_state.dart';
+import 'state/goal.dart';
 import 'state/quest.dart';
 import 'state/result.dart';
 import 'widgets/bg_layer.dart';
@@ -13,8 +14,10 @@ import 'widgets/exec_panel.dart';
 import 'widgets/fail_layer.dart';
 import 'widgets/hud.dart';
 import 'widgets/line_layer.dart';
+import 'widgets/main_view.dart';
 import 'widgets/plate.dart';
 import 'widgets/result_panel.dart';
+import 'widgets/ring_labels.dart';
 import 'widgets/sheet.dart';
 
 /// 宿主 SYSTEM —— Flutter 客户端。
@@ -53,8 +56,8 @@ class SysApp extends StatelessWidget {
 ///   dispatch → focus+dim（HUD/底栏收走、天幕压暗）
 ///   exec → panel（只收底栏）· result → focus+dim
 ///   fail → focus+fail（HUD/底栏收走、天幕抽色压暗 + veil）
-///   sheet → focus（投影面板升起）
-enum Moment { boot, lobby, dispatch, exec, result, fail, sheet }
+///   sheet → focus（投影面板升起）· main → focus（主线全景 + 环挂签）
+enum Moment { boot, lobby, dispatch, exec, result, fail, sheet, main }
 
 /// 所有页面的共同外壳，对应原型的 `#app` + `#shake`：
 ///   天幕（#bg）→ 舞台（#stage）→ 界面（#ui）→ 覆盖层
@@ -74,6 +77,12 @@ class _AppShellState extends State<AppShell> {
   static const QuestResult _result = QuestResult.demo;
 
   Moment _moment = Moment.boot;
+
+  /// 主线（`Goal.demo()` 的起点是「今天」，只取一次）
+  late final Goal _goal = Goal.demo();
+
+  /// 主线全景里展开的是哪一环（null = 没展开，只有抬头）
+  int? _pickedRing;
 
   /// 投影面板当前停在哪一页
   SheetKind _sheetKind = SheetKind.archive;
@@ -98,18 +107,21 @@ class _AppShellState extends State<AppShell> {
     final bool result = _moment == Moment.result;
     final bool fail = _moment == Moment.fail;
     final bool sheet = _moment == Moment.sheet;
+    final bool main = _moment == Moment.main;
     final bool boot = _moment == Moment.boot;
     // focus+dim：派单与结算都会把 HUD/底栏收走、天幕压暗
     final bool dim = dispatch || result;
 
     // lineAt（flows.js L23）：
-    //   lobby = H*.6，dispatch = H-568，fail = H*.47，sheet = H*.38 - 104
+    //   lobby = H*.6，dispatch = H-568，fail = H*.47，sheet = H*.38 - 104，main = H-192
     final double lineY = dispatch
         ? size.height - 568
         : fail
         ? size.height * .47
         : sheet
         ? size.height * .38 - 104
+        : main
+        ? size.height - 192
         : size.height * .6;
 
     return Scaffold(
@@ -158,7 +170,12 @@ class _AppShellState extends State<AppShell> {
             visible: lobby,
             onCta: () => setState(() => _moment = Moment.dispatch),
             onSide: (int i) {
-              if (i == 1 || i == 2) {
+              if (i == 0) {
+                setState(() {
+                  _pickedRing = null;
+                  _moment = Moment.main;
+                });
+              } else if (i == 1 || i == 2) {
                 setState(() {
                   _sheetKind = i == 1 ? SheetKind.archive : SheetKind.supply;
                   _moment = Moment.sheet;
@@ -192,16 +209,21 @@ class _AppShellState extends State<AppShell> {
           // 以下三件在 veil 之上（z 2 / 3 / 4）
           PlateAlt(labels: const <String>['换一个', '等会儿'], visible: dispatch),
           LineLayer(
+            // 文案真源：content.js L298 `holding` / L397 `mainline`
             text: dispatch
                 ? '接不接？'
                 : fail
                 ? '补救的路，我给你留着：明天 20:02 前，做一半。做到了，这次不算。'
-                : '我手里有 5 单。都是给你的。',
+                : main
+                ? '${_goal.doneCount}/${_goal.rings.length} 环。顶上那个，是你的目标。'
+                : '我手里有 ${_host.queue} 单。都是给你的。',
             mood: dispatch ? '监视' : (fail ? '待机' : '尚可'),
             y: lineY,
             soft: fail,
             fail: fail,
-            visible: lobby || dispatch || fail,
+            // 原型里那句主线台词说完就 Line.hide()，点环展开详情时它已经不在——
+            // 两者都显示会叠在详情卡上
+            visible: lobby || dispatch || fail || (main && _pickedRing == null),
           ),
           Choices(
             items: const <Choice>[Choice('……接。', main: true), Choice('今天算了。')],
@@ -213,6 +235,22 @@ class _AppShellState extends State<AppShell> {
             kind: _sheetKind,
             visible: sheet,
             onClose: () => setState(() => _moment = Moment.lobby),
+          ),
+          // 主线全景：环挂签挂在环上（位置由相机数学给出），面板压在上面
+          RingLabels(
+            goal: _goal,
+            visible: main,
+            onPick: (int i) => setState(() => _pickedRing = i),
+          ),
+          MainView(
+            goal: _goal,
+            selected: main ? _pickedRing : null,
+            // 原型 `canGo = !S.active && cur >= 0 && 队列里有主线单`——
+            // veteran 档三条都成立，所以那颗蓝色主按钮是显示的
+            canDispatch: main,
+            visible: main,
+            onClose: () => setState(() => _moment = Moment.lobby),
+            onDispatch: () => setState(() => _moment = Moment.dispatch),
           ),
           // 3 · 覆盖层：开机自检（z 20，压在所有东西上面）
           if (boot)

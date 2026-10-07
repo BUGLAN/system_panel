@@ -12,17 +12,27 @@ import 'dart:ui';
 /// ═══════════════════════════════════════════════════════════
 
 /// 角色锚点表（stage.js L17 的 `NY`）。
-/// ⚠️ 原型里 `NY.chest` 会被 Live2D 模型实测值覆盖（实测 −.10737），
-/// 但**环位只用到 hair / feet / shoulder**，这三项是静态的。
+///
+/// ⚠️ **这里写的是 Live2D 模型实测后的值，不是 stage.js 里那张静态表。**
+/// 静态表是 `hair: .44 / shoulder: .01 / feet: -1.51 / chest: -.12`，
+/// 模型加载后会被实测值覆盖，而 `camFit` 用的是覆盖后的跨度。
+/// 拿静态表去算，环位 y 会差 0.2~0.4px —— 而 x 恰好不受影响，
+/// 只看 x 会以为公式已经对上了（踩过）。
 class StageAnchors {
   const StageAnchors._();
 
-  static const double hair = .44;
-  static const double shoulder = .01;
-  static const double feet = -1.51;
+  /// 发际线（她头顶那一环的高度基准）
+  static const double hair = .4386169977280048;
 
-  /// 她的整体高度（世界单位）
-  static const double bodySpan = hair - feet; // 1.95
+  static const double shoulder = .009626705462138396;
+
+  static const double feet = -1.511338876207752;
+
+  /// 胸口 —— 只给投影光束用（`NY.chest + .02`）
+  static const double chest = -.10737064697400722;
+
+  /// 她的整体高度（世界单位）—— 注意不是 1.95
+  static const double bodySpan = hair - feet; // 1.9499558739357568
 }
 
 /// 一套相机预设：`S = camFit(H) × s`，`sx = W × sxF`，`sy = H × syF`
