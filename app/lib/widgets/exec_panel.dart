@@ -35,6 +35,7 @@ class ExecPanel extends StatelessWidget {
     required this.evidenceCount,
     this.visible = true,
     this.onSubmit,
+    this.onQuit,
   });
 
   final Quest quest;
@@ -55,6 +56,9 @@ class ExecPanel extends StatelessWidget {
 
   /// 点「提交 · 让她验收」（原型的验收演出是行为，先只留入口）
   final VoidCallback? onSubmit;
+
+  /// 按住「认输」（原型的按住 1.2s 是行为，先只留入口）
+  final VoidCallback? onQuit;
 
   @override
   Widget build(BuildContext context) {
@@ -426,27 +430,30 @@ class ExecPanel extends StatelessWidget {
 
   /// .quit —— 按住 · 认输（进度条由按住时长驱动，是行为）
   Widget _quitButton() {
-    return Container(
-      key: const Key('exec.quit'),
-      height: 40,
-      // Border 占布局、CSS 的 inset 阴影不占 → padding 各减 1px
-      padding: const EdgeInsets.symmetric(horizontal: 17),
-      alignment: Alignment.center,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: const Color(0x407D8CA5),
-          width: 1,
-        ), // rgba(125,140,165,.25)
-      ),
-      child: Text(
-        '按住 · 认输',
-        style: fs(
-          family: F.cn,
-          size: 12.5,
-          wght: 400,
-          height: 1,
-          color: const Color(0xFF7D8CA5),
+    return GestureDetector(
+      onTap: onQuit,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        key: const Key('exec.quit'),
+        height: 40,
+        // Border 占布局、CSS 的 inset 阴影不占 → padding 各减 1px
+        padding: const EdgeInsets.symmetric(horizontal: 17),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: const Color(0x407D8CA5),
+            width: 1,
+          ), // rgba(125,140,165,.25)
+        ),
+        child: Text(
+          '按住 · 认输',
+          style: fs(
+            family: F.cn,
+            size: 12.5,
+            wght: 400,
+            color: const Color(0xFF7D8CA5),
+          ),
         ),
       ),
     );

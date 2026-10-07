@@ -22,6 +22,7 @@ class LineLayer extends StatelessWidget {
     this.soft = false,
     this.visible = true,
     this.waveScale = .15,
+    this.fail = false,
   });
 
   final String text;
@@ -40,10 +41,17 @@ class LineLayer extends StatelessWidget {
   /// 波形条的静态高度（原型由声音驱动，范围 .12~1）
   final double waveScale;
 
+  /// 认输态：`#app.fail .line::after` 会把左边那道青光换成灰色、去掉辉光
+  final bool fail;
+
   @override
   Widget build(BuildContext context) {
     final Color ink = soft ? const Color(0xFFB8C7DC) : const Color(0xFFEEFCFF);
-    final Color bar = soft ? const Color(0xFF7C8AA3) : C.blue;
+    final Color bar = fail
+        ? const Color(0xFF6C7A92)
+        : soft
+        ? const Color(0xFF7C8AA3)
+        : C.blue;
     final Color whoColor = soft ? const Color(0xFF8A9AB4) : C.blue;
 
     return Positioned(
@@ -106,7 +114,7 @@ class LineLayer extends StatelessWidget {
                   decoration: BoxDecoration(
                     color: bar,
                     borderRadius: BorderRadius.circular(1),
-                    boxShadow: soft
+                    boxShadow: (soft || fail)
                         ? null
                         : <BoxShadow>[BoxShadow(color: C.blue, blurRadius: 10)],
                   ),

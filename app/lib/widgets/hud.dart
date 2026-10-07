@@ -28,25 +28,29 @@ class Hud extends StatelessWidget {
       right: 0,
       top: 0,
       height: 74,
-      child: AnimatedSlide(
-        offset: visible ? Offset.zero : const Offset(0, -1.10),
-        duration: const Duration(milliseconds: 500),
-        curve: kOut,
-        child: AnimatedOpacity(
-          opacity: visible ? 1 : 0,
-          duration: const Duration(milliseconds: 400),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 18, 16, 0),
-            child: Row(
-              children: <Widget>[
-                _LvRing(lv: state.lv, ratio: state.expRatio),
-                const SizedBox(width: 10), // #hud gap
-                Expanded(child: _Who(state: state)),
-                const SizedBox(width: 10),
-                _Coin(coins: state.coins),
-                const SizedBox(width: 10),
-                const _Menu(),
-              ],
+      // 收起来时同时断掉命中，别替下面的东西挨点
+      child: IgnorePointer(
+        ignoring: !visible,
+        child: AnimatedSlide(
+          offset: visible ? Offset.zero : const Offset(0, -1.10),
+          duration: const Duration(milliseconds: 500),
+          curve: kOut,
+          child: AnimatedOpacity(
+            opacity: visible ? 1 : 0,
+            duration: const Duration(milliseconds: 400),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 18, 16, 0),
+              child: Row(
+                children: <Widget>[
+                  _LvRing(lv: state.lv, ratio: state.expRatio),
+                  const SizedBox(width: 10), // #hud gap
+                  Expanded(child: _Who(state: state)),
+                  const SizedBox(width: 10),
+                  _Coin(coins: state.coins),
+                  const SizedBox(width: 10),
+                  const _Menu(),
+                ],
+              ),
             ),
           ),
         ),

@@ -784,54 +784,58 @@ class PlateAlt extends StatelessWidget {
       left: 16,
       right: 16,
       bottom: 18,
-      child: AnimatedOpacity(
-        opacity: visible ? 1 : 0,
-        duration: const Duration(milliseconds: 400),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: <Widget>[
-            for (int i = 0; i < labels.length; i++) ...<Widget>[
-              if (i > 0) const SizedBox(width: 10),
-              Container(
-                height: 36,
-                // Border 占布局、CSS 的 inset 阴影不占 → padding 各减 1px
-                padding: const EdgeInsets.symmetric(horizontal: 14),
-                decoration: BoxDecoration(
-                  color: const Color(0xDB040C1C), // rgba(4,12,28,.86)
-                  borderRadius: BorderRadius.circular(18),
-                  border: Border.all(
-                    color: const Color(0x4D8FA6C4),
-                    width: 1,
-                  ), // rgba(143,166,196,.3)
-                ),
-                child: Row(
-                  children: <Widget>[
-                    Text(
-                      '宿主 · ',
-                      style: fs(
-                        family: F.mono,
-                        size: 9,
-                        wght: 500,
-                        ls: .9,
-                        height: 1,
-                        color: C.dim,
+      // 收起来时同时断掉命中，别替下面的东西挨点
+      child: IgnorePointer(
+        ignoring: !visible,
+        child: AnimatedOpacity(
+          opacity: visible ? 1 : 0,
+          duration: const Duration(milliseconds: 400),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: <Widget>[
+              for (int i = 0; i < labels.length; i++) ...<Widget>[
+                if (i > 0) const SizedBox(width: 10),
+                Container(
+                  height: 36,
+                  // Border 占布局、CSS 的 inset 阴影不占 → padding 各减 1px
+                  padding: const EdgeInsets.symmetric(horizontal: 14),
+                  decoration: BoxDecoration(
+                    color: const Color(0xDB040C1C), // rgba(4,12,28,.86)
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(
+                      color: const Color(0x4D8FA6C4),
+                      width: 1,
+                    ), // rgba(143,166,196,.3)
+                  ),
+                  child: Row(
+                    children: <Widget>[
+                      Text(
+                        '宿主 · ',
+                        style: fs(
+                          family: F.mono,
+                          size: 9,
+                          wght: 500,
+                          ls: .9,
+                          height: 1,
+                          color: C.dim,
+                        ),
                       ),
-                    ),
-                    Text(
-                      labels[i],
-                      style: fs(
-                        family: F.cn,
-                        size: 13,
-                        wght: 400,
-                        height: 1,
-                        color: const Color(0xFFC3D2E6),
+                      Text(
+                        labels[i],
+                        style: fs(
+                          family: F.cn,
+                          size: 13,
+                          wght: 400,
+                          height: 1,
+                          color: const Color(0xFFC3D2E6),
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
+              ],
             ],
-          ],
+          ),
         ),
       ),
     );

@@ -35,82 +35,86 @@ class Dock extends StatelessWidget {
       right: 0,
       bottom: 0,
       height: 148,
-      child: AnimatedSlide(
-        offset: visible ? Offset.zero : const Offset(0, 1.20),
-        duration: const Duration(milliseconds: 550),
-        curve: kOut,
-        child: AnimatedOpacity(
-          opacity: visible ? 1 : 0,
-          duration: const Duration(milliseconds: 400),
-          child: Stack(
-            clipBehavior: Clip.none,
-            children: <Widget>[
-              // #dock::before —— 底部的暗场，让字浮起来
-              Positioned(
-                left: 0,
-                right: 0,
-                top: -40,
-                bottom: 0,
-                child: IgnorePointer(
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: <Color>[
-                          const Color(0x0002050C),
-                          const Color(0xD102050C),
-                        ],
-                        stops: const <double>[0, .62],
+      // 收起来时同时断掉命中，别替下面的东西挨点
+      child: IgnorePointer(
+        ignoring: !visible,
+        child: AnimatedSlide(
+          offset: visible ? Offset.zero : const Offset(0, 1.20),
+          duration: const Duration(milliseconds: 550),
+          curve: kOut,
+          child: AnimatedOpacity(
+            opacity: visible ? 1 : 0,
+            duration: const Duration(milliseconds: 400),
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: <Widget>[
+                // #dock::before —— 底部的暗场，让字浮起来
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  top: -40,
+                  bottom: 0,
+                  child: IgnorePointer(
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: <Color>[
+                            const Color(0x0002050C),
+                            const Color(0xD102050C),
+                          ],
+                          stops: const <double>[0, .62],
+                        ),
                       ),
                     ),
                   ),
                 ),
-              ),
-              // 内容整体吸底：Stack 默认顶端对齐，不撑满就会浮到上面去
-              Positioned.fill(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(18, 0, 18, 26),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: <Widget>[
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: <Widget>[
-                          const _SideKeys(),
-                          _Cta(
-                            state: state,
-                            running: running,
-                            idle: idle,
-                            onTap: onCta,
-                          ),
-                        ],
-                      ),
-                    ],
+                // 内容整体吸底：Stack 默认顶端对齐，不撑满就会浮到上面去
+                Positioned.fill(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(18, 0, 18, 26),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: <Widget>[
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: <Widget>[
+                            const _SideKeys(),
+                            _Cta(
+                              state: state,
+                              running: running,
+                              idle: idle,
+                              onTap: onCta,
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-              ),
-              // .cta-cap
-              Positioned(
-                right: 18,
-                bottom: 8,
-                width: 104,
-                child: Text(
-                  key: const Key('dock.cap'),
-                  _cap(running, idle),
-                  textAlign: TextAlign.center,
-                  style: fs(
-                    family: F.cn,
-                    size: 10,
-                    wght: 400,
-                    ls: .6,
-                    color: C.mist,
+                // .cta-cap
+                Positioned(
+                  right: 18,
+                  bottom: 8,
+                  width: 104,
+                  child: Text(
+                    key: const Key('dock.cap'),
+                    _cap(running, idle),
+                    textAlign: TextAlign.center,
+                    style: fs(
+                      family: F.cn,
+                      size: 10,
+                      wght: 400,
+                      ls: .6,
+                      color: C.mist,
+                    ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

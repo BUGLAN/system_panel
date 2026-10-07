@@ -7,8 +7,10 @@ import 'state/host_state.dart';
 import 'state/quest.dart';
 import 'state/result.dart';
 import 'widgets/bg_layer.dart';
+import 'widgets/choices.dart';
 import 'widgets/dock.dart';
 import 'widgets/exec_panel.dart';
+import 'widgets/fail_layer.dart';
 import 'widgets/hud.dart';
 import 'widgets/line_layer.dart';
 import 'widgets/plate.dart';
@@ -49,12 +51,13 @@ class SysApp extends StatelessWidget {
 ///   boot → booting（HUD/底栏收走）· lobby → 无
 ///   dispatch → focus+dim（HUD/底栏收走、天幕压暗）
 ///   exec → panel（只收底栏）· result → focus+dim
-enum Moment { boot, lobby, dispatch, exec, result }
+///   fail → focus+fail（HUD/底栏收走、天幕抽色压暗 + veil）
+enum Moment { boot, lobby, dispatch, exec, result, fail }
 
 /// 所有页面的共同外壳，对应原型的 `#app` + `#shake`：
 ///   天幕（#bg）→ 舞台（#stage）→ 界面（#ui）→ 覆盖层
 ///
-/// 每一步复刻一页。当前已复刻：开机自检、大厅、派单板、执行面板、结算。
+/// 每一步复刻一页。当前已复刻：开机自检、大厅、派单板、执行面板、结算、失败/补救。
 class AppShell extends StatefulWidget {
   const AppShell({super.key});
 
@@ -70,21 +73,35 @@ class _AppShellState extends State<AppShell> {
 
   Moment _moment = Moment.boot;
 
+  /// 单位矩阵（fail 滤镜动画的起点）
+  static const List<double> _identity = <double>[
+    1, 0, 0, 0, 0, //
+    0, 1, 0, 0, 0, //
+    0, 0, 1, 0, 0, //
+    0, 0, 0, 1, 0, //
+  ];
+
+  static List<double> _lerpMatrix(List<double> a, List<double> b, double t) =>
+      List<double>.generate(20, (int i) => a[i] + (b[i] - a[i]) * t);
+
   @override
   Widget build(BuildContext context) {
     final Size size = MediaQuery.sizeOf(context);
-    // lineAt：lobby = H*.6，dispatch = H-448-120（flows.js L23）
-    final double lineY = _moment == Moment.dispatch
-        ? size.height - 568
-        : size.height * .6;
-
     final bool lobby = _moment == Moment.lobby;
     final bool dispatch = _moment == Moment.dispatch;
     final bool exec = _moment == Moment.exec;
     final bool result = _moment == Moment.result;
+    final bool fail = _moment == Moment.fail;
     final bool boot = _moment == Moment.boot;
     // focus+dim：派单与结算都会把 HUD/底栏收走、天幕压暗
     final bool dim = dispatch || result;
+
+    // lineAt（flows.js L23）：lobby = H*.6，dispatch = H-568，fail = H*.47
+    final double lineY = dispatch
+        ? size.height - 568
+        : fail
+        ? size.height * .47
+        : size.height * .6;
 
     return Scaffold(
       backgroundColor: C.voidBg,
@@ -96,17 +113,28 @@ class _AppShellState extends State<AppShell> {
           AnimatedOpacity(
             opacity: dim ? .35 : 1, // #app.dim #bg
             duration: const Duration(milliseconds: 800),
-            child: BgLayer(word: boot ? 'SYSTEM' : '半马', latin: boot),
+            child: TweenAnimationBuilder<double>(
+              // #bg { transition: opacity .8s, filter .8s } —— 认输抽色压暗也是渐变的
+              tween: Tween<double>(begin: 0, end: fail ? 1 : 0),
+              duration: const Duration(milliseconds: 800),
+              curve: Curves.easeInOut,
+              builder: (BuildContext _, double t, Widget? child) => t <= 0
+                  ? child!
+                  : ColorFiltered(
+                      colorFilter: ColorFilter.matrix(
+                        _lerpMatrix(_identity, kFailColorMatrix, t),
+                      ),
+                      child: child,
+                    ),
+              child: BgLayer(word: boot ? 'SYSTEM' : '半马', latin: boot),
+            ),
           ),
-          // TODO(step7+): 1 · 舞台 —— Live2D 角色 + 套在她身上的主线环 + 环挂签/环标签
+          // TODO(step8+): 1 · 舞台 —— Live2D 角色 + 套在她身上的主线环 + 环挂签/环标签
           // 2 · 界面
+          //    ⚠️ 原型的层级：`#veil` 是 z-auto（在 #ui 之后绘制），而 `.line` z=3、
+          //    `#choices` z=4、`#plateAlt` z=2 —— 所以认输时 veil 压得住 failv，
+          //    压不住字幕和选项。Stack 的先后顺序必须照这个 z 序排。
           Hud(state: _host, visible: lobby || exec),
-          LineLayer(
-            text: dispatch ? '接不接？' : '我手里有 5 单。都是给你的。',
-            mood: dispatch ? '监视' : '尚可',
-            y: lineY,
-            visible: lobby || dispatch,
-          ),
           Dock(
             state: _host,
             visible: lobby,
@@ -119,7 +147,6 @@ class _AppShellState extends State<AppShell> {
             visible: dispatch,
             onAccept: () => setState(() => _moment = Moment.exec),
           ),
-          PlateAlt(labels: const <String>['换一个', '等会儿'], visible: dispatch),
           // 执行面板
           ExecPanel(
             quest: _quest,
@@ -129,10 +156,32 @@ class _AppShellState extends State<AppShell> {
             evidenceCount: 0,
             visible: exec,
             onSubmit: () => setState(() => _moment = Moment.result),
+            onQuit: () => setState(() => _moment = Moment.fail),
           ),
           // 结算
           ResultPanel(result: _result, visible: result, onSave: () {}),
-          // 3 · 覆盖层：开机自检（她醒来之前压在最上面）
+          // 失败 / 补救（在 veil 之下）
+          FailLayer(recordedAt: '20:02', remedy: Remedy.demo, visible: fail),
+          Veil(opacity: fail ? .6 : 0),
+          // 以下三件在 veil 之上（z 2 / 3 / 4）
+          PlateAlt(labels: const <String>['换一个', '等会儿'], visible: dispatch),
+          LineLayer(
+            text: dispatch
+                ? '接不接？'
+                : fail
+                ? '补救的路，我给你留着：明天 20:02 前，做一半。做到了，这次不算。'
+                : '我手里有 5 单。都是给你的。',
+            mood: dispatch ? '监视' : (fail ? '待机' : '尚可'),
+            y: lineY,
+            soft: fail,
+            fail: fail,
+            visible: lobby || dispatch || fail,
+          ),
+          Choices(
+            items: const <Choice>[Choice('……接。', main: true), Choice('今天算了。')],
+            visible: fail,
+          ),
+          // 3 · 覆盖层：开机自检（z 20，压在所有东西上面）
           if (boot)
             BootScreen(
               host: '${_host.name} · LV${_host.lv}',
