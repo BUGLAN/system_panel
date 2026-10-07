@@ -51,8 +51,22 @@ class F {
   static const mono = 'KodeMono'; // 系统读数（wght 400-700）
 }
 
+/// 各字体的 normal 行高 = (hhea.ascent − hhea.descent + hhea.lineGap) / unitsPerEm。
+///
+/// CSS 里没写 `line-height` 的地方用的就是它。Flutter 的坑：`TextStyle.height` 留空
+/// 会**继承 Material 主题的 1.43**，于是每个文字行框都偏高（底栏标签能差 3px）。
+/// 所以这里按字体把行高钉死，并且用 [TextLeadingDistribution.even] 复刻 CSS 的
+/// 半行距模型（多余空间上下各一半），保证基线位置也一致。
+const Map<String, double> kNormalLineHeight = <String, double>{
+  F.cn: 1.20, // FangYuan  850/150/200
+  F.hd: 1.40, // ShuHei   1050/150/200
+  F.num: 1.30, // Tektur  1000/300/0
+  F.mono: 1.28, // KodeMono 980/300/0
+};
+
 /// CSS `font:` 简写的 Dart 对应物。
 /// [ls] 是 letter-spacing 的**像素**值；em 值请用 [em] 换算。
+/// [height] 不传就按字体取 normal 行高（见 [kNormalLineHeight]）。
 TextStyle fs({
   required String family,
   required double size,
@@ -67,7 +81,8 @@ TextStyle fs({
   return TextStyle(
     fontFamily: family,
     fontSize: size,
-    height: height,
+    height: height ?? kNormalLineHeight[family] ?? 1.2,
+    leadingDistribution: TextLeadingDistribution.even,
     letterSpacing: ls,
     color: foreground == null ? color : null,
     foreground: foreground,

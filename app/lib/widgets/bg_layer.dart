@@ -11,10 +11,13 @@ import '../design/tokens.dart';
 ///  层级：sky 渐变 → 轨道环 ×3 → 背景大字 → 地面网格 → 颗粒
 /// ═══════════════════════════════════════════════════════════
 class BgLayer extends StatefulWidget {
-  const BgLayer({super.key, this.word = 'SYSTEM', this.latin = true});
+  const BgLayer({super.key, this.word = 'SYSTEM', this.latin = false});
 
   /// 她身后写着的那句话（原型里是宿主的目标）
   final String word;
+
+  /// 显式指定走拉丁字形；不传则由 [WordSpec.isLatin] 按内容判定
+  /// （flows.js `setWord` 的默认路径是不传 flag 的）
   final bool latin;
 
   @override
