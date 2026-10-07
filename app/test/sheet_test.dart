@@ -93,14 +93,49 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('补给 / 系统这一步还没接内容', (WidgetTester tester) async {
+    testWidgets('补给页：四件道具 + 价格 + 买不起时禁用', (WidgetTester tester) async {
       await _mount(
         tester,
         const Sheet(host: HostState.demo, kind: SheetKind.supply),
       );
       expect(find.text('SUPPLY · 补给'), findsOneWidget);
       expect(find.text('补给'), findsOneWidget);
-      expect(find.byKey(const Key('sheet.radar')), findsNothing);
+      expect(find.text('金币 ◈ 340 · 只能花在这'), findsOneWidget);
+      for (final Item it in Item.all) {
+        // 名字与「持有 ×N」在同一个 Text.rich 里，得用 textContaining
+        expect(find.textContaining(it.name), findsWidgets);
+        expect(find.text(it.desc), findsOneWidget);
+        expect(find.text('${it.price}'), findsOneWidget);
+      }
+      // 持有数：双倍卡 2 / 暴击芯片 1 / 免死金牌 0 / 换单券 0
+      // （原型演示档里 items 没有 swap 这一项，界面上会印出「持有 ×undefined」——
+      //   那是原型的数据 bug，这里按 0 显示）
+      expect(find.textContaining('持有 ×2'), findsOneWidget);
+      expect(find.textContaining('持有 ×1'), findsOneWidget);
+      expect(find.textContaining('持有 ×0'), findsNWidgets(2));
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('系统页：四行开关 + 一行按住重置 + 页脚', (WidgetTester tester) async {
+      await _mount(
+        tester,
+        const Sheet(host: HostState.demo, kind: SheetKind.system),
+      );
+      expect(find.text('SYSTEM · 设置'), findsOneWidget);
+      expect(find.text('系统'), findsOneWidget);
+      for (final String s in <String>['音效', '她的声音', '震动', '全息描边', '重置存档']) {
+        expect(find.text(s), findsOneWidget);
+      }
+      expect(find.text('全部现场合成，没有音频文件'), findsOneWidget);
+      expect(find.text('人声用浏览器自带中文语音，效果看设备'), findsOneWidget);
+      expect(find.text('按住 2 秒'), findsOneWidget);
+      expect(find.textContaining('SYSTEM · opus-v2-dir'), findsOneWidget);
+      // 「开」四个分段开关默认都停在开上
+      expect(find.text('开'), findsNWidgets(3));
+      expect(find.text('电子音'), findsOneWidget);
+      expect(find.text('人声'), findsOneWidget);
+      expect(find.text('静音'), findsOneWidget);
+      expect(tester.takeException(), isNull);
     });
   });
 

@@ -15,7 +15,10 @@ import 'sys_icons.dart';
 ///  · name [72,22,179,17] · coin [261,31,69,30] · menu [340,29,34,34]
 /// ═══════════════════════════════════════════════════════════
 class Hud extends StatelessWidget {
-  const Hud({super.key, required this.state, this.visible = true});
+  const Hud({super.key, required this.state, this.visible = true, this.onMenu});
+
+  /// 点右上角那三根横杠（原型没有承载物，这里接「系统」面板）
+  final VoidCallback? onMenu;
 
   final HostState state;
 
@@ -49,7 +52,7 @@ class Hud extends StatelessWidget {
                   const SizedBox(width: 10),
                   _Coin(coins: state.coins),
                   const SizedBox(width: 10),
-                  const _Menu(),
+                  _Menu(onTap: onMenu),
                 ],
               ),
             ),
@@ -303,10 +306,20 @@ class _Coin extends StatelessWidget {
 
 /// .hud-menu —— 三根不等长的横杠（app.css L115-117）
 class _Menu extends StatelessWidget {
-  const _Menu();
+  const _Menu({this.onTap});
+
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: _bars(),
+    );
+  }
+
+  Widget _bars() {
     return SizedBox(
       key: const Key('hud.menu'),
       width: 34,

@@ -75,6 +75,9 @@ class _AppShellState extends State<AppShell> {
 
   Moment _moment = Moment.boot;
 
+  /// 投影面板当前停在哪一页
+  SheetKind _sheetKind = SheetKind.archive;
+
   /// 单位矩阵（fail 滤镜动画的起点）
   static const List<double> _identity = <double>[
     1, 0, 0, 0, 0, //
@@ -142,13 +145,25 @@ class _AppShellState extends State<AppShell> {
           //    ⚠️ 原型的层级：`#veil` 是 z-auto（在 #ui 之后绘制），而 `.line` z=3、
           //    `#choices` z=4、`#plateAlt` z=2 —— 所以认输时 veil 压得住 failv，
           //    压不住字幕和选项。Stack 的先后顺序必须照这个 z 序排。
-          Hud(state: _host, visible: lobby || exec),
+          Hud(
+            state: _host,
+            visible: lobby || exec,
+            onMenu: () => setState(() {
+              _sheetKind = SheetKind.system;
+              _moment = Moment.sheet;
+            }),
+          ),
           Dock(
             state: _host,
             visible: lobby,
             onCta: () => setState(() => _moment = Moment.dispatch),
             onSide: (int i) {
-              if (i == 1) setState(() => _moment = Moment.sheet);
+              if (i == 1 || i == 2) {
+                setState(() {
+                  _sheetKind = i == 1 ? SheetKind.archive : SheetKind.supply;
+                  _moment = Moment.sheet;
+                });
+              }
             },
           ),
           // 派单板
@@ -195,6 +210,7 @@ class _AppShellState extends State<AppShell> {
           // 投影面板（档案 / 补给 / 系统共用这一层壳）
           Sheet(
             host: _host,
+            kind: _sheetKind,
             visible: sheet,
             onClose: () => setState(() => _moment = Moment.lobby),
           ),

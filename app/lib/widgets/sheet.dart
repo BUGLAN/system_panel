@@ -2,12 +2,15 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 
 import '../data/items.dart';
 import '../data/titles.dart';
 import '../design/tokens.dart';
 import '../state/host_state.dart';
+import '../state/settings.dart';
 import 'radar.dart';
+import 'sys_icons.dart';
 
 /// ═══════════════════════════════════════════════════════════
 ///  投影面板（app.css L78-81 `#beam` + L436-498 `#sheet`）
@@ -25,12 +28,16 @@ class Sheet extends StatelessWidget {
   const Sheet({
     super.key,
     required this.host,
+    this.settings = AppSettings.demo,
     this.kind = SheetKind.archive,
     this.visible = true,
     this.onClose,
   });
 
   final HostState host;
+
+  /// 系统页那几个开关的当前值
+  final AppSettings settings;
   final SheetKind kind;
   final bool visible;
   final VoidCallback? onClose;
@@ -186,9 +193,9 @@ class Sheet extends StatelessWidget {
       case SheetKind.archive:
         return _archive();
       case SheetKind.supply:
+        return _supply();
       case SheetKind.system:
-        // 两步走：补给 / 系统下一步再复刻
-        return const SizedBox.shrink();
+        return _system();
     }
   }
 
@@ -347,9 +354,9 @@ class Sheet extends StatelessWidget {
   }
 
   /// .sec —— 一条 kicker + 后面拉满的细线，再挂内容
-  Widget _section(String kicker, Widget child) {
+  Widget _section(String kicker, Widget child, {double top = 18}) {
     return Padding(
-      padding: const EdgeInsets.only(top: 18),
+      padding: EdgeInsets.only(top: top),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
@@ -531,6 +538,317 @@ class Sheet extends StatelessWidget {
       ],
     );
   }
+
+  /// ── 补给（金币唯一去处） ────────────────────────────────
+  Widget _supply() {
+    return _section(
+      '金币 ◈ ${host.coins} · 只能花在这',
+      Column(
+        key: const Key('sheet.shop'),
+        children: <Widget>[
+          for (int i = 0; i < Item.all.length; i++) ...<Widget>[
+            if (i > 0) const SizedBox(height: 10), // .shop gap
+            _shopRow(Item.all[i]),
+          ],
+        ],
+      ),
+      top: 6, // 原型这处 `.sec` 带 inline style="margin-top:6px"
+    );
+  }
+
+  /// `.shop .row`
+  Widget _shopRow(Item it) {
+    final int owned = host.items[it.id] ?? 0;
+    final bool afford = host.coins >= it.price;
+    return Container(
+      // Border 占布局、CSS 的 inset 阴影不占 → padding 各减 1px。
+      // 少减这 1px 每行就高 1px，四行下来第 4 行会低 8px
+      padding: const EdgeInsets.all(11),
+      decoration: BoxDecoration(
+        color: C.blue.withAlpha(11), // rgba(56,225,255,.045)
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: C.line2, width: 1),
+      ),
+      child: Row(
+        children: <Widget>[
+          _glyph(it.glyph, size: 42, fontSize: 15),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                Text.rich(
+                  TextSpan(
+                    children: <InlineSpan>[
+                      TextSpan(
+                        text: it.name,
+                        style: fs(
+                          family: F.cn,
+                          size: 14,
+                          wght: 400,
+                          color: C.ice,
+                        ),
+                      ),
+                      TextSpan(
+                        text: '持有 ×$owned',
+                        style: fs(
+                          family: F.num,
+                          size: 11,
+                          wght: 700,
+                          color: C.mist,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  it.desc,
+                  style: fs(
+                    family: F.cn,
+                    size: 11.5,
+                    wght: 400,
+                    height: 1.45,
+                    color: C.mist,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          _buy(it.price, afford),
+        ],
+      ),
+    );
+  }
+
+  /// `.glyph` —— 圆形字标
+  Widget _glyph(String text, {required double size, required double fontSize}) {
+    return SizedBox(
+      width: size,
+      height: size,
+      child: Stack(
+        alignment: Alignment.center,
+        children: <Widget>[
+          // `0 0 12px rgba(56,225,255,.25)` —— 不能用 BoxShadow：
+          // Flutter 的外阴影会**透进透明的内部**（CSS 只画在 border-box 外面），
+          // 而这个圆的内部是半透明径向渐变，整块会被点亮
+          Positioned.fill(
+            child: IgnorePointer(
+              child: CustomPaint(
+                painter: _RingGlowPainter(color: C.blue.withAlpha(64)),
+              ),
+            ),
+          ),
+          Container(
+            width: size,
+            height: size,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              // inset 0 0 0 1.5px + radial-gradient(.18 → transparent 70%)
+              border: Border.all(color: C.blue, width: 1.5),
+              gradient: RadialGradient(
+                colors: <Color>[C.blue.withAlpha(46), C.blue.withAlpha(0)],
+                stops: const <double>[0, .7],
+              ),
+            ),
+            child: Text(
+              text,
+              style: fs(
+                family: F.num,
+                size: fontSize,
+                wght: 800,
+                color: C.blue,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// `.buy`
+  Widget _buy(int price, bool afford) {
+    final Color fg = afford ? C.deep : const Color(0xFF4F607B);
+    return Container(
+      height: 34,
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      decoration: BoxDecoration(
+        color: afford ? C.blue : C.blue.withAlpha(26), // rgba(56,225,255,.1)
+        borderRadius: BorderRadius.circular(17),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          SvgPicture.string(
+            afford ? kIconCoinDark : kIconCoinMuted,
+            width: 11,
+            height: 11,
+          ),
+          const SizedBox(width: 5),
+          Text(
+            '$price',
+            style: fs(family: F.num, size: 13, wght: 800, color: fg),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// ── 系统（只有四个开关 + 一个按住重置） ──────────────────
+  Widget _system() {
+    final List<Widget> rows = <Widget>[
+      _setRow(
+        '音效',
+        '全部现场合成，没有音频文件',
+        _seg('sound', <List<String>>[
+          <String>['1', '开'],
+          <String>['0', '关'],
+        ], settings.sound ? '1' : '0'),
+      ),
+      _setRow(
+        '她的声音',
+        '人声用浏览器自带中文语音，效果看设备',
+        _seg('voice', AppSettings.voiceOptions, settings.voice),
+      ),
+      _setRow(
+        '震动',
+        '仅安卓浏览器有效',
+        _seg('haptic', <List<String>>[
+          <String>['1', '开'],
+          <String>['0', '关'],
+        ], settings.haptic ? '1' : '0'),
+      ),
+      _setRow(
+        '全息描边',
+        '她身上的电光轮廓；低端机可关',
+        _seg('holo', <List<String>>[
+          <String>['1', '开'],
+          <String>['0', '关'],
+        ], settings.holo ? '1' : '0'),
+      ),
+      _setRow('重置存档', '一切从绑定重新开始', _danger()),
+    ];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        Column(
+          key: const Key('sheet.set'),
+          children: <Widget>[
+            for (int i = 0; i < rows.length; i++) ...<Widget>[
+              if (i > 0) const SizedBox(height: 2), // .set gap
+              rows[i],
+            ],
+          ],
+        ),
+        const SizedBox(height: 18), // .about margin-top
+        Text(
+          'SYSTEM · opus-v2-dir\n她派任务，你去现实里做，拍下证据，她结算。\n存档只在这台设备的浏览器里。',
+          style: fs(
+            family: F.cn,
+            size: 11.5,
+            wght: 400,
+            height: 1.7,
+            color: const Color(0xFF5F7190),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// `.set .row`
+  Widget _setRow(String label, String hint, Widget trailing) {
+    return Container(
+      constraints: const BoxConstraints(minHeight: 52),
+      decoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: C.line2, width: 1)),
+      ),
+      child: Row(
+        children: <Widget>[
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                Text(
+                  label,
+                  style: fs(family: F.cn, size: 14, wght: 400, color: C.ice),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  hint,
+                  style: fs(family: F.cn, size: 11, wght: 400, color: C.mist),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          trailing,
+        ],
+      ),
+    );
+  }
+
+  /// `.seg` —— 分段开关
+  Widget _seg(String key, List<List<String>> options, String current) {
+    return Container(
+      padding: const EdgeInsets.all(2), // CSS 3，Border 占 1
+      decoration: BoxDecoration(
+        color: C.blue.withAlpha(15), // rgba(56,225,255,.06)
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: C.line2, width: 1),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          for (final List<String> o in options)
+            Container(
+              height: 28,
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: o[0] == current ? C.blue : null,
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Text(
+                o[1],
+                style: fs(
+                  family: F.cn,
+                  size: 12,
+                  wght: o[0] == current ? 650 : 400,
+                  color: o[0] == current ? C.deep : C.mist,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// `.danger` —— 按住 2 秒重置（进度条由按住驱动，是行为）
+  Widget _danger() {
+    return Container(
+      key: const Key('sheet.danger'),
+      height: 36,
+      padding: const EdgeInsets.symmetric(horizontal: 13), // CSS 14，Border 占 1
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0x59FF4D5E), width: 1), // .35
+      ),
+      child: Text(
+        '按住 2 秒',
+        style: fs(
+          family: F.cn,
+          size: 12.5,
+          wght: 400,
+          color: const Color(0xFFFF8F99),
+        ),
+      ),
+    );
+  }
 }
 
 enum SheetKind { archive, supply, system }
@@ -600,6 +918,30 @@ class _BeamPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _BeamPainter o) => o.size != size;
+}
+
+/// `.glyph` 的外发光 `0 0 12px` —— 描边的模糊圆，只往外散
+class _RingGlowPainter extends CustomPainter {
+  const _RingGlowPainter({required this.color});
+
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size s) {
+    final double r = s.width / 2;
+    canvas.drawCircle(
+      Offset(r, r),
+      r,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 4
+        ..color = color
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6),
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _RingGlowPainter o) => o.color != color;
 }
 
 /// `.sh-edge` —— 顶边一道光：中间白、两侧青，外加一层向上的辉光

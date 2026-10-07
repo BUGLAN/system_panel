@@ -7,6 +7,15 @@ const String kIconCoin =
     '<svg viewBox="0 0 16 16"><g fill="none" stroke="#38E1FF" stroke-width="1.6">'
     '<path d="M8 1l6 3.5v7L8 15l-6-3.5v-7z"/></g></svg>';
 
+/// .buy 里的金币（同 COIN_SVG，但 stroke 走 var(--deep)、线宽 2；买不起时变灰）
+const String kIconCoinDark =
+    '<svg viewBox="0 0 16 16"><g fill="none" stroke="#021022" stroke-width="2" stroke-linejoin="miter" stroke-miterlimit="10">'
+    '<path d="M8 1l6 3.5v7L8 15l-6-3.5v-7z"/></g></svg>';
+
+const String kIconCoinMuted =
+    '<svg viewBox="0 0 16 16"><g fill="none" stroke="#4F607B" stroke-width="2" stroke-linejoin="miter" stroke-miterlimit="10">'
+    '<path d="M8 1l6 3.5v7L8 15l-6-3.5v-7z"/></g></svg>';
+
 /// 底栏三颗（index.html L55-57 + app.css L215）
 const String kIconMain =
     '<svg viewBox="0 0 24 24"><g fill="none" stroke="#E9FBFF" stroke-width="1.3">'
