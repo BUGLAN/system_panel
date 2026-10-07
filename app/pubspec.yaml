@@ -18,24 +18,21 @@ dev_dependencies:
 flutter:
   uses-material-design: true
 
-  # 字体三件套（视觉基准锁定，见 .stitch/DESIGN.md）
-  # 说明：NotoSansSC / JetBrainsMono 是可变字重字体（Variable Font），
-  # 字重不靠 weight 声明，而是在代码里用：
-  #   TextStyle(fontFamily: 'NotoSansSC', fontVariations: [FontVariation('wght', 700)])
+  # 字体四件套 —— 真源：prototype/opus-v2-dir/css/app.css 的 @font-face
+  # 四个都是可变字体，字重/字宽必须在代码里用 fontVariations 指定：
+  #   TextStyle(fontVariations: [FontVariation('wght', 700), FontVariation('wdth', 75)])
+  # 光写 fontWeight 不生效（FangYuan 的默认实例是 wght 700）。
+  # 原型的字体是 woff2，Flutter 不认，已用 .verify/woff2ttf.py 转成 ttf。
   fonts:
-    - family: Rajdhani
+    - family: FangYuan # 正文 / 她的话（阿里妈妈方圆体，wght 200-700）
       fonts:
-        - asset: assets/fonts/Rajdhani-Regular.ttf
-          weight: 400
-        - asset: assets/fonts/Rajdhani-Medium.ttf
-          weight: 500
-        - asset: assets/fonts/Rajdhani-SemiBold.ttf
-          weight: 600
-        - asset: assets/fonts/Rajdhani-Bold.ttf
-          weight: 700
-    - family: NotoSansSC
+        - asset: assets/fonts/FangYuan-VF.ttf
+    - family: ShuHei # 标题（阿里妈妈数黑体）
       fonts:
-        - asset: assets/fonts/NotoSansSC-VF.ttf
-    - family: JetBrainsMono
+        - asset: assets/fonts/ShuHei-Bold.ttf
+    - family: Tektur # 数字 / 拉丁大字（wdth 75-100，wght 400-900）
       fonts:
-        - asset: assets/fonts/JetBrainsMono-VF.ttf
+        - asset: assets/fonts/Tektur-VF.ttf
+    - family: KodeMono # 系统读数 / 等宽（wght 400-700）
+      fonts:
+        - asset: assets/fonts/KodeMono-VF.ttf
