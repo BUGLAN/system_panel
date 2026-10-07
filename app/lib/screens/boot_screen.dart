@@ -44,7 +44,10 @@ class _BootScreenState extends State<BootScreen> with TickerProviderStateMixin {
       vsync: this,
       duration: const Duration(milliseconds: 2400),
     )..repeat(reverse: true);
-    _goFade = AnimationController(vsync: this, duration: const Duration(milliseconds: 600));
+    _goFade = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 600),
+    );
     _clock = _fmt(DateTime.now());
     _clockTimer = Timer.periodic(
       const Duration(milliseconds: 500),
@@ -66,10 +69,10 @@ class _BootScreenState extends State<BootScreen> with TickerProviderStateMixin {
   }
 
   static String _fmt(DateTime d) => <String>[
-        d.hour.toString().padLeft(2, '0'),
-        d.minute.toString().padLeft(2, '0'),
-        d.second.toString().padLeft(2, '0'),
-      ].join(':');
+    d.hour.toString().padLeft(2, '0'),
+    d.minute.toString().padLeft(2, '0'),
+    d.second.toString().padLeft(2, '0'),
+  ].join(':');
 
   void _add(String line) {
     if (!mounted) return;
@@ -103,7 +106,9 @@ class _BootScreenState extends State<BootScreen> with TickerProviderStateMixin {
     await Future<void>.delayed(const Duration(milliseconds: 160));
     _add(LINES.bootLog[2]);
     await Future<void>.delayed(const Duration(milliseconds: 160));
-    _add(LINES.bootLog[3].replaceAll('{host}', widget.host ?? LINES.hostUnknown));
+    _add(
+      LINES.bootLog[3].replaceAll('{host}', widget.host ?? LINES.hostUnknown),
+    );
     _setBar(1);
     await Future<void>.delayed(const Duration(milliseconds: 500));
     _add(LINES.bootLog[4]);
@@ -119,8 +124,14 @@ class _BootScreenState extends State<BootScreen> with TickerProviderStateMixin {
 
   @override
   Widget build(BuildContext context) {
-    final TextStyle topStyle =
-        fs(family: F.mono, size: 10, wght: 500, ls: 1.8, height: 1, color: C.bootTop);
+    final TextStyle topStyle = fs(
+      family: F.mono,
+      size: 10,
+      wght: 500,
+      ls: 1.8,
+      height: 1,
+      color: C.bootTop,
+    );
     final TextStyle subStyle = fs(
       family: F.hd,
       size: 13,
@@ -188,9 +199,7 @@ class _BootScreenState extends State<BootScreen> with TickerProviderStateMixin {
       constraints: const BoxConstraints(minHeight: 92),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          for (final String line in _log) _LogLine(line),
-        ],
+        children: <Widget>[for (final String line in _log) _LogLine(line)],
       ),
     );
   }
@@ -213,7 +222,10 @@ class _BootScreenState extends State<BootScreen> with TickerProviderStateMixin {
             alignment: Alignment.centerLeft,
             child: FractionallySizedBox(
               widthFactor: v.clamp(0, 1),
+              // heightFactor 不给的话，无子元素的 DecoratedBox 会被量成 0 高（条就没了）
+              heightFactor: 1,
               child: DecoratedBox(
+                key: const Key('boot.bar.fill'),
                 decoration: BoxDecoration(
                   color: C.blue,
                   borderRadius: BorderRadius.circular(1),
@@ -240,7 +252,13 @@ class _BootScreenState extends State<BootScreen> with TickerProviderStateMixin {
             children: <InlineSpan>[
               TextSpan(
                 text: 'TIPS · ',
-                style: fs(family: F.mono, size: 9, wght: 600, ls: 1.44, color: C.blue),
+                style: fs(
+                  family: F.mono,
+                  size: 9,
+                  wght: 600,
+                  ls: 1.44,
+                  color: C.blue,
+                ),
               ),
               TextSpan(
                 text: LINES.tips[_tipIx % LINES.tips.length],
@@ -269,7 +287,14 @@ class _BootScreenState extends State<BootScreen> with TickerProviderStateMixin {
               child: Text(
                 LINES.bootGo,
                 textAlign: TextAlign.center,
-                style: fs(family: F.hd, size: 16, wght: 400, ls: 4.8, height: 1, color: C.ice),
+                style: fs(
+                  family: F.hd,
+                  size: 16,
+                  wght: 400,
+                  ls: 4.8,
+                  height: 1,
+                  color: C.ice,
+                ),
               ),
             ),
           );
@@ -287,14 +312,22 @@ class _LogLine extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final TextStyle base =
-        fs(family: F.mono, size: 10.5, wght: 500, ls: .315, height: 1.75, color: C.bootLog);
+    final TextStyle base = fs(
+      family: F.mono,
+      size: 10.5,
+      wght: 500,
+      ls: .315,
+      height: 1.75,
+      color: C.bootLog,
+    );
     final TextStyle hit = base.copyWith(
       color: C.blue,
       fontVariations: const <FontVariation>[FontVariation('wght', 600)],
     );
 
-    final List<InlineSpan> spans = <InlineSpan>[TextSpan(text: '› ', style: base)];
+    final List<InlineSpan> spans = <InlineSpan>[
+      TextSpan(text: '› ', style: base),
+    ];
     final List<String> parts = text.split('✓');
     for (int i = 0; i < parts.length; i++) {
       if (parts[i].isNotEmpty) spans.add(TextSpan(text: parts[i], style: base));
@@ -308,7 +341,10 @@ class _LogLine extends StatelessWidget {
       curve: kOut,
       builder: (BuildContext _, double v, Widget? child) => Opacity(
         opacity: v,
-        child: Transform.translate(offset: Offset(0, 10 * (1 - v)), child: child),
+        child: Transform.translate(
+          offset: Offset(0, 10 * (1 - v)),
+          child: child,
+        ),
       ),
       child: Text.rich(TextSpan(style: base, children: spans)),
     );

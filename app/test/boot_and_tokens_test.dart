@@ -47,7 +47,10 @@ void main() {
 
     test('背景大字字号按 setWord 的公式（拉丁 / 中文两套）', () {
       expect(WordSpec.fontSize('SYSTEM'), 93); // min(120, 560/6) = 93.33 → 93
-      expect(WordSpec.fontSize('跑完半马', latin: false), 90); // min(175, 360/4) = 90
+      expect(
+        WordSpec.fontSize('跑完半马', latin: false),
+        90,
+      ); // min(175, 360/4) = 90
       expect(WordSpec.isLatin('SYSTEM'), isTrue);
       expect(WordSpec.isLatin('跑完半马'), isFalse);
       expect(WordSpec.scale, 0.910);
@@ -55,7 +58,9 @@ void main() {
   });
 
   group('开机屏', () {
-    testWidgets('品牌字 / 副题 / TIPS 前缀都在，且走完序列后出现唤醒提示', (WidgetTester tester) async {
+    testWidgets('品牌字 / 副题 / TIPS 前缀都在，且走完序列后出现唤醒提示', (
+      WidgetTester tester,
+    ) async {
       await tester.pumpWidget(
         const MaterialApp(home: Scaffold(body: BootScreen())),
       );
@@ -91,9 +96,24 @@ void main() {
       await tester.pumpWidget(const SizedBox());
     });
 
+    testWidgets('进度条真的有高度（FractionallySizedBox 漏 heightFactor 会变 0 高）', (
+      WidgetTester tester,
+    ) async {
+      await tester.pumpWidget(
+        const MaterialApp(home: Scaffold(body: BootScreen())),
+      );
+      await tester.pump(const Duration(seconds: 4));
+      final Rect fill = tester.getRect(find.byKey(const Key('boot.bar.fill')));
+      expect(fill.height, 2);
+      expect(fill.width, greaterThan(0));
+      await tester.pumpWidget(const SizedBox());
+    });
+
     testWidgets('宿主名会填进「链接宿主档案」那一行', (WidgetTester tester) async {
       await tester.pumpWidget(
-        const MaterialApp(home: Scaffold(body: BootScreen(host: '林深 · LV7'))),
+        const MaterialApp(
+          home: Scaffold(body: BootScreen(host: '林深 · LV7')),
+        ),
       );
       await tester.pump(const Duration(seconds: 4));
       expect(find.textContaining('林深 · LV7'), findsOneWidget);
@@ -112,7 +132,10 @@ void main() {
       await tester.pump(const Duration(milliseconds: 700));
 
       final AnimatedOpacity fade = tester.widget<AnimatedOpacity>(
-        find.descendant(of: find.byType(BootScreen), matching: find.byType(AnimatedOpacity)),
+        find.descendant(
+          of: find.byType(BootScreen),
+          matching: find.byType(AnimatedOpacity),
+        ),
       );
       expect(fade.opacity, 0);
       await tester.pumpWidget(const SizedBox());
@@ -133,7 +156,10 @@ void main() {
       final Text fill = tester.widget<Text>(word.first);
       expect(fill.style?.fontFamily, 'Tektur');
       expect(fill.style?.fontSize, 93);
-      expect(fill.style?.fontVariations, contains(const FontVariation('wdth', 75)));
+      expect(
+        fill.style?.fontVariations,
+        contains(const FontVariation('wdth', 75)),
+      );
       expect(tester.takeException(), isNull);
 
       await tester.pumpWidget(const SizedBox());

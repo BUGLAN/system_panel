@@ -82,8 +82,14 @@ class LineLayer extends StatelessWidget {
                           stops: <double>[0, .16, .84, 1],
                         ),
                         border: Border(
-                          top: BorderSide(color: C.blue.withAlpha(51), width: 1),
-                          bottom: BorderSide(color: C.blue.withAlpha(18), width: 1),
+                          top: BorderSide(
+                            color: C.blue.withAlpha(51),
+                            width: 1,
+                          ),
+                          bottom: BorderSide(
+                            color: C.blue.withAlpha(18),
+                            width: 1,
+                          ),
                         ),
                       ),
                     ),
@@ -115,7 +121,9 @@ class LineLayer extends StatelessWidget {
                     _who(whoColor, bar),
                     const SizedBox(height: 6),
                     ConstrainedBox(
-                      constraints: const BoxConstraints(minHeight: 26.86), // 1.58em
+                      constraints: const BoxConstraints(
+                        minHeight: 26.86,
+                      ), // 1.58em
                       child: Text(
                         text,
                         style: fs(
@@ -126,7 +134,11 @@ class LineLayer extends StatelessWidget {
                           height: 1.58,
                           color: ink,
                           shadows: const <Shadow>[
-                            Shadow(color: Color(0xCC000000), blurRadius: 12, offset: Offset(0, 1)),
+                            Shadow(
+                              color: Color(0xCC000000),
+                              blurRadius: 12,
+                              offset: Offset(0, 1),
+                            ),
                           ],
                         ),
                       ),
@@ -146,7 +158,14 @@ class LineLayer extends StatelessWidget {
       children: <Widget>[
         Text(
           'SYSTEM',
-          style: fs(family: F.num, size: 11, wght: 800, ls: 2.64, height: 1, color: whoColor),
+          style: fs(
+            family: F.num,
+            size: 11,
+            wght: 800,
+            ls: 2.64,
+            height: 1,
+            color: whoColor,
+          ),
         ),
         const SizedBox(width: 8),
         // .wave —— 五根随声音起伏的竖条
@@ -175,11 +194,25 @@ class LineLayer extends StatelessWidget {
               children: <InlineSpan>[
                 TextSpan(
                   text: '· ',
-                  style: fs(family: F.mono, size: 9.5, wght: 500, ls: 1.14, height: 1, color: C.mist),
+                  style: fs(
+                    family: F.mono,
+                    size: 9.5,
+                    wght: 500,
+                    ls: 1.14,
+                    height: 1,
+                    color: C.mist,
+                  ),
                 ),
                 TextSpan(
                   text: mood,
-                  style: fs(family: F.mono, size: 9.5, wght: 500, ls: 1.14, height: 1, color: C.mist),
+                  style: fs(
+                    family: F.mono,
+                    size: 9.5,
+                    wght: 500,
+                    ls: 1.14,
+                    height: 1,
+                    color: C.mist,
+                  ),
                 ),
               ],
             ),

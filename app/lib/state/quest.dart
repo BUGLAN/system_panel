@@ -71,7 +71,9 @@ class Quest {
   /// ui.js `rewardHTML` 的纯文本版：`EXP 50 · ◈ 24 体+1 力+1`
   String get rewardText {
     final double k = kind == 'remedy' ? .5 : 1;
-    final String at = attrs.entries.map((MapEntry<String, int> e) => '${e.key}+${e.value}').join(' ');
+    final String at = attrs.entries
+        .map((MapEntry<String, int> e) => '${e.key}+${e.value}')
+        .join(' ');
     return 'EXP ${(rarity.exp * k).round()} · ◈ ${(rarity.coin * k).round()}$at';
   }
 

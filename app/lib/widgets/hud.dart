@@ -103,7 +103,9 @@ class _LvRing extends StatelessWidget {
                 wght: 800,
                 height: 1,
                 color: C.ice,
-                shadows: <Shadow>[Shadow(color: C.blue.withAlpha(153), blurRadius: 10)],
+                shadows: <Shadow>[
+                  Shadow(color: C.blue.withAlpha(153), blurRadius: 10),
+                ],
               ),
             ),
           ),
@@ -183,14 +185,28 @@ class _Who extends StatelessWidget {
           state.name,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
-          style: fs(family: F.cn, size: 14, wght: 600, ls: .56, height: 1, color: C.ice),
+          style: fs(
+            family: F.cn,
+            size: 14,
+            wght: 600,
+            ls: .56,
+            height: 1,
+            color: C.ice,
+          ),
         ),
         const SizedBox(height: 3),
         Text(
           '「${state.title}」',
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
-          style: fs(family: F.cn, size: 11, wght: 400, ls: .22, height: 1, color: C.blue),
+          style: fs(
+            family: F.cn,
+            size: 11,
+            wght: 400,
+            ls: .22,
+            height: 1,
+            color: C.blue,
+          ),
         ),
         const SizedBox(height: 3),
         // `连击 <b>6</b> 天`：数字是 Tektur
@@ -199,16 +215,36 @@ class _Who extends StatelessWidget {
             children: <InlineSpan>[
               TextSpan(
                 text: state.streak > 0 ? '连击 ' : '连击 —',
-                style: fs(family: F.mono, size: 9.5, wght: 500, ls: .95, height: 1, color: C.mist),
+                style: fs(
+                  family: F.mono,
+                  size: 9.5,
+                  wght: 500,
+                  ls: .95,
+                  height: 1,
+                  color: C.mist,
+                ),
               ),
               if (state.streak > 0) ...<InlineSpan>[
                 TextSpan(
                   text: '${state.streak}',
-                  style: fs(family: F.num, size: 10, wght: 700, height: 1, color: C.ice),
+                  style: fs(
+                    family: F.num,
+                    size: 10,
+                    wght: 700,
+                    height: 1,
+                    color: C.ice,
+                  ),
                 ),
                 TextSpan(
                   text: ' 天',
-                  style: fs(family: F.mono, size: 9.5, wght: 500, ls: .95, height: 1, color: C.mist),
+                  style: fs(
+                    family: F.mono,
+                    size: 9.5,
+                    wght: 500,
+                    ls: .95,
+                    height: 1,
+                    color: C.mist,
+                  ),
                 ),
               ],
             ],
@@ -243,7 +279,14 @@ class _Coin extends StatelessWidget {
           const SizedBox(width: 6),
           Text(
             '$coins',
-            style: fs(family: F.num, size: 15, wght: 700, ls: .45, height: 1, color: C.ice),
+            style: fs(
+              family: F.num,
+              size: 15,
+              wght: 700,
+              ls: .45,
+              height: 1,
+              color: C.ice,
+            ),
           ),
         ],
       ),
@@ -279,8 +322,8 @@ class _Menu extends StatelessWidget {
   }
 
   Widget _bar(double w, Color c) => Container(
-        width: w,
-        height: 1.6,
-        decoration: BoxDecoration(color: c, borderRadius: BorderRadius.circular(1)),
-      );
+    width: w,
+    height: 1.6,
+    decoration: BoxDecoration(color: c, borderRadius: BorderRadius.circular(1)),
+  );
 }

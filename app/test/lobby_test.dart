@@ -20,7 +20,9 @@ Future<void> _mount(WidgetTester tester, Widget child) async {
   await tester.binding.setSurfaceSize(kDesign);
   addTearDown(() => tester.binding.setSurfaceSize(null));
   await tester.pumpWidget(
-    MaterialApp(home: Scaffold(body: Stack(children: <Widget>[child]))),
+    MaterialApp(
+      home: Scaffold(body: Stack(children: <Widget>[child])),
+    ),
   );
   await tester.pump();
 }
@@ -60,8 +62,14 @@ void main() {
     testWidgets('各件落在原型实测坐标上', (WidgetTester tester) async {
       await _mount(tester, const Hud(state: HostState.demo));
       // 原型实测：lv [16,23,46,46] · coin [261,31,69,30] · menu [340,29,34,34]
-      expect(tester.getRect(find.byKey(const Key('hud.lv'))), const Rect.fromLTWH(16, 23, 46, 46));
-      expect(tester.getRect(find.byKey(const Key('hud.menu'))), const Rect.fromLTWH(340, 29, 34, 34));
+      expect(
+        tester.getRect(find.byKey(const Key('hud.lv'))),
+        const Rect.fromLTWH(16, 23, 46, 46),
+      );
+      expect(
+        tester.getRect(find.byKey(const Key('hud.menu'))),
+        const Rect.fromLTWH(340, 29, 34, 34),
+      );
       final Rect coin = tester.getRect(find.byKey(const Key('hud.coin')));
       // 右缘由「菜单固定 34 + 间距 10 + 右边距 16」定死，与文字宽度无关
       expect(coin.right, closeTo(330, .5));
@@ -88,8 +96,14 @@ void main() {
       await _mount(tester, const Dock(state: HostState.demo));
       // 原型实测：cta [268,712,104,104] · core [276,720,88,88]
       //           cta-n [346,714,24,24] · cap [268,823,104,13] · 侧键一 [18,749,58,63]
-      expect(tester.getRect(find.byKey(const Key('dock.cta'))), const Rect.fromLTWH(268, 712, 104, 104));
-      expect(tester.getRect(find.byKey(const Key('dock.cta.core'))), const Rect.fromLTWH(276, 720, 88, 88));
+      expect(
+        tester.getRect(find.byKey(const Key('dock.cta'))),
+        const Rect.fromLTWH(268, 712, 104, 104),
+      );
+      expect(
+        tester.getRect(find.byKey(const Key('dock.cta.core'))),
+        const Rect.fromLTWH(276, 720, 88, 88),
+      );
       // .cta-n 是 min-width:24 的胶囊：右/上/高与文字无关，宽度至少 24
       final Rect n = tester.getRect(find.byKey(const Key('dock.cta.n')));
       expect(n.right, closeTo(370, .5));
@@ -112,7 +126,10 @@ void main() {
     testWidgets('隐藏态整条底栏沉到屏幕外（app.css L211）', (WidgetTester tester) async {
       await _mount(tester, const Dock(state: HostState.demo, visible: false));
       await tester.pump(const Duration(milliseconds: 700));
-      expect(tester.getRect(find.byKey(const Key('dock.cta'))).top, greaterThan(844));
+      expect(
+        tester.getRect(find.byKey(const Key('dock.cta'))).top,
+        greaterThan(844),
+      );
       await tester.pumpWidget(const SizedBox());
     });
   });

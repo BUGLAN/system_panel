@@ -29,6 +29,7 @@ class Plate extends StatefulWidget {
     required this.host,
     this.visible = true,
     this.animateLand = true,
+    this.onAccept,
   });
 
   final Quest quest;
@@ -37,6 +38,9 @@ class Plate extends StatefulWidget {
 
   /// 砸落动画（ui.js `land()`）；比对截图时也会自然落到终态
   final bool animateLand;
+
+  /// 按住指纹 0.9s 才接单——按住逻辑是行为，先只留一个"点头"的入口
+  final VoidCallback? onAccept;
 
   @override
   State<Plate> createState() => _PlateState();
@@ -106,6 +110,7 @@ class _PlateState extends State<Plate> with SingleTickerProviderStateMixin {
           key: const Key('plate'),
           quest: widget.quest,
           host: widget.host,
+          onAccept: widget.onAccept,
         ),
       ),
     );
@@ -113,10 +118,16 @@ class _PlateState extends State<Plate> with SingleTickerProviderStateMixin {
 }
 
 class _Glass extends StatelessWidget {
-  const _Glass({super.key, required this.quest, required this.host});
+  const _Glass({
+    super.key,
+    required this.quest,
+    required this.host,
+    this.onAccept,
+  });
 
   final Quest quest;
   final HostState host;
+  final VoidCallback? onAccept;
 
   @override
   Widget build(BuildContext context) {
@@ -429,54 +440,58 @@ class _Glass extends StatelessWidget {
     );
   }
 
-  /// .pl-print —— 按住指纹那一块
+  /// .pl-print —— 按住指纹那一块（按住 0.9s 才算接单，长短按是行为）
   Widget _print(Color rk) {
-    return Container(
-      key: const Key('plate.print'),
-      height: 108,
-      decoration: const BoxDecoration(
-        border: Border(top: BorderSide(color: Color(0x2938E1FF), width: 1)),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: <Widget>[
-          const SizedBox(
-            key: Key('plate.fp'),
-            width: 62,
-            height: 70,
-            child: _Fingerprint(),
-          ),
-          const SizedBox(width: 16),
-          Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              Text(
-                '按住 · 接下',
-                style: fs(
-                  family: F.hd,
-                  size: 17,
-                  wght: 400,
-                  ls: 1.36,
-                  height: 1,
-                  color: C.ice,
+    return GestureDetector(
+      onTap: onAccept,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        key: const Key('plate.print'),
+        height: 108,
+        decoration: const BoxDecoration(
+          border: Border(top: BorderSide(color: Color(0x2938E1FF), width: 1)),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: <Widget>[
+            const SizedBox(
+              key: Key('plate.fp'),
+              width: 62,
+              height: 70,
+              child: _Fingerprint(),
+            ),
+            const SizedBox(width: 16),
+            Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  '按住 · 接下',
+                  style: fs(
+                    family: F.hd,
+                    size: 17,
+                    wght: 400,
+                    ls: 1.36,
+                    height: 1,
+                    color: C.ice,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 5),
-              Text(
-                'HOLD TO ACCEPT',
-                style: fs(
-                  family: F.mono,
-                  size: 9.5,
-                  wght: 500,
-                  ls: 1.33,
-                  height: 1,
-                  color: C.mist,
+                const SizedBox(height: 5),
+                Text(
+                  'HOLD TO ACCEPT',
+                  style: fs(
+                    family: F.mono,
+                    size: 9.5,
+                    wght: 500,
+                    ls: 1.33,
+                    height: 1,
+                    color: C.mist,
+                  ),
                 ),
-              ),
-            ],
-          ),
-        ],
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }

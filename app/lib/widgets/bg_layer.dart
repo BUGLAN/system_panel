@@ -26,15 +26,23 @@ class BgLayer extends StatefulWidget {
 
 class _BgLayerState extends State<BgLayer> with TickerProviderStateMixin {
   // 三条轨道环各自的周期（app.css L55-57）
-  late final AnimationController _ring1 =
-      AnimationController(vsync: this, duration: const Duration(seconds: 140))..repeat();
-  late final AnimationController _ring2 =
-      AnimationController(vsync: this, duration: const Duration(seconds: 220))..repeat();
-  late final AnimationController _ring3 =
-      AnimationController(vsync: this, duration: const Duration(seconds: 300))..repeat();
+  late final AnimationController _ring1 = AnimationController(
+    vsync: this,
+    duration: const Duration(seconds: 140),
+  )..repeat();
+  late final AnimationController _ring2 = AnimationController(
+    vsync: this,
+    duration: const Duration(seconds: 220),
+  )..repeat();
+  late final AnimationController _ring3 = AnimationController(
+    vsync: this,
+    duration: const Duration(seconds: 300),
+  )..repeat();
   // 地面网格：6s 走一格（46px）
-  late final AnimationController _floor =
-      AnimationController(vsync: this, duration: const Duration(seconds: 6))..repeat();
+  late final AnimationController _floor = AnimationController(
+    vsync: this,
+    duration: const Duration(seconds: 6),
+  )..repeat();
 
   @override
   void dispose() {
@@ -55,13 +63,24 @@ class _BgLayerState extends State<BgLayer> with TickerProviderStateMixin {
           children: <Widget>[
             const Positioned.fill(child: CustomPaint(painter: _SkyPainter())),
             _orbit(w, h, diameter: 330, alpha: .10, dashed: true, t: _ring1),
-            _orbit(w, h, diameter: 620, alpha: .07, dashed: false, t: _ring2, reverse: true),
+            _orbit(
+              w,
+              h,
+              diameter: 620,
+              alpha: .07,
+              dashed: false,
+              t: _ring2,
+              reverse: true,
+            ),
             _orbit(w, h, diameter: 980, alpha: .07, dashed: true, t: _ring3),
             _word(w, h),
             _floorGrid(w, h),
             const Positioned.fill(
               child: IgnorePointer(
-                child: Opacity(opacity: .07, child: CustomPaint(painter: _GrainPainter())),
+                child: Opacity(
+                  opacity: .07,
+                  child: CustomPaint(painter: _GrainPainter()),
+                ),
               ),
             ),
           ],
@@ -215,14 +234,36 @@ class _SkyPainter extends CustomPainter {
         ..shader = const LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: <Color>[Color(0xFF061026), Color(0xFF040A18), Color(0xFF020409)],
+          colors: <Color>[
+            Color(0xFF061026),
+            Color(0xFF040A18),
+            Color(0xFF020409),
+          ],
           stops: <double>[0, .48, 1],
         ).createShader(rect),
     );
     // radial-gradient(70% 42% at 50% 30%, rgba(31,139,255,.22), transparent 72%)
-    _glow(canvas, s, cx: .50, cy: .30, rx: .70, ry: .42, color: const Color(0x381F8BFF), stop: .72);
+    _glow(
+      canvas,
+      s,
+      cx: .50,
+      cy: .30,
+      rx: .70,
+      ry: .42,
+      color: const Color(0x381F8BFF),
+      stop: .72,
+    );
     // radial-gradient(90% 50% at 50% 104%, rgba(56,225,255,.12), transparent 62%)
-    _glow(canvas, s, cx: .50, cy: 1.04, rx: .90, ry: .50, color: const Color(0x1F38E1FF), stop: .62);
+    _glow(
+      canvas,
+      s,
+      cx: .50,
+      cy: 1.04,
+      rx: .90,
+      ry: .50,
+      color: const Color(0x1F38E1FF),
+      stop: .62,
+    );
   }
 
   /// CSS 的椭圆 radial-gradient 在 Flutter 里要手动把圆压成椭圆
@@ -333,7 +374,12 @@ class _GrainPainter extends CustomPainter {
       final int v = rnd.nextInt(256);
       p.color = Color.fromARGB(255, v, v, v);
       canvas.drawRect(
-        Rect.fromLTWH(rnd.nextDouble() * s.width, rnd.nextDouble() * s.height, 1.4, 1.4),
+        Rect.fromLTWH(
+          rnd.nextDouble() * s.width,
+          rnd.nextDouble() * s.height,
+          1.4,
+          1.4,
+        ),
         p,
       );
     }
