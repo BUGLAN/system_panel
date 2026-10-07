@@ -20,6 +20,7 @@ import 'widgets/main_view.dart';
 import 'widgets/plate.dart';
 import 'widgets/result_panel.dart';
 import 'widgets/ring_labels.dart';
+import 'widgets/ring_tag.dart';
 import 'widgets/sheet.dart';
 
 /// 宿主 SYSTEM —— Flutter 客户端。
@@ -279,6 +280,16 @@ class _AppShellState extends State<AppShell> {
             visible: sheet,
             onClose: () => setState(() => _moment = Moment.lobby),
             onWipe: () => setState(() => _moment = Moment.onboard),
+          ),
+          // 当前环的挂签（大厅里挂在她脚下那一环的右端）
+          RingTag(
+            goal: _goal,
+            visible: lobby,
+            dimmed: true, // 字幕在 → 原型把它压到 18%
+            onTap: () => setState(() {
+              _pickedRing = null;
+              _moment = Moment.main;
+            }),
           ),
           // 主线全景：环挂签挂在环上（位置由相机数学给出），面板压在上面
           RingLabels(

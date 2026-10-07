@@ -5,6 +5,7 @@ import 'package:system_panel/stage/camera.dart';
 import 'package:system_panel/state/goal.dart';
 import 'package:system_panel/widgets/main_view.dart';
 import 'package:system_panel/widgets/ring_labels.dart';
+import 'package:system_panel/widgets/ring_tag.dart';
 
 /// 主线全景（抬头 / 环挂签 / 详情卡 / 底部两颗）。
 /// 坐标断言来自运行中原型的实测值。
@@ -187,6 +188,84 @@ void main() {
         ),
       );
       await tester.tapAt(const Offset(300, 616));
+      await tester.pump();
+      expect(hits, 1);
+    });
+  });
+  // ── 当前环的挂签（大厅里挂在她脚下那一环的右端）────────────────
+  // 出处：app.css L128-138 `.ringtag`；落点由 Flow.place() 给：
+  //   translate(round(p.x+4), round(p.y-14))，p = Stage.ringPoint(curRing, 1)
+  //   用的是**大厅相机**（不是全景那套），实测 tag [305,387,69,44]。
+  group('当前环挂签', () {
+    testWidgets('落点是环位 +4 / −14，用的是大厅相机', (WidgetTester tester) async {
+      await _mount(tester, RingTag(goal: Goal.demo()));
+      // 大厅相机下的第 5 环：ringPoint(4,1) = (301.19, 400.61)
+      final Offset p = RingGeom.of(
+        4,
+        8,
+        finalRing: false,
+      ).point('lobby', kDesign);
+      expect(p.dx, closeTo(301.19, .01));
+      expect(p.dy, closeTo(400.61, .01));
+      final Rect tag = tester.getRect(find.byKey(const Key('ringTag')));
+      expect(tag.left, closeTo(305, .01)); // round(301.19 + 4)
+      expect(tag.top, closeTo(387, .01)); // round(400.61 - 14)
+      // 宽高与字体有关（flutter test 用占位字体，每个字都是 1em 宽），
+      // 按约定只断言与字体无关的坐标 —— 尺寸由实机比对把关
+    });
+
+    testWidgets('三行内容：主线 / R5/8 / 五公里', (WidgetTester tester) async {
+      await _mount(tester, RingTag(goal: Goal.demo()));
+      expect(find.text('主线'), findsOneWidget);
+      expect(find.textContaining('R5'), findsWidgets);
+      expect(find.textContaining('/8'), findsWidgets);
+      expect(find.text('五公里'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('字幕在的时候暗到 18%', (WidgetTester tester) async {
+      await _mount(tester, RingTag(goal: Goal.demo(), dimmed: true));
+      // 断言 AnimatedOpacity 的目标值，不断言渲染出来的 Opacity
+      // （ImplicitlyAnimatedWidget 内部是 FadeTransition，树里没有 Opacity）
+      final AnimatedOpacity op = tester.widget<AnimatedOpacity>(
+        find.descendant(
+          of: find.byType(RingTag),
+          matching: find.byType(AnimatedOpacity),
+        ),
+      );
+      expect(op.opacity, .18);
+    });
+
+    testWidgets('点它进主线全景', (WidgetTester tester) async {
+      int taps = 0;
+      await _mount(tester, RingTag(goal: Goal.demo(), onTap: () => taps++));
+      await tester.tap(find.byKey(const Key('ringTag')));
+      await tester.pump();
+      expect(taps, 1);
+    });
+
+    testWidgets('收起来时不偷点击', (WidgetTester tester) async {
+      int hits = 0;
+      await _mount(
+        tester,
+        Stack(
+          children: <Widget>[
+            Positioned.fill(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => hits++,
+                child: const SizedBox.expand(),
+              ),
+            ),
+            RingTag(
+              goal: Goal.demo(),
+              visible: false,
+              onTap: () => hits += 100,
+            ),
+          ],
+        ),
+      );
+      await tester.tapAt(const Offset(320, 400));
       await tester.pump();
       expect(hits, 1);
     });

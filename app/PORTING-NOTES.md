@@ -128,3 +128,24 @@ addTearDown(tester.view.reset);
 
 正确做法：**摆参考态时把这些每帧驱动的 transform 显式归位**
 （`el.style.transform = 'none'`），再截图比对。
+
+### 19. 比对区域要**覆盖全部元素**，否则会整块 UI 漏掉
+大厅比到 1.5% 之后才做覆盖审计：把 `index.html` 里所有 `id` 列出来逐个对
+Flutter 侧，发现 **`#ringTag`（当前环的挂签）根本没移植** ——
+我的区域表里没有它，所以连着八轮比对都"合格"。
+
+做法：
+```powershell
+(Select-String -Path index.html -Pattern 'id="([a-zA-Z0-9_-]+)"' -AllMatches).Matches |
+  ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique
+```
+拉出全部 id 逐个对照，再把每个新元素补进 `cmp_stepN.py` 的区域表。
+当时查出未移植的：`#ringTag`、`#flash`、`#shake`、`#fx`、`#hit`、`#stage`、演示台 `#demo`。
+
+### 20. 被测元素的 key 要挂在**原型那个盒子上**
+`#ringTag` 是外层整块（含 `padding-left: 30`，实宽 69）。我第一次把 key 挂在内层
+Column 上，量出来 left=335 —— 差的就是那 30px 内边距。
+
+### 21. 测试字体是占位字体，每个字都按 1em 宽排
+`flutter test` 里**只有与字体无关的坐标能断言**（`left/top/bottom`、贴边关系）。
+宽度、"这行该有多长"一律交给实机比对把关 —— 例如挂签在测试里宽 85、实机 69。
