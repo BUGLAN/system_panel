@@ -2,6 +2,8 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
+import 'type_text.dart';
+
 import '../design/tokens.dart';
 
 /// ═══════════════════════════════════════════════════════════
@@ -23,6 +25,7 @@ class LineLayer extends StatelessWidget {
     this.visible = true,
     this.waveScale = .15,
     this.fail = false,
+    this.skipToken = 0,
   });
 
   final String text;
@@ -43,6 +46,9 @@ class LineLayer extends StatelessWidget {
 
   /// 认输态：`#app.fail .line::after` 会把左边那道青光换成灰色、去掉辉光
   final bool fail;
+
+  /// 每 +1 就跳过打字机，整句立刻铺完（原型 `Tap.next()`）
+  final int skipToken;
 
   @override
   Widget build(BuildContext context) {
@@ -132,8 +138,10 @@ class LineLayer extends StatelessWidget {
                       constraints: const BoxConstraints(
                         minHeight: 26.86,
                       ), // 1.58em
-                      child: Text(
-                        text,
+                      child: TypeText(
+                        text: text,
+                        soft: soft,
+                        skipToken: skipToken,
                         style: fs(
                           family: F.cn,
                           size: 17,

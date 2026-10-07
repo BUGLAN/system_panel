@@ -103,6 +103,9 @@ class _AppShellState extends State<AppShell>
   /// 屏幕空间特效（#fx 画布）
   final FxController _fx = FxController();
 
+  /// 点一下跳过打字机（原型 Tap.next()）
+  int _tap = 0;
+
   /// 震屏
   int _shake = 0;
   double _shakePx = 4;
@@ -205,6 +208,13 @@ class _AppShellState extends State<AppShell>
                       word: (boot || onboard) ? 'SYSTEM' : '半马',
                       latin: boot || onboard,
                     ),
+                  ),
+                ),
+                // 点背景 = 跳过打字机（原型 Tap 忽略 button/input/sheet/tag 上的点）
+                Positioned.fill(
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () => setState(() => _tap++),
                   ),
                 ),
                 // 投影光束（在面板之下、天幕之上）
@@ -339,6 +349,7 @@ class _AppShellState extends State<AppShell>
                   y: lineY,
                   soft: fail,
                   fail: fail,
+                  skipToken: _tap, // 点背景跳过打字机
                   // 原型里那句主线台词说完就 Line.hide()，点环展开详情时它已经不在——
                   // 两者都显示会叠在详情卡上
                   visible:
