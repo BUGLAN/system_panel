@@ -14,6 +14,7 @@ import 'widgets/choices.dart';
 import 'widgets/dock.dart';
 import 'widgets/exec_panel.dart';
 import 'widgets/fail_layer.dart';
+import 'widgets/fx_layer.dart';
 import 'widgets/hud.dart';
 import 'widgets/line_layer.dart';
 import 'widgets/main_view.dart';
@@ -73,7 +74,8 @@ class AppShell extends StatefulWidget {
   State<AppShell> createState() => _AppShellState();
 }
 
-class _AppShellState extends State<AppShell> {
+class _AppShellState extends State<AppShell>
+    with SingleTickerProviderStateMixin {
   /// 行为逻辑未定，先用与原型「老宿主 · 第 23 天」一致的演示档
   static const HostState _host = HostState.demo;
   static const Quest _quest = Quest.demo;
@@ -89,6 +91,20 @@ class _AppShellState extends State<AppShell> {
 
   /// 绑定仪式的输入框
   final TextEditingController _ask = TextEditingController();
+
+  /// 亮帧：白 16% / 180ms ease-out（docs/08 逐帧里的「亮帧」）
+  late final AnimationController _flashC = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 180),
+  );
+
+  /// 震屏
+  int _shake = 0;
+  double _shakePx = 4;
+
+  /// 亮帧的颜色与峰值强度（按事件不同）
+  Color _flashColor = Colors.white;
+  double _flashA = .16;
 
   /// 横幅（称号/道具到手时从顶上滑下来）
   bool _banner = false;
@@ -141,171 +157,218 @@ class _AppShellState extends State<AppShell> {
       body: Stack(
         fit: StackFit.expand,
         children: <Widget>[
-          // 0 · 天幕（她身后的世界）
-          //   开机时写 SYSTEM，进大厅后写宿主的目标（flows.js `setWord`）
-          AnimatedOpacity(
-            opacity: dim ? .35 : 1, // #app.dim #bg
-            duration: const Duration(milliseconds: 800),
-            child: TweenAnimationBuilder<double>(
-              // #bg { transition: opacity .8s, filter .8s } —— 认输抽色压暗也是渐变的
-              tween: Tween<double>(begin: 0, end: fail ? 1 : 0),
-              duration: const Duration(milliseconds: 800),
-              curve: Curves.easeInOut,
-              builder: (BuildContext _, double t, Widget? child) => t <= 0
-                  ? child!
-                  : ColorFiltered(
-                      colorFilter: ColorFilter.matrix(
-                        _lerpMatrix(_identity, kFailColorMatrix, t),
-                      ),
-                      child: child,
+          // `#shake` 包住 `#bg` 到 `#flash` 的全部内容（`#boot` 在它外面，不跟着抖）
+          ShakeLayer(
+            token: _shake,
+            px: _shakePx,
+            child: Stack(
+              fit: StackFit.expand,
+              children: <Widget>[
+                // 0 · 天幕（她身后的世界）
+                //   开机时写 SYSTEM，进大厅后写宿主的目标（flows.js `setWord`）
+                AnimatedOpacity(
+                  opacity: dim ? .35 : 1, // #app.dim #bg
+                  duration: const Duration(milliseconds: 800),
+                  child: TweenAnimationBuilder<double>(
+                    // #bg { transition: opacity .8s, filter .8s } —— 认输抽色压暗也是渐变的
+                    tween: Tween<double>(begin: 0, end: fail ? 1 : 0),
+                    duration: const Duration(milliseconds: 800),
+                    curve: Curves.easeInOut,
+                    builder: (BuildContext _, double t, Widget? child) => t <= 0
+                        ? child!
+                        : ColorFiltered(
+                            colorFilter: ColorFilter.matrix(
+                              _lerpMatrix(_identity, kFailColorMatrix, t),
+                            ),
+                            child: child,
+                          ),
+                    child: BgLayer(
+                      // 绑定仪式还没立目标，天幕上写的还是 SYSTEM
+                      word: (boot || onboard) ? 'SYSTEM' : '半马',
+                      latin: boot || onboard,
                     ),
-              child: BgLayer(
-                // 绑定仪式还没立目标，天幕上写的还是 SYSTEM
-                word: (boot || onboard) ? 'SYSTEM' : '半马',
-                latin: boot || onboard,
-              ),
+                  ),
+                ),
+                // 投影光束（在面板之下、天幕之上）
+                SheetBeam(visible: sheet),
+                // TODO(step8+): 1 · 舞台 —— Live2D 角色 + 套在她身上的主线环 + 环挂签/环标签
+                // 2 · 界面
+                //    ⚠️ 原型的层级：`#veil` 是 z-auto（在 #ui 之后绘制），而 `.line` z=3、
+                //    `#choices` z=4、`#plateAlt` z=2 —— 所以认输时 veil 压得住 failv，
+                //    压不住字幕和选项。Stack 的先后顺序必须照这个 z 序排。
+                Hud(
+                  state: _host,
+                  visible: lobby || exec,
+                  onMenu: () => setState(() {
+                    _sheetKind = SheetKind.system;
+                    _moment = Moment.sheet;
+                  }),
+                ),
+                Dock(
+                  state: _host,
+                  visible: lobby,
+                  onCta: () => setState(() => _moment = Moment.dispatch),
+                  onSide: (int i) {
+                    if (i == 0) {
+                      setState(() {
+                        _pickedRing = null;
+                        _moment = Moment.main;
+                      });
+                    } else if (i == 1 || i == 2) {
+                      setState(() {
+                        _sheetKind = i == 1
+                            ? SheetKind.archive
+                            : SheetKind.supply;
+                        _moment = Moment.sheet;
+                      });
+                    }
+                  },
+                ),
+                // 派单板
+                Plate(
+                  quest: _quest,
+                  host: _host,
+                  visible: dispatch,
+                  onAccept: () => setState(() => _moment = Moment.exec),
+                ),
+                // 执行面板
+                ExecPanel(
+                  quest: _quest,
+                  elapsed: const Duration(minutes: 7),
+                  critChance: .12,
+                  itemCount: 3,
+                  evidenceCount: 0,
+                  visible: exec,
+                  // 指纹钤印那一下：原型 `Plate.seal()` 是
+                  // `FX.flash('#bff6ff', .24, 280)` + `FX.shake(4, 220)`
+                  onSubmit: () {
+                    _pulse(color: const Color(0xFFBFF6FF), a: .24, ms: 280);
+                    setState(() => _moment = Moment.result);
+                  },
+                  onQuit: () => setState(() => _moment = Moment.fail),
+                ),
+                // 结算
+                ResultPanel(result: _result, visible: result, onSave: () {}),
+                // 失败 / 补救（在 veil 之下）
+                FailLayer(
+                  recordedAt: '20:02',
+                  remedy: Remedy.demo,
+                  visible: fail,
+                ),
+                Veil(opacity: fail ? .6 : 0),
+                // 亮帧（`#flash` 在 DOM 里排在 veil 之后；正 z 的那些会盖在它上面）
+                // ⚠️ 必须判 isAnimating —— 控制器停在 0 时 `1 - easeOut(0) = 1`，
+                // 会让亮帧**一直开着**（整屏被垫一层 16% 白，一路比对下来才发现）
+                AnimatedBuilder(
+                  animation: _flashC,
+                  builder: (BuildContext context, Widget? child) => FlashLayer(
+                    color: _flashColor,
+                    alpha: _flashC.isAnimating
+                        ? _flashA *
+                              (1 - Curves.easeOut.transform(_flashC.value))
+                        : 0,
+                  ),
+                ),
+                // 以下三件在 veil 之上（z 2 / 3 / 4）
+                PlateAlt(
+                  labels: const <String>['换一个', '等会儿'],
+                  visible: dispatch,
+                ),
+                LineLayer(
+                  // 文案真源：content.js L298 `holding` / L397 `mainline`
+                  text: dispatch
+                      ? '接不接？'
+                      : fail
+                      ? '补救的路，我给你留着：明天 20:02 前，做一半。做到了，这次不算。'
+                      : main
+                      ? '${_goal.doneCount}/${_goal.rings.length} 环。顶上那个，是你的目标。'
+                      : onboard
+                      ? '说吧。你想变成什么样？一句话。'
+                      : '我手里有 ${_host.queue} 单。都是给你的。',
+                  mood: onboard
+                      ? '专注'
+                      : dispatch
+                      ? '监视'
+                      : (fail ? '待机' : '尚可'),
+                  y: lineY,
+                  soft: fail,
+                  fail: fail,
+                  // 原型里那句主线台词说完就 Line.hide()，点环展开详情时它已经不在——
+                  // 两者都显示会叠在详情卡上
+                  visible:
+                      lobby ||
+                      dispatch ||
+                      fail ||
+                      onboard ||
+                      (main && _pickedRing == null),
+                ),
+                Choices(
+                  items: const <Choice>[
+                    Choice('……接。', main: true),
+                    Choice('今天算了。'),
+                  ],
+                  visible: fail,
+                ),
+                // 绑定仪式：她在上面问，宿主在这儿敲（z 4，在 veil 之上）
+                AskField(
+                  prompt: '目标 ›',
+                  placeholder: '比如：三个月跑完半马',
+                  presets: const <String>[
+                    '三个月跑完半马',
+                    '一个月早睡早起',
+                    '考研上岸',
+                    '半年减重 10 斤',
+                    '学会画画',
+                    '变优秀',
+                  ],
+                  controller: _ask,
+                  visible: onboard,
+                  onPreset: (String v) => _ask.text = v,
+                  onSubmit: _bind,
+                ),
+                // 投影面板（档案 / 补给 / 系统共用这一层壳）
+                Sheet(
+                  host: _host,
+                  kind: _sheetKind,
+                  visible: sheet,
+                  onClose: () => setState(() => _moment = Moment.lobby),
+                  onWipe: () => setState(() => _moment = Moment.onboard),
+                ),
+                // 当前环的挂签（大厅里挂在她脚下那一环的右端）
+                RingTag(
+                  goal: _goal,
+                  visible: lobby,
+                  dimmed: true, // 字幕在 → 原型把它压到 18%
+                  onTap: () => setState(() {
+                    _pickedRing = null;
+                    _moment = Moment.main;
+                  }),
+                ),
+                // 主线全景：环挂签挂在环上（位置由相机数学给出），面板压在上面
+                RingLabels(
+                  goal: _goal,
+                  visible: main,
+                  onPick: (int i) => setState(() => _pickedRing = i),
+                ),
+                MainView(
+                  goal: _goal,
+                  selected: main ? _pickedRing : null,
+                  // 原型 `canGo = !S.active && cur >= 0 && 队列里有主线单`——
+                  // veteran 档三条都成立，所以那颗蓝色主按钮是显示的
+                  canDispatch: main,
+                  visible: main,
+                  onClose: () => setState(() => _moment = Moment.lobby),
+                  onDispatch: () => setState(() => _moment = Moment.dispatch),
+                ),
+                // 横幅（z 5，压在所有东西上面）
+                SysBanner(
+                  kicker: '见面礼',
+                  text: '双倍卡 ×1',
+                  glyph: '×2',
+                  visible: _banner,
+                ),
+              ],
             ),
-          ),
-          // 投影光束（在面板之下、天幕之上）
-          SheetBeam(visible: sheet),
-          // TODO(step8+): 1 · 舞台 —— Live2D 角色 + 套在她身上的主线环 + 环挂签/环标签
-          // 2 · 界面
-          //    ⚠️ 原型的层级：`#veil` 是 z-auto（在 #ui 之后绘制），而 `.line` z=3、
-          //    `#choices` z=4、`#plateAlt` z=2 —— 所以认输时 veil 压得住 failv，
-          //    压不住字幕和选项。Stack 的先后顺序必须照这个 z 序排。
-          Hud(
-            state: _host,
-            visible: lobby || exec,
-            onMenu: () => setState(() {
-              _sheetKind = SheetKind.system;
-              _moment = Moment.sheet;
-            }),
-          ),
-          Dock(
-            state: _host,
-            visible: lobby,
-            onCta: () => setState(() => _moment = Moment.dispatch),
-            onSide: (int i) {
-              if (i == 0) {
-                setState(() {
-                  _pickedRing = null;
-                  _moment = Moment.main;
-                });
-              } else if (i == 1 || i == 2) {
-                setState(() {
-                  _sheetKind = i == 1 ? SheetKind.archive : SheetKind.supply;
-                  _moment = Moment.sheet;
-                });
-              }
-            },
-          ),
-          // 派单板
-          Plate(
-            quest: _quest,
-            host: _host,
-            visible: dispatch,
-            onAccept: () => setState(() => _moment = Moment.exec),
-          ),
-          // 执行面板
-          ExecPanel(
-            quest: _quest,
-            elapsed: const Duration(minutes: 7),
-            critChance: .12,
-            itemCount: 3,
-            evidenceCount: 0,
-            visible: exec,
-            onSubmit: () => setState(() => _moment = Moment.result),
-            onQuit: () => setState(() => _moment = Moment.fail),
-          ),
-          // 结算
-          ResultPanel(result: _result, visible: result, onSave: () {}),
-          // 失败 / 补救（在 veil 之下）
-          FailLayer(recordedAt: '20:02', remedy: Remedy.demo, visible: fail),
-          Veil(opacity: fail ? .6 : 0),
-          // 以下三件在 veil 之上（z 2 / 3 / 4）
-          PlateAlt(labels: const <String>['换一个', '等会儿'], visible: dispatch),
-          LineLayer(
-            // 文案真源：content.js L298 `holding` / L397 `mainline`
-            text: dispatch
-                ? '接不接？'
-                : fail
-                ? '补救的路，我给你留着：明天 20:02 前，做一半。做到了，这次不算。'
-                : main
-                ? '${_goal.doneCount}/${_goal.rings.length} 环。顶上那个，是你的目标。'
-                : onboard
-                ? '说吧。你想变成什么样？一句话。'
-                : '我手里有 ${_host.queue} 单。都是给你的。',
-            mood: onboard
-                ? '专注'
-                : dispatch
-                ? '监视'
-                : (fail ? '待机' : '尚可'),
-            y: lineY,
-            soft: fail,
-            fail: fail,
-            // 原型里那句主线台词说完就 Line.hide()，点环展开详情时它已经不在——
-            // 两者都显示会叠在详情卡上
-            visible:
-                lobby ||
-                dispatch ||
-                fail ||
-                onboard ||
-                (main && _pickedRing == null),
-          ),
-          Choices(
-            items: const <Choice>[Choice('……接。', main: true), Choice('今天算了。')],
-            visible: fail,
-          ),
-          // 绑定仪式：她在上面问，宿主在这儿敲（z 4，在 veil 之上）
-          AskField(
-            prompt: '目标 ›',
-            placeholder: '比如：三个月跑完半马',
-            presets: const <String>[
-              '三个月跑完半马',
-              '一个月早睡早起',
-              '考研上岸',
-              '半年减重 10 斤',
-              '学会画画',
-              '变优秀',
-            ],
-            controller: _ask,
-            visible: onboard,
-            onPreset: (String v) => _ask.text = v,
-            onSubmit: _bind,
-          ),
-          // 投影面板（档案 / 补给 / 系统共用这一层壳）
-          Sheet(
-            host: _host,
-            kind: _sheetKind,
-            visible: sheet,
-            onClose: () => setState(() => _moment = Moment.lobby),
-            onWipe: () => setState(() => _moment = Moment.onboard),
-          ),
-          // 当前环的挂签（大厅里挂在她脚下那一环的右端）
-          RingTag(
-            goal: _goal,
-            visible: lobby,
-            dimmed: true, // 字幕在 → 原型把它压到 18%
-            onTap: () => setState(() {
-              _pickedRing = null;
-              _moment = Moment.main;
-            }),
-          ),
-          // 主线全景：环挂签挂在环上（位置由相机数学给出），面板压在上面
-          RingLabels(
-            goal: _goal,
-            visible: main,
-            onPick: (int i) => setState(() => _pickedRing = i),
-          ),
-          MainView(
-            goal: _goal,
-            selected: main ? _pickedRing : null,
-            // 原型 `canGo = !S.active && cur >= 0 && 队列里有主线单`——
-            // veteran 档三条都成立，所以那颗蓝色主按钮是显示的
-            canDispatch: main,
-            visible: main,
-            onClose: () => setState(() => _moment = Moment.lobby),
-            onDispatch: () => setState(() => _moment = Moment.dispatch),
           ),
           // 3 · 覆盖层：开机自检（z 20，压在所有东西上面）
           if (boot)
@@ -313,13 +376,6 @@ class _AppShellState extends State<AppShell> {
               host: '${_host.name} · LV${_host.lv}',
               onWake: () => setState(() => _moment = Moment.lobby),
             ),
-          // 横幅（z 5，压在所有东西上面）
-          SysBanner(
-            kicker: '见面礼',
-            text: '双倍卡 ×1',
-            glyph: '×2',
-            visible: _banner,
-          ),
         ],
       ),
     );
@@ -337,8 +393,30 @@ class _AppShellState extends State<AppShell> {
     });
   }
 
+  /// 打一帧亮帧 + 抖一下 —— 原型里这两件事总是成对出现，参数按事件给。
+  /// 调用点的原参数（`ui.js` / `flows.js`）：
+  ///   玻璃板落定 `#9ff0ff .10 160ms` · 稀有度揭晓 `#ffffff .16 180ms`
+  ///   暴击 `#e9fbff .14 200ms` · 指纹钤印 `#bff6ff .24 280ms`
+  /// ⚠️ 各事件的具体时机还没等到宿主约束，这里先把签名备好。
+  void _pulse({
+    Color color = Colors.white,
+    double a = .16,
+    int ms = 180,
+    double shakePx = 4,
+  }) {
+    setState(() {
+      _flashColor = color;
+      _flashA = a;
+      _shakePx = shakePx;
+      _flashC.duration = Duration(milliseconds: ms);
+      _shake++;
+    });
+    _flashC.forward(from: 0);
+  }
+
   @override
   void dispose() {
+    _flashC.dispose();
     _ask.dispose();
     super.dispose();
   }

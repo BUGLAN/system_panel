@@ -149,3 +149,13 @@ Column 上，量出来 left=335 —— 差的就是那 30px 内边距。
 ### 21. 测试字体是占位字体，每个字都按 1em 宽排
 `flutter test` 里**只有与字体无关的坐标能断言**（`left/top/bottom`、贴边关系）。
 宽度、"这行该有多长"一律交给实机比对把关 —— 例如挂签在测试里宽 85、实机 69。
+
+### 22. 用 `AnimationController` 做"一次性动画"时，**必须判 `isAnimating`**
+`alpha = a * (1 - easeOut(value))` 这种写法，控制器停在 0（没在跑）时
+`1 - easeOut(0) = 1`，于是 `alpha = a` —— **亮帧从头到尾一直开着**，
+整屏被垫了一层 16% 白。它会安静地污染**每一张**截图（大厅那次从 1.5% 涨到 39.4%）。
+正确写法：`_c.isAnimating ? a * (1 - easeOut(_c.value)) : 0`。
+
+### 23. 别用 `Future.delayed` + `DateTime.now()` 做动画
+那是真实时钟，`flutter test` 的假时钟推不动它（测试里"抖完不归位"）。
+用 `AnimationController` —— 顺带也更符合 Flutter 惯例。
