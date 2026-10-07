@@ -15,12 +15,15 @@ import 'sys_icons.dart';
 ///  · core [276,720,88,88] · cta-n [346,714,24,24] · cap [268,823,104,13]
 /// ═══════════════════════════════════════════════════════════
 class Dock extends StatelessWidget {
-  const Dock({super.key, required this.state, this.visible = true});
+  const Dock({super.key, required this.state, this.visible = true, this.onCta});
 
   final HostState state;
 
   /// 开机中 / 聚焦态 / 面板态时整条底栏下沉隐藏（app.css L211）
   final bool visible;
+
+  /// 点中央那颗委托环
+  final VoidCallback? onCta;
 
   @override
   Widget build(BuildContext context) {
@@ -54,7 +57,10 @@ class Dock extends StatelessWidget {
                       gradient: LinearGradient(
                         begin: Alignment.topCenter,
                         end: Alignment.bottomCenter,
-                        colors: <Color>[const Color(0x0002050C), const Color(0xD102050C)],
+                        colors: <Color>[
+                          const Color(0x0002050C),
+                          const Color(0xD102050C),
+                        ],
                         stops: const <double>[0, .62],
                       ),
                     ),
@@ -74,7 +80,12 @@ class Dock extends StatelessWidget {
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: <Widget>[
                           const _SideKeys(),
-                          _Cta(state: state, running: running, idle: idle),
+                          _Cta(
+                            state: state,
+                            running: running,
+                            idle: idle,
+                            onTap: onCta,
+                          ),
                         ],
                       ),
                     ],
@@ -90,7 +101,13 @@ class Dock extends StatelessWidget {
                   key: const Key('dock.cap'),
                   _cap(running, idle),
                   textAlign: TextAlign.center,
-                  style: fs(family: F.cn, size: 10, wght: 400, ls: .6, color: C.mist),
+                  style: fs(
+                    family: F.cn,
+                    size: 10,
+                    wght: 400,
+                    ls: .6,
+                    color: C.mist,
+                  ),
                 ),
               ),
             ],
@@ -153,7 +170,13 @@ class _Dk extends StatelessWidget {
           const SizedBox(height: 6),
           Text(
             label,
-            style: fs(family: F.cn, size: 11, wght: 500, ls: 1.1, color: C.mist),
+            style: fs(
+              family: F.cn,
+              size: 11,
+              wght: 500,
+              ls: 1.1,
+              color: C.mist,
+            ),
           ),
         ],
       ),
@@ -163,67 +186,90 @@ class _Dk extends StatelessWidget {
 
 /// .cta —— 中央那颗会呼吸的委托环（app.css L218-240）
 class _Cta extends StatelessWidget {
-  const _Cta({required this.state, required this.running, required this.idle});
+  const _Cta({
+    required this.state,
+    required this.running,
+    required this.idle,
+    this.onTap,
+  });
 
   final HostState state;
   final bool running;
   final bool idle;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     // .cta 有 margin-bottom: 2（外边距，不是内边距）
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 2),
-      child: SizedBox(
-        key: const Key('dock.cta'),
-        width: 104,
-        height: 104,
-        child: Stack(
-          clipBehavior: Clip.none,
-          children: <Widget>[
-            // .cta-orbit：inset -8 → 120×120，18s 转一圈
-            Positioned(
-              left: -8,
-              top: -8,
-              width: 120,
-              height: 120,
-              child: const _Orbit(),
-            ),
-            // .cta-core：inset 8 → 88×88
-            Positioned(
-              left: 8,
-              top: 8,
-              right: 8,
-              bottom: 8,
-              child: _Core(running: running, idle: idle),
-            ),
-            // .cta-n
-            if (!running && !idle)
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Padding(
+        padding: const EdgeInsets.only(bottom: 2),
+        child: SizedBox(
+          key: const Key('dock.cta'),
+          width: 104,
+          height: 104,
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: <Widget>[
+              // .cta-orbit：inset -8 → 120×120，18s 转一圈
               Positioned(
-                right: 2,
-                top: 2,
-                child: Container(
-                  key: const Key('dock.cta.n'),
-                  constraints: const BoxConstraints(minWidth: 24),
-                  height: 24,
-                  padding: const EdgeInsets.symmetric(horizontal: 6),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(12),
-                    boxShadow: <BoxShadow>[
-                      BoxShadow(color: C.voidBg, spreadRadius: 3, blurRadius: 0),
-                      BoxShadow(color: Colors.white.withAlpha(153), blurRadius: 12),
-                    ],
-                  ),
-                  child: Center(
-                    child: Text(
-                      '${state.queue}',
-                      style: fs(family: F.num, size: 13, wght: 800, height: 1, color: C.deep),
+                left: -8,
+                top: -8,
+                width: 120,
+                height: 120,
+                child: const _Orbit(),
+              ),
+              // .cta-core：inset 8 → 88×88
+              Positioned(
+                left: 8,
+                top: 8,
+                right: 8,
+                bottom: 8,
+                child: _Core(running: running, idle: idle),
+              ),
+              // .cta-n
+              if (!running && !idle)
+                Positioned(
+                  right: 2,
+                  top: 2,
+                  child: Container(
+                    key: const Key('dock.cta.n'),
+                    constraints: const BoxConstraints(minWidth: 24),
+                    height: 24,
+                    padding: const EdgeInsets.symmetric(horizontal: 6),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(12),
+                      boxShadow: <BoxShadow>[
+                        BoxShadow(
+                          color: C.voidBg,
+                          spreadRadius: 3,
+                          blurRadius: 0,
+                        ),
+                        BoxShadow(
+                          color: Colors.white.withAlpha(153),
+                          blurRadius: 12,
+                        ),
+                      ],
+                    ),
+                    child: Center(
+                      child: Text(
+                        '${state.queue}',
+                        style: fs(
+                          family: F.num,
+                          size: 13,
+                          wght: 800,
+                          height: 1,
+                          color: C.deep,
+                        ),
+                      ),
                     ),
                   ),
                 ),
-              ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -239,8 +285,10 @@ class _Orbit extends StatefulWidget {
 }
 
 class _OrbitState extends State<_Orbit> with SingleTickerProviderStateMixin {
-  late final AnimationController _spin =
-      AnimationController(vsync: this, duration: const Duration(seconds: 18))..repeat();
+  late final AnimationController _spin = AnimationController(
+    vsync: this,
+    duration: const Duration(seconds: 18),
+  )..repeat();
 
   @override
   void dispose() {
@@ -276,7 +324,17 @@ class _OrbitPainter extends CustomPainter {
       ..strokeCap = StrokeCap.butt
       ..color = C.blue.withAlpha(230)
       ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4);
-    _dashed(canvas, c, 49 * k, 1.4 * k, 62 * k, 246 * k, C.blue.withAlpha(230), 0, glow: glow);
+    _dashed(
+      canvas,
+      c,
+      49 * k,
+      1.4 * k,
+      62 * k,
+      246 * k,
+      C.blue.withAlpha(230),
+      0,
+      glow: glow,
+    );
   }
 
   /// 按「弧长」切虚线（CSS 的 stroke-dasharray 就是弧长）
@@ -322,9 +380,10 @@ class _Core extends StatefulWidget {
 }
 
 class _CoreState extends State<_Core> with SingleTickerProviderStateMixin {
-  late final AnimationController _breath =
-      AnimationController(vsync: this, duration: const Duration(milliseconds: 2800))
-        ..repeat(reverse: true);
+  late final AnimationController _breath = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 2800),
+  )..repeat(reverse: true);
 
   @override
   void dispose() {
@@ -349,7 +408,11 @@ class _CoreState extends State<_Core> with SingleTickerProviderStateMixin {
                 : const RadialGradient(
                     center: Alignment(0, -0.4),
                     radius: .78,
-                    colors: <Color>[Color(0xFF9CF1FF), Color(0xFF38E1FF), Color(0xFF1D8FE8)],
+                    colors: <Color>[
+                      Color(0xFF9CF1FF),
+                      Color(0xFF38E1FF),
+                      Color(0xFF1D8FE8),
+                    ],
                     stops: <double>[0, .38, 1],
                   ),
             // 外发光（CSS 的 inset 阴影不能用 BoxShadow 表达，放在下面的 ClipOval 里画）
@@ -400,7 +463,10 @@ class _CoreState extends State<_Core> with SingleTickerProviderStateMixin {
                         gradient: LinearGradient(
                           begin: Alignment.topCenter,
                           end: Alignment.bottomCenter,
-                          colors: <Color>[const Color(0x8CFFFFFF), const Color(0x00FFFFFF)],
+                          colors: <Color>[
+                            const Color(0x8CFFFFFF),
+                            const Color(0x00FFFFFF),
+                          ],
                           stops: const <double>[0, .085],
                         ),
                       ),
@@ -414,28 +480,42 @@ class _CoreState extends State<_Core> with SingleTickerProviderStateMixin {
                       widget.running
                           ? '00:00'
                           : widget.idle
-                              ? '今日已清'
-                              : '委托',
+                          ? '今日已清'
+                          : '委托',
                       style: widget.running
-                          ? fs(family: F.num, size: 22, wght: 800, ls: .44, height: 1, color: C.ice)
+                          ? fs(
+                              family: F.num,
+                              size: 22,
+                              wght: 800,
+                              ls: .44,
+                              height: 1,
+                              color: C.ice,
+                            )
                           : widget.idle
-                              ? fs(family: F.hd, size: 15, wght: 400, ls: 1.2, height: 1, color: C.mist)
-                              : fs(
-                                  family: F.hd,
-                                  size: 21,
-                                  wght: 400,
-                                  ls: 1.68, // .08em
-                                  height: 1,
-                                  color: C.deep,
-                                ),
+                          ? fs(
+                              family: F.hd,
+                              size: 15,
+                              wght: 400,
+                              ls: 1.2,
+                              height: 1,
+                              color: C.mist,
+                            )
+                          : fs(
+                              family: F.hd,
+                              size: 21,
+                              wght: 400,
+                              ls: 1.68, // .08em
+                              height: 1,
+                              color: C.deep,
+                            ),
                     ),
                     const SizedBox(height: 4),
                     Text(
                       widget.running
                           ? '执行中'
                           : widget.idle
-                              ? ''
-                              : 'TASK',
+                          ? ''
+                          : 'TASK',
                       style: fs(
                         family: F.mono,
                         size: 9,
