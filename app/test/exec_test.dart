@@ -59,7 +59,7 @@ void main() {
       expect(find.text('07:00'), findsOneWidget);
       expect(find.text('/ 45:00'), findsOneWidget);
       expect(find.text('SYSTEM 正在看着你'), findsOneWidget);
-      expect(find.text('证据 · 跑步 App 截图'), findsOneWidget);
+      expect(find.text('证据 · 跑步 APP 截图'), findsOneWidget);
       expect(find.textContaining('暴击率'), findsWidgets);
       expect(find.textContaining('12%'), findsWidgets);
       expect(find.text('道具'), findsOneWidget);
@@ -169,3 +169,4 @@ void main() {
     });
   });
 }
+

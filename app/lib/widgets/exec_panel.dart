@@ -299,7 +299,8 @@ class ExecPanel extends StatelessWidget {
         Padding(
           padding: const EdgeInsets.only(top: 5),
           child: Text(
-            '证据 · ${quest.proof}',
+            // `.kick` 有 text-transform: uppercase —— 原型的「跑步 App 截图」在这里印成「跑步 APP 截图」
+            '证据 · ${quest.proof.toUpperCase()}',
             style: fs(
               family: F.mono,
               size: 10,
@@ -483,16 +484,12 @@ class _EyePainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size s) {
     final Rect r = Offset.zero & s;
-    // CSS 写的是 16×9 的椭圆 inset 环，但 Chrome 对 border-radius:50% 的 inset 阴影
-    // 实际渲染得更扁（实测墨迹只占中间 5 行，y 283..287）——以原型渲染为准。
-    final Rect ring = Rect.fromLTRB(
-      r.left + .6,
-      r.top + 1.8,
-      r.right - .6,
-      r.bottom - 1.8,
-    );
+    // `.eye { width:16px; height:9px; box-shadow: inset 0 0 0 1.2px }`
+    // ⚠️ 之前我把它画扁了（以为 Chrome 对 border-radius:50% 的 inset 环渲染得更扁）——
+    // 那是错的：原型在 `#exEye` 上挂了个 `transform: scaleY(.7)` 的眨眼/口型动画，
+    // 我清掉 onTick 后它冻在了半截。CSS 本来就是 16×9，照画即可。
     canvas.drawOval(
-      ring,
+      r.deflate(.6),
       Paint()
         ..style = PaintingStyle.stroke
         ..strokeWidth = 1.2

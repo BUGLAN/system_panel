@@ -119,3 +119,12 @@ addTearDown(tester.view.reset);
 ### 18. 动画中的元素不能量
 `.line` 有 `transition: top .5s`，`.rs-glyph` 有 `slam .7s`（从 scale 2.4 起）
 ——量到的是中间态。设完状态**等 1~2 秒再量**。
+
+**更隐蔽的一种：清掉 `Stage.onTick` 会把每帧驱动的 transform 冻在半截。**
+执行面板那只眼睛 `.eye` 的 CSS 是 `width:16px; height:9px`，但原型在 `#exEye` 上挂了
+一个 `transform: scaleY(.7)` 的眨眼/口型动画。我清空 onTick 后量到它高 6.3px，
+**误以为是「Chrome 把 inset 环渲染得更扁」**，于是把 Flutter 侧也画扁了 —— 追着
+一个不存在的浏览器怪癖跑了一整轮。
+
+正确做法：**摆参考态时把这些每帧驱动的 transform 显式归位**
+（`el.style.transform = 'none'`），再截图比对。
