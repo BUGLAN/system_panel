@@ -41,7 +41,7 @@ void main() {
   group('委托数据', () {
     test('单号 / 环数 / 时限 / 报酬文案（ui.js + util.js）', () {
       const Quest q = Quest.demo;
-      expect(q.serialText, '№ 0080');
+      expect(q.serialText, '№ 0041');
       expect(q.kindLabel, '主线 · 第 5 环 / 8');
       expect(q.minutesText, '45 分钟');
       expect(q.rewardText, 'EXP 50 · ◈ 24体+1 力+1');
@@ -95,7 +95,7 @@ void main() {
           animateLand: false,
         ),
       );
-      expect(find.text('№ 0080'), findsOneWidget);
+      expect(find.text('№ 0041'), findsOneWidget);
       expect(find.text('主线 · 第 5 环 / 8'), findsOneWidget);
       expect(find.text('跑完 5 公里'), findsOneWidget);
       expect(find.text('附言'), findsOneWidget);
@@ -177,6 +177,25 @@ void main() {
       expect(row.right, 374);
       expect(row.bottom, closeTo(826, .5)); // bottom:18 + 高 36
       await tester.pumpWidget(const SizedBox());
+    });
+  });
+  // ── 数据契约 ──────────────────────────────────────────────
+  // 演示档的每个字段都必须与原型 `Store.veteran()` 的 `Store.head()` 一致。
+  // 改这里的数之前，先在原型里跑一次 `Store.veteran(); console.log(Store.head())`。
+  // 踩过：serial 我按印象写了 80（实为 41）、reason 漏了「46 秒」——
+  // 这种小字差异在区域均值里几乎看不出来，是换成干净存档后才核对出来的。
+  group('演示档数据契约', () {
+    test('与 Store.veteran() 的 head 任务逐字段一致', () {
+      const Quest q = Quest.demo;
+      expect(q.serial, 41);
+      expect(q.kind, 'main');
+      expect(q.ring, 4);
+      expect(q.name, '跑完 5 公里');
+      expect(q.reason, '上一环你用了 38 分 46 秒。这一环，我加了点码。');
+      expect(q.proof, '跑步 App 截图');
+      expect(q.minutes, 45);
+      expect(q.rank, 'C');
+      expect(q.attrs, <String, int>{'体': 1, '力': 1});
     });
   });
 }

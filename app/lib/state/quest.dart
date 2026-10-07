@@ -77,14 +77,18 @@ class Quest {
     return 'EXP ${(rarity.exp * k).round()} · ◈ ${(rarity.coin * k).round()}$at';
   }
 
-  /// 与原型演示态一致的那一单（实测：C 级主线第 5 环）
+  /// 与原型 `Store.veteran()` 的 `Store.head()` 逐字段一致的那一单
+  /// （C 级主线第 5 环）。
+  /// ⚠️ `serial` 与 `reason` 一开始是我按印象写的（80 / 「38 分」），
+  /// 与 veteran 档（41 / 「38 分 46 秒」）对不上 —— 这种小字差异在区域均值里
+  /// 几乎看不出来，是换成干净存档后才核对出来的。
   static const Quest demo = Quest(
-    serial: 80,
+    serial: 41,
     kind: 'main',
     ring: 4,
     ringTotal: 8,
     name: '跑完 5 公里',
-    reason: '上一环你用了 38 分。这一环，我加了点码。',
+    reason: '上一环你用了 38 分 46 秒。这一环，我加了点码。',
     proof: '跑步 App 截图',
     minutes: 45,
     rank: 'C',
