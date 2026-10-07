@@ -15,6 +15,7 @@ import 'widgets/hud.dart';
 import 'widgets/line_layer.dart';
 import 'widgets/plate.dart';
 import 'widgets/result_panel.dart';
+import 'widgets/sheet.dart';
 
 /// 宿主 SYSTEM —— Flutter 客户端。
 /// 设计真源：prototype/opus-v2-dir（原型即规格）。
@@ -52,7 +53,8 @@ class SysApp extends StatelessWidget {
 ///   dispatch → focus+dim（HUD/底栏收走、天幕压暗）
 ///   exec → panel（只收底栏）· result → focus+dim
 ///   fail → focus+fail（HUD/底栏收走、天幕抽色压暗 + veil）
-enum Moment { boot, lobby, dispatch, exec, result, fail }
+///   sheet → focus（投影面板升起）
+enum Moment { boot, lobby, dispatch, exec, result, fail, sheet }
 
 /// 所有页面的共同外壳，对应原型的 `#app` + `#shake`：
 ///   天幕（#bg）→ 舞台（#stage）→ 界面（#ui）→ 覆盖层
@@ -92,15 +94,19 @@ class _AppShellState extends State<AppShell> {
     final bool exec = _moment == Moment.exec;
     final bool result = _moment == Moment.result;
     final bool fail = _moment == Moment.fail;
+    final bool sheet = _moment == Moment.sheet;
     final bool boot = _moment == Moment.boot;
     // focus+dim：派单与结算都会把 HUD/底栏收走、天幕压暗
     final bool dim = dispatch || result;
 
-    // lineAt（flows.js L23）：lobby = H*.6，dispatch = H-568，fail = H*.47
+    // lineAt（flows.js L23）：
+    //   lobby = H*.6，dispatch = H-568，fail = H*.47，sheet = H*.38 - 104
     final double lineY = dispatch
         ? size.height - 568
         : fail
         ? size.height * .47
+        : sheet
+        ? size.height * .38 - 104
         : size.height * .6;
 
     return Scaffold(
@@ -129,6 +135,8 @@ class _AppShellState extends State<AppShell> {
               child: BgLayer(word: boot ? 'SYSTEM' : '半马', latin: boot),
             ),
           ),
+          // 投影光束（在面板之下、天幕之上）
+          SheetBeam(visible: sheet),
           // TODO(step8+): 1 · 舞台 —— Live2D 角色 + 套在她身上的主线环 + 环挂签/环标签
           // 2 · 界面
           //    ⚠️ 原型的层级：`#veil` 是 z-auto（在 #ui 之后绘制），而 `.line` z=3、
@@ -139,6 +147,9 @@ class _AppShellState extends State<AppShell> {
             state: _host,
             visible: lobby,
             onCta: () => setState(() => _moment = Moment.dispatch),
+            onSide: (int i) {
+              if (i == 1) setState(() => _moment = Moment.sheet);
+            },
           ),
           // 派单板
           Plate(
@@ -180,6 +191,12 @@ class _AppShellState extends State<AppShell> {
           Choices(
             items: const <Choice>[Choice('……接。', main: true), Choice('今天算了。')],
             visible: fail,
+          ),
+          // 投影面板（档案 / 补给 / 系统共用这一层壳）
+          Sheet(
+            host: _host,
+            visible: sheet,
+            onClose: () => setState(() => _moment = Moment.lobby),
           ),
           // 3 · 覆盖层：开机自检（z 20，压在所有东西上面）
           if (boot)

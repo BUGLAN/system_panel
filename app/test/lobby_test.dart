@@ -41,7 +41,7 @@ void main() {
       expect(s.exp, 214);
       expect(s.coins, 340);
       expect(s.streak, 6);
-      expect(s.title, '惯犯');
+      expect(s.title, 'done15');
       expect(s.queue, 5);
       expect(s.expRatio, closeTo(214 / 340, 1e-9));
     });

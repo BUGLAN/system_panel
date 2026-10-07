@@ -15,7 +15,16 @@ import 'sys_icons.dart';
 ///  · core [276,720,88,88] · cta-n [346,714,24,24] · cap [268,823,104,13]
 /// ═══════════════════════════════════════════════════════════
 class Dock extends StatelessWidget {
-  const Dock({super.key, required this.state, this.visible = true, this.onCta});
+  const Dock({
+    super.key,
+    required this.state,
+    this.visible = true,
+    this.onCta,
+    this.onSide,
+  });
+
+  /// 点了哪颗侧键（0 主线 / 1 档案 / 2 补给）
+  final ValueChanged<int>? onSide;
 
   final HostState state;
 
@@ -82,7 +91,7 @@ class Dock extends StatelessWidget {
                           crossAxisAlignment: CrossAxisAlignment.end,
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: <Widget>[
-                            const _SideKeys(),
+                            _SideKeys(onSide: onSide),
                             _Cta(
                               state: state,
                               running: running,
@@ -130,19 +139,37 @@ class Dock extends StatelessWidget {
 
 /// .dk-side —— 主线 / 档案 / 补给
 class _SideKeys extends StatelessWidget {
-  const _SideKeys();
+  const _SideKeys({this.onSide});
+
+  /// 点了哪颗侧键（0 主线 / 1 档案 / 2 补给）
+  final ValueChanged<int>? onSide;
 
   @override
   Widget build(BuildContext context) {
-    return const Padding(
-      padding: EdgeInsets.only(bottom: 6),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
       child: Row(
         children: <Widget>[
-          _Dk(key: Key('dock.key.main'), label: '主线', svg: kIconMain),
-          SizedBox(width: 6),
-          _Dk(key: Key('dock.key.archive'), label: '档案', svg: kIconArchive),
-          SizedBox(width: 6),
-          _Dk(key: Key('dock.key.supply'), label: '补给', svg: kIconSupply),
+          _Dk(
+            key: const Key('dock.key.main'),
+            label: '主线',
+            svg: kIconMain,
+            onTap: onSide == null ? null : () => onSide!(0),
+          ),
+          const SizedBox(width: 6),
+          _Dk(
+            key: const Key('dock.key.archive'),
+            label: '档案',
+            svg: kIconArchive,
+            onTap: onSide == null ? null : () => onSide!(1),
+          ),
+          const SizedBox(width: 6),
+          _Dk(
+            key: const Key('dock.key.supply'),
+            label: '补给',
+            svg: kIconSupply,
+            onTap: onSide == null ? null : () => onSide!(2),
+          ),
         ],
       ),
     );
@@ -150,13 +177,22 @@ class _SideKeys extends StatelessWidget {
 }
 
 class _Dk extends StatelessWidget {
-  const _Dk({super.key, required this.label, required this.svg});
+  const _Dk({super.key, required this.label, required this.svg, this.onTap});
 
   final String label;
   final String svg;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: _dkBody(context),
+    );
+  }
+
+  Widget _dkBody(BuildContext context) {
     return SizedBox(
       width: 58,
       child: Column(

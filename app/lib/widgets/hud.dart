@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
+import '../data/titles.dart';
 import '../design/tokens.dart';
 import '../state/host_state.dart';
 import 'sys_icons.dart';
@@ -200,7 +201,7 @@ class _Who extends StatelessWidget {
         ),
         const SizedBox(height: 3),
         Text(
-          '「${state.title}」',
+          '「${HostTitle.nameOf(state.title)}」',
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: fs(
