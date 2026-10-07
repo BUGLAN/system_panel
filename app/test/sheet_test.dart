@@ -50,7 +50,7 @@ void main() {
       expect(s.failCount, 4);
       expect(s.bestStreak, 6);
       expect(s.ownedTitles.length, 7);
-      expect(s.items['dbl'], 2);
+      expect(s.items['dbl'], 1);
     });
 
     test('称号表 12 条，只有一条是耻辱称号', () {
@@ -107,12 +107,12 @@ void main() {
         expect(find.text(it.desc), findsOneWidget);
         expect(find.text('${it.price}'), findsOneWidget);
       }
-      // 持有数：双倍卡 2 / 暴击芯片 1 / 免死金牌 0 / 换单券 0
-      // （原型演示档里 items 没有 swap 这一项，界面上会印出「持有 ×undefined」——
-      //   那是原型的数据 bug，这里按 0 显示）
+      // 持有数（veteran 档）：双倍卡 1 / 暴击芯片 1 / 免死金牌 1 / 换单券 2
+      // （
+      //   之前那版「×undefined」是被玩脏的存档造成的，不是原型的问题）
       expect(find.textContaining('持有 ×2'), findsOneWidget);
-      expect(find.textContaining('持有 ×1'), findsOneWidget);
-      expect(find.textContaining('持有 ×0'), findsNWidgets(2));
+      expect(find.textContaining('持有 ×1'), findsNWidgets(3));
+      expect(find.textContaining('持有 ×0'), findsNothing);
       expect(tester.takeException(), isNull);
     });
 

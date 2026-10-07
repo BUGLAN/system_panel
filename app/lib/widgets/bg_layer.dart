@@ -61,6 +61,52 @@ class _BgLayerState extends State<BgLayer> with TickerProviderStateMixin {
         final double h = box.maxHeight;
         return Stack(
           children: <Widget>[
+            // `.sky` 的 background 是五层叠出来的，自下而上：
+            //   底色渐变 → ComfyUI 底图（cover）→ 压暗渐变 → 两团辉光
+            const Positioned.fill(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: <Color>[
+                      Color(0xFF061026),
+                      Color(0xFF040A18),
+                      Color(0xFF020409),
+                    ],
+                    stops: <double>[0, .48, 1],
+                  ),
+                ),
+              ),
+            ),
+            const Positioned.fill(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  image: DecorationImage(
+                    image: AssetImage('assets/img/bg-void.jpg'),
+                    fit: BoxFit.cover,
+                  ),
+                ),
+              ),
+            ),
+            // linear-gradient(180deg, rgba(2,6,16,.38), rgba(2,5,12,.12) 44%,
+            //                 rgba(1,3,8,.42) 100%)
+            const Positioned.fill(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: <Color>[
+                      Color(0x61020610),
+                      Color(0x1F02050C),
+                      Color(0x6B010308),
+                    ],
+                    stops: <double>[0, .44, 1],
+                  ),
+                ),
+              ),
+            ),
             const Positioned.fill(child: CustomPaint(painter: _SkyPainter())),
             _orbit(w, h, diameter: 330, alpha: .10, dashed: true, t: _ring1),
             _orbit(
@@ -227,22 +273,7 @@ class _SkyPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size s) {
-    final Rect rect = Offset.zero & s;
-    canvas.drawRect(
-      rect,
-      Paint()
-        ..shader = const LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: <Color>[
-            Color(0xFF061026),
-            Color(0xFF040A18),
-            Color(0xFF020409),
-          ],
-          stops: <double>[0, .48, 1],
-        ).createShader(rect),
-    );
-    // radial-gradient(70% 42% at 50% 30%, rgba(31,139,255,.22), transparent 72%)
+    // radial-gradient(70% 42% at 50% 30%, rgba(31,139,255,.14), transparent 72%)
     _glow(
       canvas,
       s,
@@ -250,10 +281,10 @@ class _SkyPainter extends CustomPainter {
       cy: .30,
       rx: .70,
       ry: .42,
-      color: const Color(0x381F8BFF),
+      color: const Color(0x241F8BFF),
       stop: .72,
     );
-    // radial-gradient(90% 50% at 50% 104%, rgba(56,225,255,.12), transparent 62%)
+    // radial-gradient(90% 50% at 50% 104%, rgba(56,225,255,.08), transparent 62%)
     _glow(
       canvas,
       s,
@@ -261,7 +292,7 @@ class _SkyPainter extends CustomPainter {
       cy: 1.04,
       rx: .90,
       ry: .50,
-      color: const Color(0x1F38E1FF),
+      color: const Color(0x1438E1FF),
       stop: .62,
     );
   }

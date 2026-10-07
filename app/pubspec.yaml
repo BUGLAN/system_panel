@@ -19,6 +19,10 @@ dev_dependencies:
 flutter:
   uses-material-design: true
 
+  # 天幕背景（宿主用 ComfyUI 生成的 Qwen-Image 底图，垫在 #bg .sky 最底层）
+  assets:
+    - assets/img/bg-void.jpg
+
   # 字体四件套 —— 真源：prototype/opus-v2-dir/css/app.css 的 @font-face
   # 四个都是可变字体，字重/字宽必须在代码里用 fontVariations 指定：
   #   TextStyle(fontVariations: [FontVariation('wght', 700), FontVariation('wdth', 75)])

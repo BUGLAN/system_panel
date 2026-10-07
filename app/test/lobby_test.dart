@@ -42,7 +42,7 @@ void main() {
       expect(s.coins, 340);
       expect(s.streak, 6);
       expect(s.title, 'done15');
-      expect(s.queue, 5);
+      expect(s.queue, 4);
       expect(s.expRatio, closeTo(214 / 340, 1e-9));
     });
   });
@@ -86,8 +86,8 @@ void main() {
       expect(find.text('补给'), findsOneWidget);
       expect(find.text('委托'), findsOneWidget);
       expect(find.text('TASK'), findsOneWidget);
-      expect(find.text('5'), findsOneWidget); // .cta-n 上的单数
-      expect(find.text('她手里有 5 单'), findsOneWidget);
+      expect(find.text('4'), findsOneWidget); // .cta-n 上的单数
+      expect(find.text('她手里有 4 单'), findsOneWidget);
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox());
     });

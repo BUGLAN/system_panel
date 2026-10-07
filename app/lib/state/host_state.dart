@@ -67,7 +67,10 @@ class HostState {
         b.value < a.value ? b : a,
   );
 
-  /// 原型 `Store.veteran()` 建出来的那一档（实测：exp 214 / need 340 / 金币 340）
+  /// 原型 `Store.veteran()` 建出来的那一档（「老宿主 · 第 23 天」）——
+  /// **每次比对前都要在原型里先调一次 `Store.veteran()`**，否则拿到的是被玩脏的存档
+  /// （这一坑踩过：items 少一个键，界面上会印出「持有 ×undefined」，
+  ///   一度被我误判成原型的数据 bug）。
   static const HostState demo = HostState(
     name: '林深',
     lv: 7,
@@ -75,7 +78,7 @@ class HostState {
     coins: 340,
     streak: 6,
     title: 'done15',
-    queue: 5,
+    queue: 4, // veteran() 的 S.queue.length
     ringIndex: 4,
     ringTotal: 8,
     attrs: <String, int>{'力': 9, '敏': 12, '体': 17, '智': 6, '知': 8, '魅': 4},
@@ -92,7 +95,7 @@ class HostState {
       'streak3',
       'done15',
     ],
-    items: <String, int>{'dbl': 2, 'crit': 1, 'shield': 0, 'swap': 0},
+    items: <String, int>{'dbl': 1, 'crit': 1, 'shield': 1, 'swap': 2},
   );
 
   static const HostState empty = HostState(
