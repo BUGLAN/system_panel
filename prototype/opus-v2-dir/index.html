@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#03060e">
+<title>SYSTEM · 宿主</title>
+<link rel="preload" href="fonts/tektur-vf.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="fonts/shuhei-bold.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+<div id="desk">
+  <div id="phone">
+    <div id="app" class="booting">
+      <div id="shake">
+        <!-- 0 · 天幕：她身后的世界 -->
+        <div id="bg">
+          <div class="sky"></div>
+          <div class="orbit"><i></i><i></i><i></i></div>
+          <div class="word" id="bgWord"><span>SYSTEM</span></div>
+          <div class="floorgrid"></div>
+          <div class="grain"></div>
+        </div>
+        <!-- 1 · 她（WebGL2 画布由 ournotes-live2d 元素自己挂进来） -->
+        <div id="stage"></div>
+        <svg id="beam" aria-hidden="true"><defs><linearGradient id="beamG" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#9ff0ff" stop-opacity=".34"/><stop offset="1" stop-color="#38e1ff" stop-opacity=".02"/></linearGradient></defs><polygon id="beamPoly" points="0,0 0,0 0,0"/><line id="beamL"/><line id="beamR"/></svg>
+        <!-- 2 · 界面 -->
+        <div id="ui">
+          <header id="hud">
+            <button class="hud-lv" id="hudLv" aria-label="档案">
+              <svg viewBox="0 0 48 48"><circle class="trk" cx="24" cy="24" r="20"/><circle class="arc" id="lvArc" cx="24" cy="24" r="20"/></svg>
+              <i>LV</i><b id="hudLvN">1</b>
+            </button>
+            <div class="hud-who"><b id="hudName">宿主</b><span id="hudTitle">「新绑定的」</span><em id="hudStreak"></em></div>
+            <div class="hud-coin"><svg viewBox="0 0 16 16"><path d="M8 1l6 3.5v7L8 15l-6-3.5v-7z"/></svg><b id="hudCoin">0</b></div>
+            <button class="hud-menu" id="hudMenu" aria-label="系统"><i></i><i></i><i></i></button>
+          </header>
+          <div id="execPill" class="pill"><i></i><span>执行中</span><b id="pillT">00:00</b></div>
+
+          <button id="ringTag" class="ringtag"><i class="lead"></i><span class="rt-k">主线</span><b id="rtNum">R1<small>/6</small></b><em id="rtName"></em></button>
+          <div id="ringLabels"></div>
+
+          <div id="line" class="line">
+            <div class="who"><b>SYSTEM</b><span class="wave"><i></i><i></i><i></i><i></i><i></i></span><span class="mood" id="lineMood">待机</span></div>
+            <p class="txt" id="lineTxt"></p>
+            <i class="more"></i>
+          </div>
+          <div id="choices"></div>
+          <form id="ask" autocomplete="off"><div class="presets" id="askPresets"></div><label><span class="ps" id="askPs">宿主 ›</span><input id="askIn" maxlength="24"><button type="submit">确定</button></label></form>
+
+          <nav id="dock">
+            <div class="dk-side">
+              <button class="dk" data-go="main"><span class="ic"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="7" rx="6" ry="1.8"/><ellipse cx="12" cy="12" rx="8" ry="2.4"/><ellipse cx="12" cy="17.5" rx="9" ry="2.8"/></svg></span><b>主线</b></button>
+              <button class="dk" data-go="archive"><span class="ic"><svg viewBox="0 0 24 24"><path d="M12 3l7.8 4.5v9L12 21l-7.8-4.5v-9z"/><path d="M12 8l3.5 2v4L12 16l-3.5-2v-4z"/></svg></span><b>档案</b></button>
+              <button class="dk" data-go="supply"><span class="ic"><svg viewBox="0 0 24 24"><rect x="4" y="8" width="16" height="11" rx="1"/><path d="M8 8V6a4 4 0 0 1 8 0v2M4 12h16"/></svg></span><b>补给</b></button>
+            </div>
+            <button id="cta" class="cta">
+              <svg class="cta-orbit" viewBox="0 0 120 120"><circle cx="60" cy="60" r="56"/><circle cx="60" cy="60" r="49"/></svg>
+              <span class="cta-core"><b id="ctaLabel">委托</b><small id="ctaSub"></small></span>
+              <em class="cta-n" id="ctaN">0</em>
+            </button>
+            <p class="cta-cap" id="ctaCap"></p>
+          </nav>
+
+          <!-- 派单：一块被她刻上字的玻璃 -->
+          <section id="plate" aria-live="polite"></section>
+          <div id="plateAlt"></div>
+
+          <!-- 执行中 -->
+          <section id="exec"></section>
+          <!-- 结算 -->
+          <section id="result"></section>
+          <!-- 失败 -->
+          <section id="failv"></section>
+          <!-- 主线全景 -->
+          <section id="mainv"></section>
+          <!-- 投影面板：档案 / 补给 / 系统 -->
+          <section id="sheet"><div class="sh-edge"></div><header class="sh-head"><div><span class="sh-k" id="shK"></span><h3 id="shT"></h3></div><button class="sh-x" id="shX" aria-label="关闭">×</button></header><div class="sh-body" id="shBody"></div></section>
+
+          <div id="banner"></div>
+          <div id="hit"></div>
+        </div>
+        <canvas id="fx"></canvas>
+        <div id="veil"></div>
+        <div id="flash"></div>
+      </div>
+
+      <!-- 开机 -->
+      <div id="boot">
+        <div class="bt-top"><span>SYS//BOOT · v2</span><span id="btClock">--:--:--</span></div>
+        <div class="bt-mid"><span class="bt-sub">宿 主 · 系 统</span></div>
+        <div class="bt-low">
+          <div class="bt-log" id="btLog"></div>
+          <div class="bt-bar"><i id="btBar"></i></div>
+          <p class="bt-tip" id="btTip"></p>
+          <p class="bt-go" id="btGo">触碰屏幕 · 唤醒系统</p>
+        </div>
+      </div>
+      <input type="file" id="filePick" accept="image/*" capture="environment" hidden>
+    </div>
+  </div>
+
+  <!-- 演示控制台：不属于 App，只为一口气看完所有时刻 -->
+  <aside id="demo">
+    <h4>演示控制台 <small>不属于 App</small></h4>
+    <div class="dg"><span>存档</span>
+      <button data-demo="fresh">新宿主 · 从绑定开始</button>
+      <button data-demo="veteran">老宿主 · 第 23 天</button>
+    </div>
+    <div class="dg"><span>时刻</span>
+      <button data-demo="dispatch">让她派一单</button>
+      <button data-demo="forceS">下一单必出 S</button>
+      <button data-demo="crit">必暴击：<b id="dmCrit">关</b></button>
+      <button data-demo="settle">直接结算当前单</button>
+      <button data-demo="fail">认输当前单</button>
+      <button data-demo="lvup">差 1 点经验就升级</button>
+    </div>
+    <div class="dg"><span>时间</span>
+      <button data-demo="away">离开 6 小时</button>
+      <button data-demo="day">快进到明天</button>
+      <button data-demo="ff">执行计时 +10 分钟</button>
+    </div>
+    <p class="dm-note">手机打开时没有这个面板。所有声音都是现场合成的；第一次触碰屏幕后才会出声。</p>
+  </aside>
+</div>
+
+<script src="vendor/live2dcubismcore.min.js"></script>
+<!-- 播放器模块由 js/stage.js 动态 import 后调用 defineOurnotesLive2D() 注册 -->
+<script src="js/util.js"></script>
+<script src="js/content.js"></script>
+<script src="js/store.js"></script>
+<script src="js/audio.js"></script>
+<script src="js/fx.js"></script>
+<script src="js/stage.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/flows.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>

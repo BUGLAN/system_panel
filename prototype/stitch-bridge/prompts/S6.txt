@@ -1,0 +1,11 @@
+Apply the attached DESIGN.md strictly (GAME HUD EDITION). Game system-window aesthetic: glass panels with cyan (#38E1FF) borders, canvas #0A0E1A with faint grid; failure uses danger red #FF4D5E with faint red glow; the pain is verbal, game-over flavored but not melodramatic.
+
+Dark mobile failure-state screen, 390px, single column, left-aligned. No red flood, no sad illustration.
+
+Top: quest title in dimmed cool white 18px with strikethrough: "静心术：冥想 10 分钟", meta mono muted: "日常 · 已超时".
+
+Below, a large terminal-style roast box: glass panel, 1px danger-red border + faint red glow, mono red "»" marker, roast copy in cool white 16px: "连 10 分钟都凑不出来，系统对宿主的最后一丝期待已耗尽。" Second smaller roast line in muted gray: "连击 6 → 0。系统已截图存档。"
+
+Below the box, a consequence summary in two mono lines: "连击加成：已失效", "称号评定：维持「三分钟热度」", each prefixed with dim gray ">". No HP bar anywhere.
+
+Lower third, the remedy exit: a small gray label "补救出口 · 限 24 小时内", then one quest-card-style remedy row as a glass panel with a 3px rarity-green #4ADE80 left strip tagged "E", title in cool white: "补救任务：现在补一次 5 分钟冥想", meta "完成则连击视为未断 · 每月 2 次". Bottom: one full-width primary button, cyan gradient + glow, dark navy text: "接受补救任务", beneath it a centered ghost dim link "放弃（毒舌加倍）". Spring transitions, no shake.

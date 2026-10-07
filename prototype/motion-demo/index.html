@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>宿主 SYSTEM · 动效样机</title>
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@600;700&family=JetBrains+Mono:wght@500;700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --void:#0A0E1A; --panel:#131C33; --panel2:#1A2647; --panel3:#22315E;
+  --white:#EAF2FF; --ice:#8FA3C8; --dim:#4A5A7A;
+  --cyan:#38E1FF; --deep:#0EA5E9; --danger:#FF4D5E; --ok:#34D399; --gold:#FBBF24;
+  --spring:cubic-bezier(.34,1.56,.64,1); --out:cubic-bezier(.16,1,.3,1);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#05070D;color:var(--white);font-family:'Noto Sans SC',sans-serif;
+  display:flex;gap:40px;align-items:center;justify-content:center;min-height:100vh;padding:24px}
+h1{font-size:15px;color:var(--ice);font-weight:400;position:fixed;top:16px;left:24px;letter-spacing:.1em}
+h1 b{color:var(--cyan);font-family:'JetBrains Mono',monospace}
+
+/* ── 手机壳 ── */
+.phone{width:390px;height:820px;border-radius:36px;border:1px solid #223;border:none;
+  background:var(--void);position:relative;overflow:hidden;flex-shrink:0;
+  box-shadow:0 0 0 8px #10131c,0 30px 80px rgba(0,0,0,.7)}
+.phone::before{content:"";position:absolute;inset:0;pointer-events:none;z-index:1;
+  background:repeating-linear-gradient(0deg,transparent 0 31px,rgba(56,225,255,.03) 31px 32px),
+             repeating-linear-gradient(90deg,transparent 0 31px,rgba(56,225,255,.03) 31px 32px)}
+.screen{position:absolute;inset:0;z-index:2}
+
+/* 常驻 HUD */
+.hud{position:absolute;top:0;left:0;right:0;padding:14px 16px 10px;display:flex;align-items:center;gap:10px;
+  font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--ice);z-index:5;
+  background:linear-gradient(180deg,rgba(10,14,26,.9),transparent)}
+.streak{margin-left:auto;color:var(--white)} .streak i{display:inline-block;width:7px;height:7px;border-radius:50%;
+  background:var(--cyan);box-shadow:0 0 8px var(--cyan);margin-right:5px;animation:pulse 2s infinite}
+@keyframes pulse{50%{opacity:.4}}
+.expwrap{position:absolute;top:58px;left:0;right:0;height:4px;background:rgba(56,225,255,.12);z-index:5}
+.expbar{height:100%;width:20%;background:linear-gradient(90deg,var(--deep),var(--cyan));
+  transform-origin:left;position:relative;overflow:hidden}
+.expbar::after{content:"";position:absolute;inset:0;
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,.7),transparent);
+  transform:translateX(-100%);animation:shine 3s 1s infinite}
+@keyframes shine{60%,100%{transform:translateX(320%)}}
+.expbar.fill{transition:transform .5s var(--out)}
+/* v11：结算进账反馈改为「经验条上涨」——上涨期间条内扫过一道一次性流光 */
+.expbar.rise::after{animation:shineRise .55s var(--out)}
+@keyframes shineRise{from{transform:translateX(-100%)}to{transform:translateX(320%)}}
+
+/* 任务卡 */
+.questzone{position:absolute;top:96px;left:16px;right:16px;display:flex;flex-direction:column;gap:12px}
+.banner{position:relative;padding:12px 14px;background:rgba(19,28,51,.88);backdrop-filter:blur(10px);
+  border:1px solid rgba(56,225,255,.35);border-left:3px solid var(--cyan);border-radius:12px;
+  box-shadow:0 0 20px rgba(56,225,255,.15);font-size:14px;
+  transform:translateY(-140%)}
+.banner.play{animation:drop .6s var(--spring) forwards}
+@keyframes drop{to{transform:translateY(0)}}
+.banner .ding{font-family:'JetBrains Mono',monospace;color:var(--cyan);margin-right:6px;
+  text-shadow:0 0 12px var(--cyan)}
+.qcard{position:relative;background:rgba(19,28,51,.88);backdrop-filter:blur(10px);border-radius:12px;
+  border:1px solid rgba(56,225,255,.25);padding:14px 14px 14px 20px;overflow:hidden;transform-style:preserve-3d}
+.qcard::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--r,#4ADE80);
+  box-shadow:0 0 14px var(--r,#4ADE80)}
+.qcard .tier{position:absolute;right:12px;top:12px;font-family:'JetBrains Mono',monospace;font-size:10px;
+  color:var(--r,#4ADE80);border:1px solid var(--r,#4ADE80);border-radius:6px;padding:2px 6px}
+.qcard h3{font-size:15px;font-weight:500;margin-bottom:6px}
+.qcard .meta{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--ice)}
+.qcard.cascade{opacity:0;transform:translateY(10px)}
+.qcard.cascade.play{animation:rise .45s var(--spring) forwards}
+@keyframes rise{to{opacity:1;transform:none}}
+.qcard.flip inner{}
+.flip3d{perspective:600px}
+.flip3d .flipper{transition:transform .45s var(--spring);transform-style:preserve-3d;position:relative}
+.flip3d.flipped .flipper{transform:rotateY(180deg)}
+.face{backface-visibility:hidden}
+.back{position:absolute;inset:0;transform:rotateY(180deg);display:grid;place-items:center;
+  background:rgba(26,38,71,.95);border-radius:12px;font-family:'JetBrains Mono',monospace;color:var(--cyan)}
+
+/* 通用层 */
+.fx{position:absolute;inset:0;pointer-events:none;z-index:20}
+.flash{background:#fff;opacity:0}
+.flash.go{animation:flash .18s ease-out}
+@keyframes flash{10%{opacity:.16}100%{opacity:0}}
+.dimbg{background:rgba(10,14,26,0);transition:background .25s}
+.dimbg.on{background:rgba(10,14,26,.78)}
+.scanlinesweep{overflow:hidden}
+.scanlinesweep::after{content:"";position:absolute;left:0;right:0;height:2px;top:-2px;
+  background:linear-gradient(90deg,transparent,var(--cyan),transparent);
+  box-shadow:0 0 12px var(--cyan);animation:sweep .5s .1s ease-out forwards;opacity:0}
+@keyframes sweep{0%{opacity:1;top:-2px}100%{opacity:0;top:100%}}
+
+/* 结算 */
+.settle{position:absolute;left:12px;right:12px;bottom:24px;border-radius:20px;padding:26px 22px;
+  background:rgba(26,38,71,.96);backdrop-filter:blur(14px);
+  border:1px solid rgba(56,225,255,.4);box-shadow:0 0 34px rgba(56,225,255,.18);
+  transform:translateY(110%);text-align:center;z-index:25}
+.settle.play{animation:up .55s var(--spring) forwards}
+@keyframes up{to{transform:translateY(0)}}
+.settle .label{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.25em;color:var(--cyan)}
+.burst{position:absolute;left:50%;top:74px;width:260px;height:260px;transform:translate(-50%,-50%) scale(0);
+  background:conic-gradient(from 0deg,transparent 0 14deg,rgba(56,225,255,.25) 14deg 20deg,transparent 20deg 34deg,rgba(56,225,255,.25) 34deg 40deg,transparent 40deg 54deg,rgba(56,225,255,.25) 54deg 60deg,transparent 60deg 74deg,rgba(56,225,255,.25) 74deg 80deg,transparent 80deg 94deg,rgba(56,225,255,.25) 94deg 100deg,transparent 100deg 114deg,rgba(56,225,255,.25) 114deg 120deg,transparent 120deg 134deg,rgba(56,225,255,.25) 134deg 140deg,transparent 140deg 154deg,rgba(56,225,255,.25) 154deg 160deg,transparent 160deg 174deg,rgba(56,225,255,.25) 174deg 180deg,transparent 180deg 194deg,rgba(56,225,255,.25) 194deg 200deg,transparent 200deg 214deg,rgba(56,225,255,.25) 214deg 220deg,transparent 220deg 234deg,rgba(56,225,255,.25) 234deg 240deg,transparent 240deg 254deg,rgba(56,225,255,.25) 254deg 260deg,transparent 260deg 274deg,rgba(56,225,255,.25) 274deg 280deg,transparent 280deg 294deg,rgba(56,225,255,.25) 294deg 300deg,transparent 300deg 314deg,rgba(56,225,255,.25) 314deg 320deg,transparent 320deg 334deg,rgba(56,225,255,.25) 334deg 340deg,transparent 340deg 354deg,rgba(56,225,255,.25) 354deg 360deg);
+  border-radius:50%;filter:blur(1px)}
+.burst.go{animation:burst .5s var(--out) forwards}
+@keyframes burst{to{transform:translate(-50%,-50%) scale(1.35);opacity:0}}
+.expnum{font-family:'Rajdhani',sans-serif;font-weight:700;font-size:58px;color:var(--cyan);
+  text-shadow:0 0 26px rgba(56,225,255,.65);position:relative;line-height:1.1}
+.crit{position:absolute;right:-8px;top:-6px;font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--gold);
+  border:1px solid var(--gold);border-radius:6px;padding:2px 7px;text-shadow:0 0 10px var(--gold);
+  transform:scale(0)}
+.crit.go{animation:slam .35s var(--spring) forwards}
+@keyframes slam{from{transform:scale(2.2);opacity:0}to{transform:scale(1);opacity:1}}
+.chips{display:flex;gap:10px;justify-content:center;margin:18px 0 20px}
+.chip{font-family:'JetBrains Mono',monospace;font-size:12px;padding:8px 12px;border-radius:9px;
+  border:1px solid var(--c,var(--cyan));color:var(--c,var(--cyan));background:rgba(56,225,255,.06);
+  transform:scale(0)}
+.chip.gold{box-shadow:0 0 14px rgba(251,191,36,.3)} .chip.go{animation:chip .4s var(--spring) forwards}
+@keyframes chip{from{transform:scale(.4)}60%{transform:scale(1.12)}to{transform:scale(1)}}
+.chip.solid{background:linear-gradient(135deg,var(--cyan),var(--deep));color:#04121E;border:none;font-weight:700}
+.btn{display:block;width:100%;padding:13px;border:none;border-radius:12px;cursor:pointer;
+  font-size:15px;font-weight:700;font-family:'Noto Sans SC',sans-serif;
+  background:linear-gradient(135deg,var(--cyan),var(--deep));color:#04121E;
+  clip-path:polygon(0 0,calc(100% - 12px) 0,100% 12px,100% 100%,12px 100%,0 calc(100% - 12px));
+  box-shadow:0 0 18px rgba(56,225,255,.35)}
+.btn:active{transform:translateY(1px);box-shadow:0 0 30px rgba(56,225,255,.6)}
+.radar{width:150px;height:150px;margin:6px auto 14px}
+
+/* 升级 */
+.lvlup{position:absolute;inset:0;display:grid;place-items:center;z-index:30;opacity:0;pointer-events:none}
+.lvlup.go{animation:lvl .2s ease-out forwards}
+@keyframes lvl{from{opacity:0}to{opacity:1}}
+.lvlup .big{font-family:'Rajdhani',sans-serif;font-weight:700;font-size:54px;letter-spacing:.06em;
+  color:var(--white);text-align:center;line-height:1.05;
+  text-shadow:0 0 30px rgba(56,225,255,.8);transform:scale(2.4);opacity:0}
+.lvlup.go .big{animation:slam2 .3s .1s var(--spring) forwards}
+@keyframes slam2{from{transform:scale(2.4);opacity:0}to{transform:scale(1);opacity:1}}
+.ring{position:absolute;left:50%;top:50%;width:60px;height:60px;border:2px solid var(--cyan);border-radius:50%;
+  transform:translate(-50%,-50%);opacity:0}
+.lvlup.go .r1{animation:ring .8s .15s ease-out forwards}
+.lvlup.go .r2{animation:ring .8s .3s ease-out forwards}
+@keyframes ring{from{opacity:.9;transform:translate(-50%,-50%) scale(.4)}to{opacity:0;transform:translate(-50%,-50%) scale(6)}}
+.unlock{position:absolute;left:24px;right:24px;bottom:40px;display:flex;flex-direction:column;gap:10px;opacity:0}
+.lvlup.go .unlock{animation:rise .4s .6s var(--spring) forwards}
+
+/* 毒舌 */
+.roast{position:absolute;left:16px;right:16px;top:150px;padding:16px;border-radius:12px;z-index:26;
+  background:rgba(19,28,51,.92);border:1px solid var(--danger);box-shadow:0 0 22px rgba(255,77,94,.22);
+  transform:translateX(115%)}
+.roast.play{animation:pushin .45s var(--spring) forwards}
+@keyframes pushin{to{transform:translateX(0)}}
+.roast .mark{font-family:'JetBrains Mono',monospace;color:var(--danger);margin-right:6px}
+.roast p{font-size:15px;line-height:1.6;min-height:48px}
+.shake{animation:shake .12s linear 2}
+@keyframes shake{25%{transform:translateX(-2px)}75%{transform:translateX(2px)}}
+.curseur{border-right:2px solid var(--cyan)}
+
+/* 连击碎裂 */
+.streakbreak{position:fixed;z-index:60;pointer-events:none;font-family:'JetBrains Mono',monospace}
+.streakbreak span{display:inline-block;font-size:15px;color:var(--white)}
+
+/* 控制台 */
+.console{width:300px;display:flex;flex-direction:column;gap:10px}
+.console h2{font-size:13px;color:var(--ice);font-weight:400;font-family:'JetBrains Mono',monospace;margin-bottom:4px}
+.tbtn{padding:11px 14px;border-radius:10px;border:1px solid rgba(56,225,255,.3);background:rgba(19,28,51,.8);
+  color:var(--white);font-size:13px;cursor:pointer;text-align:left;font-family:'Noto Sans SC',sans-serif;
+  transition:border-color .2s,box-shadow .2s}
+.tbtn:hover{border-color:var(--cyan);box-shadow:0 0 14px rgba(56,225,255,.2)}
+.tbtn.combo{background:linear-gradient(135deg,rgba(56,225,255,.2),rgba(14,165,233,.15));
+  border-color:var(--cyan);font-weight:700}
+.log{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--dim);margin-top:6px;min-height:60px;white-space:pre-line}
+
+/* ═══ v13 · 页面入场（主线 / 任务）——与 app 原型同一套参数，供 Flutter 逐时刻对照 ═══
+   物理规则：东西从上方落到面上（npin / pinin / drop 同族）；只动 transform / opacity；
+   末帧＝原样（backwards 填充，不留 forwards），所以页面静态样式零改动。 */
+.pagein{position:absolute;inset:0;z-index:4;display:none;padding:64px 0 60px;overflow:hidden}
+.pagein.on{display:block}
+/* 页面场景播放时，把样机自己的任务列表让开（HUD 仍在其上，与真机顶栏层级一致） */
+#phone.pgin .questzone{visibility:hidden}
+@keyframes dropin{from{opacity:0;transform:translate(var(--dx,0),-13px)}to{opacity:1;transform:none}}
+@keyframes bdin{from{opacity:0}to{opacity:1}}
+@keyframes slipin{from{opacity:0;transform:translateY(-26px) scale(1.08) rotate(var(--tilt,0deg))}
+  to{opacity:1;transform:translateY(0) scale(1) rotate(var(--tilt,0deg))}}
+/* ① 主线：报头先落下 → 节点沿书脊自上而下逐环入列（左卡从左、右卡从右） */
+.pagein.on .tlhead{animation:dropin .36s var(--spring) backwards}
+.pagein.on .snode.left{--dx:-9px}
+.pagein.on .snode.right{--dx:9px}
+.pagein.on .snode{animation:dropin .44s var(--spring) backwards;animation-delay:calc(var(--i,0)*55ms + 70ms)}
+.tlhead{padding:0 18px 16px;border-bottom:1px solid rgba(150,180,220,.16)}
+.tlgoal{font-family:'Rajdhani',sans-serif;font-size:26px;font-weight:700}
+.tlmeta{margin-top:7px;font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--ice)}
+.tlprog{height:3px;margin-top:14px;border-radius:2px;background:rgba(56,225,255,.12)}
+.tlprog i{display:block;height:100%;width:20%;background:linear-gradient(90deg,var(--deep),var(--cyan))}
+.axis{position:relative;padding:8px 0}
+.snode{position:relative;padding:9px 0;min-height:76px}
+.snode .seg{position:absolute;left:50%;top:0;bottom:0;width:2px;margin-left:-1px;
+  background:repeating-linear-gradient(180deg,rgba(120,145,180,.5) 0 5px,transparent 5px 11px)}
+.snode .dot{position:absolute;left:50%;top:26px;width:11px;height:11px;margin-left:-5.5px;border-radius:50%;
+  border:2px dashed rgba(120,140,180,.6);background:var(--void)}
+.snode .ncard{position:relative;width:47%;margin-left:7px;padding:10px 11px;border-radius:8px;
+  background:rgba(19,28,51,.92);border:1px solid rgba(56,225,255,.25);border-left:2px solid var(--r,var(--cyan))}
+.snode.right .ncard{margin-left:auto;margin-right:7px}
+.snode .nname{font-size:12.5px;line-height:1.5}
+.snode .nmeta{margin-top:5px;font-family:'JetBrains Mono',monospace;font-size:8.5px;color:var(--ice)}
+/* ② 任务：委托板显影 → 六张单子逐张落钉 → 板下缘主线卷轴落下 */
+.pagein.on .hintline{animation:bdin .34s var(--out) backwards}
+.pagein.on .boardin{animation:bdin .28s var(--out) backwards}
+.pagein.on .sledger{animation:dropin .42s var(--spring) 470ms backwards}
+.hintline{padding:0 0 8px;text-align:center;font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--dim)}
+.boardin{position:relative;margin:0 12px;height:300px;border-radius:12px;background:rgba(12,19,36,.8);
+  border:1px solid rgba(56,225,255,.3);box-shadow:inset 0 0 40px rgba(56,225,255,.05)}
+.boardin .bhead{display:flex;justify-content:space-between;padding:8px 13px 7px;
+  font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--ice);letter-spacing:.2em;
+  border-bottom:1px solid rgba(56,225,255,.16)}
+.boardin .bhead b{color:var(--cyan);font-weight:400}
+.slip{position:absolute;width:150px;height:84px;padding:9px 10px;border-radius:8px;
+  background:rgba(19,28,51,.94);border:1px solid var(--r,var(--cyan));transform:rotate(var(--tilt,0deg));
+  box-shadow:0 10px 22px rgba(0,0,0,.45)}
+.slip .sname{font-size:12px;line-height:1.4;padding-right:18px}
+.slip .tier{position:absolute;right:7px;top:7px;font-family:'JetBrains Mono',monospace;font-size:11px;
+  color:var(--r,var(--cyan));border:1px solid var(--r,var(--cyan));border-radius:5px;padding:0 5px}
+.sledger{margin:10px 12px 0;padding:10px 12px;border-radius:8px;background:rgba(19,28,51,.92);
+  border:1px solid rgba(56,225,255,.4);border-left:3px solid var(--cyan)}
+.sledger h4{font-size:13px;font-weight:500}
+.sledger .meta{margin-top:3px;font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--ice)}
+</style>
+</head>
+<body>
+<h1>宿主 SYSTEM · <b>MOTION PROTOTYPE v1</b></h1>
+
+<div class="phone" id="phone">
+  <div class="screen">
+    <div class="hud"><div class="streak"><i></i>连击 <span id="streakNum">6</span></div></div>
+    <div class="expwrap"><div class="expbar" id="expBar" style="transform:scaleX(.2)"></div></div>
+
+    <div class="questzone" id="questzone">
+      <div class="banner" id="banner"><span class="ding">叮。</span>新任务已发布。别问，问就是你自己立的目标。</div>
+      <div id="cards"></div>
+    </div>
+
+    <!-- v13 · 页面入场：两页各一层，不用时 display:none，不进任何既有布局 -->
+    <div class="pagein" id="pgMainIn">
+      <div class="tlhead">
+        <div class="tlgoal">早起早睡</div>
+        <div class="tlmeta">周期 7 天　·　0 / 5 环　·　主题「知」</div>
+        <div class="tlprog"><i></i></div>
+      </div>
+      <div class="axis" id="axisIn"></div>
+    </div>
+    <div class="pagein" id="pgQuestIn">
+      <div class="hintline">按住 = 拔单 · 横扫 = 撕单 · 轻点 = 详情</div>
+      <div class="boardin" id="boardIn">
+        <div class="bhead"><span>◈ 任务发布板 · 每日清晨钉单</span><b>5/6</b></div>
+        <div id="slotsIn"></div>
+      </div>
+      <div class="sledger">
+        <h4>◆ 净桌仪式：睡前收拾桌面</h4>
+        <div class="meta">主线 早起早睡 · 链上已完成 0/5 · 周期 7 天</div>
+      </div>
+    </div>
+
+    <div class="fx dimbg" id="dim"></div>
+    <div class="fx flash" id="flash"></div>
+
+    <div class="settle" id="settle">
+      <div class="burst" id="burst"></div>
+      <div class="label">任务结算</div>
+      <div class="expnum">+<span id="expNum">0</span> EXP<span class="crit" id="crit">CRIT ×2</span></div>
+      <div class="chips">
+        <div class="chip gold" id="chip1" style="--c:#FBBF24">金币 +20</div>
+        <div class="chip" id="chip2">经验 +40</div>
+        <div class="chip solid" id="chip3">智 +1</div>
+      </div>
+      <button class="btn" onclick="play('closeSettle')">收下</button>
+    </div>
+
+    <div class="lvlup" id="lvlup">
+      <div class="ring r1"></div><div class="ring r2"></div>
+      <div><div class="big">LEVEL UP<br><span style="font-size:26px;color:var(--cyan)">LV.3 → LV.4</span></div></div>
+      <div class="unlock"><div class="chip" style="--c:#4ADE80;border-color:#4ADE80">解锁：每日任务上限 4 → 5</div>
+        <div class="chip" style="--c:#FBBF24;border-color:#FBBF24">解锁：C 级任务难度</div></div>
+    </div>
+
+    <div class="roast" id="roast"><span class="mark">»</span><p id="roastText"></p></div>
+  </div>
+</div>
+
+<div class="console">
+  <h2>// 单时刻触发</h2>
+  <button class="tbtn" onclick="play('publish')">① 任务发布 · 叮！</button>
+  <button class="tbtn" onclick="play('accept')">② 任务接受 · 盖章翻转</button>
+  <button class="tbtn" onclick="play('settle')">③ 经验结算 · 暴击</button>
+  <button class="tbtn" onclick="play('levelup')">④ 升级 · 全屏表演</button>
+  <button class="tbtn" onclick="play('streakbreak')">⑤ 连击断连 · 碎裂</button>
+  <button class="tbtn" onclick="play('fail')">⑥ 失败毒舌 · 打字机</button>
+  <h2 style="margin-top:10px">// 页面入场（v13）</h2>
+  <button class="tbtn" onclick="play('pageinMain')">⑦ 主线页入场 · 书脊逐环入列</button>
+  <button class="tbtn" onclick="play('pageinQuest')">⑧ 任务页入场 · 委托板落钉</button>
+  <h2 style="margin-top:10px">// 连播</h2>
+  <button class="tbtn combo" onclick="play('combo')">▶ 完成任务全流程（发布→接受→暴击结算→经验条上涨→升级）</button>
+  <div class="log" id="log"></div>
+  <button class="tbtn" id="sndBtn" onclick="toggleSound()">音效：开（8-bit 合成）</button>
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+const wait=ms=>new Promise(r=>setTimeout(r,ms));
+const log=t=>{const l=$('log');l.textContent=t+'\n'+l.textContent.split('\n').slice(0,8).join('\n')};
+let ac=null,muted=false;
+function beep(freq,dur,type='sine',gain=.12,when=0,slide){if(muted)return;
+  ac=ac||new (window.AudioContext||window.webkitAudioContext)();
+  const t=ac.currentTime+when,o=ac.createOscillator(),g=ac.createGain();
+  o.type=type;o.frequency.setValueAtTime(freq,t);
+  if(slide)o.frequency.exponentialRampToValueAtTime(slide,t+dur);
+  g.gain.setValueAtTime(gain,t);g.gain.exponentialRampToValueAtTime(.001,t+dur);
+  o.connect(g);g.connect(ac.destination);o.start(t);o.stop(t+dur+.02)}
+function toggleSound(){muted=!muted;$('sndBtn').textContent=muted?'音效：关':'音效：开（8-bit 合成）'}
+const sfx={
+  publish(){beep(1318,.09,'sine',.1);beep(1760,.14,'sine',.1,.09)},
+  accept(){beep(140,.12,'triangle',.22,0,60);beep(1200,.03,'square',.06)},
+  coin(){beep(988,.06,'square',.07);beep(1319,.16,'square',.07,.06)},
+  crit(){beep(300,.12,'sawtooth',.1,0,900);beep(1500,.18,'square',.09,.12)},
+  levelup(){[523,659,784,1047].forEach((f,i)=>beep(f,.12,'square',.08,i*.09));beep(2093,.35,'sine',.09,.36)},
+  fail(){beep(220,.28,'sawtooth',.12,0,110)},
+  type(){beep(2400,.015,'square',.02)}};
+const QUESTS=[
+  {t:'词汇锻造：背 30 个单词',m:'截图验证 · 今日 24:00',r:'#4ADE80',tier:'E'},
+  {t:'静心术：冥想 10 分钟',m:'截图验证 · 今日 24:00',r:'#4ADE80',tier:'E'},
+  {t:'感恩清单：记录 3 件值得感谢的事',m:'截图验证 · 今日 24:00',r:'#9AA3B2',tier:'F'},
+];
+function resetQuests(){$('cards').innerHTML=QUESTS.map((q,i)=>
+  `<div class="qcard flip3d cascade" id="qc${i}" style="--r:${q.r}">
+    <div class="flipper"><div class="face qcard" style="border:none">
+      <span class="tier">${q.tier}</span><h3>${q.t}</h3><div class="meta">${q.m}</div></div>
+      <div class="back">▸ 进行中</div></div></div>`).join('')}
+function flash(){$('flash').classList.remove('go');void $('flash').offsetWidth;$('flash').classList.add('go')}
+function countUp(el,to,ms){return new Promise(res=>{const t0=performance.now();
+  (function f(t){const p=Math.min((t-t0)/ms,1),e=1-Math.pow(1-p,3);
+    el.textContent=Math.round(to*e);p<1?requestAnimationFrame(f):res()})(t0)})}
+function expRise(from,to,ms){return new Promise(res=>{const bar=$('expBar');if(!bar){res();return}
+  bar.classList.add('fill');bar.style.transitionDuration=ms+'ms';
+  bar.classList.remove('rise');void bar.offsetWidth;bar.classList.add('rise');
+  bar.style.transform='scaleX('+from+')';
+  requestAnimationFrame(()=>{bar.style.transform='scaleX('+to+')'});
+  setTimeout(()=>{bar.classList.remove('rise');res()},ms)})}
+function typewriter(el,text,ms=30,snd=false){return new Promise(res=>{el.textContent='';let i=0;
+  const t=setInterval(()=>{el.textContent=text.slice(0,++i);if(snd&&i%2)sfx.type();
+    if(i>=text.length){clearInterval(t);res()}},ms)})}
+function shatter(el){const text=el.textContent;el.textContent='';
+  [...text].forEach(ch=>{const s=document.createElement('span');s.textContent=ch;
+    s.className='streakbreak';s.style.left=el.getBoundingClientRect().left+'px';
+    s.style.top=el.getBoundingClientRect().top+'px';document.body.appendChild(s);
+    s.animate([{transform:'translate(0,0)',opacity:1},
+      {transform:`translate(${(Math.random()*60-30)}px,${90+Math.random()*60}px) rotate(${Math.random()*160-80}deg)`,opacity:0}],
+      {duration:500,easing:'cubic-bezier(.5,0,.8,.4)'}).onfinish=()=>s.remove()});
+  el.style.opacity=0;setTimeout(()=>{el.style.opacity=1;el.textContent='0'},600)}
+
+/* v13 · 页面入场：主线＝书脊逐环入列 / 任务＝委托板落钉（参数与 app 原型逐条一致） */
+const RINGS_IN=[
+  {n:'净桌仪式：睡前收拾桌面',m:'F 级 · 书桌截图',r:'#9AA3B2'},
+  {n:'熄屏令：睡前 30 分钟不碰手机',m:'E 级 · 屏幕使用时间截图',r:'#4ADE80'},
+  {n:'就寝禁令：23:30 前上床 ×3 天',m:'E 级 · 对应行动截图',r:'#4ADE80'},
+  {n:'晨光契约：7:00 前起床 ×5 天',m:'D 级 · 起床打卡截图',r:'#38BDF8'},
+  {n:'最终检验：连续 7 天早睡早起',m:'C 级 · 连续打卡截图',r:'#A78BFA'}];
+const SLIPS_IN=[
+  {n:'净桌仪式：睡前收拾桌面',t:'F',r:'#9AA3B2'},{n:'熄屏令：睡前 30 分钟不碰手机',t:'E',r:'#4ADE80'},
+  {n:'就寝禁令：23:30 前上床 ×3 天',t:'E',r:'#4ADE80'},{n:'晨光契约：7:00 前起床 ×5 天',t:'D',r:'#38BDF8'},
+  {n:'最终检验：连续 7 天早睡早起',t:'C',r:'#A78BFA'}];
+const SLOTPOS=[[8,40],[182,40],[8,132],[182,132],[8,224]];
+function buildAxis(){$('axisIn').innerHTML=RINGS_IN.map((r,i)=>
+  `<div class="snode ${i%2?'right':'left'}" style="--i:${i}">
+     <div class="seg"></div><div class="dot"></div>
+     <div class="ncard" style="--r:${r.r}"><div class="nname">${r.n}</div><div class="nmeta">${r.m}</div></div>
+   </div>`).join('')}
+function buildSlips(){$('slotsIn').innerHTML=SLIPS_IN.map((s,i)=>
+  `<div class="slip" style="--r:${s.r};--tilt:${(((i*7)%9)-4)*0.6}deg;left:${SLOTPOS[i][0]}px;top:${SLOTPOS[i][1]}px">
+     <div class="sname">${s.n}</div><span class="tier">${s.t}</span></div>`).join('')}
+
+const seq={
+  async pageinMain(){log('主线入场：报头 dropin 360ms@0 ／ 节点 dropin 440ms@(i*55+70)ms（spring），左卡 -9px、右卡 +9px');
+    return seq.pagein('pgMainIn')},
+  async pageinQuest(){log('任务入场：板子 bdin 280ms@0 ／ 单子 slipin 450ms@(i*55+150)ms ／ 卷轴 dropin 420ms@470ms');
+    return seq.pagein('pgQuestIn')},
+  async pagein(id){document.querySelectorAll('.pagein').forEach(e=>e.classList.remove('on'));
+    if(id==='pgMainIn'){buildAxis();sfx.accept()}else{buildSlips();sfx.publish()}
+    const pg=$(id);pg.classList.add('on');
+    pg.querySelectorAll('.slip').forEach((el,i)=>{el.style.animation='slipin .45s var(--spring) '+(150+i*55)+'ms backwards'});
+    await wait(id==='pgMainIn'?1000:1250)},
+
+  async publish(){log('叮！任务发布');
+    resetQuests();const b=$('banner');b.classList.remove('play');void b.offsetWidth;
+    $('questzone').querySelectorAll('.cascade').forEach(e=>e.classList.remove('play'));
+    b.classList.add('play');await wait(350);flash();sfx.publish();
+    document.querySelectorAll('.cascade').forEach((e,i)=>setTimeout(()=>e.classList.add('play'),i*60))},
+  async accept(){log('接受任务：翻转 + 盖章');flash();
+    const c=$('qc0');c.classList.add('flipped');await wait(480);
+    const back=c.querySelector('.back');back.textContent='▸ 进行中';sfx.accept();
+    back.animate([{transform:'scale(1.5) rotate(-6deg)',opacity:0},{transform:'scale(1) rotate(-6deg)',opacity:1}],
+      {duration:250,easing:'cubic-bezier(.34,1.56,.64,1)'})},
+  async settle(){log('经验结算：暴击流');
+    $('dim').classList.add('on');$('burst').classList.remove('go');void $('burst').offsetWidth;
+    const s=$('settle');s.classList.remove('play');void s.offsetWidth;s.classList.add('play');
+    await wait(400);$('burst').classList.add('go');
+    await countUp($('expNum'),20,350);
+    $('crit').classList.add('go');sfx.crit();await wait(260);
+    await countUp($('expNum'),40,400);
+    ['chip1','chip2','chip3'].forEach((id,i)=>setTimeout(()=>{$(id).classList.remove('go');void $(id).offsetWidth;$(id).classList.add('go')},i*120));
+    await wait(360);await expRise(.2,.62,520);
+    log('结算完毕：+40 EXP（暴击）· 金币 +20 · 智 +1（v11：金币直接入账，进账反馈＝经验条上涨）')},
+  async closeSettle(){$('settle').classList.remove('play');$('dim').classList.remove('on');$('crit').classList.remove('go')},
+  async levelup(){log('LEVEL UP');flash();sfx.levelup();const l=$('lvlup');l.classList.remove('go');void l.offsetWidth;l.classList.add('go');
+    await wait(1400);l.classList.remove('go');await expRise(.62,.85,420)},
+  async streakbreak(){log('连击碎裂…安静地疼');shatter($('streakNum'))},
+  async fail(){log('毒舌时间');const r=$('roast');r.classList.remove('play');void r.offsetWidth;r.classList.add('play');
+    await wait(300);sfx.fail();$('phone').classList.add('shake');await wait(260);$('phone').classList.remove('shake');
+    await typewriter($('roastText'),'连 10 分钟都凑不出来，系统对宿主的最后一丝期待已耗尽。',30,true)},
+  async combo(){await seq.publish();await wait(700);await seq.accept();await wait(600);
+    await seq.settle();await wait(500);await seq.levelup();log('全流程连播完毕')},
+};
+function play(name){const isPage=name.indexOf('pagein')===0;
+  document.querySelectorAll('.pagein').forEach(e=>{if(!isPage)e.classList.remove('on')});
+  $('phone').classList.toggle('pgin',isPage);seq[name]()}
+resetQuests();
+</script>
+</body>
+</html>

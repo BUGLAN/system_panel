@@ -1,0 +1,10 @@
+Apply the attached DESIGN.md strictly (GAME HUD EDITION). Game system-window aesthetic: glass panels with 1px cyan (#38E1FF) borders + soft glow, clipped corner frames, canvas #0A0E1A with faint grid + slow scanline, glowing cyan accents.
+
+SCREEN CONTENT LOCK — this is the FIRST-LAUNCH ONBOARDING screen (绑定仪式), shown before the player has any quests. It contains ONLY the six blocks below, in this order. NO quest lists, NO task hub, NO reward chips, NO bottom tab bar, NO dungeon cards.
+
+1. Top: mono status line "SYSTEM ONLINE" with slow cyan scanline; under it a 3-line system log in mono 12px: "> 扫描完成", "> 宿主档案：空", "> 期待值已预设：最低".
+2. Headline in cool white Rajdhani, two lines, left-aligned: "检测到新宿主。" / "系统已接管。" (second line in cyan with glow). Subcopy 15px muted: "在留下第一个目标之前，系统对本宿主不抱任何期待。"
+3. A goal input field on a glass panel: label "宿主目标（一句话即可）", placeholder "例如：三个月减十斤 / 早睡早起 / 考研上岸", cyan focus ring + glow.
+4. One mono line with small cyan tick icons: "开局三件套：金币 ×10 · 免死金牌 ×2 · 称号「三分钟热度」".
+5. One primary button, cyan gradient (#38E1FF→#0EA5E9) fill + cyan glow, dark navy text, one clipped corner: "绑定系统". No secondary link.
+6. Nothing else. UI copy in Chinese exactly as given.

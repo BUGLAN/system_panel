@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="zh-CN"><head>
+<meta charset="utf-8"/>
+<meta content="width=390, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" name="viewport"/>
+<title>HOST STATUS PANEL // 宿主状态面板</title>
+<!-- Material Symbols Outlined -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Google Fonts: Space Grotesk, Noto Sans SC, JetBrains Mono -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&amp;family=Noto+Sans+SC:wght@400;500;700&amp;family=Space+Grotesk:wght@500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          "colors": {
+            "outline-variant": "#4f4536",
+            "secondary": "#c8c5ca",
+            "on-error-container": "#ffdad6",
+            "structural-line": "rgba(244,244,245,0.08)",
+            "on-primary": "#422c00",
+            "on-tertiary-container": "#014b87",
+            "background": "#17130c",
+            "surface": "#17130c",
+            "inverse-on-surface": "#353028",
+            "screen-off-gray": "#5B5B63",
+            "inverse-primary": "#7e5700",
+            "on-secondary-container": "#b6b4b8",
+            "surface-tint": "#f6bd56",
+            "surface-container": "#241f18",
+            "secondary-container": "#47464a",
+            "surface-dim": "#17130c",
+            "surface-container-high": "#2f2922",
+            "secondary-fixed": "#e4e1e6",
+            "system-amber": "#E8B04B",
+            "primary-fixed-dim": "#f6bd56",
+            "oxidation-red": "#E05252",
+            "on-secondary": "#303033",
+            "on-primary-fixed": "#271900",
+            "on-primary-container": "#634400",
+            "tertiary-fixed-dim": "#a3c9ff",
+            "tertiary-container": "#8abcff",
+            "error": "#ffb4ab",
+            "elevated-gray": "#1E1E23",
+            "surface-container-lowest": "#120e07",
+            "on-secondary-fixed": "#1b1b1e",
+            "surface-container-highest": "#3a342c",
+            "on-background": "#ebe1d5",
+            "on-tertiary-fixed-variant": "#004882",
+            "primary-fixed": "#ffdeab",
+            "error-container": "#93000a",
+            "surface-bright": "#3e3830",
+            "on-surface-variant": "#d3c4b0",
+            "screen-white": "#F4F4F5",
+            "on-error": "#690005",
+            "primary": "#ffcd7b",
+            "on-tertiary": "#00315c",
+            "verification-green": "#6FBF8E",
+            "fluorescent-gray": "#9D9DA7",
+            "on-primary-fixed-variant": "#5f4100",
+            "on-surface": "#ebe1d5",
+            "on-secondary-fixed-variant": "#47464a",
+            "inverse-surface": "#ebe1d5",
+            "on-tertiary-fixed": "#001c39",
+            "tertiary": "#bcd7ff",
+            "surface-variant": "#3a342c",
+            "secondary-fixed-dim": "#c8c5ca",
+            "terminal-black": "#101012",
+            "outline": "#9c8f7d",
+            "console-gray": "#17171A",
+            "tertiary-fixed": "#d3e3ff",
+            "surface-container-low": "#201b14",
+            "primary-container": "#e8b04b"
+          },
+          "borderRadius": {
+            "DEFAULT": "0.25rem",
+            "lg": "0.5rem",
+            "xl": "0.75rem",
+            "full": "9999px"
+          },
+          "spacing": {
+            "space-xl": "32px",
+            "margin": "16px",
+            "space-xs": "4px",
+            "space-lg": "24px",
+            "space-md": "16px",
+            "space-sm": "8px",
+            "gutter": "12px"
+          },
+          "fontFamily": {
+            "headline-sm": ["Space Grotesk"],
+            "body-sm": ["Noto Sans SC"],
+            "body-md": ["Noto Sans SC"],
+            "number-md": ["JetBrains Mono"],
+            "label-mono": ["JetBrains Mono"],
+            "headline-md": ["Space Grotesk"],
+            "headline-lg": ["Space Grotesk"],
+            "number-sm": ["JetBrains Mono"],
+            "number-lg": ["Space Grotesk"]
+          },
+          "fontSize": {
+            "headline-sm": ["18px", { "lineHeight": "24px", "letterSpacing": "-0.02em", "fontWeight": "600" }],
+            "body-sm": ["13px", { "lineHeight": "1.5", "fontWeight": "400" }],
+            "body-md": ["15px", { "lineHeight": "1.6", "fontWeight": "400" }],
+            "number-md": ["16px", { "lineHeight": "20px", "fontWeight": "600" }],
+            "label-mono": ["12px", { "lineHeight": "16px", "letterSpacing": "0.2em", "fontWeight": "500" }],
+            "headline-md": ["24px", { "lineHeight": "32px", "letterSpacing": "-0.02em", "fontWeight": "600" }],
+            "headline-lg": ["32px", { "lineHeight": "40px", "letterSpacing": "-0.02em", "fontWeight": "700" }],
+            "number-sm": ["11px", { "lineHeight": "14px", "fontWeight": "500" }],
+            "number-lg": ["56px", { "lineHeight": "60px", "letterSpacing": "-0.03em", "fontWeight": "700" }]
+          }
+        }
+      }
+    }
+  </script>
+<style>
+    body {
+      background-color: #101012;
+      color: #F4F4F5;
+      font-family: 'Noto Sans SC', sans-serif;
+      margin: 0;
+      padding: 0;
+      -webkit-font-smoothing: antialiased;
+      overflow-x: hidden;
+    }
+    .material-symbols-outlined {
+      font-family: 'Material Symbols Outlined';
+      font-weight: normal;
+      font-style: normal;
+      font-size: 18px;
+      line-height: 1;
+      display: inline-block;
+      text-transform: none;
+      letter-spacing: normal;
+      word-wrap: normal;
+      white-space: nowrap;
+      direction: ltr;
+    }
+    /* Subtle scanline overlay for deadpan system aesthetics */
+    .scanlines {
+      background: linear-gradient(
+        rgba(16, 16, 18, 0) 50%, 
+        rgba(0, 0, 0, 0.25) 50%
+      );
+      background-size: 100% 4px;
+    }
+  </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-terminal-black text-screen-white flex justify-center min-h-screen">
+<!-- Mobile Simulator Frame (390px canonical) -->
+<div class="w-full max-w-[390px] relative bg-terminal-black min-h-screen flex flex-col pb-20 selection:bg-system-amber selection:text-terminal-black">
+<!-- Pinned TopAppBar (Shared Component Implementation) -->
+<header class="fixed top-0 left-0 w-full z-50 flex justify-between items-center px-space-md h-12 bg-terminal-black border-b border-structural-line max-w-[390px] left-1/2 -translate-x-1/2">
+<div class="flex items-center space-x-2">
+<span class="material-symbols-outlined text-system-amber">terminal</span>
+<span class="text-label-mono font-label-mono tracking-widest text-system-amber uppercase">SYS://INITIALIZE</span>
+</div>
+<div class="flex items-center space-x-3">
+<span class="text-number-sm font-number-sm text-screen-off-gray flex items-center">
+<span class="w-1.5 h-1.5 rounded-full bg-verification-green inline-block mr-1.5 animate-pulse"></span>
+          9MS
+        </span>
+<span class="text-number-sm font-number-sm text-system-amber">V1.0.4_ONLINE</span>
+</div>
+</header>
+<!-- Content Canvas (Left-aligned cockpit hierarchy) -->
+<main class="flex-1 px-margin pt-14 flex flex-col space-y-space-lg">
+<!-- Section 1: Host Identity & Level Strip -->
+<section class="mt-2 flex flex-col space-y-space-sm">
+<div class="flex items-center justify-between">
+<div class="flex items-baseline space-x-2">
+<span class="text-label-mono font-label-mono text-fluorescent-gray tracking-wider">HOST_ID:</span>
+<span class="text-number-md font-number-md text-screen-white">#9527</span>
+<span class="text-body-sm font-body-sm text-screen-off-gray">宿主代号：编号9527</span>
+</div>
+<span class="px-2 py-0.5 rounded text-number-sm font-number-sm bg-console-gray text-system-amber border border-structural-line">
+            SYNC_OK
+          </span>
+</div>
+<!-- Level Display + EXP HUD (Bento Row) -->
+<div class="bg-console-gray rounded-xl p-space-md border border-structural-line flex flex-col space-y-space-sm relative overflow-hidden">
+<div class="flex justify-between items-baseline">
+<div class="flex items-baseline space-x-2">
+<span class="text-headline-lg font-headline-lg text-system-amber">LV.03</span>
+<span class="text-label-mono font-label-mono text-fluorescent-gray text-[10px]">TIER_NEOPHYTE</span>
+</div>
+<!-- Quantitative Pills -->
+<div class="flex items-center space-x-3">
+<div class="text-right">
+<div class="text-number-sm font-number-sm text-screen-off-gray">CREDIT</div>
+<div class="text-number-md font-number-md text-screen-white flex items-center justify-end">
+                  1,840 <span class="text-system-amber ml-1 text-xs">⬡</span>
+</div>
+</div>
+<div class="h-6 w-px bg-structural-line"></div>
+<div class="text-right">
+<div class="text-number-sm font-number-sm text-screen-off-gray">STREAK</div>
+<div class="text-number-md font-number-md text-screen-white flex items-center justify-end">
+                  14D <span class="w-1.5 h-1.5 rounded-full bg-system-amber ml-1.5"></span>
+</div>
+</div>
+</div>
+</div>
+<!-- EXP Progress Bar -->
+<div class="space-y-1">
+<div class="flex justify-between items-center text-number-sm font-number-sm">
+<span class="text-fluorescent-gray">EXP_BUFFER</span>
+<span class="text-screen-white">420 / 1000 <span class="text-screen-off-gray font-normal">EXP</span></span>
+</div>
+<div class="h-1.5 w-full bg-terminal-black rounded-full overflow-hidden border border-structural-line p-[1px]">
+<div class="h-full bg-system-amber rounded-full" style="width: 42%;"></div>
+</div>
+</div>
+</div>
+</section>
+<!-- Section 2: System Diagnostics / Roast Box (毒舌评级框) -->
+<section class="bg-elevated-gray rounded-xl border border-oxidation-red p-space-md flex flex-col space-y-space-xs relative">
+<div class="flex items-center justify-between text-label-mono font-label-mono">
+<span class="text-oxidation-red flex items-center tracking-wider">
+<span class="mr-1 font-bold">»</span> SYSTEM_EVALUATION // 综合评语
+          </span>
+<span class="text-number-sm font-number-sm text-oxidation-red opacity-80">CODE: 0xROAST_403</span>
+</div>
+<p class="text-body-sm font-body-sm text-screen-white leading-relaxed pt-1">
+          叮。经系统全息校准，该宿主肉体机能维持在碳基及格线边缘，精神抗挫力平庸。建议停止无意义的自我感动，尽快完成核心主线。
+        </p>
+<div class="pt-2 flex justify-start">
+<button class="flex items-center space-x-1 text-label-mono font-label-mono text-system-amber hover:text-screen-white transition-colors duration-150 active:opacity-80">
+<span>[ 立即调取今日强化协议 ]</span>
+<span class="material-symbols-outlined text-[14px]">chevron_right</span>
+</button>
+</div>
+</section>
+<!-- Section 3: Hexagonal Radar Chart (六维属性雷达) -->
+<section class="bg-console-gray rounded-xl border border-structural-line p-space-md flex flex-col space-y-space-md">
+<div class="flex items-center justify-between">
+<div class="flex flex-col">
+<span class="text-label-mono font-label-mono text-fluorescent-gray">NEURAL_RADAR // 六维机能遥测</span>
+<span class="text-number-sm font-number-sm text-screen-off-gray">HOST_METRIC_V4.2</span>
+</div>
+<span class="text-number-sm font-number-sm text-verification-green px-2 py-0.5 rounded bg-terminal-black border border-structural-line flex items-center">
+<span class="w-1.5 h-1.5 rounded-full bg-verification-green mr-1"></span>
+            DIAGNOSTIC_ACTIVE
+          </span>
+</div>
+<!-- Radar Canvas -->
+<div class="relative w-full h-[230px] flex items-center justify-center">
+<svg class="w-full h-full overflow-visible" viewbox="0 0 320 250">
+<!-- Hexagon Grids (Outer, Middle, Inner) -->
+<!-- Center at 160, 125. Outer radius ~85px -->
+<!-- Radius 85 -->
+<polygon fill="none" points="160,40 233.6,82.5 233.6,167.5 160,210 86.4,167.5 86.4,82.5" stroke="rgba(244,244,245,0.08)" stroke-width="1"></polygon>
+<!-- Radius 56 -->
+<polygon fill="none" points="160,69 208.5,97 208.5,153 160,181 111.5,153 111.5,97" stroke="rgba(244,244,245,0.08)" stroke-dasharray="2 2" stroke-width="1"></polygon>
+<!-- Radius 28 -->
+<polygon fill="none" points="160,97 184.2,111 184.2,139 160,153 135.8,139 135.8,111" stroke="rgba(244,244,245,0.08)" stroke-width="1"></polygon>
+<!-- Spoke lines -->
+<line stroke="rgba(244,244,245,0.08)" stroke-width="1" x1="160" x2="160" y1="125" y2="40"></line>
+<line stroke="rgba(244,244,245,0.08)" stroke-width="1" x1="160" x2="233.6" y1="125" y2="82.5"></line>
+<line stroke="rgba(244,244,245,0.08)" stroke-width="1" x1="160" x2="233.6" y1="125" y2="167.5"></line>
+<line stroke="rgba(244,244,245,0.08)" stroke-width="1" x1="160" x2="160" y1="125" y2="210"></line>
+<line stroke="rgba(244,244,245,0.08)" stroke-width="1" x1="160" x2="86.4" y1="125" y2="167.5"></line>
+<line stroke="rgba(244,244,245,0.08)" stroke-width="1" x1="160" x2="86.4" y1="125" y2="82.5"></line>
+<!-- Data Polygon:
+                 PHY: 14.2/20 -> r=60.35 -> (160, 64.6)
+                 INT: 18.5/20 -> r=78.6  -> (228.1, 85.7)
+                 FOC: 09.8/20 -> r=41.65 -> (196.1, 145.8)
+                 WILL: 16.0/20-> r=68.0  -> (160, 193)
+                 SOC: 05.2/20 -> r=22.1  -> (140.9, 136.0)
+                 BIO: 12.4/20 -> r=52.7  -> (114.4, 98.6)
+            -->
+<polygon fill="#E8B04B" fill-opacity="0.15" points="160,64.6 228.1,85.7 196.1,145.8 160,193 140.9,136.0 114.4,98.6" stroke="#E8B04B" stroke-width="1.5"></polygon>
+<!-- Key points -->
+<circle cx="160" cy="64.6" fill="#E8B04B" r="2.5"></circle>
+<circle cx="228.1" cy="85.7" fill="#E8B04B" r="2.5"></circle>
+<circle cx="196.1" cy="145.8" fill="#E05252" r="2.5"></circle>
+<circle cx="160" cy="193" fill="#E8B04B" r="2.5"></circle>
+<circle cx="140.9" cy="136.0" fill="#E05252" r="2.5"></circle>
+<circle cx="114.4" cy="98.6" fill="#E8B04B" r="2.5"></circle>
+<!-- Labels outside vertices -->
+<!-- Top: PHY -->
+<text class="fill-fluorescent-gray font-mono text-[10px]" text-anchor="middle" x="160" y="24">
+              体 PHY <tspan class="fill-screen-white font-bold">14.2</tspan>
+</text>
+<!-- Top Right: INT -->
+<text class="fill-fluorescent-gray font-mono text-[10px]" text-anchor="start" x="246" y="80">
+              智 INT <tspan class="fill-screen-white font-bold">18.5</tspan>
+</text>
+<!-- Bottom Right: FOC (Critical) -->
+<text class="fill-oxidation-red font-mono text-[10px]" text-anchor="start" x="246" y="174">
+              专 FOC <tspan class="fill-oxidation-red font-bold">09.8</tspan>
+</text>
+<!-- Bottom: WILL -->
+<text class="fill-fluorescent-gray font-mono text-[10px]" text-anchor="middle" x="160" y="228">
+              心 WILL <tspan class="fill-screen-white font-bold">16.0</tspan>
+</text>
+<!-- Bottom Left: SOC -->
+<text class="fill-screen-off-gray font-mono text-[10px]" text-anchor="end" x="74" y="174">
+              交 SOC <tspan class="fill-oxidation-red font-bold">05.2</tspan>
+</text>
+<!-- Top Left: BIO -->
+<text class="fill-fluorescent-gray font-mono text-[10px]" text-anchor="end" x="74" y="80">
+              生 BIO <tspan class="fill-screen-white font-bold">12.4</tspan>
+</text>
+</svg>
+</div>
+</section>
+<!-- Section 4: Detailed Attribute Breakdown Grid (2-column asymmetric) -->
+<section class="flex flex-col space-y-space-sm">
+<div class="flex items-center justify-between">
+<span class="text-label-mono font-label-mono text-fluorescent-gray">TELEMETRY_BREAKDOWN // 机能细目</span>
+<span class="text-number-sm font-number-sm text-screen-off-gray">BASE_SCALE: 20.0</span>
+</div>
+<div class="grid grid-cols-2 gap-gutter">
+<!-- PHY -->
+<div class="bg-console-gray rounded-xl p-3 border border-structural-line flex flex-col justify-between space-y-2">
+<div class="flex justify-between items-start">
+<span class="text-label-mono font-label-mono text-screen-white">体能 PHY</span>
+<span class="text-number-sm font-number-sm text-system-amber">+1.0 PEND</span>
+</div>
+<div class="flex items-baseline justify-between">
+<span class="text-headline-sm font-headline-sm text-screen-white">14.2</span>
+<span class="text-number-sm font-number-sm text-screen-off-gray">/ 20.0</span>
+</div>
+<div class="h-1 w-full bg-terminal-black rounded-full overflow-hidden">
+<div class="h-full bg-system-amber" style="width: 71%;"></div>
+</div>
+</div>
+<!-- INT -->
+<div class="bg-console-gray rounded-xl p-3 border border-structural-line flex flex-col justify-between space-y-2">
+<div class="flex justify-between items-start">
+<span class="text-label-mono font-label-mono text-screen-white">智力 INT</span>
+<span class="text-number-sm font-number-sm text-verification-green">STABLE</span>
+</div>
+<div class="flex items-baseline justify-between">
+<span class="text-headline-sm font-headline-sm text-screen-white">18.5</span>
+<span class="text-number-sm font-number-sm text-screen-off-gray">/ 20.0</span>
+</div>
+<div class="h-1 w-full bg-terminal-black rounded-full overflow-hidden">
+<div class="h-full bg-verification-green" style="width: 92.5%;"></div>
+</div>
+</div>
+<!-- FOC (Highlighted Critical) -->
+<div class="bg-console-gray rounded-xl p-3 border border-oxidation-red/40 flex flex-col justify-between space-y-2 relative overflow-hidden">
+<div class="flex justify-between items-start">
+<span class="text-label-mono font-label-mono text-screen-white">专注 FOC</span>
+<span class="text-number-sm font-number-sm text-oxidation-red">CRIT_LOW</span>
+</div>
+<div class="flex items-baseline justify-between">
+<span class="text-headline-sm font-headline-sm text-oxidation-red">09.8</span>
+<span class="text-number-sm font-number-sm text-screen-off-gray">/ 20.0</span>
+</div>
+<div class="h-1 w-full bg-terminal-black rounded-full overflow-hidden">
+<div class="h-full bg-oxidation-red" style="width: 49%;"></div>
+</div>
+</div>
+<!-- WILL -->
+<div class="bg-console-gray rounded-xl p-3 border border-structural-line flex flex-col justify-between space-y-2">
+<div class="flex justify-between items-start">
+<span class="text-label-mono font-label-mono text-screen-white">意志 WILL</span>
+<span class="text-number-sm font-number-sm text-screen-off-gray">MAINTAIN</span>
+</div>
+<div class="flex items-baseline justify-between">
+<span class="text-headline-sm font-headline-sm text-screen-white">16.0</span>
+<span class="text-number-sm font-number-sm text-screen-off-gray">/ 20.0</span>
+</div>
+<div class="h-1 w-full bg-terminal-black rounded-full overflow-hidden">
+<div class="h-full bg-system-amber" style="width: 80%;"></div>
+</div>
+</div>
+<!-- SOC -->
+<div class="bg-console-gray rounded-xl p-3 border border-structural-line flex flex-col justify-between space-y-2">
+<div class="flex justify-between items-start">
+<span class="text-label-mono font-label-mono text-screen-white">社交 SOC</span>
+<span class="text-number-sm font-number-sm text-oxidation-red">SUB-ZERO</span>
+</div>
+<div class="flex items-baseline justify-between">
+<span class="text-headline-sm font-headline-sm text-screen-white">05.2</span>
+<span class="text-number-sm font-number-sm text-screen-off-gray">/ 20.0</span>
+</div>
+<div class="h-1 w-full bg-terminal-black rounded-full overflow-hidden">
+<div class="h-full bg-screen-off-gray" style="width: 26%;"></div>
+</div>
+</div>
+<!-- BIO -->
+<div class="bg-console-gray rounded-xl p-3 border border-structural-line flex flex-col justify-between space-y-2">
+<div class="flex justify-between items-start">
+<span class="text-label-mono font-label-mono text-screen-white">生理 BIO</span>
+<span class="text-number-sm font-number-sm text-verification-green">NOMINAL</span>
+</div>
+<div class="flex items-baseline justify-between">
+<span class="text-headline-sm font-headline-sm text-screen-white">12.4</span>
+<span class="text-number-sm font-number-sm text-screen-off-gray">/ 20.0</span>
+</div>
+<div class="h-1 w-full bg-terminal-black rounded-full overflow-hidden">
+<div class="h-full bg-verification-green" style="width: 62%;"></div>
+</div>
+</div>
+</div>
+</section>
+<!-- Section 5: Passive System Buffs & Debuffs (状态槽) -->
+<section class="flex flex-col space-y-space-sm">
+<span class="text-label-mono font-label-mono text-fluorescent-gray">ACTIVE_STATE // 状态附魔与异常</span>
+<div class="space-y-2">
+<!-- Buff Row -->
+<div class="bg-console-gray rounded-xl p-space-sm border border-structural-line flex items-center space-x-3">
+<div class="w-7 h-7 rounded bg-elevated-gray border border-system-amber/30 flex items-center justify-center shrink-0">
+<span class="material-symbols-outlined text-system-amber text-[16px]">bolt</span>
+</div>
+<div class="flex-1 min-w-0">
+<div class="flex items-center justify-between">
+<span class="text-body-sm font-body-sm font-medium text-screen-white truncate">「初阶神经过载」</span>
+<span class="text-number-sm font-number-sm text-system-amber shrink-0">+10% EXP</span>
+</div>
+<p class="text-number-sm font-number-sm text-screen-off-gray truncate">
+                任务经验结算倍率提升 · 处于高功耗待机态
+              </p>
+</div>
+</div>
+<!-- Debuff Row -->
+<div class="bg-console-gray rounded-xl p-space-sm border border-structural-line flex items-center space-x-3">
+<div class="w-7 h-7 rounded bg-elevated-gray border border-oxidation-red/30 flex items-center justify-center shrink-0">
+<span class="material-symbols-outlined text-oxidation-red text-[16px]">warning</span>
+</div>
+<div class="flex-1 min-w-0">
+<div class="flex items-center justify-between">
+<span class="text-body-sm font-body-sm font-medium text-screen-white truncate">「拖延症残留毒性」</span>
+<span class="text-number-sm font-number-sm text-oxidation-red shrink-0">+15% RISK</span>
+</div>
+<p class="text-number-sm font-number-sm text-screen-off-gray truncate">
+                超时惩罚概率激增 · 建议立即执行主干任务消除
+              </p>
+</div>
+</div>
+</div>
+</section>
+<!-- Section 6: Action CTA Cluster -->
+<section class="flex flex-col space-y-2 pt-2">
+<!-- Primary Amber Button (14px radius as per guidelines) -->
+<button class="w-full bg-system-amber text-terminal-black font-label-mono text-label-mono font-bold tracking-widest py-3 rounded-[14px] flex items-center justify-center space-x-2 transition-transform duration-100 active:scale-95 shadow-none">
+<span class="material-symbols-outlined text-[16px]">memory</span>
+<span>[ 启动全息神经校准 PROTOCOL_OVERCLOCK ]</span>
+</button>
+<!-- Secondary Ghost Button -->
+<button class="w-full bg-transparent text-screen-off-gray hover:text-screen-white border border-structural-line font-label-mono text-label-mono tracking-wider py-2.5 rounded-[14px] flex items-center justify-center space-x-2 transition-colors duration-150 active:opacity-80">
+<span class="material-symbols-outlined text-[16px]">file_download</span>
+<span>[ 导出宿主生物遥测切片 EXPORT_TELEMETRY ]</span>
+</button>
+</section>
+<!-- Machine Diagnostic Footer Narration -->
+<div class="py-2 text-center">
+<span class="text-number-sm font-number-sm text-screen-off-gray tracking-tighter">
+          KERNEL_HASH: 0x9527_BETA // NO MASCOTS // STANDBY
+        </span>
+</div>
+</main>
+<!-- BottomNavBar (Shared Component Execution) -->
+<!-- Destination Rule: Top-level HUD destination -> active state: SYS_HUD -->
+<nav class="fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-margin h-14 bg-console-gray border-t border-structural-line pb-safe max-w-[390px] left-1/2 -translate-x-1/2">
+<!-- Tab 1: SYS_HUD (ACTIVE) -->
+<button class="flex flex-col items-center justify-center text-system-amber dark:text-system-amber py-1 active:scale-95 transition-transform duration-100">
+<span class="material-symbols-outlined">terminal</span>
+<span class="text-number-sm font-number-sm mt-0.5">SYS_HUD</span>
+</button>
+<!-- Tab 2: BINDING (INACTIVE) -->
+<button class="flex flex-col items-center justify-center text-screen-off-gray dark:text-screen-off-gray py-1 hover:text-screen-white dark:hover:text-screen-white transition-colors duration-150 active:scale-95">
+<span class="material-symbols-outlined">fingerprint</span>
+<span class="text-number-sm font-number-sm mt-0.5">BINDING</span>
+</button>
+<!-- Tab 3: LOGS (INACTIVE) -->
+<button class="flex flex-col items-center justify-center text-screen-off-gray dark:text-screen-off-gray py-1 hover:text-screen-white dark:hover:text-screen-white transition-colors duration-150 active:scale-95">
+<span class="material-symbols-outlined">receipt_long</span>
+<span class="text-number-sm font-number-sm mt-0.5">LOGS</span>
+</button>
+</nav>
+</div>
+</body></html>

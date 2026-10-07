@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="zh-CN"><head>
+<meta charset="utf-8"/>
+<meta content="width=390, user-scalable=no, initial-scale=1.0" name="viewport"/>
+<title>SYS://PROTOCOL_EXEC - 宿主 SYSTEM</title>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&amp;family=Noto+Sans+SC:wght@400;500;600;700&amp;family=Space+Grotesk:wght@500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          "colors": {
+            "screen-white": "#F4F4F5",
+            "surface-container-high": "#2f2922",
+            "on-primary-fixed": "#271900",
+            "on-error-container": "#ffdad6",
+            "surface-dim": "#17130c",
+            "primary-fixed": "#ffdeab",
+            "outline-variant": "#4f4536",
+            "on-background": "#ebe1d5",
+            "on-primary-container": "#634400",
+            "on-surface-variant": "#d3c4b0",
+            "surface-bright": "#3e3830",
+            "on-error": "#690005",
+            "error-container": "#93000a",
+            "surface-variant": "#3a342c",
+            "console-gray": "#17171A",
+            "secondary": "#c8c5ca",
+            "background": "#17130c",
+            "tertiary-fixed-dim": "#a3c9ff",
+            "on-tertiary-fixed": "#001c39",
+            "on-tertiary-container": "#014b87",
+            "on-tertiary": "#00315c",
+            "on-secondary-container": "#b6b4b8",
+            "on-primary-fixed-variant": "#5f4100",
+            "surface": "#17130c",
+            "secondary-fixed-dim": "#c8c5ca",
+            "inverse-primary": "#7e5700",
+            "primary": "#ffcd7b",
+            "inverse-surface": "#ebe1d5",
+            "primary-fixed-dim": "#f6bd56",
+            "oxidation-red": "#E05252",
+            "on-secondary": "#303033",
+            "surface-container": "#241f18",
+            "error": "#ffb4ab",
+            "surface-container-low": "#201b14",
+            "tertiary-fixed": "#d3e3ff",
+            "tertiary-container": "#8abcff",
+            "verification-green": "#6FBF8E",
+            "on-primary": "#422c00",
+            "secondary-fixed": "#e4e1e6",
+            "primary-container": "#e8b04b",
+            "on-surface": "#ebe1d5",
+            "on-tertiary-fixed-variant": "#004882",
+            "tertiary": "#bcd7ff",
+            "inverse-on-surface": "#353028",
+            "fluorescent-gray": "#9D9DA7",
+            "secondary-container": "#47464a",
+            "surface-container-highest": "#3a342c",
+            "surface-container-lowest": "#120e07",
+            "screen-off-gray": "#5B5B63",
+            "terminal-black": "#101012",
+            "surface-tint": "#f6bd56",
+            "structural-line": "rgba(244,244,245,0.08)",
+            "outline": "#9c8f7d",
+            "elevated-gray": "#1E1E23",
+            "on-secondary-fixed-variant": "#47464a",
+            "on-secondary-fixed": "#1b1b1e",
+            "system-amber": "#E8B04B"
+          },
+          "borderRadius": {
+            "DEFAULT": "0.25rem",
+            "lg": "0.5rem",
+            "xl": "0.75rem",
+            "full": "9999px"
+          },
+          "spacing": {
+            "margin": "16px",
+            "gutter": "12px",
+            "space-sm": "8px",
+            "space-md": "16px",
+            "space-lg": "24px",
+            "space-xl": "32px",
+            "space-xs": "4px"
+          },
+          "fontFamily": {
+            "number-lg": ["Space Grotesk"],
+            "number-md": ["JetBrains Mono"],
+            "body-sm": ["Noto Sans SC"],
+            "number-sm": ["JetBrains Mono"],
+            "label-mono": ["JetBrains Mono"],
+            "body-md": ["Noto Sans SC"],
+            "headline-md": ["Space Grotesk"],
+            "headline-lg": ["Space Grotesk"],
+            "headline-sm": ["Space Grotesk"]
+          },
+          "fontSize": {
+            "number-lg": ["56px", { "lineHeight": "60px", "letterSpacing": "-0.03em", "fontWeight": "700" }],
+            "number-md": ["16px", { "lineHeight": "20px", "fontWeight": "600" }],
+            "body-sm": ["13px", { "lineHeight": "1.5", "fontWeight": "400" }],
+            "number-sm": ["11px", { "lineHeight": "14px", "fontWeight": "500" }],
+            "label-mono": ["12px", { "lineHeight": "16px", "letterSpacing": "0.2em", "fontWeight": "500" }],
+            "body-md": ["15px", { "lineHeight": "1.6", "fontWeight": "400" }],
+            "headline-md": ["24px", { "lineHeight": "32px", "letterSpacing": "-0.02em", "fontWeight": "600" }],
+            "headline-lg": ["32px", { "lineHeight": "40px", "letterSpacing": "-0.02em", "fontWeight": "700" }],
+            "headline-sm": ["18px", { "lineHeight": "24px", "letterSpacing": "-0.02em", "fontWeight": "600" }]
+          }
+        }
+      }
+    }
+  </script>
+<style>
+    body {
+      background-color: #101012;
+      color: #F4F4F5;
+      font-family: 'Noto Sans SC', sans-serif;
+      margin: 0;
+      padding: 0;
+      -webkit-font-smoothing: antialiased;
+    }
+    .material-symbols-outlined {
+      font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 20;
+      line-height: 1;
+      display: inline-block;
+    }
+  </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-terminal-black text-screen-white flex justify-center selection:bg-system-amber selection:text-terminal-black">
+<!-- Mobile Viewport Constrained to 390px -->
+<div class="w-full max-w-[390px] min-h-screen bg-terminal-black flex flex-col relative pb-10">
+<!-- 1. Top HUD Strip & Sticky System Navigation -->
+<header class="sticky top-0 z-50 bg-terminal-black border-b border-structural-line px-margin py-space-sm flex flex-col gap-space-xs">
+<div class="flex items-center justify-between font-label-mono text-number-sm tracking-wider text-screen-off-gray">
+<div class="flex items-center gap-space-xs text-system-amber">
+<span class="material-symbols-outlined text-[13px]" data-icon="terminal">terminal</span>
+<span class="font-number-sm text-number-sm">SYS://PROTOCOL_EXEC</span>
+</div>
+<div class="flex items-center gap-gutter text-screen-off-gray">
+<span class="font-number-sm text-number-sm">LATENCY: 11MS</span>
+<span class="text-system-amber font-number-sm text-number-sm">SEC_LEVEL: A-04</span>
+</div>
+</div>
+<!-- Navigation & Escape Trigger -->
+<div class="flex items-center justify-between pt-1">
+<button class="group flex items-center gap-1.5 text-fluorescent-gray hover:text-screen-white transition-colors duration-150 py-0.5" type="button">
+<span class="font-label-mono text-number-sm text-screen-off-gray group-hover:text-system-amber">[ESC]</span>
+<span class="font-body-sm text-body-sm text-fluorescent-gray group-hover:text-screen-white">返回任务中枢</span>
+</button>
+<span class="font-label-mono text-number-sm text-screen-off-gray border border-structural-line px-1.5 py-0.5 bg-console-gray">
+          NODE_ID: #8942-TX
+        </span>
+</div>
+</header>
+<!-- Main Content Canvas (Left-aligned, Cockpit Density 6/10) -->
+<main class="flex-1 px-margin pt-space-lg flex flex-col gap-space-lg">
+<!-- 2. Protocol Header & Difficulty -->
+<section class="flex flex-col gap-space-sm">
+<div class="flex items-center gap-gutter">
+<div class="flex items-center bg-console-gray border border-structural-line pl-1 pr-2 py-0.5">
+<span class="w-[3px] h-3.5 bg-system-amber mr-1.5 inline-block"></span>
+<span class="font-headline-sm text-number-sm tracking-wider text-system-amber font-bold">A-RANK</span>
+</div>
+<span class="font-label-mono text-number-sm text-screen-off-gray uppercase">核心主线 · 神经重构协议</span>
+</div>
+<h1 class="font-headline-md text-headline-md text-screen-white tracking-tight text-left">
+          晨间神经重构：深蹲与核心激活 4 组
+        </h1>
+<div class="flex items-center justify-between pt-1 border-t border-structural-line">
+<div class="flex items-center gap-1.5 text-verification-green font-label-mono text-number-sm">
+<span class="w-1.5 h-1.5 rounded-full bg-verification-green animate-pulse"></span>
+<span>执行窗口中</span>
+</div>
+<div class="font-number-md text-number-sm text-system-amber flex items-center gap-1">
+<span class="text-screen-off-gray font-label-mono text-number-sm">REMAINING:</span>
+<span class="font-mono tracking-tight">03:41:22</span>
+</div>
+</div>
+</section>
+<!-- 3. System Narration & Roast Box (毒舌框) -->
+<section class="relative bg-elevated-gray border-l-2 border-l-oxidation-red border-y border-r border-structural-line p-space-md">
+<div class="flex items-center justify-between mb-2">
+<div class="flex items-center gap-1.5">
+<span class="text-oxidation-red font-label-mono text-number-md font-bold">»</span>
+<span class="font-label-mono text-number-sm text-oxidation-red font-semibold uppercase">SYSTEM_DIAGNOSTIC // 实时评估</span>
+</div>
+<span class="font-label-mono text-number-sm text-screen-off-gray">WAR_09</span>
+</div>
+<p class="font-body-sm text-body-sm text-screen-white leading-relaxed pl-3.5 border-l border-structural-line">
+          宿主前置体能扫描显示核心抗压水平低下。若本次下肢深蹲深度低于标准夹角，系统将判定为欺瞒行为，强制扣除 150 点信用点并追加惩罚协议。
+        </p>
+<div class="mt-2.5 pt-2 border-t border-structural-line flex justify-end items-center gap-2">
+<span class="font-label-mono text-number-sm text-screen-off-gray">STATUS:</span>
+<span class="font-label-mono text-number-sm text-fluorescent-gray">SENSOR_SYNCED</span>
+</div>
+</section>
+<!-- 4. Protocol Directives / Execution Details -->
+<section class="bg-console-gray border border-structural-line p-space-md flex flex-col gap-gutter">
+<div class="flex items-center justify-between pb-space-xs border-b border-structural-line">
+<span class="font-label-mono text-number-sm text-screen-off-gray tracking-widest uppercase">DIRECTIVES // 协议执行细则</span>
+<span class="font-number-sm text-number-sm text-fluorescent-gray">3 STEPS</span>
+</div>
+<div class="flex flex-col gap-3">
+<!-- Directive 1 -->
+<div class="flex items-start gap-space-sm">
+<span class="font-number-sm text-number-sm text-system-amber bg-terminal-black px-1.5 py-0.5 border border-structural-line shrink-0">01</span>
+<div class="flex flex-col">
+<span class="font-body-sm text-body-sm text-screen-white font-medium">动作规范</span>
+<span class="font-body-sm text-body-sm text-fluorescent-gray leading-snug">
+                标准杠铃/徒手深蹲 × 4 组（每组 15 次，离心 2 秒）
+              </span>
+</div>
+</div>
+<!-- Directive 2 -->
+<div class="flex items-start gap-space-sm">
+<span class="font-number-sm text-number-sm text-system-amber bg-terminal-black px-1.5 py-0.5 border border-structural-line shrink-0">02</span>
+<div class="flex flex-col">
+<span class="font-body-sm text-body-sm text-screen-white font-medium">组间间歇监控</span>
+<span class="font-body-sm text-body-sm text-fluorescent-gray leading-snug">
+                严格限定 <span class="font-number-sm text-number-sm text-screen-white font-mono">60</span> 秒（心率传感器需维持在 <span class="font-number-sm text-number-sm text-screen-white font-mono">125-145 BPM</span>）
+              </span>
+</div>
+</div>
+<!-- Directive 3 -->
+<div class="flex items-start gap-space-sm">
+<span class="font-number-sm text-number-sm text-system-amber bg-terminal-black px-1.5 py-0.5 border border-structural-line shrink-0">03</span>
+<div class="flex flex-col">
+<span class="font-body-sm text-body-sm text-screen-white font-medium">阈值容差</span>
+<span class="font-body-sm text-body-sm text-fluorescent-gray leading-snug">
+                神经疲劳度阈值允许波动不超过 <span class="font-number-sm text-number-sm text-screen-white font-mono">8.4%</span>
+</span>
+</div>
+</div>
+</div>
+</section>
+<!-- 5. Verification Method & Proof Upload Slots (验收模块) -->
+<section class="flex flex-col gap-space-sm">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-1.5">
+<span class="material-symbols-outlined text-fluorescent-gray text-[16px]" data-icon="fact_check">fact_check</span>
+<span class="font-label-mono text-number-sm text-fluorescent-gray uppercase tracking-widest">VERIFY_PROTOCOL // 证据回传协议</span>
+</div>
+<span class="font-label-mono text-number-sm text-screen-off-gray">REQ_ATTACHMENT</span>
+</div>
+<p class="font-body-sm text-body-sm text-screen-off-gray">
+          运动手环时钟心率曲线截图 或 动作视频关键帧截取
+        </p>
+<!-- Upload Slot (Dashed Structural Line) -->
+<div class="relative w-full aspect-[4/3] bg-console-gray border border-dashed border-screen-off-gray/40 hover:border-system-amber transition-colors duration-150 flex flex-col items-center justify-center cursor-pointer p-4 group">
+<div class="w-10 h-10 border border-structural-line bg-elevated-gray flex items-center justify-center text-fluorescent-gray group-hover:text-system-amber transition-colors mb-2">
+<span class="material-symbols-outlined text-[20px]" data-icon="add">add</span>
+</div>
+<span class="font-label-mono text-number-sm text-fluorescent-gray group-hover:text-screen-white tracking-widest">[ UPLOAD_TELEMETRY ]</span>
+<span class="font-label-mono text-number-sm text-screen-off-gray mt-1">PNG, JPG, HEIC MAX 12MB</span>
+</div>
+<!-- Optional Text Note Field -->
+<div class="flex flex-col gap-1">
+<label class="font-label-mono text-number-sm text-fluorescent-gray">备注 (OPTIONAL)</label>
+<input class="w-full bg-console-gray border border-structural-line px-3 py-2 text-screen-white font-body-sm text-body-sm placeholder:text-screen-off-gray focus:outline-none focus:border-system-amber focus:ring-0 transition-colors" placeholder="输入关节受力异常或代偿记录..." type="text"/>
+</div>
+</section>
+<!-- 6. Reward Settlement Matrix (预期报酬矩阵) -->
+<section class="bg-console-gray border border-structural-line p-space-md flex flex-col gap-3">
+<div class="flex items-center justify-between border-b border-structural-line pb-1.5">
+<span class="font-label-mono text-number-sm text-screen-off-gray tracking-wider uppercase">SETTLEMENT // 预期报酬矩阵</span>
+<span class="font-label-mono text-number-sm text-system-amber">TIER: FIXED</span>
+</div>
+<div class="grid grid-cols-2 gap-gutter">
+<div class="bg-terminal-black border border-structural-line p-2.5 flex flex-col">
+<span class="font-label-mono text-number-sm text-screen-off-gray">EXPERIENCE</span>
+<span class="font-number-lg text-headline-sm text-system-amber font-mono mt-0.5">+120 EXP</span>
+</div>
+<div class="bg-terminal-black border border-structural-line p-2.5 flex flex-col">
+<span class="font-label-mono text-number-sm text-screen-off-gray">SYSTEM ASSETS</span>
+<span class="font-number-md text-number-md text-system-amber font-mono mt-1">+50 COIN</span>
+</div>
+</div>
+<div class="bg-elevated-gray border border-structural-line px-3 py-2 flex items-center justify-between">
+<span class="font-label-mono text-number-sm text-fluorescent-gray">ATTRIBUTE MOD</span>
+<span class="font-label-mono text-number-sm text-screen-white">[ 体能 +1 · 意志力 +0.5 ]</span>
+</div>
+<div class="border border-oxidation-red/40 bg-oxidation-red/5 px-3 py-2 flex items-center gap-2">
+<span class="material-symbols-outlined text-oxidation-red text-[16px] shrink-0" data-icon="warning">warning</span>
+<span class="font-label-mono text-number-sm text-oxidation-red">违约惩罚：-150 CREDIT · 触发强制静思</span>
+</div>
+</section>
+<!-- 7. Primary Action Button & Ghost Abandon Trigger -->
+<section class="flex flex-col gap-gutter pt-space-xs">
+<button class="w-full bg-system-amber hover:bg-system-amber/90 active:scale-[0.99] transition-transform duration-100 text-terminal-black font-label-mono text-body-sm font-bold py-3.5 px-4 tracking-wider flex items-center justify-center gap-2" type="button">
+<span>[ 提交神经遥测数据验证并结算 ENTER ]</span>
+</button>
+<button class="w-full bg-transparent border border-oxidation-red/40 hover:border-oxidation-red hover:bg-oxidation-red/10 active:scale-[0.99] transition-all duration-100 text-oxidation-red font-label-mono text-number-sm py-2.5 px-3 tracking-widest flex items-center justify-center" type="button">
+<span>[ 申请废弃协议 (扣除 50 信用点) ]</span>
+</button>
+<!-- Bottom Terminal Footnote -->
+<div class="flex flex-col items-center justify-center pt-space-xs text-center gap-1">
+<span class="font-label-mono text-number-sm text-screen-off-gray tracking-tighter">
+            SYS_SIGNATURE: 0x8C4B...77A · 协议一旦执行不可撤销
+          </span>
+<span class="font-label-mono text-number-sm text-screen-off-gray/60">
+            SECURE PROTOCOL RUNTIME ENV // 宿主 TERMINAL V1.0.4
+          </span>
+</div>
+</section>
+</main>
+</div>
+</body></html>

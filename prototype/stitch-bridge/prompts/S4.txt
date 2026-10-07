@@ -1,0 +1,12 @@
+Apply the attached DESIGN.md strictly (GAME HUD EDITION). Game system-window aesthetic: glass panels with cyan (#38E1FF) borders + glow, canvas #0A0E1A; loot-chip reward language; spectacular game payout moment.
+
+SCREEN CONTENT LOCK — this is a REWARD SETTLEMENT OVERLAY (结算浮层) shown after completing one task. It contains ONLY the blocks below, one dimmed backdrop plus one bottom sheet. NO quest lists, NO hub, NO page content behind the sheet other than dimmed darkness.
+
+1. Backdrop: rgba(10,14,26,0.75) dim, with the faint grid showing through.
+2. Centered glass sheet, 24px radius, lower two-thirds, with a subtle radial cyan burst behind the EXP number.
+3. Sheet top: mono cyan letterspaced "任务结算".
+4. Huge EXP number in Rajdhani 56px 系统青 with cyan glow, mid count-up: "+40 EXP", with a small "CRIT ×2" tag in gold #FBBF24 with gold glow.
+5. Row of three loot chips popping with spring: "金币 +20" gold-bordered chip (#FBBF24) with coin dot; "经验 +40" cyan-bordered chip; "智 +1" filled cyan gradient chip.
+6. Miniature hexagon radar: cyan stroke polygon, 18% fill, glowing vertex dots, labels 体/智/专/心/交/生 dim 11px, 智 vertex pushed outward with cyan label "智 12".
+7. One full-width primary button, cyan gradient + glow, dark navy text: "收下". Under it tiny dim mono: "系统评价：勉强符合预期。"
+8. Nothing else. Choreography under 1.6s, like a game loot drop. UI copy in Chinese exactly as given.

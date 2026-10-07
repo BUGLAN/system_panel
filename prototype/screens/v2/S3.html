@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="zh-CN"><head>
+<meta charset="utf-8"/>
+<meta content="width=390, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" name="viewport"/>
+<title>SYS://HOST_INTERFACE - 宿主任务中枢</title>
+<!-- Fonts -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&amp;family=Noto+Sans+SC:wght@400;500;600;700&amp;family=Rajdhani:wght@500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+  tailwind.config = {
+    darkMode: "class",
+    theme: {
+      extend: {
+        colors: {
+          "canvas-void": "#0A0E1A",
+          "panel-base": "#131C33",
+          "panel-elevated": "#1A2647",
+          "panel-modal": "#22315E",
+          "accent-cyan": "#38E1FF",
+          "accent-gradient-end": "#0EA5E9",
+          "text-primary": "#EAF2FF",
+          "text-secondary": "#8FA3C8",
+          "text-muted": "#4A5A7A",
+          "rarity-s": "#FF4D5E",
+          "rarity-a": "#FB923C",
+          "rarity-b": "#FBBF24",
+          "rarity-c": "#A78BFA",
+          "rarity-d": "#38BDF8",
+          "state-success": "#34D399",
+          "state-danger": "#FF4D5E"
+        },
+        borderRadius: {
+          DEFAULT: "0.25rem",
+          lg: "0.5rem",
+          xl: "0.75rem",
+          "hud": "14px",
+          full: "9999px"
+        },
+        spacing: {
+          "space-xs": "4px",
+          "space-sm": "8px",
+          "gutter": "12px",
+          "space-md": "16px",
+          "space-lg": "24px",
+          "space-xl": "32px",
+          "margin": "16px"
+        },
+        fontFamily: {
+          "body-lg": ["Noto Sans SC"],
+          "body-md": ["Noto Sans SC"],
+          "body-sm": ["Noto Sans SC"],
+          "headline-display": ["Rajdhani"],
+          "headline-lg": ["Rajdhani"],
+          "headline-md": ["Rajdhani"],
+          "headline-sm": ["Rajdhani"],
+          "label-mono": ["JetBrains Mono"]
+        }
+      }
+    }
+  }
+</script>
+<style>
+  body {
+    background-color: #0A0E1A;
+    color: #EAF2FF;
+    -webkit-font-smoothing: antialiased;
+    min-height: max(884px, 100dvh);
+  }
+  .material-symbols-outlined {
+    font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 20;
+  }
+  /* 32px cyan grid overlay */
+  .hud-grid-canvas {
+    background-image: 
+      linear-gradient(to right, rgba(56, 225, 255, 0.04) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(56, 225, 255, 0.04) 1px, transparent 1px);
+    background-size: 32px 32px;
+  }
+  /* Atmospheric CRT scanline */
+  .crt-scanline {
+    background: linear-gradient(rgba(10, 14, 26, 0) 50%, rgba(0, 0, 0, 0.3) 50%),
+                linear-gradient(90deg, rgba(56, 225, 255, 0.015), rgba(0, 0, 0, 0), rgba(56, 225, 255, 0.015));
+    background-size: 100% 2px, 4px 100%;
+    pointer-events: none;
+  }
+  /* Hexagon clip for Level badge */
+  .clip-hex {
+    clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+  }
+  /* Card frame with top-right angular cut notch */
+  .hud-card-notch {
+    clip-path: polygon(
+      0 0,
+      calc(100% - 14px) 0,
+      100% 14px,
+      100% 100%,
+      0 100%
+    );
+  }
+  /* Card glow effects */
+  .glass-cyan-panel {
+    background-color: rgba(19, 28, 51, 0.85);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(56, 225, 255, 0.32);
+    box-shadow: 0 0 20px rgba(56, 225, 255, 0.10), inset 0 0 12px rgba(56, 225, 255, 0.03);
+  }
+  .glass-danger-panel {
+    background-color: rgba(19, 28, 51, 0.85);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 77, 94, 0.45);
+    box-shadow: 0 0 20px rgba(255, 77, 94, 0.16), inset 0 0 12px rgba(255, 77, 94, 0.04);
+  }
+  .cyan-glow-btn {
+    box-shadow: 0 0 18px rgba(56, 225, 255, 0.35);
+  }
+  @keyframes cyan-pulse {
+    0%, 100% { opacity: 1; transform: scale(1); filter: drop-shadow(0 0 4px #38E1FF); }
+    50% { opacity: 0.35; transform: scale(0.85); filter: drop-shadow(0 0 1px #38E1FF); }
+  }
+  .cyan-ember-pulse {
+    animation: cyan-pulse 2s infinite ease-in-out;
+  }
+</style>
+</head>
+<body class="bg-canvas-void text-text-primary flex justify-center min-h-screen selection:bg-accent-cyan selection:text-canvas-void font-body-md text-[15px]">
+<!-- Ambient Grid Canvas & Scanlines -->
+<div class="fixed inset-0 hud-grid-canvas pointer-events-none z-0"></div>
+<div class="fixed inset-0 crt-scanline z-40 pointer-events-none opacity-40"></div>
+<!-- Primary Mobile Canvas Wrapper (390px locked container) -->
+<div class="w-full max-w-[390px] min-h-screen bg-canvas-void/90 flex flex-col relative pb-28 z-10">
+<!-- 1. Top HUD Strip (Pinned Header + Telemetry + 3px EXP bar) -->
+<header class="fixed top-0 left-0 right-0 max-w-[390px] mx-auto z-50 bg-[#0A0E1A]/95 backdrop-blur-md border-b border-accent-cyan/20">
+<!-- Row 1: SYS Log Header -->
+<div class="flex justify-between items-center px-margin h-11 border-b border-accent-cyan/15">
+<div class="flex items-center space-x-2">
+<span class="inline-block w-2 h-2 rounded-full bg-accent-cyan cyan-ember-pulse"></span>
+<span class="font-label-mono text-[11px] text-accent-cyan tracking-widest uppercase font-semibold">SYS://INITIALIZE</span>
+</div>
+<div class="flex items-center space-x-2.5">
+<span class="font-label-mono text-[11px] text-text-muted tracking-wider">LATENCY: 9MS</span>
+<span class="font-label-mono text-[10px] text-accent-cyan border border-accent-cyan/40 px-1.5 py-0.5 rounded-[4px] bg-[#131C33]">V1.0.4_ONLINE</span>
+</div>
+</div>
+<!-- Row 2: Level Hexagon Badge + Credit + Streak Telemetry -->
+<div class="px-margin py-2 flex items-center justify-between font-label-mono text-[11px]">
+<!-- Level Hex Gem Badge -->
+<div class="flex items-center space-x-2">
+<div class="w-7 h-7 bg-gradient-to-br from-accent-cyan to-accent-gradient-end clip-hex flex items-center justify-center p-[1px] shadow-[0_0_10px_rgba(56,225,255,0.4)]">
+<div class="w-full h-full bg-[#0A0E1A] clip-hex flex items-center justify-center">
+<span class="font-headline-sm text-[12px] font-bold text-accent-cyan leading-none">03</span>
+</div>
+</div>
+<div class="flex flex-col leading-none">
+<span class="text-accent-cyan font-headline-sm text-[11px] font-semibold tracking-wider">LV.03 PROTOCOL</span>
+<span class="text-text-muted text-[10px] mt-0.5 tracking-tight font-label-mono">EXP <span class="text-text-primary">420</span>/1000</span>
+</div>
+</div>
+<div class="flex items-center space-x-2.5 text-text-secondary">
+<span class="text-accent-cyan font-semibold flex items-center gap-1 font-label-mono">
+          CREDIT: 1,840 ⬡
+        </span>
+<span class="text-text-muted">|</span>
+<span class="text-text-secondary flex items-center gap-1 font-label-mono">
+          STREAK: 14D
+          <span class="inline-block w-1.5 h-1.5 rounded-full bg-accent-cyan cyan-ember-pulse"></span>
+</span>
+</div>
+</div>
+<!-- Thin 3px Progress EXP bar running under header -->
+<div class="w-full h-[3px] bg-[#131C33] overflow-hidden relative">
+<div class="h-full bg-gradient-to-r from-accent-cyan via-accent-cyan to-accent-gradient-end shadow-[0_0_8px_#38E1FF]" style="width: 42%;"></div>
+</div>
+</header>
+<!-- Main Scrollable Content Area -->
+<main class="flex-1 px-margin pt-[96px] flex flex-col space-y-space-lg">
+<!-- 2. 系统发布横幅 (叮！ Banner) -->
+<section class="glass-cyan-panel hud-card-notch border-l-[3px] border-l-accent-cyan p-3.5 flex items-start space-x-2.5 rounded-hud">
+<div class="w-6 h-6 rounded-[4px] bg-accent-cyan/15 border border-accent-cyan/30 flex items-center justify-center shrink-0 mt-0.5">
+<span class="material-symbols-outlined text-accent-cyan text-[17px]" data-icon="terminal">terminal</span>
+</div>
+<div class="flex-1">
+<div class="flex items-center justify-between mb-1">
+<span class="font-label-mono text-[11px] text-accent-cyan font-semibold tracking-wider">SYS_ANNOUNCE // 系统播报</span>
+<span class="font-label-mono text-[10px] text-text-muted">SEC_ALERT</span>
+</div>
+<p class="font-body-sm text-[13px] text-text-primary leading-relaxed">
+<span class="font-label-mono text-accent-cyan font-bold">叮。</span>检测到宿主今日体能与认知水平出现迟滞。已紧急下发修正委托。
+        </p>
+</div>
+</section>
+<!-- 3. 毒舌状态与每日概况 (Daily Overview & Roast Box) -->
+<section class="flex flex-col space-y-3">
+<!-- Header with Rajdhani/Space Grotesk typography -->
+<div class="flex items-baseline justify-between border-b border-accent-cyan/20 pb-2">
+<div>
+<h1 class="font-headline-md text-[22px] text-text-primary tracking-wide uppercase flex items-center gap-1.5 font-bold">
+<span class="text-accent-cyan drop-shadow-[0_0_8px_rgba(56,225,255,0.4)]">QUEST_HUB</span>
+<span class="text-text-muted font-normal text-body-sm font-body-sm">/ 任务中枢</span>
+</h1>
+</div>
+<div class="font-label-mono text-[11px] text-text-secondary">
+          今日待清算任务: <span class="text-accent-cyan font-semibold font-headline-sm text-[14px]">3</span> / 4
+        </div>
+</div>
+<!-- 毒舌框 (Roast Box) with S-Rank Danger Crimson styling -->
+<div class="glass-danger-panel hud-card-notch p-3.5 rounded-hud relative overflow-hidden">
+<div class="flex items-start space-x-2">
+<span class="font-label-mono text-rarity-s text-[16px] leading-tight select-none">»</span>
+<div class="space-y-2">
+<p class="font-body-sm text-[13px] text-text-primary leading-relaxed">
+              “宿主截至今日 14:00 仍未完成核心专注指标。系统已自动调高惩罚机制概率至 <span class="font-label-mono text-rarity-s font-semibold">72%</span>。”
+            </p>
+<!-- Remedy outlet CTA -->
+<button class="inline-flex items-center space-x-1 font-label-mono text-[11px] text-text-muted hover:text-accent-cyan transition-colors duration-150 text-left pt-1">
+<span>[ 补救协议: 立即锁定90分钟专注模式 ]</span>
+<span class="material-symbols-outlined text-[14px] text-accent-cyan" data-icon="chevron_right">chevron_right</span>
+</button>
+</div>
+</div>
+</div>
+</section>
+<!-- 4. 单列任务卡流 (Single-column Stack of Quest Cards) -->
+<section class="flex flex-col space-y-gutter">
+<div class="flex items-center justify-between">
+<span class="font-label-mono text-[11px] text-text-muted uppercase tracking-widest">ACTIVE_PROTOCOLS // 当前协议</span>
+<span class="font-label-mono text-[10px] text-text-muted">PRIORITY_SORTED</span>
+</div>
+<!-- Quest Card 1: Core Habit / High Difficulty (A-Rank 熔橙 #FB923C) -->
+<article class="glass-cyan-panel hud-card-notch rounded-hud overflow-hidden flex flex-col transition-all duration-150 active:scale-[0.99] relative">
+<!-- 3px Left Edge Difficulty Strip -->
+<div class="absolute left-0 top-0 bottom-0 w-[3px] bg-rarity-a shadow-[0_0_8px_#FB923C]"></div>
+<div class="p-space-md pl-5 flex flex-col space-y-3">
+<div class="flex items-center justify-between">
+<div class="flex items-center space-x-1.5 font-headline-sm text-[12px] text-rarity-a font-semibold tracking-wider">
+<span class="border border-rarity-a/80 bg-rarity-a/10 px-1.5 py-0.5 rounded-[4px]">A-RANK</span>
+<span class="font-label-mono text-text-muted text-[11px] font-normal">// 核心主线</span>
+</div>
+<span class="font-label-mono text-[11px] text-rarity-a flex items-center gap-1 font-semibold">
+<span class="w-1.5 h-1.5 rounded-full bg-rarity-a"></span> 进行中
+            </span>
+</div>
+<div>
+<h2 class="font-body-md text-[15px] font-medium text-text-primary leading-snug">
+              晨间神经重构：深蹲与核心激活 4 组
+            </h2>
+<div class="font-label-mono text-[11px] text-text-secondary mt-1 flex items-center space-x-1.5">
+<span class="material-symbols-outlined text-[13px] text-text-muted" data-icon="schedule">schedule</span>
+<span>验证方式: 运动时钟记录截图 · 截止: 21:00</span>
+</div>
+</div>
+<div class="pt-2 border-t border-accent-cyan/15 flex items-center justify-between gap-2">
+<div class="font-label-mono text-[12px] text-accent-cyan tracking-tight flex items-center space-x-1.5 font-medium">
+<span>+120 EXP</span>
+<span class="text-text-muted">·</span>
+<span>+50 COIN</span>
+<span class="text-text-muted">·</span>
+<span class="text-text-secondary">[体能+1]</span>
+</div>
+<button class="px-3 py-1.5 rounded-[6px] border border-accent-cyan/40 bg-accent-cyan/10 text-accent-cyan font-label-mono text-[11px] hover:bg-accent-cyan/20 hover:border-accent-cyan transition-colors active:scale-95 shadow-[0_0_10px_rgba(56,225,255,0.15)]">
+              [ 提交验证 ]
+            </button>
+</div>
+</div>
+</article>
+<!-- Quest Card 2: Mental / Intellectual (B-Rank 鎏金 #FBBF24) -->
+<article class="glass-cyan-panel hud-card-notch rounded-hud overflow-hidden flex flex-col transition-all duration-150 active:scale-[0.99] relative">
+<!-- 3px Left Edge Difficulty Strip -->
+<div class="absolute left-0 top-0 bottom-0 w-[3px] bg-rarity-b shadow-[0_0_8px_#FBBF24]"></div>
+<div class="p-space-md pl-5 flex flex-col space-y-3">
+<div class="flex items-center justify-between">
+<div class="flex items-center space-x-1.5 font-headline-sm text-[12px] text-rarity-b font-semibold tracking-wider">
+<span class="border border-rarity-b/80 bg-rarity-b/10 px-1.5 py-0.5 rounded-[4px]">B-RANK</span>
+<span class="font-label-mono text-text-muted text-[11px] font-normal">// 认知突破</span>
+</div>
+<span class="font-label-mono text-[11px] text-rarity-b flex items-center gap-1 font-semibold">
+<span class="w-1.5 h-1.5 rounded-full bg-rarity-b cyan-ember-pulse"></span> 监测中
+            </span>
+</div>
+<div>
+<h2 class="font-body-md text-[15px] font-medium text-text-primary leading-snug">
+              高负荷深度工作：连续沉浸 90 分钟
+            </h2>
+<div class="font-label-mono text-[11px] text-text-secondary mt-1 flex items-center space-x-1.5">
+<span class="material-symbols-outlined text-[13px] text-text-muted" data-icon="timelapse">timelapse</span>
+<span>验证方式: 专注白噪声进程 · 倒计时: 01:24:18</span>
+</div>
+</div>
+<div class="pt-2 border-t border-accent-cyan/15 flex items-center justify-between gap-2">
+<div class="font-label-mono text-[12px] text-accent-cyan tracking-tight flex items-center space-x-1.5 font-medium">
+<span>+80 EXP</span>
+<span class="text-text-muted">·</span>
+<span class="text-text-secondary">[智力+1]</span>
+</div>
+<div class="px-3 py-1.5 font-label-mono text-[11px] text-text-muted bg-[#0A0E1A]/40 rounded-[6px] border border-white/5">
+              [ 正在记录... ]
+            </div>
+</div>
+</div>
+</article>
+<!-- Quest Card 3: Completed State (C-Rank 紫晶 #A78BFA) -->
+<article class="glass-cyan-panel hud-card-notch rounded-hud overflow-hidden flex flex-col relative opacity-75">
+<!-- 3px Left Edge Difficulty Strip -->
+<div class="absolute left-0 top-0 bottom-0 w-[3px] bg-rarity-c shadow-[0_0_8px_#A78BFA]"></div>
+<div class="p-space-md pl-5 flex flex-col space-y-3">
+<div class="flex items-center justify-between">
+<div class="flex items-center space-x-1.5 font-headline-sm text-[12px] text-rarity-c font-semibold tracking-wider">
+<span class="border border-rarity-c/60 bg-rarity-c/10 px-1.5 py-0.5 rounded-[4px]">C-RANK</span>
+<span class="font-label-mono text-text-muted text-[11px] font-normal">// 基础生理</span>
+</div>
+<span class="font-label-mono text-[11px] text-state-success flex items-center gap-1 font-medium">
+<span class="material-symbols-outlined text-[15px]" data-icon="check_circle">check_circle</span> 清算完毕
+            </span>
+</div>
+<div>
+<h2 class="font-body-md text-[15px] font-medium text-text-muted line-through leading-snug">
+              电解质与饮水补充 2000ml
+            </h2>
+<div class="font-label-mono text-[11px] text-text-muted mt-1">
+              验证方式: 容器传感日志回传 (已确认)
+            </div>
+</div>
+<div class="pt-2 border-t border-accent-cyan/15 flex items-center justify-between">
+<div class="font-label-mono text-[11px] text-text-secondary">
+              EXP: +30 (已入账)
+            </div>
+<div class="font-label-mono text-[11px] text-state-success bg-[#1A2647] px-2.5 py-1 rounded-[4px] border border-state-success/30">
+              [ 已清算 · 勉强达标 ]
+            </div>
+</div>
+</div>
+</article>
+<!-- Quest Card 4: Emergency / Punishment Task (S-Rank 猩红 #FF4D5E) -->
+<article class="glass-danger-panel hud-card-notch rounded-hud overflow-hidden flex flex-col relative">
+<!-- 3px Left Edge Penalty Strip -->
+<div class="absolute left-0 top-0 bottom-0 w-[3px] bg-rarity-s shadow-[0_0_10px_#FF4D5E]"></div>
+<div class="p-space-md pl-5 flex flex-col space-y-3">
+<div class="flex items-center justify-between">
+<div class="flex items-center space-x-1.5 font-headline-sm text-[12px] text-rarity-s font-semibold tracking-wider">
+<span class="border border-rarity-s px-1.5 py-0.5 rounded-[4px] bg-rarity-s/20 shadow-[0_0_8px_rgba(255,77,94,0.3)]">S-RANK</span>
+<span class="font-label-mono text-rarity-s text-[11px] font-normal">// 惩罚性追加</span>
+</div>
+<span class="font-label-mono text-[11px] text-rarity-s font-semibold cyan-ember-pulse flex items-center gap-1">
+<span class="w-1.5 h-1.5 rounded-full bg-rarity-s"></span> ! 强制执行
+            </span>
+</div>
+<div>
+<h2 class="font-body-md text-[15px] font-medium text-text-primary leading-snug">
+              断网强制静思 30 分钟 (禁止触碰移动终端)
+            </h2>
+<div class="font-label-mono text-[11px] text-rarity-s/90 mt-1 flex items-center space-x-1">
+<span class="material-symbols-outlined text-[13px]" data-icon="warning">warning</span>
+<span>剩余时限: 04:12:00 · 失败将扣除 300 信用点</span>
+</div>
+</div>
+<div class="pt-2 border-t border-rarity-s/20 flex items-center justify-between">
+<div class="font-label-mono text-[11px] text-text-secondary">
+              豁免惩罚几率: <span class="text-text-primary font-semibold">100%</span>
+</div>
+<button class="px-3 py-1.5 rounded-[6px] border border-rarity-s text-rarity-s font-label-mono text-[11px] hover:bg-rarity-s/15 transition-colors active:scale-95 shadow-[0_0_8px_rgba(255,77,94,0.2)]">
+              [ 启动静止锁 ]
+            </button>
+</div>
+</div>
+</article>
+</section>
+<!-- 5. 底部快捷清算或操作引导 (Action Dock) -->
+<section class="pt-2">
+<button class="w-full h-12 bg-gradient-to-r from-accent-cyan to-accent-gradient-end hover:brightness-110 active:scale-[0.98] transition-all rounded-hud flex items-center justify-center space-x-2 text-[#0A0E1A] font-headline-sm text-[15px] font-bold tracking-wider uppercase cyan-glow-btn">
+<span class="material-symbols-outlined text-[19px] font-bold" data-icon="system_update_alt">system_update_alt</span>
+<span>结算今日数据并上传神经协议 [ENTER]</span>
+</button>
+<p class="font-label-mono text-[11px] text-center text-text-muted mt-2 tracking-tight">
+        HASH: 0x9FD2A...C4B · 每次清算均不可逆转
+      </p>
+</section>
+</main>
+<!-- 6. 底部导航栏: 4 Tabs (任务 SYS_HUD, 面板 STATS, 主线 MAIN, 我的 LOGS) with glass fill #131C33 -->
+<nav class="fixed bottom-0 left-0 right-0 max-w-[390px] mx-auto z-50 flex justify-around items-center px-margin h-16 bg-[#131C33]/90 backdrop-blur-xl border-t border-accent-cyan/30 shadow-[0_-4px_20px_rgba(10,14,26,0.8)] pb-safe">
+<!-- Tab 1: SYS_HUD / 任务 (Active) -->
+<a class="flex flex-col items-center justify-center text-accent-cyan py-1 group relative" href="#hub">
+<div class="relative flex items-center justify-center">
+<span class="material-symbols-outlined text-[20px] drop-shadow-[0_0_8px_#38E1FF]" data-icon="terminal">terminal</span>
+<span class="absolute -top-1 w-5 h-[2px] bg-accent-cyan rounded-full shadow-[0_0_6px_#38E1FF]"></span>
+</div>
+<span class="font-label-mono text-[10px] font-semibold mt-1 tracking-wider">SYS_HUD</span>
+</a>
+<!-- Tab 2: STATS / 面板 (Inactive) -->
+<a class="flex flex-col items-center justify-center text-text-muted py-1 hover:text-accent-cyan transition-colors duration-150 group" href="#stats">
+<span class="material-symbols-outlined text-[20px] group-hover:drop-shadow-[0_0_6px_#38E1FF]" data-icon="query_stats">query_stats</span>
+<span class="font-label-mono text-[10px] mt-1 tracking-wider">STATS</span>
+</a>
+<!-- Tab 3: MAIN / 主线 (Inactive) -->
+<a class="flex flex-col items-center justify-center text-text-muted py-1 hover:text-accent-cyan transition-colors duration-150 group" href="#main">
+<span class="material-symbols-outlined text-[20px] group-hover:drop-shadow-[0_0_6px_#38E1FF]" data-icon="hub">hub</span>
+<span class="font-label-mono text-[10px] mt-1 tracking-wider">MAIN</span>
+</a>
+<!-- Tab 4: LOGS / 我的 (Inactive) -->
+<a class="flex flex-col items-center justify-center text-text-muted py-1 hover:text-accent-cyan transition-colors duration-150 group" href="#logs">
+<span class="material-symbols-outlined text-[20px] group-hover:drop-shadow-[0_0_6px_#38E1FF]" data-icon="receipt_long">receipt_long</span>
+<span class="font-label-mono text-[10px] mt-1 tracking-wider">LOGS</span>
+</a>
+</nav>
+</div>
+</body></html>

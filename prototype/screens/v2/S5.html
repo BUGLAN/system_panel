@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="zh-CN"><head>
+<meta charset="utf-8"/>
+<meta content="width=390, user-scalable=no, initial-scale=1.0" name="viewport"/>
+<title>SYS://PROTOCOL_EXEC - 宿主 SYSTEM</title>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&amp;family=Noto+Sans+SC:wght@400;500;600;700&amp;family=Space+Grotesk:wght@500;600;700&amp;display=swap" rel="stylesheet"/><link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&amp;display=swap" rel="stylesheet"/>
+<style>
+  .hud-grid-bg {
+    background-color: #0A0E1A;
+    background-image: linear-gradient(rgba(56,225,255,0.04) 1px, transparent 1px), linear-gradient(90deg, rgba(56,225,255,0.04) 1px, transparent 1px);
+    background-size: 32px 32px;
+  }
+  .glass-panel {
+    background: rgba(19, 28, 51, 0.85);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(56, 225, 255, 0.35);
+    box-shadow: 0 0 20px rgba(56, 225, 255, 0.08);
+    clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 0 100%);
+  }
+  .glass-card {
+    background: rgba(19, 28, 51, 0.75);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(56, 225, 255, 0.25);
+  }
+  .hud-btn-primary {
+    background: linear-gradient(135deg, #38E1FF 0%, #0EA5E9 100%);
+    box-shadow: 0 0 18px rgba(56, 225, 255, 0.35);
+    clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 0 100%);
+  }
+  .hud-btn-primary:hover {
+    box-shadow: 0 0 24px rgba(56, 225, 255, 0.55);
+    filter: brightness(1.05);
+  }
+  .font-rajdhani {
+    font-family: 'Rajdhani', sans-serif;
+  }
+</style>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          "colors": {
+            "screen-white": "#F4F4F5",
+            "surface-container-high": "#2f2922",
+            "on-primary-fixed": "#271900",
+            "on-error-container": "#ffdad6",
+            "surface-dim": "#17130c",
+            "primary-fixed": "#ffdeab",
+            "outline-variant": "#4f4536",
+            "on-background": "#ebe1d5",
+            "on-primary-container": "#634400",
+            "on-surface-variant": "#d3c4b0",
+            "surface-bright": "#3e3830",
+            "on-error": "#690005",
+            "error-container": "#93000a",
+            "surface-variant": "#3a342c",
+            "console-gray": "#17171A",
+            "secondary": "#c8c5ca",
+            "background": "#17130c",
+            "tertiary-fixed-dim": "#a3c9ff",
+            "on-tertiary-fixed": "#001c39",
+            "on-tertiary-container": "#014b87",
+            "on-tertiary": "#00315c",
+            "on-secondary-container": "#b6b4b8",
+            "on-primary-fixed-variant": "#5f4100",
+            "surface": "#17130c",
+            "secondary-fixed-dim": "#c8c5ca",
+            "inverse-primary": "#7e5700",
+            "primary": "#ffcd7b",
+            "inverse-surface": "#ebe1d5",
+            "primary-fixed-dim": "#f6bd56",
+            "oxidation-red": "#E05252",
+            "on-secondary": "#303033",
+            "surface-container": "#241f18",
+            "error": "#ffb4ab",
+            "surface-container-low": "#201b14",
+            "tertiary-fixed": "#d3e3ff",
+            "tertiary-container": "#8abcff",
+            "verification-green": "#6FBF8E",
+            "on-primary": "#422c00",
+            "secondary-fixed": "#e4e1e6",
+            "primary-container": "#e8b04b",
+            "on-surface": "#ebe1d5",
+            "on-tertiary-fixed-variant": "#004882",
+            "tertiary": "#bcd7ff",
+            "inverse-on-surface": "#353028",
+            "fluorescent-gray": "#9D9DA7",
+            "secondary-container": "#47464a",
+            "surface-container-highest": "#3a342c",
+            "surface-container-lowest": "#120e07",
+            "screen-off-gray": "#5B5B63",
+            "terminal-black": "#101012",
+            "surface-tint": "#f6bd56",
+            "structural-line": "rgba(244,244,245,0.08)",
+            "outline": "#9c8f7d",
+            "elevated-gray": "#1E1E23",
+            "on-secondary-fixed-variant": "#47464a",
+            "on-secondary-fixed": "#1b1b1e",
+            "system-amber": "#E8B04B"
+          },
+          "borderRadius": {
+            "DEFAULT": "0.25rem",
+            "lg": "0.5rem",
+            "xl": "0.75rem",
+            "full": "9999px"
+          },
+          "spacing": {
+            "margin": "16px",
+            "gutter": "12px",
+            "space-sm": "8px",
+            "space-md": "16px",
+            "space-lg": "24px",
+            "space-xl": "32px",
+            "space-xs": "4px"
+          },
+          "fontFamily": {
+            "number-lg": ["Space Grotesk"],
+            "number-md": ["JetBrains Mono"],
+            "body-sm": ["Noto Sans SC"],
+            "number-sm": ["JetBrains Mono"],
+            "label-mono": ["JetBrains Mono"],
+            "body-md": ["Noto Sans SC"],
+            "headline-md": ["Space Grotesk"],
+            "headline-lg": ["Space Grotesk"],
+            "headline-sm": ["Space Grotesk"]
+          },
+          "fontSize": {
+            "number-lg": ["56px", { "lineHeight": "60px", "letterSpacing": "-0.03em", "fontWeight": "700" }],
+            "number-md": ["16px", { "lineHeight": "20px", "fontWeight": "600" }],
+            "body-sm": ["13px", { "lineHeight": "1.5", "fontWeight": "400" }],
+            "number-sm": ["11px", { "lineHeight": "14px", "fontWeight": "500" }],
+            "label-mono": ["12px", { "lineHeight": "16px", "letterSpacing": "0.2em", "fontWeight": "500" }],
+            "body-md": ["15px", { "lineHeight": "1.6", "fontWeight": "400" }],
+            "headline-md": ["24px", { "lineHeight": "32px", "letterSpacing": "-0.02em", "fontWeight": "600" }],
+            "headline-lg": ["32px", { "lineHeight": "40px", "letterSpacing": "-0.02em", "fontWeight": "700" }],
+            "headline-sm": ["18px", { "lineHeight": "24px", "letterSpacing": "-0.02em", "fontWeight": "600" }]
+          }
+        }
+      }
+    }
+  </script>
+<style>
+    body {
+      background-color: #101012;
+      color: #F4F4F5;
+      font-family: 'Noto Sans SC', sans-serif;
+      margin: 0;
+      padding: 0;
+      -webkit-font-smoothing: antialiased;
+    }
+    .material-symbols-outlined {
+      font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 20;
+      line-height: 1;
+      display: inline-block;
+    }
+  </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+</head>
+<body class="bg-[#0A0E1A] text-[#EAF2FF] flex justify-center selection:bg-[#38E1FF] selection:text-[#0A0E1A] min-h-screen">
+<!-- Mobile Viewport Constrained to 390px -->
+<div class="w-full max-w-[390px] min-h-screen hud-grid-bg flex flex-col relative pb-10 border-x border-[rgba(56,225,255,0.15)] shadow-[0_0_50px_rgba(10,14,26,0.9)]">
+<!-- 1. Top HUD Strip & Sticky System Navigation -->
+<header class="sticky top-0 z-50 bg-[#0A0E1A]/90 backdrop-blur-md border-b border-[rgba(56,225,255,0.25)] px-4 py-2.5 flex flex-col gap-1 shadow-[0_4px_20px_rgba(0,0,0,0.5)]">
+<div class="flex items-center justify-between font-mono text-[11px] tracking-wider text-[#8FA3C8]">
+<div class="flex items-center gap-1.5 text-[#38E1FF]">
+<span class="material-symbols-outlined text-[14px] text-[#38E1FF] drop-shadow-[0_0_6px_#38E1FF]">terminal</span>
+<span class="font-rajdhani font-bold tracking-wider text-[13px] text-[#38E1FF]">SYS://PROTOCOL_EXEC</span>
+</div>
+<div class="flex items-center gap-3 text-[#8FA3C8]">
+<span>LATENCY: <strong class="text-[#38E1FF] font-mono font-normal">11MS</strong></span>
+<span class="text-[#FB923C] font-mono font-semibold px-1 bg-[#FB923C]/10 border border-[#FB923C]/30 rounded-sm">SEC: A-04</span>
+</div>
+</div>
+<!-- Navigation & Escape Trigger -->
+<div class="flex items-center justify-between pt-1">
+<button class="group flex items-center gap-1.5 text-[#8FA3C8] hover:text-[#38E1FF] transition-colors duration-150 py-0.5" type="button">
+<span class="font-mono text-[11px] text-[#38E1FF] group-hover:drop-shadow-[0_0_8px_#38E1FF]">[ESC]</span>
+<span class="font-body-sm text-[13px] text-[#8FA3C8] group-hover:text-[#EAF2FF]">返回任务中枢</span>
+</button>
+<span class="font-mono text-[11px] text-[#38E1FF] border border-[rgba(56,225,255,0.3)] px-2 py-0.5 bg-[#131C33]/80 rounded shadow-[0_0_8px_rgba(56,225,255,0.15)]">
+      NODE_ID: #8942-TX
+    </span>
+</div>
+<!-- Under-HUD Thin Pulse Scanline -->
+<div class="w-full h-[2px] bg-[rgba(56,225,255,0.15)] mt-1 relative overflow-hidden">
+<div class="absolute left-0 top-0 h-full w-2/5 bg-gradient-to-r from-transparent via-[#38E1FF] to-transparent animate-pulse"></div>
+</div>
+</header>
+<!-- Main Content Canvas (Left-aligned, Cockpit Density 6/10) -->
+<main class="flex-1 px-margin pt-space-lg flex flex-col gap-space-lg">
+<!-- 2. Protocol Header & Difficulty -->
+<section class="flex flex-col gap-2.5">
+<div class="flex items-center gap-2.5">
+<div class="flex items-center bg-[#131C33] border border-[#FB923C]/50 px-2 py-0.5 rounded-sm shadow-[0_0_12px_rgba(251,146,60,0.25)]">
+<span class="w-[3px] h-3.5 bg-[#FB923C] mr-1.5 inline-block shadow-[0_0_6px_#FB923C]"></span>
+<span class="font-rajdhani text-[13px] tracking-wider text-[#FB923C] font-bold">A-RANK</span>
+</div>
+<span class="font-mono text-[11px] text-[#8FA3C8] tracking-wider uppercase">核心主线 · 神经重构协议</span>
+</div>
+<h1 class="font-rajdhani text-[24px] font-bold text-[#EAF2FF] tracking-tight text-left leading-[1.3] drop-shadow-[0_2px_10px_rgba(0,0,0,0.8)]">
+    晨间神经重构：深蹲与核心激活 4 组
+  </h1>
+<div class="flex items-center justify-between pt-2 border-t border-[rgba(56,225,255,0.15)]">
+<div class="flex items-center gap-1.5 text-[#34D399] font-mono text-[11px]">
+<span class="w-1.5 h-1.5 rounded-full bg-[#34D399] shadow-[0_0_8px_#34D399] animate-pulse"></span>
+<span class="font-medium">执行窗口中</span>
+</div>
+<div class="font-mono text-[11px] text-[#38E1FF] flex items-center gap-1.5 bg-[#131C33]/70 px-2 py-0.5 border border-[rgba(56,225,255,0.2)] rounded">
+<span class="text-[#8FA3C8]">REMAINING:</span>
+<span class="font-bold font-mono tracking-wider text-[#38E1FF] drop-shadow-[0_0_6px_rgba(56,225,255,0.4)]">03:41:22</span>
+</div>
+</div>
+</section>
+<!-- 3. System Narration & Roast Box (毒舌框) -->
+<section class="relative bg-[#131C33]/90 border border-[#FF4D5E] shadow-[0_0_20px_rgba(255,77,94,0.15)] p-4 rounded-sm" style="clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 0 100%);">
+<div class="flex items-center justify-between mb-2">
+<div class="flex items-center gap-1.5">
+<span class="text-[#FF4D5E] font-mono text-[15px] font-bold drop-shadow-[0_0_6px_#FF4D5E]">»</span>
+<span class="font-mono text-[11px] text-[#FF4D5E] font-bold tracking-wider uppercase">SYSTEM_DIAGNOSTIC // 实时评估</span>
+</div>
+<span class="font-mono text-[11px] text-[#FF4D5E]/80 border border-[#FF4D5E]/30 px-1 rounded-sm bg-[#FF4D5E]/10">WAR_09</span>
+</div>
+<p class="font-body-sm text-[14px] text-[#EAF2FF] leading-relaxed pl-3 border-l-2 border-[#FF4D5E]/60 py-0.5">
+    宿主前置体能扫描显示核心抗压水平低下。若本次下肢深蹲深度低于标准夹角，系统将判定为欺瞒行为，强制扣除 150 点信用点并追加惩罚协议。
+  </p>
+<div class="mt-2.5 pt-2 border-t border-[rgba(255,77,94,0.2)] flex justify-end items-center gap-2">
+<span class="font-mono text-[11px] text-[#8FA3C8]">STATUS:</span>
+<span class="font-mono text-[11px] text-[#38E1FF] tracking-wider font-semibold drop-shadow-[0_0_6px_rgba(56,225,255,0.4)]">SENSOR_SYNCED</span>
+</div>
+</section>
+<!-- 4. Protocol Directives / Execution Details -->
+<section class="glass-panel p-4 flex flex-col gap-3">
+<div class="flex items-center justify-between pb-2 border-b border-[rgba(56,225,255,0.25)]">
+<span class="font-mono text-[11px] text-[#38E1FF] tracking-widest uppercase font-semibold flex items-center gap-1.5">
+<span class="w-1 h-3 bg-[#38E1FF] inline-block shadow-[0_0_6px_#38E1FF]"></span>
+      DIRECTIVES // 协议执行细则
+    </span>
+<span class="font-mono text-[11px] text-[#8FA3C8] px-1.5 py-0.5 bg-[#1A2647] border border-[rgba(56,225,255,0.2)] rounded">3 STEPS</span>
+</div>
+<div class="flex flex-col gap-3 pt-1">
+<!-- Directive 1 -->
+<div class="flex items-start gap-3 p-2 bg-[#1A2647]/50 border border-[rgba(56,225,255,0.15)] rounded-sm hover:border-[rgba(56,225,255,0.4)] transition-colors">
+<span class="font-rajdhani text-[13px] font-bold text-[#0A0E1A] bg-[#38E1FF] px-2 py-0.5 rounded shadow-[0_0_10px_rgba(56,225,255,0.4)] shrink-0">01</span>
+<div class="flex flex-col">
+<span class="font-body-sm text-[14px] text-[#EAF2FF] font-medium">动作规范</span>
+<span class="font-body-sm text-[13px] text-[#8FA3C8] leading-snug mt-0.5">
+          标准杠铃/徒手深蹲 × 4 组（每组 15 次，离心 2 秒）
+        </span>
+</div>
+</div>
+<!-- Directive 2 -->
+<div class="flex items-start gap-3 p-2 bg-[#1A2647]/50 border border-[rgba(56,225,255,0.15)] rounded-sm hover:border-[rgba(56,225,255,0.4)] transition-colors">
+<span class="font-rajdhani text-[13px] font-bold text-[#0A0E1A] bg-[#38E1FF] px-2 py-0.5 rounded shadow-[0_0_10px_rgba(56,225,255,0.4)] shrink-0">02</span>
+<div class="flex flex-col">
+<span class="font-body-sm text-[14px] text-[#EAF2FF] font-medium">组间间歇监控</span>
+<span class="font-body-sm text-[13px] text-[#8FA3C8] leading-snug mt-0.5">
+          严格限定 <span class="font-mono text-[12px] text-[#38E1FF] font-bold">60</span> 秒（心率传感器需维持在 <span class="font-mono text-[12px] text-[#38E1FF] font-bold">125-145 BPM</span>）
+        </span>
+</div>
+</div>
+<!-- Directive 3 -->
+<div class="flex items-start gap-3 p-2 bg-[#1A2647]/50 border border-[rgba(56,225,255,0.15)] rounded-sm hover:border-[rgba(56,225,255,0.4)] transition-colors">
+<span class="font-rajdhani text-[13px] font-bold text-[#0A0E1A] bg-[#38E1FF] px-2 py-0.5 rounded shadow-[0_0_10px_rgba(56,225,255,0.4)] shrink-0">03</span>
+<div class="flex flex-col">
+<span class="font-body-sm text-[14px] text-[#EAF2FF] font-medium">阈值容差</span>
+<span class="font-body-sm text-[13px] text-[#8FA3C8] leading-snug mt-0.5">
+          神经疲劳度阈值允许波动不超过 <span class="font-mono text-[12px] text-[#38E1FF] font-bold">8.4%</span>
+</span>
+</div>
+</div>
+</div>
+</section>
+<!-- 5. Verification Method & Proof Upload Slots (验收模块) -->
+<section class="flex flex-col gap-2.5">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-1.5">
+<span class="material-symbols-outlined text-[#38E1FF] text-[16px] drop-shadow-[0_0_6px_#38E1FF]" data-icon="fact_check">fact_check</span>
+<span class="font-mono text-[11px] text-[#38E1FF] uppercase tracking-widest font-semibold">VERIFY_PROTOCOL // 证据回传协议</span>
+</div>
+<span class="font-mono text-[11px] text-[#8FA3C8] bg-[#131C33] border border-[rgba(56,225,255,0.2)] px-1.5 py-0.5 rounded">REQ_ATTACHMENT</span>
+</div>
+<p class="font-body-sm text-[13px] text-[#8FA3C8]">
+    运动手环时钟心率曲线截图 或 动作视频关键帧截取
+  </p>
+<!-- Upload Slot (Dashed Cyan Border on Deep Glass) -->
+<div class="relative w-full aspect-[4/3] bg-[#131C33]/60 backdrop-blur-sm border-2 border-dashed border-[rgba(56,225,255,0.35)] hover:border-[#38E1FF] hover:bg-[#1A2647]/50 hover:shadow-[0_0_24px_rgba(56,225,255,0.2)] transition-all duration-200 rounded-lg flex flex-col items-center justify-center cursor-pointer p-4 group">
+<div class="w-11 h-11 border border-[rgba(56,225,255,0.4)] bg-[#1A2647] flex items-center justify-center text-[#38E1FF] group-hover:scale-105 group-hover:shadow-[0_0_12px_#38E1FF] transition-all rounded mb-2">
+<span class="material-symbols-outlined text-[24px]" data-icon="add">add</span>
+</div>
+<span class="font-mono text-[12px] text-[#EAF2FF] group-hover:text-[#38E1FF] tracking-widest font-semibold drop-shadow-[0_0_6px_rgba(56,225,255,0.3)]">[ UPLOAD_TELEMETRY ]</span>
+<span class="font-mono text-[11px] text-[#8FA3C8] mt-1">PNG, JPG, HEIC MAX 12MB</span>
+</div>
+<!-- Optional Text Note Field -->
+<div class="flex flex-col gap-1 mt-1">
+<label class="font-mono text-[11px] text-[#8FA3C8] tracking-wider">备注 (OPTIONAL)</label>
+<input class="w-full bg-[#131C33] border border-[rgba(56,225,255,0.25)] rounded px-3 py-2.5 text-[#EAF2FF] font-body-sm text-[13px] placeholder:text-[#4A5A7A] focus:outline-none focus:border-[#38E1FF] focus:shadow-[0_0_12px_rgba(56,225,255,0.35)] transition-all" placeholder="输入关节受力异常或代偿记录..." type="text"/>
+</div>
+</section>
+<!-- 6. Reward Settlement Matrix (预期报酬矩阵) -->
+<section class="glass-panel p-4 flex flex-col gap-3">
+<div class="flex items-center justify-between border-b border-[rgba(56,225,255,0.25)] pb-2">
+<span class="font-mono text-[11px] text-[#38E1FF] tracking-wider uppercase font-semibold flex items-center gap-1.5">
+<span class="w-1 h-3 bg-[#38E1FF] inline-block shadow-[0_0_6px_#38E1FF]"></span>
+      SETTLEMENT // 预期报酬矩阵
+    </span>
+<span class="font-rajdhani text-[12px] font-bold text-[#FBBF24] bg-[#FBBF24]/10 border border-[#FBBF24]/40 px-2 py-0.5 rounded shadow-[0_0_8px_rgba(251,191,36,0.2)]">TIER: FIXED</span>
+</div>
+<div class="grid grid-cols-2 gap-3">
+<div class="bg-[#0A0E1A]/80 border border-[rgba(56,225,255,0.35)] p-3 flex flex-col rounded-sm shadow-[0_0_15px_rgba(56,225,255,0.08)]">
+<span class="font-mono text-[10px] text-[#8FA3C8] tracking-widest">EXPERIENCE</span>
+<span class="font-rajdhani text-[22px] font-bold text-[#38E1FF] mt-0.5 drop-shadow-[0_0_10px_rgba(56,225,255,0.6)]">+120 EXP</span>
+</div>
+<div class="bg-[#0A0E1A]/80 border border-[#FBBF24]/30 p-3 flex flex-col rounded-sm shadow-[0_0_15px_rgba(251,191,36,0.08)]">
+<span class="font-mono text-[10px] text-[#8FA3C8] tracking-widest">SYSTEM ASSETS</span>
+<span class="font-rajdhani text-[20px] font-bold text-[#FBBF24] mt-1 drop-shadow-[0_0_8px_rgba(251,191,36,0.4)]">+50 COIN</span>
+</div>
+</div>
+<div class="bg-[#1A2647]/70 border border-[rgba(56,225,255,0.25)] px-3 py-2 flex items-center justify-between rounded-sm">
+<span class="font-mono text-[11px] text-[#8FA3C8]">ATTRIBUTE MOD</span>
+<span class="font-mono text-[11px] text-[#EAF2FF] font-semibold text-right">[ 体能 <strong class="text-[#38E1FF]">+1</strong> · 意志力 <strong class="text-[#38E1FF]">+0.5</strong> ]</span>
+</div>
+<div class="border border-[#FF4D5E]/50 bg-[#FF4D5E]/10 px-3 py-2 flex items-center gap-2 rounded-sm shadow-[0_0_12px_rgba(255,77,94,0.15)]">
+<span class="material-symbols-outlined text-[#FF4D5E] text-[16px] shrink-0 drop-shadow-[0_0_6px_#FF4D5E]" data-icon="warning">warning</span>
+<span class="font-mono text-[11px] text-[#FF4D5E] font-medium leading-tight">违约惩罚：-150 CREDIT · 触发强制静思</span>
+</div>
+</section>
+<!-- 7. Primary Action Button & Ghost Abandon Trigger -->
+<section class="flex flex-col gap-3 pt-2">
+<!-- Primary CTA: Cyan-to-Sky gradient with clipped corner & cyan glow -->
+<button class="w-full hud-btn-primary active:scale-[0.99] transition-transform duration-100 text-[#0A0E1A] font-rajdhani text-[16px] font-bold py-3.5 px-4 tracking-wider flex items-center justify-center gap-2" type="button">
+<span class="material-symbols-outlined text-[18px] font-bold">bolt</span>
+<span>[ 提交神经遥测数据验证并结算 ENTER ]</span>
+</button>
+<!-- Secondary Danger CTA: Ghost with 危险红 border -->
+<button class="w-full bg-transparent border border-[#FF4D5E]/50 hover:border-[#FF4D5E] hover:bg-[#FF4D5E]/10 hover:shadow-[0_0_15px_rgba(255,77,94,0.25)] active:scale-[0.99] transition-all duration-150 text-[#FF4D5E] font-mono text-[12px] py-2.5 px-3 tracking-wider flex items-center justify-center rounded" type="button">
+<span>[ 申请废弃协议 (扣除 50 信用点) ]</span>
+</button>
+<!-- Bottom Terminal Footnote -->
+<div class="flex flex-col items-center justify-center pt-2 text-center gap-1">
+<span class="font-mono text-[11px] text-[#4A5A7A] tracking-tight">
+      SYS_SIGNATURE: 0x8C4B...77A · 协议一旦执行不可撤销
+    </span>
+<span class="font-mono text-[10px] text-[#4A5A7A]/75 tracking-wider">
+      SECURE PROTOCOL RUNTIME ENV // 宿主 TERMINAL V2.0.0 (GAME HUD)
+    </span>
+</div>
+</section>
+</main>
+</div>
+</body></html>

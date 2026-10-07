@@ -1,0 +1,13 @@
+Apply the attached DESIGN.md strictly (GAME HUD EDITION). Game system-window aesthetic: translucent deep-blue glass panels (#131C33) with 1px cyan (#38E1FF) borders + soft glow, clipped corner frames; canvas #0A0E1A with faint grid + slow scanline; rarity colors for quests (F gray #9AA3B2, E green #4ADE80, D sky blue #38BDF8); glowing cyan accents; game HUD feel.
+
+Dark mobile home screen, 390px, single-column quest hub.
+
+Top HUD: level gem badge (hexagonal cyan outline "LV.3"), mono "金币 248", right side "连击 6" with pulsing cyan ember dot. Directly under the HUD a 3px full-width EXP bar: cyan→deep-blue gradient 62% filled, periodic shine sweep.
+
+Below, a full-width system banner, glass panel with 3px cyan left edge + glow, mono cyan prefix "叮。" then: "新任务已发布。别问，问就是你自己立的目标。"
+
+Section 1, small gray-blue label "主线 · 进行中": one wide quest card, glass panel, left 3px rarity strip in D sky-blue #38BDF8 + soft blue glow, rarity tag chip "D 级". Title: "初试锋芒：累计跑步 10 公里", progress in mono: "7.2 / 10 km", thin cyan progress bar with shine, right mono hint "环 2/6".
+
+Section 2, label "今日 · 短期轨道": three stacked quest cards. Card 1: E rarity strip green #4ADE80 + "E 级" chip, title "词汇锻造：背 30 个单词", meta mono "截图验证 · 今日 24:00". Card 2: E green strip, title "静心术：冥想 10 分钟", same meta. Card 3: F gray strip #9AA3B2, title "感恩清单：记录 3 件值得感谢的事", meta "截图验证 · 今日 24:00", completed: desaturated green check, dimmed content.
+
+Bottom tab bar, 56px, glass fill, 4 tabs with outline icons: 任务 (active, cyan with icon glow), 面板, 主线, 我的. Staggered cascade reveal for quest cards.

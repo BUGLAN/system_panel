@@ -1,0 +1,11 @@
+{
+  "name": "stitch-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Direct @google/stitch-sdk bridge for generating 宿主 SYSTEM prototype screens",
+  "dependencies": {
+    "@google/stitch": "^0.11.0",
+    "@google/stitch-sdk": "^0.3.5"
+  }
+}

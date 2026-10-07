@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="zh-CN"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>PROTOCOL_SETTLED // SYS_TERMINAL</title>
+<!-- Material Symbols Outlined -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Fonts: Space Grotesk, JetBrains Mono, Noto Sans SC -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&amp;family=Noto+Sans+SC:wght@400;500;600;700&amp;family=Space+Grotesk:wght@500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          "colors": {
+            "on-tertiary-fixed-variant": "#004882",
+            "on-primary-container": "#634400",
+            "outline-variant": "#4f4536",
+            "tertiary": "#bcd7ff",
+            "inverse-surface": "#ebe1d5",
+            "on-secondary-container": "#b6b4b8",
+            "surface-container-highest": "#3a342c",
+            "error-container": "#93000a",
+            "on-tertiary-fixed": "#001c39",
+            "verification-green": "#6FBF8E",
+            "secondary": "#c8c5ca",
+            "on-surface": "#ebe1d5",
+            "on-primary": "#422c00",
+            "outline": "#9c8f7d",
+            "on-secondary-fixed": "#1b1b1e",
+            "elevated-gray": "#1E1E23",
+            "system-amber": "#E8B04B",
+            "on-secondary": "#303033",
+            "oxidation-red": "#E05252",
+            "inverse-on-surface": "#353028",
+            "background": "#17130c",
+            "on-secondary-fixed-variant": "#47464a",
+            "secondary-fixed-dim": "#c8c5ca",
+            "on-tertiary": "#00315c",
+            "primary-fixed-dim": "#f6bd56",
+            "tertiary-fixed-dim": "#a3c9ff",
+            "on-tertiary-container": "#014b87",
+            "surface-container-lowest": "#120e07",
+            "screen-white": "#F4F4F5",
+            "structural-line": "rgba(244,244,245,0.08)",
+            "inverse-primary": "#7e5700",
+            "console-gray": "#17171A",
+            "tertiary-container": "#8abcff",
+            "surface-bright": "#3e3830",
+            "screen-off-gray": "#5B5B63",
+            "surface-tint": "#f6bd56",
+            "on-error": "#690005",
+            "secondary-fixed": "#e4e1e6",
+            "tertiary-fixed": "#d3e3ff",
+            "error": "#ffb4ab",
+            "surface-dim": "#17130c",
+            "secondary-container": "#47464a",
+            "on-primary-fixed": "#271900",
+            "surface-container-high": "#2f2922",
+            "terminal-black": "#101012",
+            "surface-container-low": "#201b14",
+            "surface-container": "#241f18",
+            "primary": "#ffcd7b",
+            "on-background": "#ebe1d5",
+            "primary-container": "#e8b04b",
+            "on-surface-variant": "#d3c4b0",
+            "fluorescent-gray": "#9D9DA7",
+            "surface": "#17130c",
+            "on-primary-fixed-variant": "#5f4100",
+            "on-error-container": "#ffdad6",
+            "surface-variant": "#3a342c",
+            "primary-fixed": "#ffdeab"
+          },
+          "borderRadius": {
+            "DEFAULT": "0.25rem",
+            "lg": "0.5rem",
+            "xl": "0.75rem",
+            "full": "9999px"
+          },
+          "spacing": {
+            "space-md": "16px",
+            "space-sm": "8px",
+            "space-xs": "4px",
+            "space-lg": "24px",
+            "margin": "16px",
+            "space-xl": "32px",
+            "gutter": "12px"
+          },
+          "fontFamily": {
+            "number-sm": ["JetBrains Mono"],
+            "body-sm": ["Noto Sans SC"],
+            "number-md": ["JetBrains Mono"],
+            "label-mono": ["JetBrains Mono"],
+            "headline-lg": ["Space Grotesk"],
+            "headline-sm": ["Space Grotesk"],
+            "headline-md": ["Space Grotesk"],
+            "number-lg": ["Space Grotesk"],
+            "body-md": ["Noto Sans SC"]
+          },
+          "fontSize": {
+            "number-sm": ["11px", { "lineHeight": "14px", "fontWeight": "500" }],
+            "body-sm": ["13px", { "lineHeight": "1.5", "fontWeight": "400" }],
+            "number-md": ["16px", { "lineHeight": "20px", "fontWeight": "600" }],
+            "label-mono": ["12px", { "lineHeight": "16px", "letterSpacing": "0.2em", "fontWeight": "500" }],
+            "headline-lg": ["32px", { "lineHeight": "40px", "letterSpacing": "-0.02em", "fontWeight": "700" }],
+            "headline-sm": ["18px", { "lineHeight": "24px", "letterSpacing": "-0.02em", "fontWeight": "600" }],
+            "headline-md": ["24px", { "lineHeight": "32px", "letterSpacing": "-0.02em", "fontWeight": "600" }],
+            "number-lg": ["56px", { "lineHeight": "60px", "letterSpacing": "-0.03em", "fontWeight": "700" }],
+            "body-md": ["15px", { "lineHeight": "1.6", "fontWeight": "400" }]
+          }
+        }
+      }
+    }
+  </script>
+<style>
+    .material-symbols-outlined {
+      font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+      display: inline-block;
+      vertical-align: middle;
+      line-height: 1;
+    }
+    /* Subtle scanline CRT overlay */
+    .crt-scanlines {
+      background: linear-gradient(
+        rgba(18, 16, 16, 0) 50%, 
+        rgba(0, 0, 0, 0.25) 50%
+      ), linear-gradient(
+        90deg,
+        rgba(255, 0, 0, 0.03),
+        rgba(0, 255, 0, 0.01),
+        rgba(0, 0, 255, 0.03)
+      );
+      background-size: 100% 2px, 3px 100%;
+      pointer-events: none;
+    }
+  </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-terminal-black text-screen-white min-h-screen flex items-center justify-center p-0 font-body-sm antialiased selection:bg-system-amber selection:text-terminal-black">
+<!-- Mobile Frame: 390px Viewport Simulation -->
+<main class="relative w-[390px] h-[844px] max-h-[844px] overflow-hidden bg-terminal-black flex flex-col justify-between border border-structural-line">
+<!-- LAYER 0: Background Task Terminal (Dimmed & Blurred Under Overlay) -->
+<div class="absolute inset-0 z-0 flex flex-col bg-terminal-black select-none opacity-40 blur-[1px]">
+<!-- TopAppBar Anchor from Shared Components -->
+<header class="w-full h-12 flex justify-between items-center px-space-md bg-terminal-black border-b border-structural-line shrink-0">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-system-amber text-lg">terminal</span>
+<span class="font-label-mono text-label-mono text-system-amber tracking-widest uppercase">SYS://INITIALIZE</span>
+</div>
+<div class="font-number-sm text-number-sm text-screen-off-gray">
+          V1.0.4_ONLINE
+        </div>
+</header>
+<!-- Background Simulated Content (Previous Terminal Quests) -->
+<div class="p-margin flex flex-col gap-3">
+<div class="flex items-center justify-between border-b border-structural-line pb-2">
+<span class="font-label-mono text-label-mono text-fluorescent-gray">ACTIVE_DAEMON // #092</span>
+<span class="font-number-sm text-number-sm text-verification-green">SYNCED</span>
+</div>
+<!-- Simulated Inactive Quest Cards -->
+<div class="relative bg-console-gray rounded-xl p-3 border border-structural-line overflow-hidden flex flex-col gap-1">
+<div class="absolute left-0 top-0 bottom-0 w-[3px] bg-system-amber"></div>
+<div class="flex justify-between items-center pl-2">
+<span class="font-headline-sm text-headline-sm text-screen-white">神经突触高强度重构</span>
+<span class="font-label-mono text-label-mono text-system-amber">RANK_S</span>
+</div>
+<div class="pl-2 font-number-sm text-number-sm text-screen-off-gray">EXECUTION_DURATION: 04:12:00 // EXPIRED</div>
+</div>
+<div class="relative bg-console-gray rounded-xl p-3 border border-structural-line overflow-hidden flex flex-col gap-1">
+<div class="absolute left-0 top-0 bottom-0 w-[3px] bg-screen-off-gray"></div>
+<div class="flex justify-between items-center pl-2">
+<span class="font-headline-sm text-headline-sm text-screen-white">心肺负荷阶梯灌注</span>
+<span class="font-label-mono text-label-mono text-fluorescent-gray">RANK_B</span>
+</div>
+<div class="pl-2 font-number-sm text-number-sm text-screen-off-gray">STATUS: VERIFIED_AWAITING_SETTLE</div>
+</div>
+<div class="relative bg-console-gray rounded-xl p-3 border border-structural-line overflow-hidden flex flex-col gap-1">
+<div class="absolute left-0 top-0 bottom-0 w-[3px] bg-oxidation-red"></div>
+<div class="flex justify-between items-center pl-2">
+<span class="font-headline-sm text-headline-sm text-screen-white">核心意志力锚定阻抗</span>
+<span class="font-label-mono text-label-mono text-oxidation-red">RANK_A</span>
+</div>
+<div class="pl-2 font-number-sm text-number-sm text-screen-off-gray">METRIC: STRESS_SPIKE_88%</div>
+</div>
+</div>
+</div>
+<!-- LAYER 1: Dark Scrim 70% Over Task Terminal -->
+<div class="absolute inset-0 z-10 bg-terminal-black/70 backdrop-blur-[2px]"></div>
+<!-- LAYER 2: CRT Scanline Micro-Atmosphere -->
+<div class="absolute inset-0 z-20 crt-scanlines pointer-events-none"></div>
+<!-- LAYER 3: Elevated Settlement Overlay Sheet (Bottom 2/3 Height) -->
+<div class="relative z-30 w-full mt-auto flex flex-col justify-end">
+<!-- Subtle top telemetry pill above sheet -->
+<div class="px-margin mb-2 flex items-center justify-between">
+<div class="flex items-center gap-1.5">
+<span class="w-1.5 h-1.5 rounded-full bg-system-amber animate-pulse"></span>
+<span class="font-label-mono text-number-sm text-system-amber tracking-widest">TRANSACTION_PENDING</span>
+</div>
+<span class="font-number-sm text-number-sm text-screen-off-gray">PORT://8082_SSL</span>
+</div>
+<!-- Main Elevated Container: #1E1E23 with 24px Radius & 1px Structural Line Border -->
+<div class="bg-elevated-gray rounded-t-[24px] border-t border-x border-structural-line p-margin pt-5 pb-5 flex flex-col gap-4 shadow-2xl">
+<!-- Sheet Handle Accent Bar -->
+<div class="w-10 h-1 bg-screen-off-gray/40 rounded-full mx-auto -mt-1 mb-1"></div>
+<!-- 1. Terminal Status Header -->
+<div class="flex flex-col gap-1 border-b border-structural-line pb-3">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-1.5">
+<span class="font-number-sm text-number-sm text-verification-green">叮。</span>
+<span class="font-label-mono text-label-mono text-screen-white uppercase tracking-wider">协议清算完成 // PROTOCOL_SETTLED</span>
+</div>
+<span class="font-number-sm text-number-sm text-screen-off-gray">NODE_ID: #8942-TX</span>
+</div>
+<!-- System Deadpan Voice Narration -->
+<p class="font-body-sm text-body-sm text-fluorescent-gray pl-0.5 leading-relaxed">
+            宿主本日神经重构协议已核验。效率勉强达标，给予准入报酬。
+          </p>
+</div>
+<!-- 2. Reward Readout Cockpit: Bento Matrix -->
+<div class="bg-console-gray rounded-xl p-3.5 border border-structural-line flex flex-col gap-3">
+<!-- Primary Reward: EXP & Multiplier Tag -->
+<div class="flex items-end justify-between">
+<div class="flex flex-col">
+<span class="font-label-mono text-number-sm text-screen-off-gray uppercase tracking-widest">SETTLED_EXPERIENCE</span>
+<div class="flex items-baseline gap-1 mt-0.5">
+<span class="font-number-lg text-number-lg text-system-amber leading-none">+120</span>
+<span class="font-number-md text-number-md text-system-amber uppercase font-semibold">EXP</span>
+</div>
+</div>
+<!-- CRIT Tag Badge -->
+<div class="flex flex-col items-end gap-1">
+<div class="inline-flex items-center gap-1 px-2 py-0.5 bg-system-amber/10 border border-system-amber/30 rounded">
+<span class="w-1 h-1 rounded-full bg-system-amber"></span>
+<span class="font-label-mono text-number-sm text-system-amber font-bold">CRIT ×2</span>
+</div>
+<span class="font-number-sm text-number-sm text-screen-off-gray">BASE: 60 EXP</span>
+</div>
+</div>
+<!-- Secondary Row: Coins & Spring Attribute Chips -->
+<div class="grid grid-cols-3 gap-2 pt-2 border-t border-structural-line">
+<!-- Currency -->
+<div class="bg-elevated-gray rounded-lg p-2 border border-structural-line flex flex-col justify-between">
+<span class="font-label-mono text-[9px] text-screen-off-gray leading-none uppercase">CURRENCY</span>
+<div class="flex items-center gap-1 mt-1">
+<span class="material-symbols-outlined text-system-amber text-xs">toll</span>
+<span class="font-number-sm text-number-sm text-system-amber font-semibold">+50 COIN</span>
+</div>
+</div>
+<!-- Attribute Chip 1: 体能 -->
+<div class="bg-elevated-gray rounded-lg p-2 border border-structural-line flex flex-col justify-between relative overflow-hidden">
+<div class="absolute top-0 right-0 w-1.5 h-1.5 bg-system-amber rounded-bl"></div>
+<span class="font-label-mono text-[9px] text-screen-off-gray leading-none">ATTRIBUTE</span>
+<div class="font-number-sm text-number-sm text-screen-white font-medium mt-1 truncate">
+                体能 <span class="text-system-amber font-bold">+1</span>
+</div>
+</div>
+<!-- Attribute Chip 2: 意志力 -->
+<div class="bg-elevated-gray rounded-lg p-2 border border-structural-line flex flex-col justify-between relative overflow-hidden">
+<div class="absolute top-0 right-0 w-1.5 h-1.5 bg-system-amber rounded-bl"></div>
+<span class="font-label-mono text-[9px] text-screen-off-gray leading-none">ATTRIBUTE</span>
+<div class="font-number-sm text-number-sm text-screen-white font-medium mt-1 truncate">
+                意志力 <span class="text-system-amber font-bold">+0.5</span>
+</div>
+</div>
+</div>
+<!-- Streak Indicator: Strict Flameless Dot Matrix -->
+<div class="flex items-center justify-between pt-1">
+<div class="flex items-center gap-2">
+<span class="font-label-mono text-number-sm text-fluorescent-gray">STREAK: 14D (MAINTAINED)</span>
+</div>
+<!-- 7-Day Continuous Dot Matrix -->
+<div class="flex items-center gap-1">
+<span class="w-1.5 h-1.5 rounded-full bg-system-amber" title="Day 1"></span>
+<span class="w-1.5 h-1.5 rounded-full bg-system-amber" title="Day 2"></span>
+<span class="w-1.5 h-1.5 rounded-full bg-system-amber" title="Day 3"></span>
+<span class="w-1.5 h-1.5 rounded-full bg-system-amber" title="Day 4"></span>
+<span class="w-1.5 h-1.5 rounded-full bg-system-amber" title="Day 5"></span>
+<span class="w-1.5 h-1.5 rounded-full bg-system-amber" title="Day 6"></span>
+<span class="w-1.5 h-1.5 rounded-full bg-system-amber ring-2 ring-system-amber/30" title="Day 7 (Today)"></span>
+</div>
+</div>
+</div>
+<!-- 3. System Diagnostic Roast Box (Quote Block with ») -->
+<div class="bg-console-gray rounded-xl p-3 border-l-2 border-l-oxidation-red border border-structural-line flex items-start gap-2.5">
+<span class="font-number-md text-oxidation-red font-bold select-none leading-tight">»</span>
+<div class="flex flex-col gap-0.5">
+<span class="font-label-mono text-[10px] text-oxidation-red tracking-wider font-semibold uppercase">SYSTEM_DIAGNOSTIC // WARNING_TRACE</span>
+<p class="font-body-sm text-body-sm text-screen-white leading-snug">
+              系统播报：虽未触犯强制惩罚阈值，但心率波动曾接近警戒线。保持警惕，宿主。
+            </p>
+</div>
+</div>
+<!-- 4. Interactive Actions -->
+<div class="flex flex-col gap-2 pt-1">
+<!-- Primary Settlement Button -->
+<button class="w-full h-12 bg-system-amber active:scale-[0.99] transition-transform rounded-[14px] flex items-center justify-center gap-2 text-terminal-black font-number-sm text-number-sm font-bold tracking-wider hover:brightness-105 cursor-pointer shadow-md" onclick="triggerSettlement(this)" type="button">
+<span class="material-symbols-outlined text-terminal-black text-base font-bold">check</span>
+<span>[ 确认收割报酬并关闭清算 ENTER ]</span>
+</button>
+<!-- Secondary Ghost Export Action -->
+<button class="w-full h-10 bg-transparent active:bg-console-gray/50 transition-colors border border-structural-line rounded-[14px] flex items-center justify-center gap-2 text-screen-white hover:text-system-amber font-number-sm text-number-sm cursor-pointer" onclick="triggerExport(this)" type="button">
+<span class="material-symbols-outlined text-fluorescent-gray text-sm">terminal</span>
+<span>[ 导出神经遥测回执 EXPORT_LOG ]</span>
+</button>
+</div>
+<!-- 5. Bottom System Integrity Signature Footer -->
+<div class="text-center pt-1 border-t border-structural-line">
+<p class="font-number-sm text-[10px] text-screen-off-gray tracking-tight">
+            SYS_SIGNATURE: 0x8C4B...77A · 清算一旦执行不可逆转
+          </p>
+</div>
+</div>
+</div>
+</main>
+<script>
+    function triggerSettlement(button) {
+      const originalText = button.innerHTML;
+      button.disabled = true;
+      button.innerHTML = `
+        <span class="material-symbols-outlined text-terminal-black text-base animate-spin">refresh</span>
+        <span>[ 正在写入核心晶体 STORAGE_SAVED... ]</span>
+      `;
+      setTimeout(() => {
+        button.innerHTML = `
+          <span class="material-symbols-outlined text-terminal-black text-base">verified</span>
+          <span>[ 清算已封存 RECORD_LOCKED ]</span>
+        `;
+        button.classList.remove('bg-system-amber');
+        button.classList.add('bg-verification-green');
+      }, 700);
+    }
+
+    function triggerExport(button) {
+      const labelSpan = button.querySelector('span:last-child');
+      const prevText = labelSpan.textContent;
+      labelSpan.textContent = "[ 已生成加密遥测日志 /VAR/LOG/SYS_8942.RAW ]";
+      button.classList.add('text-system-amber');
+      setTimeout(() => {
+        labelSpan.textContent = prevText;
+        button.classList.remove('text-system-amber');
+      }, 2000);
+    }
+  </script>
+</body></html>

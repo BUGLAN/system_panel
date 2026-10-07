@@ -1,0 +1,41 @@
+name: system_panel
+description: "宿主 SYSTEM — 网文系统流自我提升 App（Flutter 客户端）"
+publish_to: 'none'
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.13.5
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+
+  # 字体三件套（视觉基准锁定，见 .stitch/DESIGN.md）
+  # 说明：NotoSansSC / JetBrainsMono 是可变字重字体（Variable Font），
+  # 字重不靠 weight 声明，而是在代码里用：
+  #   TextStyle(fontFamily: 'NotoSansSC', fontVariations: [FontVariation('wght', 700)])
+  fonts:
+    - family: Rajdhani
+      fonts:
+        - asset: assets/fonts/Rajdhani-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/Rajdhani-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Rajdhani-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/Rajdhani-Bold.ttf
+          weight: 700
+    - family: NotoSansSC
+      fonts:
+        - asset: assets/fonts/NotoSansSC-VF.ttf
+    - family: JetBrainsMono
+      fonts:
+        - asset: assets/fonts/JetBrainsMono-VF.ttf

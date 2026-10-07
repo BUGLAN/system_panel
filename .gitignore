@@ -1,0 +1,31 @@
+# 依赖（可重装，不入库）
+node_modules/
+
+# 凭据：Stitch API Key 等
+.env
+.env.*
+
+# Stitch 生成产物原始响应
+prototype/stitch-bridge/results/
+
+# 日志
+*.log
+
+# 验证产物（模拟器截图等临时证据），不入库
+.verify/
+
+# 版权红线（14-系统形象与表演规则）：现成 Live2D 模型与 TTS 音频仅限本机验证，不入库不发布
+# 用通配覆盖所有原型变体（app / app2 / app-v2 / ink …），别再写死 prototype/app/——
+# app2 曾漏挡 4.7MB 模型，一句 git add -A 就会把模型提交进去。
+# 注意：只挡模型与音频，vendor/（Cubism 脚本）与 voice/README.txt 仍应入库。
+prototype/*/live2d/
+prototype/*/voice/*.mp3
+prototype/*/voice/*.wav
+
+# 原型实验变体：并行会话的临时探索目录，不属于产品原型
+# （2026-10-07 起唯一产品原型＝prototype/opus-v2-dir/；prototype/ 下其余历史原型
+#   已整体归档到仓库外的 E:\repo\archive\，见该目录 README.md）
+# 下面三行是历史条目——目录已不在本仓库；保留它们是为了「原样放回时仍会被挡住」。
+prototype/app-v2/
+prototype/app2/
+prototype/ink/

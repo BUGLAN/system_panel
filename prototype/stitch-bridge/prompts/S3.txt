@@ -1,0 +1,10 @@
+Apply the attached DESIGN.md strictly (GAME HUD EDITION). Game system-window aesthetic: glass panels with 1px cyan (#38E1FF) borders + glow, clipped corners, canvas #0A0E1A with faint grid; rarity color coding; glowing cyan accents.
+
+SCREEN CONTENT LOCK — this is a SINGLE TASK DETAIL screen (任务详情) for one quest. It contains ONLY the blocks below. NO quest list, NO task hub, NO multiple quest cards, NO dungeon table.
+
+1. Header: back arrow icon, quest title in cool white 20px Rajdhani: "词汇锻造：背 30 个单词". Meta row: rarity tag chip "E 级" with green #4ADE80 border + soft green glow; mono muted "日常 · 今日 24:00 截止 · 剩余 04:12:37" with countdown in cyan mono, ticking.
+2. System narration block, 14px muted, deadpan: "系统提醒：截图不会伪造，但面板不会说谎。"
+3. Section label "验证方式": line in cool white "上传背单词 App 今日进度截图", sub-line dim "可上传多张 · 可附文字备注".
+4. Upload area: one filled 4:3 thumbnail slot (plausible vocab-app screenshot) with a rarity-green verified tick and small dim delete icon; one empty dashed cyan 4:3 slot with gray plus icon. Below: text note field, label "备注（可选）", glass input, cyan focus ring.
+5. Bottom fixed: one primary button full-width, cyan gradient fill + glow, dark navy text, clipped corner: "提交验证". Beneath: centered ghost dim link "拒绝本任务（免死金牌 ×2）".
+6. Nothing else. UI copy in Chinese exactly as given.

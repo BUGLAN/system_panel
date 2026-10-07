@@ -1,0 +1,10 @@
+Apply the attached DESIGN.md strictly (GAME HUD EDITION). Game system-window aesthetic: glass panels with 1px cyan (#38E1FF) borders + glow, clipped corners, canvas #0A0E1A with faint grid + scanline.
+
+SCREEN CONTENT LOCK — this is the PLAYER STATUS PANEL (宿主面板), a character-stats page. Its HERO ELEMENT is one large hexagon radar chart occupying the middle ~40% of the screen. It contains ONLY the blocks below. NO quest lists, NO task cards, NO dungeon tables.
+
+1. Header: mono muted uppercase "HOST STATUS" with slow cyan scanline; hexagonal level gem badge with glowing cyan outline "LV.03" in Rajdhani; outlined pill title tag "三分钟热度"; one mono line "累计任务 27 · 金币 248 · 连击 6" with pulsing cyan ember dot; under the header a 3px EXP bar, cyan→deep-blue gradient 62% filled with shine sweep.
+2. HERO: large hexagon radar chart — grid rings rgba(56,225,255,0.12), six axis labels 体/智/专/心/交/生 in dim gray, cyan data polygon stroke 2px with 18% fill and glowing vertex dots, values as tiny mono labels at vertices: 体 8 · 智 12 · 专 6 · 心 9 · 交 4 · 生 7. 智 axis furthest. Spring overshoot draw.
+3. Insight block, 14px muted deadpan: "系统观测：宿主在「智」上略有长进。在「交」上，系统建议宿主先从给一位旧友发消息开始。"
+4. Section label "未竟之志": one collapsed ghost card, faint cyan border, dimmed title "三个月减十斤", mono tag "已放弃", chevron.
+5. Bottom tab bar, 4 tabs 任务/面板/主线/我的, 面板 active in cyan with icon glow.
+6. Nothing else. UI copy in Chinese exactly as given.

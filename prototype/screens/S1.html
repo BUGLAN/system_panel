@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="zh-CN"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>SYS://BIND_PROTOCOL_V1.04</title>
+<!-- Typography & Icons -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&family=Space+Grotesk:wght@500;600;700&family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@100..900&family=Noto+Sans+SC:wght@100..900&family=Space+Grotesk:wght@100..900&display=swap" rel="stylesheet"/>
+<!-- Tailwind CSS Engine -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          "colors": {
+            "system-amber": "#E8B04B",
+            "on-secondary": "#303033",
+            "on-primary-fixed-variant": "#5f4100",
+            "on-background": "#ebe1d5",
+            "oxidation-red": "#E05252",
+            "inverse-on-surface": "#353028",
+            "screen-off-gray": "#5B5B63",
+            "outline-variant": "#4f4536",
+            "secondary-fixed": "#e4e1e6",
+            "elevated-gray": "#1E1E23",
+            "verification-green": "#6FBF8E",
+            "surface-container-lowest": "#120e07",
+            "on-secondary-fixed-variant": "#47464a",
+            "on-primary-container": "#634400",
+            "on-tertiary": "#00315c",
+            "surface-container-high": "#2f2922",
+            "error": "#ffb4ab",
+            "fluorescent-gray": "#9D9DA7",
+            "primary-fixed-dim": "#f6bd56",
+            "console-gray": "#17171A",
+            "surface-container": "#241f18",
+            "on-primary": "#422c00",
+            "tertiary": "#bcd7ff",
+            "tertiary-fixed-dim": "#a3c9ff",
+            "primary": "#ffcd7b",
+            "on-tertiary-fixed": "#001c39",
+            "surface": "#17130c",
+            "on-primary-fixed": "#271900",
+            "background": "#17130c",
+            "secondary-container": "#47464a",
+            "on-tertiary-fixed-variant": "#004882",
+            "secondary-fixed-dim": "#c8c5ca",
+            "surface-variant": "#3a342c",
+            "primary-container": "#e8b04b",
+            "surface-dim": "#17130c",
+            "on-surface": "#ebe1d5",
+            "surface-tint": "#f6bd56",
+            "inverse-primary": "#7e5700",
+            "tertiary-container": "#8abcff",
+            "on-surface-variant": "#d3c4b0",
+            "inverse-surface": "#ebe1d5",
+            "terminal-black": "#101012",
+            "screen-white": "#F4F4F5",
+            "outline": "#9c8f7d",
+            "on-error": "#690005",
+            "surface-container-low": "#201b14",
+            "primary-fixed": "#ffdeab",
+            "tertiary-fixed": "#d3e3ff",
+            "secondary": "#c8c5ca",
+            "on-secondary-fixed": "#1b1b1e",
+            "on-tertiary-container": "#014b87",
+            "surface-container-highest": "#3a342c",
+            "surface-bright": "#3e3830",
+            "structural-line": "rgba(244,244,245,0.08)",
+            "on-secondary-container": "#b6b4b8",
+            "error-container": "#93000a",
+            "on-error-container": "#ffdad6"
+          },
+          "borderRadius": {
+            "DEFAULT": "0.25rem",
+            "lg": "0.5rem",
+            "xl": "0.75rem",
+            "2xl": "1rem",
+            "full": "9999px"
+          },
+          "spacing": {
+            "space-xs": "4px",
+            "space-sm": "8px",
+            "space-md": "16px",
+            "space-lg": "24px",
+            "space-xl": "32px",
+            "margin": "16px",
+            "gutter": "12px"
+          },
+          "fontFamily": {
+            "body-md": ["Noto Sans SC"],
+            "headline-md": ["Space Grotesk"],
+            "number-md": ["JetBrains Mono"],
+            "label-mono": ["JetBrains Mono"],
+            "number-sm": ["JetBrains Mono"],
+            "headline-lg": ["Space Grotesk"],
+            "body-sm": ["Noto Sans SC"],
+            "number-lg": ["Space Grotesk"],
+            "headline-sm": ["Space Grotesk"]
+          },
+          "fontSize": {
+            "body-md": ["15px", { "lineHeight": "1.6", "fontWeight": "400" }],
+            "headline-md": ["24px", { "lineHeight": "32px", "letterSpacing": "-0.02em", "fontWeight": "600" }],
+            "number-md": ["16px", { "lineHeight": "20px", "fontWeight": "600" }],
+            "label-mono": ["12px", { "lineHeight": "16px", "letterSpacing": "0.2em", "fontWeight": "500" }],
+            "number-sm": ["11px", { "lineHeight": "14px", "fontWeight": "500" }],
+            "headline-lg": ["32px", { "lineHeight": "40px", "letterSpacing": "-0.02em", "fontWeight": "700" }],
+            "body-sm": ["13px", { "lineHeight": "1.5", "fontWeight": "400" }],
+            "number-lg": ["56px", { "lineHeight": "60px", "letterSpacing": "-0.03em", "fontWeight": "700" }],
+            "headline-sm": ["18px", { "lineHeight": "24px", "letterSpacing": "-0.02em", "fontWeight": "600" }]
+          }
+        }
+      }
+    }
+  </script>
+<style>
+    .material-symbols-outlined {
+      font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+      display: inline-block;
+      vertical-align: middle;
+      line-height: 1;
+    }
+    /* Subtle scanline background texture */
+    .terminal-grid {
+      background-size: 100% 3px;
+      background-image: linear-gradient(0deg, rgba(16, 16, 18, 0.4) 50%, rgba(23, 23, 26, 0.4) 50%);
+    }
+  </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-terminal-black text-screen-white antialiased min-h-screen flex justify-center selection:bg-system-amber selection:text-terminal-black">
+<!-- Mobile Frame Container (Strict 390px, max 430px) -->
+<div class="w-full max-w-[430px] min-h-screen bg-terminal-black flex flex-col relative pb-space-xl">
+<!-- Top HUD Strip (Shared Component JSON Blueprint Translation) -->
+<header class="fixed top-0 left-0 w-full z-50 flex justify-between items-center px-space-md h-12 bg-terminal-black border-b border-structural-line">
+<div class="flex items-center gap-space-xs">
+<span class="material-symbols-outlined text-system-amber text-[18px]">terminal</span>
+<span class="text-label-mono font-label-mono tracking-widest text-system-amber">SYS://INITIALIZE</span>
+</div>
+<div class="flex items-center gap-space-xs">
+<span class="w-1.5 h-1.5 rounded-full bg-system-amber animate-pulse"></span>
+<span class="text-number-sm font-number-sm text-screen-off-gray">V1.0.4_ONLINE</span>
+</div>
+</header>
+<!-- Main Content Canvas (Asymmetric, Left-Hugging) -->
+<main class="flex-1 px-margin pt-16 flex flex-col gap-space-lg">
+<!-- System Diagnostic Breadcrumb / Telemetry Tracker -->
+<section class="flex items-center justify-between pt-space-xs text-number-sm font-number-sm text-screen-off-gray">
+<span>MEM_ALLOC: 0x48FA</span>
+<span class="text-system-amber">LATENCY: 12MS</span>
+</section>
+<!-- System Narration Section -->
+<section class="flex flex-col items-start gap-space-xs">
+<div class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-console-gray border border-structural-line">
+<span class="text-system-amber font-number-sm text-number-sm">叮。</span>
+<span class="text-fluorescent-gray font-label-mono text-number-sm tracking-wider">PROTOCOL_OVERRIDE</span>
+</div>
+<h1 class="font-headline-md text-headline-md text-screen-white tracking-tight text-left mt-1">
+          检测到合适载体。<br/>正在初始化宿主协议。
+        </h1>
+<p class="font-body-md text-body-md text-fluorescent-gray text-left max-w-sm mt-1">
+          基础生命体征平庸，精神波动勉强达标。系统已强制接入。请在意识丧失前确认代号。
+        </p>
+</section>
+<!-- Diagnostic Cockpit Module (Density: 6/10) -->
+<section class="bg-console-gray border border-structural-line rounded-2xl p-space-md flex flex-col gap-space-md">
+<!-- Header Tag -->
+<div class="flex items-center justify-between border-b border-structural-line pb-space-xs">
+<span class="font-label-mono text-number-sm text-screen-off-gray tracking-wider">TELEMETRY // 实时体征</span>
+<span class="font-number-sm text-number-sm text-system-amber">SYNC_ACTIVE</span>
+</div>
+<!-- Metric Grid -->
+<div class="grid grid-cols-3 gap-gutter items-end">
+<!-- Metric 1: Rating -->
+<div class="flex flex-col border-l-2 border-system-amber pl-2">
+<span class="font-body-sm text-number-sm text-fluorescent-gray">综合评级</span>
+<div class="flex items-baseline gap-1 mt-0.5">
+<span class="font-headline-lg text-headline-lg text-system-amber leading-none">F</span>
+<span class="font-number-sm text-number-sm text-screen-off-gray">/ SSS</span>
+</div>
+</div>
+<!-- Metric 2: Sync Rate -->
+<div class="flex flex-col border-l border-structural-line pl-2">
+<span class="font-body-sm text-number-sm text-fluorescent-gray">躯体同步率</span>
+<div class="flex items-baseline gap-0.5 mt-1">
+<span class="font-number-md text-number-md text-screen-white font-bold">34.2</span>
+<span class="font-number-sm text-number-sm text-system-amber">%</span>
+</div>
+</div>
+<!-- Metric 3: Traits -->
+<div class="flex flex-col border-l border-structural-line pl-2">
+<span class="font-body-sm text-number-sm text-fluorescent-gray">潜在特质</span>
+<div class="mt-1 flex items-center gap-1">
+<span class="font-body-sm text-body-sm text-screen-white">待激活</span>
+<span class="font-number-sm text-number-sm text-screen-off-gray">(未鉴定)</span>
+</div>
+</div>
+</div>
+<!-- Terminal Readout / Roast Box -->
+<div class="bg-elevated-gray border border-oxidation-red/40 rounded-lg p-2.5 flex items-start gap-2">
+<span class="font-label-mono text-oxidation-red text-body-md select-none leading-none">»</span>
+<p class="font-body-sm text-body-sm text-fluorescent-gray leading-snug">
+            警告：本系统不提供退款、无痛升级与情感抚慰。绑定后默认接受每日生存任务。
+          </p>
+</div>
+</section>
+<!-- Registration / Binding Form Block -->
+<section class="flex flex-col gap-space-md">
+<!-- Codename Input -->
+<div class="flex flex-col gap-1.5">
+<label class="font-label-mono text-number-sm text-fluorescent-gray tracking-wider flex items-center gap-1" for="codename">
+<span class="w-1 h-3 bg-system-amber inline-block"></span>
+            HOST_CODENAME // 宿主代号
+          </label>
+<div class="relative">
+<input class="w-full bg-console-gray border border-structural-line rounded-lg px-3.5 py-3 text-screen-white font-body-md placeholder:text-screen-off-gray focus:outline-none focus:border-system-amber focus:ring-1 focus:ring-system-amber transition-colors" id="codename" placeholder="输入你的代号（默认: 编号9527）" type="text" value="编号9527"/>
+<span class="absolute right-3 top-3.5 font-label-mono text-number-sm text-screen-off-gray pointer-events-none">[LOCKED]</span>
+</div>
+</div>
+<!-- Secondary Supervision Mode Option -->
+<div class="bg-console-gray border border-structural-line rounded-xl p-3 flex items-start gap-3">
+<div class="pt-0.5">
+<input checked="" class="w-4 h-4 rounded bg-terminal-black border-structural-line text-system-amber focus:ring-0 focus:ring-offset-0 cursor-pointer" id="strict_mode" type="checkbox"/>
+</div>
+<label class="flex flex-col cursor-pointer select-none" for="strict_mode">
+<span class="font-body-sm text-body-sm text-screen-white font-medium">启用严格监督模式</span>
+<span class="font-body-sm text-number-sm text-screen-off-gray mt-0.5">每日未达成将无条件触发随机惩罚协议</span>
+</label>
+</div>
+</section>
+<!-- Bottom Interactive CTA Zone -->
+<section class="mt-auto pt-space-md flex flex-col gap-space-sm">
+<!-- Action Trigger Button -->
+<button class="w-full bg-system-amber text-terminal-black font-headline-sm text-headline-sm font-bold py-3.5 px-4 rounded-[14px] flex items-center justify-center gap-2 active:scale-[0.99] transition-transform duration-100" onclick="triggerBinding()" type="button">
+<span>确认并启动宿主绑定</span>
+<span class="font-label-mono text-label-mono tracking-normal">[ENTER]</span>
+</button>
+<!-- Technical Signature Watermark -->
+<div class="flex justify-between items-center px-1 text-screen-off-gray font-label-mono text-number-sm">
+<span>STITCH_SYS // AUTONOMOUS LIFE-SUPPORT</span>
+<span>v1.0.4</span>
+</div>
+</section>
+</main>
+</div>
+<script>
+    function triggerBinding() {
+      const btn = document.querySelector('button');
+      btn.innerText = 'INITIALIZING BIND MATRIX...';
+      btn.classList.add('opacity-80', 'pointer-events-none');
+      setTimeout(() => {
+        btn.innerText = 'BIND SUCCESSFUL // REBOOTING';
+      }, 1200);
+    }
+  </script>
+</body></html>

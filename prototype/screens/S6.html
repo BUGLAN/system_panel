@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="zh-CN"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" name="viewport"/>
+<title>SYS://PROTOCOL_BREACH - 强制清算</title>
+<!-- Fonts -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&amp;family=Noto+Sans+SC:wght@400;500;700&amp;family=Space+Grotesk:wght@600;700&amp;display=swap" rel="stylesheet"/>
+<!-- Material Symbols -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          "colors": {
+            "on-background": "#ebe1d5",
+            "system-amber": "#E8B04B",
+            "surface-container": "#241f18",
+            "surface-variant": "#3a342c",
+            "primary": "#ffcd7b",
+            "outline-variant": "#4f4536",
+            "inverse-surface": "#ebe1d5",
+            "inverse-on-surface": "#353028",
+            "error-container": "#93000a",
+            "on-tertiary-container": "#014b87",
+            "on-error-container": "#ffdad6",
+            "error": "#ffb4ab",
+            "on-secondary-container": "#b6b4b8",
+            "terminal-black": "#101012",
+            "secondary-fixed-dim": "#c8c5ca",
+            "verification-green": "#6FBF8E",
+            "primary-fixed-dim": "#f6bd56",
+            "surface-bright": "#3e3830",
+            "surface-container-lowest": "#120e07",
+            "surface-container-low": "#201b14",
+            "tertiary-container": "#8abcff",
+            "surface-dim": "#17130c",
+            "on-tertiary-fixed-variant": "#004882",
+            "surface-container-high": "#2f2922",
+            "tertiary-fixed-dim": "#a3c9ff",
+            "on-primary": "#422c00",
+            "tertiary": "#bcd7ff",
+            "primary-fixed": "#ffdeab",
+            "surface-tint": "#f6bd56",
+            "on-primary-fixed-variant": "#5f4100",
+            "on-secondary": "#303033",
+            "on-secondary-fixed-variant": "#47464a",
+            "on-primary-fixed": "#271900",
+            "primary-container": "#e8b04b",
+            "on-surface": "#ebe1d5",
+            "surface-container-highest": "#3a342c",
+            "on-secondary-fixed": "#1b1b1e",
+            "fluorescent-gray": "#9D9DA7",
+            "oxidation-red": "#E05252",
+            "structural-line": "rgba(244,244,245,0.08)",
+            "secondary-container": "#47464a",
+            "on-surface-variant": "#d3c4b0",
+            "background": "#17130c",
+            "elevated-gray": "#1E1E23",
+            "secondary": "#c8c5ca",
+            "on-tertiary-fixed": "#001c39",
+            "screen-off-gray": "#5B5B63",
+            "outline": "#9c8f7d",
+            "on-error": "#690005",
+            "screen-white": "#F4F4F5",
+            "tertiary-fixed": "#d3e3ff",
+            "on-tertiary": "#00315c",
+            "on-primary-container": "#634400",
+            "console-gray": "#17171A",
+            "surface": "#17130c",
+            "secondary-fixed": "#e4e1e6",
+            "inverse-primary": "#7e5700"
+          },
+          "borderRadius": {
+            "DEFAULT": "0.25rem",
+            "lg": "0.5rem",
+            "xl": "0.75rem",
+            "full": "9999px"
+          },
+          "spacing": {
+            "space-lg": "24px",
+            "gutter": "12px",
+            "margin": "16px",
+            "space-xl": "32px",
+            "space-xs": "4px",
+            "space-sm": "8px",
+            "space-md": "16px"
+          },
+          "fontFamily": {
+            "headline-md": ["Space Grotesk"],
+            "body-sm": ["Noto Sans SC"],
+            "headline-lg": ["Space Grotesk"],
+            "number-md": ["JetBrains Mono"],
+            "label-mono": ["JetBrains Mono"],
+            "headline-sm": ["Space Grotesk"],
+            "body-md": ["Noto Sans SC"],
+            "number-lg": ["Space Grotesk"],
+            "number-sm": ["JetBrains Mono"]
+          },
+          "fontSize": {
+            "headline-md": ["24px", { "lineHeight": "32px", "letterSpacing": "-0.02em", "fontWeight": "600" }],
+            "body-sm": ["13px", { "lineHeight": "1.5", "fontWeight": "400" }],
+            "headline-lg": ["32px", { "lineHeight": "40px", "letterSpacing": "-0.02em", "fontWeight": "700" }],
+            "number-md": ["16px", { "lineHeight": "20px", "fontWeight": "600" }],
+            "label-mono": ["12px", { "lineHeight": "16px", "letterSpacing": "0.2em", "fontWeight": "500" }],
+            "headline-sm": ["18px", { "lineHeight": "24px", "letterSpacing": "-0.02em", "fontWeight": "600" }],
+            "body-md": ["15px", { "lineHeight": "1.6", "fontWeight": "400" }],
+            "number-lg": ["56px", { "lineHeight": "60px", "letterSpacing": "-0.03em", "fontWeight": "700" }],
+            "number-sm": ["11px", { "lineHeight": "14px", "fontWeight": "500" }]
+          }
+        }
+      }
+    }
+  </script>
+<style>
+    .material-symbols-outlined {
+      font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+      display: inline-block;
+      vertical-align: middle;
+      line-height: 1;
+    }
+    /* Subtle scanline CRT overlay */
+    .crt-grid {
+      background-size: 100% 4px;
+      background-image: linear-gradient(to bottom, rgba(255, 255, 255, 0.015) 50%, transparent 50%);
+    }
+  </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-terminal-black text-screen-white min-h-screen font-body-md antialiased selection:bg-oxidation-red selection:text-screen-white crt-grid">
+<!-- Shared TopAppBar Anchor (Per JSON Execution) -->
+<header class="fixed top-0 left-0 w-full z-50 flex justify-between items-center px-space-md h-12 bg-terminal-black border-b border-structural-line">
+<div class="flex items-center gap-space-sm text-system-amber">
+<span class="material-symbols-outlined text-[18px]">terminal</span>
+<span class="text-label-mono font-label-mono tracking-widest text-system-amber uppercase">SYS://INITIALIZE</span>
+</div>
+<div class="flex items-center gap-space-sm">
+<span class="inline-block w-1.5 h-1.5 rounded-full bg-oxidation-red animate-pulse"></span>
+<span class="text-number-sm font-number-sm text-screen-off-gray">V1.0.4_ONLINE</span>
+</div>
+</header>
+<!-- Mobile Viewport Wrapper (390px base frame) -->
+<main class="max-w-[390px] mx-auto pt-16 pb-12 px-margin flex flex-col gap-space-lg text-left">
+<!-- 1. System Breach Header Section (Strict left-aligned cockpit asymmetric block) -->
+<section class="flex flex-col gap-space-sm pt-space-xs">
+<div class="flex items-center gap-space-xs">
+<span class="px-2 py-0.5 rounded bg-elevated-gray border border-oxidation-red/40 text-oxidation-red text-number-sm font-number-sm tracking-wider uppercase">
+          [ CRITICAL_FAIL // 核心主线违约 ]
+        </span>
+<span class="text-number-sm font-number-sm text-screen-off-gray">0xERR_BREACH</span>
+</div>
+<h1 class="text-headline-md font-headline-md text-screen-white mt-1">
+        协议破裂。强制清算已介入。
+      </h1>
+<div class="flex items-center justify-between text-number-sm font-number-sm text-screen-off-gray pt-1 border-b border-structural-line pb-2">
+<span class="flex items-center gap-1">
+<span class="material-symbols-outlined text-[13px] text-screen-off-gray">timer_off</span>
+          WINDOW_EXPIRED // 00:00:00
+        </span>
+<span class="text-fluorescent-gray font-label-mono">PENALTY_ROUTINE: ACTIVE</span>
+</div>
+</section>
+<!-- 2. 毒舌框 (Roast Box) - Strictly per DESIGN.md specifications -->
+<section class="relative bg-elevated-gray border border-oxidation-red rounded-xl p-space-md shadow-none">
+<div class="flex items-center justify-between pb-space-xs border-b border-structural-line">
+<div class="flex items-center gap-1.5 text-oxidation-red text-label-mono font-label-mono">
+<span class="text-number-md font-number-md">»</span>
+<span>SYSTEM_DIAGNOSTIC // 毒舌评级 0xSHAME</span>
+</div>
+<span class="text-number-sm font-number-sm text-screen-off-gray">HOST_ID: #0817</span>
+</div>
+<div class="py-space-sm text-body-sm font-body-sm text-on-surface leading-relaxed">
+        叮。系统全息监测回传：宿主在协议执行窗口期内触碰移动终端并持续发呆 <span class="font-number-sm text-oxidation-red font-semibold">47 分钟</span>。该低劣意志力已被刻录入宿主履历底层。系统对碳基生物的无序沉溺感到理解，并依法扣除信用点以示礼貌。
+      </div>
+<!-- Remedy link / 补救出口 -->
+<a class="mt-1 inline-flex items-center gap-1 text-number-sm font-number-sm text-system-amber hover:text-screen-white transition-colors duration-150" href="#remedy-protocol">
+<span>[ 申诉驳回率: 99.4% · 建议立即承受静思协议 ]</span>
+<span class="material-symbols-outlined text-[14px]">chevron_right</span>
+</a>
+</section>
+<!-- 3. Penalty Settlement Matrix (扣除矩阵 / 惩罚清算卡片) -->
+<section class="bg-console-gray border border-structural-line rounded-xl p-space-md flex flex-col gap-space-md">
+<!-- Card header -->
+<div class="flex justify-between items-center">
+<div class="flex items-center gap-2">
+<span class="w-1 h-3.5 bg-oxidation-red rounded-full"></span>
+<span class="text-label-mono font-label-mono text-fluorescent-gray uppercase tracking-widest">
+            PENALTY_SETTLEMENT // 违约扣除总览
+          </span>
+</div>
+<span class="text-number-sm font-number-sm text-oxidation-red bg-elevated-gray px-1.5 py-0.5 rounded border border-structural-line">
+          EXEC_FAIL
+        </span>
+</div>
+<!-- Massive numeric readout -->
+<div class="flex items-baseline justify-between py-1 bg-elevated-gray/60 px-space-md rounded-lg border border-structural-line">
+<div class="flex flex-col">
+<span class="text-number-sm font-number-sm text-screen-off-gray">TOTAL DEDUCTION</span>
+<span class="text-headline-lg font-headline-lg text-oxidation-red tracking-tight">
+            -150 <span class="text-headline-sm font-headline-sm text-fluorescent-gray">CREDIT</span>
+</span>
+</div>
+<div class="text-right flex flex-col items-end">
+<span class="text-number-sm font-number-sm text-oxidation-red border border-oxidation-red/30 px-1.5 py-0.5 rounded uppercase">
+            BUFF_REVOKED
+          </span>
+<span class="text-number-sm font-number-sm text-screen-off-gray mt-1 font-label-mono">
+            EXP x1.5 → EXPIRED
+          </span>
+</div>
+</div>
+<!-- Attribute erosion metrics grid -->
+<div class="flex flex-col gap-space-xs">
+<div class="text-number-sm font-number-sm text-screen-off-gray pb-1 uppercase tracking-wider">
+          ATTRIBUTE_EROSION // 状态降阶
+        </div>
+<!-- Metric Row 1: WILL -->
+<div class="flex items-center justify-between p-2.5 rounded bg-terminal-black/70 border border-structural-line">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-[16px] text-screen-off-gray">psychology</span>
+<span class="text-body-sm font-body-sm text-screen-white">意志 WILL</span>
+</div>
+<div class="flex items-center gap-2 text-number-sm font-number-sm">
+<span class="text-screen-off-gray">16.0</span>
+<span class="text-screen-off-gray">→</span>
+<span class="text-oxidation-red font-semibold">15.5</span>
+<span class="text-oxidation-red text-[10px] uppercase bg-elevated-gray px-1 rounded border border-structural-line">DEGRADED</span>
+</div>
+</div>
+<!-- Metric Row 2: CREDIT -->
+<div class="flex items-center justify-between p-2.5 rounded bg-terminal-black/70 border border-structural-line">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-[16px] text-screen-off-gray">account_balance_wallet</span>
+<span class="text-body-sm font-body-sm text-screen-white">信用点 CREDIT</span>
+</div>
+<div class="flex items-center gap-2 text-number-sm font-number-sm">
+<span class="text-screen-off-gray">1,840</span>
+<span class="text-screen-off-gray">→</span>
+<span class="text-screen-white font-semibold">1,690</span>
+<span class="text-oxidation-red text-[10px] font-mono">(-150)</span>
+</div>
+</div>
+<!-- Metric Row 3: STREAK -->
+<div class="flex items-center justify-between p-2.5 rounded bg-terminal-black/70 border border-structural-line">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-[16px] text-screen-off-gray">local_fire_department</span>
+<span class="text-body-sm font-body-sm text-screen-white">持续连击 STREAK</span>
+</div>
+<div class="flex items-center gap-2 text-number-sm font-number-sm">
+<span class="text-screen-off-gray line-through">14 DAYS</span>
+<span class="text-screen-off-gray">→</span>
+<span class="text-oxidation-red font-bold">RESET (0D)</span>
+</div>
+</div>
+</div>
+</section>
+<!-- 4. Mandatory Penalty Directive (追加强制惩罚协议) -->
+<section class="bg-console-gray border border-structural-line rounded-xl p-space-md flex flex-col gap-space-sm relative overflow-hidden" id="remedy-protocol">
+<!-- 3px vertical rank indicator on left edge (Design System S-Rank) -->
+<div class="absolute left-0 top-0 bottom-0 w-[3px] bg-system-amber"></div>
+<div class="flex justify-between items-center pl-1">
+<span class="text-label-mono font-label-mono text-system-amber uppercase">
+          MANDATORY_DIRECTIVE // S-RANK 惩罚
+        </span>
+<span class="flex items-center gap-1 text-number-sm font-number-sm text-system-amber">
+<span class="material-symbols-outlined text-[14px]">lock_clock</span>
+          LOCKDOWN
+        </span>
+</div>
+<div class="text-body-sm font-body-sm text-screen-white font-medium pl-1">
+        强制静思协议激活：30分钟网络断联与设备冻结
+      </div>
+<p class="text-body-sm font-body-sm text-fluorescent-gray pl-1">
+        该指令不可跳过、无法最小化。系统已接管局部唤醒权限，直至宿主生物电指标恢复平稳。
+      </p>
+<!-- Live countdown block -->
+<div class="mt-1 bg-terminal-black border border-structural-line rounded-lg p-space-sm flex items-center justify-between pl-space-md">
+<div class="flex flex-col">
+<span class="text-number-sm font-number-sm text-screen-off-gray">REMAINING_PENALTY_TIME</span>
+<span class="text-headline-sm font-number-md text-screen-white tracking-widest" id="countdown-timer">
+            00:29:59
+          </span>
+</div>
+<div class="flex items-center gap-1.5 px-2 py-1 rounded bg-elevated-gray border border-structural-line text-number-sm font-number-sm text-system-amber">
+<span class="inline-block w-2 h-2 rounded-full bg-system-amber animate-ping"></span>
+          ENFORCING
+        </div>
+</div>
+</section>
+<!-- 5. Action Controls & Protocol Resolution -->
+<section class="flex flex-col gap-space-sm pt-space-xs">
+<!-- Primary Action Button: Solid System Amber, terminal black text, 14px radius -->
+<button class="w-full py-3.5 px-4 rounded-[14px] bg-system-amber text-terminal-black font-headline-sm text-body-md font-semibold tracking-wide flex items-center justify-center gap-2 active:scale-[0.98] transition-all duration-150 hover:brightness-105" type="button">
+<span class="material-symbols-outlined text-[18px]">verified_user</span>
+<span>接受惩罚并启动神经重置 ACCEPT_PENALTY</span>
+</button>
+<!-- Secondary Ghost Action -->
+<button class="w-full py-3 px-4 rounded-[14px] bg-transparent text-fluorescent-gray hover:text-screen-white border border-structural-line text-number-sm font-number-sm tracking-wider flex items-center justify-center gap-2 active:opacity-80 transition-all duration-150" type="button">
+<span class="material-symbols-outlined text-[16px]">receipt_long</span>
+<span>查阅违约遥测切片 EXPORT_SHAME_LOG</span>
+</button>
+<!-- Bottom Deadpan Hash Signature -->
+<div class="text-center pt-space-sm flex flex-col items-center gap-1 text-screen-off-gray font-label-mono text-number-sm">
+<span>HASH: 0xDEAD_9527 // NO EXCUSES // DISCIPLINE_ENFORCED</span>
+<span class="text-[10px] text-screen-off-gray/60 tracking-normal font-number-sm">SYSTEM_CORE_V1.0.4 · HOST_INTERFACE_RESTRICTED</span>
+</div>
+</section>
+</main>
+<!-- Interactive Mock Counter Script -->
+<script>
+    (function () {
+      let secondsLeft = 1799; // 29m 59s
+      const timerElement = document.getElementById('countdown-timer');
+
+      function formatTime(totalSeconds) {
+        const m = Math.floor(totalSeconds / 60);
+        const s = totalSeconds % 60;
+        return `00:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+      }
+
+      setInterval(() => {
+        if (secondsLeft > 0) {
+          secondsLeft--;
+          if (timerElement) {
+            timerElement.textContent = formatTime(secondsLeft);
+          }
+        }
+      }, 1000);
+    })();
+  </script>
+</body></html>
