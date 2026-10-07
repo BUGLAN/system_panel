@@ -32,6 +32,7 @@ class Sheet extends StatelessWidget {
     this.kind = SheetKind.archive,
     this.visible = true,
     this.onClose,
+    this.onWipe,
   });
 
   final HostState host;
@@ -41,6 +42,9 @@ class Sheet extends StatelessWidget {
   final SheetKind kind;
   final bool visible;
   final VoidCallback? onClose;
+
+  /// 「按住 2 秒」重置存档 —— 原型重置后 `location.reload()`，未绑定就回到绑定仪式
+  final VoidCallback? onWipe;
 
   static const Map<SheetKind, List<String>> _titles = <SheetKind, List<String>>{
     SheetKind.archive: <String>['ARCHIVE · 宿主档案', '档案'],
@@ -829,22 +833,28 @@ class Sheet extends StatelessWidget {
 
   /// `.danger` —— 按住 2 秒重置（进度条由按住驱动，是行为）
   Widget _danger() {
-    return Container(
-      key: const Key('sheet.danger'),
-      height: 36,
-      padding: const EdgeInsets.symmetric(horizontal: 13), // CSS 14，Border 占 1
-      alignment: Alignment.center,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0x59FF4D5E), width: 1), // .35
-      ),
-      child: Text(
-        '按住 2 秒',
-        style: fs(
-          family: F.cn,
-          size: 12.5,
-          wght: 400,
-          color: const Color(0xFFFF8F99),
+    return GestureDetector(
+      onTap: onWipe,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        key: const Key('sheet.danger'),
+        height: 36,
+        padding: const EdgeInsets.symmetric(
+          horizontal: 13,
+        ), // CSS 14，Border 占 1
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: const Color(0x59FF4D5E), width: 1), // .35
+        ),
+        child: Text(
+          '按住 2 秒',
+          style: fs(
+            family: F.cn,
+            size: 12.5,
+            wght: 400,
+            color: const Color(0xFFFF8F99),
+          ),
         ),
       ),
     );

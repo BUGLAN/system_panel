@@ -8,6 +8,8 @@ import 'state/goal.dart';
 import 'state/quest.dart';
 import 'state/result.dart';
 import 'widgets/bg_layer.dart';
+import 'widgets/ask_field.dart';
+import 'widgets/banner.dart';
 import 'widgets/choices.dart';
 import 'widgets/dock.dart';
 import 'widgets/exec_panel.dart';
@@ -57,7 +59,7 @@ class SysApp extends StatelessWidget {
 ///   exec → panel（只收底栏）· result → focus+dim
 ///   fail → focus+fail（HUD/底栏收走、天幕抽色压暗 + veil）
 ///   sheet → focus（投影面板升起）· main → focus（主线全景 + 环挂签）
-enum Moment { boot, lobby, dispatch, exec, result, fail, sheet, main }
+enum Moment { boot, lobby, onboard, dispatch, exec, result, fail, sheet, main }
 
 /// 所有页面的共同外壳，对应原型的 `#app` + `#shake`：
 ///   天幕（#bg）→ 舞台（#stage）→ 界面（#ui）→ 覆盖层
@@ -84,6 +86,12 @@ class _AppShellState extends State<AppShell> {
   /// 主线全景里展开的是哪一环（null = 没展开，只有抬头）
   int? _pickedRing;
 
+  /// 绑定仪式的输入框
+  final TextEditingController _ask = TextEditingController();
+
+  /// 横幅（称号/道具到手时从顶上滑下来）
+  bool _banner = false;
+
   /// 投影面板当前停在哪一页
   SheetKind _sheetKind = SheetKind.archive;
 
@@ -107,6 +115,7 @@ class _AppShellState extends State<AppShell> {
     final bool result = _moment == Moment.result;
     final bool fail = _moment == Moment.fail;
     final bool sheet = _moment == Moment.sheet;
+    final bool onboard = _moment == Moment.onboard;
     final bool main = _moment == Moment.main;
     final bool boot = _moment == Moment.boot;
     // focus+dim：派单与结算都会把 HUD/底栏收走、天幕压暗
@@ -122,6 +131,8 @@ class _AppShellState extends State<AppShell> {
         ? size.height * .38 - 104
         : main
         ? size.height - 192
+        : onboard
+        ? size.height * .55
         : size.height * .6;
 
     return Scaffold(
@@ -147,7 +158,11 @@ class _AppShellState extends State<AppShell> {
                       ),
                       child: child,
                     ),
-              child: BgLayer(word: boot ? 'SYSTEM' : '半马', latin: boot),
+              child: BgLayer(
+                // 绑定仪式还没立目标，天幕上写的还是 SYSTEM
+                word: (boot || onboard) ? 'SYSTEM' : '半马',
+                latin: boot || onboard,
+              ),
             ),
           ),
           // 投影光束（在面板之下、天幕之上）
@@ -216,18 +231,46 @@ class _AppShellState extends State<AppShell> {
                 ? '补救的路，我给你留着：明天 20:02 前，做一半。做到了，这次不算。'
                 : main
                 ? '${_goal.doneCount}/${_goal.rings.length} 环。顶上那个，是你的目标。'
+                : onboard
+                ? '说吧。你想变成什么样？一句话。'
                 : '我手里有 ${_host.queue} 单。都是给你的。',
-            mood: dispatch ? '监视' : (fail ? '待机' : '尚可'),
+            mood: onboard
+                ? '专注'
+                : dispatch
+                ? '监视'
+                : (fail ? '待机' : '尚可'),
             y: lineY,
             soft: fail,
             fail: fail,
             // 原型里那句主线台词说完就 Line.hide()，点环展开详情时它已经不在——
             // 两者都显示会叠在详情卡上
-            visible: lobby || dispatch || fail || (main && _pickedRing == null),
+            visible:
+                lobby ||
+                dispatch ||
+                fail ||
+                onboard ||
+                (main && _pickedRing == null),
           ),
           Choices(
             items: const <Choice>[Choice('……接。', main: true), Choice('今天算了。')],
             visible: fail,
+          ),
+          // 绑定仪式：她在上面问，宿主在这儿敲（z 4，在 veil 之上）
+          AskField(
+            prompt: '目标 ›',
+            placeholder: '比如：三个月跑完半马',
+            presets: const <String>[
+              '三个月跑完半马',
+              '一个月早睡早起',
+              '考研上岸',
+              '半年减重 10 斤',
+              '学会画画',
+              '变优秀',
+            ],
+            controller: _ask,
+            visible: onboard,
+            onPreset: (String v) => _ask.text = v,
+            onSubmit: _bind,
           ),
           // 投影面板（档案 / 补给 / 系统共用这一层壳）
           Sheet(
@@ -235,6 +278,7 @@ class _AppShellState extends State<AppShell> {
             kind: _sheetKind,
             visible: sheet,
             onClose: () => setState(() => _moment = Moment.lobby),
+            onWipe: () => setState(() => _moment = Moment.onboard),
           ),
           // 主线全景：环挂签挂在环上（位置由相机数学给出），面板压在上面
           RingLabels(
@@ -258,8 +302,33 @@ class _AppShellState extends State<AppShell> {
               host: '${_host.name} · LV${_host.lv}',
               onWake: () => setState(() => _moment = Moment.lobby),
             ),
+          // 横幅（z 5，压在所有东西上面）
+          SysBanner(
+            kicker: '见面礼',
+            text: '双倍卡 ×1',
+            glyph: '×2',
+            visible: _banner,
+          ),
         ],
       ),
     );
+  }
+
+  /// 绑定：收起输入框 → 回大厅 → 报一个「见面礼」
+  /// （原型 `Store.bind()` 之后 `Banner.show('见面礼','双倍卡 ×1','×2')`，2200ms 后自己收）
+  void _bind() {
+    setState(() {
+      _moment = Moment.lobby;
+      _banner = true;
+    });
+    Future<void>.delayed(const Duration(milliseconds: 2200), () {
+      if (mounted) setState(() => _banner = false);
+    });
+  }
+
+  @override
+  void dispose() {
+    _ask.dispose();
+    super.dispose();
   }
 }
