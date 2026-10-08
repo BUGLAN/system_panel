@@ -181,6 +181,10 @@ function capPage(page) {
 
   if (page === 'dispatch3') {
     Plate.engrave();
+    // ⚠️ 必须调一次 Plate.hold() —— 指纹那七条 path 的 strokeDasharray 只在
+    //    它里面才设，不调的话静止态是**亮着的**（真实流程一落板就调，所以静态
+    //    抓拍出来的参考图会跟实机对不上；踩过：指纹区 -2.3 → -8.3）
+    Plate.hold();
     return page;
   }
 
@@ -290,3 +294,4 @@ function capPage(page) {
 }
 
 capPage('lobby');
+
