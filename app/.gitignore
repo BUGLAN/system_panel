@@ -46,4 +46,5 @@ app.*.map.json
 
 # Widget Preview related
 .widget_preview/
-app/android/build/
+/android/build/
+
