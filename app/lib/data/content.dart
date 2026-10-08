@@ -68,6 +68,9 @@ class LINES {
   static const String back36h = '一整天。你知道这一天我在干嘛吗？等。系统没有别的事可干。';
   static const String backLong = '[[{days}]] 天。我差点以为你把我卸载了。……没卸就好。';
 
+  /// 按指纹按到一半松手（content.js L304）—— 原型 `line('waver')` 是三选一随机
+  static const List<String> waver = <String>['……犹豫了？', '手抖什么。', '按住。别松。'];
+
   /// 无存档时的 host 占位（flows.js L52）
   static const String hostUnknown = '未找到 · 新宿主';
 }

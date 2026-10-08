@@ -23,6 +23,7 @@ class HoldButton extends StatefulWidget {
     this.onProgress,
     this.steps = 0,
     this.onStep,
+    this.onRelease,
     this.enabled = true,
   });
 
@@ -44,6 +45,10 @@ class HoldButton extends StatefulWidget {
   /// 每推进 `1/steps` 报一次（指纹是 8，用来打点）
   final int steps;
   final ValueChanged<double>? onStep;
+
+  /// 没按满就松手时回调，参数是松手那一刻的进度。
+  /// 原型 `Plate.hold()` 用它决定要不要说那句 `waver`（`p > .25` 才说，且只说一次）。
+  final ValueChanged<double>? onRelease;
 
   final bool enabled;
 
@@ -101,10 +106,17 @@ class _HoldButtonState extends State<HoldButton>
     super.dispose();
   }
 
+  /// 松手（原型 `up()`）：`if (!holding) return`，没按满就回报一次进度
+  void _release() {
+    if (!_holding) return;
+    _holding = false;
+    if (_p < 1) widget.onRelease?.call(_p);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Listener(
-      // 整块都可按（原型这几个按钮都有 	ouch-action: none）；
+      // 整块都可按（原型这几个按钮都有 `touch-action: none`）；
       // 默认的 deferToChild 会在子节点不可命中时漏掉按下
       behavior: HitTestBehavior.opaque,
       onPointerDown: widget.enabled
@@ -113,11 +125,9 @@ class _HoldButtonState extends State<HoldButton>
               _start();
             }
           : null,
-      onPointerUp: widget.enabled
-          ? (PointerUpEvent _) => _holding = false
-          : null,
+      onPointerUp: widget.enabled ? (PointerUpEvent _) => _release() : null,
       onPointerCancel: widget.enabled
-          ? (PointerCancelEvent _) => _holding = false
+          ? (PointerCancelEvent _) => _release()
           : null,
       child: widget.builder(context, _p),
     );

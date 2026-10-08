@@ -6,6 +6,7 @@ import 'dart:math' as math;
 import 'package:flutter/services.dart';
 
 import 'data/content.dart';
+import 'data/rarity.dart';
 import 'data/format.dart';
 import 'design/tokens.dart';
 import 'screens/boot_screen.dart';
@@ -31,6 +32,7 @@ import 'widgets/hud.dart';
 import 'widgets/line_layer.dart';
 import 'widgets/main_view.dart';
 import 'widgets/plate.dart';
+import 'widgets/plate_timeline.dart';
 import 'widgets/result_panel.dart';
 import 'widgets/ring_labels.dart';
 import 'widgets/ring_tag.dart';
@@ -413,6 +415,35 @@ class _AppShellState extends State<AppShell>
                   quest: _quest,
                   host: _host,
                   visible: dispatch,
+                  // 稀有度滚完那一刻（原型 `Plate.rankRoll` 收尾）：
+                  // `FX.flash(RARITY[r].c, target >= 4 ? .13 : .06, 280)`
+                  // `if (target >= 5) FX.shake(6, 320)`（外加 Stage.glitch —— 那作用在
+                  // Live2D 画布的滤镜上，等模型路线定了再接）
+                  onRankFx: (int target) {
+                    final Color rk = Rarity.of(kRanks[target]).color;
+                    _pulse(
+                      color: rk,
+                      a: target >= 4 ? .13 : .06,
+                      ms: 280,
+                      shakePx: target >= 5 ? 6 : 0,
+                    );
+                    // `FX.burst(lr.cx, lr.cy, {n: 8+target*9, cols:[rk,蓝,冰],
+                    //  min: 60, max: 150+target*55, life: .9, g: 60})`
+                    // 骰子大字在屏幕上的位置（板 left16 / top396，骰子 right16 top34 86×104）
+                    _fx.burst(
+                      315,
+                      469,
+                      n: 8 + target * 9,
+                      cols: <Color>[rk, C.blue, const Color(0xFFE9FBFF)],
+                      min: 60,
+                      max: 150 + target * 55,
+                      life: .9,
+                      g: 60,
+                    );
+                  },
+                  // 指纹按到一半松手（原型 `Plate.hold()` 的 `up()`）
+                  onWaver: () =>
+                      _sayAside(LINES.waver[_rnd.nextInt(LINES.waver.length)]),
                   onAccept: () {
                     // 原型 `App.dispatch()` → `App.run()`：忙的时候直接返回
                     if (_busy) return;

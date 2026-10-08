@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:system_panel/widgets/hold_button.dart';
@@ -245,6 +246,84 @@ void main() {
       );
       await tester.pump();
       expect(tester.takeException(), isNull);
+    });
+  });
+  group('松手回调（指纹那句 waver 的判据）', () {
+    testWidgets('没按满就松手，回报当时的进度', (WidgetTester tester) async {
+      final List<double> rel = <double>[];
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Center(
+              child: HoldButton(
+                duration: const Duration(milliseconds: 900),
+                onComplete: () {},
+                onRelease: rel.add,
+                builder: (BuildContext _, double p) =>
+                    const SizedBox(width: 200, height: 48),
+              ),
+            ),
+          ),
+        ),
+      );
+      final TestGesture g = await tester.startGesture(const Offset(400, 300));
+      await _pumpFrames(tester, const Duration(milliseconds: 400));
+      await g.up();
+      expect(rel.length, 1);
+      expect(rel.single, greaterThan(.3)); // 上层拿它跟 .25 比
+      expect(rel.single, lessThan(1));
+    });
+
+    testWidgets('按满了就不再报松手（那条 waver 不该出现）', (WidgetTester tester) async {
+      final List<double> rel = <double>[];
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Center(
+              child: HoldButton(
+                duration: const Duration(milliseconds: 300),
+                onComplete: () {},
+                onRelease: rel.add,
+                builder: (BuildContext _, double p) =>
+                    const SizedBox(width: 200, height: 48),
+              ),
+            ),
+          ),
+        ),
+      );
+      final TestGesture g = await tester.startGesture(const Offset(400, 300));
+      await _pumpFrames(tester, const Duration(milliseconds: 400));
+      await g.up();
+      expect(rel, isEmpty);
+    });
+
+    testWidgets('没按下就抬起来不报（原型 `if (!holding) return`）', (
+      WidgetTester tester,
+    ) async {
+      final List<double> rel = <double>[];
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Center(
+              child: HoldButton(
+                duration: const Duration(milliseconds: 900),
+                onComplete: () {},
+                onRelease: rel.add,
+                builder: (BuildContext _, double p) =>
+                    const SizedBox(width: 200, height: 48),
+              ),
+            ),
+          ),
+        ),
+      );
+      // 只取消、不先按下
+      final TestGesture g = await tester.startGesture(
+        const Offset(400, 300),
+        kind: PointerDeviceKind.mouse,
+      );
+      await g.up();
+      expect(rel.length, 1); // 按下过，只是立刻抬起 —— 进度≈0
+      expect(rel.single, lessThan(.05));
     });
   });
 }

@@ -36,6 +36,8 @@ class Plate extends StatefulWidget {
     this.visible = true,
     this.animateLand = true,
     this.onAccept,
+    this.onRankFx,
+    this.onWaver,
   });
 
   final Quest quest;
@@ -45,8 +47,14 @@ class Plate extends StatefulWidget {
   /// 砸落动画（ui.js `land()`）；比对截图时也会自然落到终态
   final bool animateLand;
 
-  /// 按住指纹 0.9s 才接单——按住逻辑是行为，先只留一个"点头"的入口
+  /// 按住指纹 0.9s 才接单
   final VoidCallback? onAccept;
+
+  /// 稀有度滚完那一刻（原型在这里 flash + shake + glitch + burst）
+  final ValueChanged<int>? onRankFx;
+
+  /// 按指纹按到一半松手（`p > .25` 才说，且只说一次）
+  final VoidCallback? onWaver;
 
   @override
   State<Plate> createState() => _PlateState();
@@ -81,6 +89,9 @@ class _PlateState extends State<Plate> with TickerProviderStateMixin {
 
   /// 激光头的位置（相对玻璃板）
   Offset? _laser;
+
+  /// 正在被刻的那一段（`.hot`），-1 = 没有
+  int _hotIndex = -1;
 
   /// `#plPrint` 的不透明度：刻完才有（原型 `opacity = .25` → `1`）
   double _printOpacity = 1;
@@ -171,6 +182,8 @@ class _PlateState extends State<Plate> with TickerProviderStateMixin {
     _roll.removeListener(_onRollTick);
     if (!mounted) return;
     setState(() => _lock = true); // 末级砸下来那一下
+    // 原型 `rankRoll` 收尾：flash（稀有度色）· ≥S 抖一下 · 骰子位置爆一圈
+    widget.onRankFx?.call(tl.target);
   }
 
   void _onRollTick() {
@@ -212,6 +225,13 @@ class _PlateState extends State<Plate> with TickerProviderStateMixin {
     final int active = tl.activeAt(t);
     setState(() {
       _engK = <double>[for (int i = 0; i < 8; i++) tl.kAt(i, t)];
+      _hotIndex = -1;
+      for (int i = 0; i < 8; i++) {
+        if (tl.hotAt(i, t)) {
+          _hotIndex = i; // `.hot` 刻完还热 420ms（原型那段 setTimeout）
+          break;
+        }
+      }
       if (active < 0) {
         _laser = null;
       } else {
@@ -221,6 +241,15 @@ class _PlateState extends State<Plate> with TickerProviderStateMixin {
             : Offset(r.left + r.width * tl.kAt(active, t), r.center.dy);
       }
     });
+  }
+
+  /// 按指纹按到一半松手；`_wavered` 保证一整块板子只说一次（原型 `this._wavered`）
+  bool _wavered = false;
+
+  void _onRelease(double p) {
+    if (p <= .25 || _wavered) return;
+    _wavered = true;
+    widget.onWaver?.call();
   }
 
   /// 第 i 段在玻璃板坐标系里的位置（原型 `rel(e)`）
@@ -280,6 +309,7 @@ class _PlateState extends State<Plate> with TickerProviderStateMixin {
           quest: widget.quest,
           host: widget.host,
           onAccept: widget.onAccept,
+          onWaver: _onRelease,
           engKeys: _engKeys,
           reveal: PlateReveal(
             shownIndex: _shownIndex,
@@ -287,6 +317,7 @@ class _PlateState extends State<Plate> with TickerProviderStateMixin {
             engK: _engK,
             printOpacity: _printOpacity,
             laser: _laser,
+            hotIndex: _hotIndex,
           ),
         ),
       ),
@@ -305,6 +336,7 @@ class PlateReveal {
     this.engK = const <double>[1, 1, 1, 1, 1, 1, 1, 1],
     this.printOpacity = 1,
     this.laser,
+    this.hotIndex = -1,
   });
 
   /// 此刻显示到第几档稀有度（0 基）
@@ -321,6 +353,9 @@ class PlateReveal {
 
   /// 激光头位置（相对玻璃板）
   final Offset? laser;
+
+  /// 正在被刻的那一段（带 `.hot`），-1 = 没有
+  final int hotIndex;
 }
 
 /// `clip-path: inset(-20% X% -20% 0)` —— 从左往右刻出来
@@ -344,6 +379,7 @@ class _Glass extends StatelessWidget {
     required this.quest,
     required this.host,
     this.onAccept,
+    this.onWaver,
     this.reveal = const PlateReveal(shownIndex: 0),
     this.engKeys,
   });
@@ -351,6 +387,9 @@ class _Glass extends StatelessWidget {
   final Quest quest;
   final HostState host;
   final VoidCallback? onAccept;
+
+  /// 按指纹没按满就松手（进度回调，阈值由上层判）
+  final ValueChanged<double>? onWaver;
 
   /// 揭晓状态（默认终态）
   final PlateReveal reveal;
@@ -367,7 +406,20 @@ class _Glass extends StatelessWidget {
     final double k = i < reveal.engK.length ? reveal.engK[i] : 1;
     // KeyedSubtree 不产生 RenderObject（零视觉影响），但它的 element 能反查到
     // 子节点的 RenderBox —— 激光就是靠它定位的
-    final Widget keyed = KeyedSubtree(key: engKeys?[i], child: child);
+    // `.hot`：正在被刻的那一段整段翻白（CSS `color: #fff` + 白光），
+    // 用 srcATop 把子树的颜色换成白、保留原透明度 —— 最近似的一步
+    final bool hot = reveal.hotIndex == i && k > 0;
+    Widget body = child;
+    if (hot) {
+      body = ColorFiltered(
+        colorFilter: const ColorFilter.mode(
+          Color(0xFFFFFFFF),
+          BlendMode.srcATop,
+        ),
+        child: body,
+      );
+    }
+    final Widget keyed = KeyedSubtree(key: engKeys?[i], child: body);
     if (k >= 1) return keyed;
     return ClipRect(clipper: _EngraveClipper(k), child: keyed);
   }
@@ -736,6 +788,8 @@ class _Glass extends StatelessWidget {
       decay: const Duration(milliseconds: 350),
       steps: 8, // 每推进 1/8 打一下（原型在此处放音效 + 5ms 震）
       onComplete: () => onAccept?.call(),
+      // 没按满就松手 → 上层判 `p > .25` 说那句 `waver`（原型 `Plate.hold()` 的 `up()`）
+      onRelease: onWaver,
       builder: (BuildContext context, double p) => Container(
         key: const Key('plate.print'),
         height: 108,
