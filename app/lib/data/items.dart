@@ -61,4 +61,23 @@ class Item {
     }
     return null;
   }
+
+  /// 执行期可用的那三样，**顺序照原型写死**
+  /// （`ui.js` L433 的 `['dbl','crit','shield']`，标签与抽屉都按它排）
+  static const List<String> execIds = <String>['dbl', 'crit', 'shield'];
+
+  /// 执行类道具的持有总数（原型 `Exec.slots()` 末尾的 `#exItemN`）
+  ///
+  /// ```js
+  /// const n = Object.keys(ITEMS).filter(k => ITEMS[k].use === 'exec')
+  ///   .reduce((s, k) => s + Store.S.items[k], 0);
+  /// $('#exItemN').textContent = n || '';
+  /// ```
+  static int execCount(Map<String, int> items) {
+    int n = 0;
+    for (final Item it in all) {
+      if (it.use == 'exec') n += items[it.id] ?? 0;
+    }
+    return n;
+  }
 }

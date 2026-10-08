@@ -6,6 +6,7 @@ import 'hold_button.dart';
 import 'press_scale.dart';
 
 import '../data/format.dart';
+import '../data/items.dart';
 import '../design/tokens.dart';
 import '../state/quest.dart';
 
@@ -35,6 +36,7 @@ class ExecPanel extends StatelessWidget {
     required this.elapsed,
     required this.critChance,
     required this.itemCount,
+    this.tags = const <String>{},
     required this.evidenceCount,
     this.visible = true,
     this.onSubmit,
@@ -54,6 +56,10 @@ class ExecPanel extends StatelessWidget {
 
   /// 可用的执行类道具总数（原型 `#exItemN`）
   final int itemCount;
+
+  /// 本单已经挂上生效的道具 id（原型 `A.dbl / A.crit / A.shield`）——
+  /// 会显示成暴击率右边那串小标签
+  final Set<String> tags;
 
   /// 已上传证据张数
   final int evidenceCount;
@@ -330,27 +336,69 @@ class ExecPanel extends StatelessWidget {
         Row(children: slots),
         const SizedBox(height: 12),
         // `.ex-crit` 的行框由里面 17px 的 b 撑到 22
-        Text.rich(
-          TextSpan(
-            children: <InlineSpan>[
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: <Widget>[
+            Text.rich(
               TextSpan(
-                text: '暴击率',
-                style: fs(family: F.cn, size: 12, wght: 400, color: C.mist),
+                children: <InlineSpan>[
+                  TextSpan(
+                    text: '暴击率',
+                    style: fs(family: F.cn, size: 12, wght: 400, color: C.mist),
+                  ),
+                  TextSpan(
+                    text: '${(critChance * 100).round()}%',
+                    style: fs(
+                      family: F.num,
+                      size: 17,
+                      wght: 800,
+                      ls: .34,
+                      color: C.blue,
+                    ),
+                  ),
+                ],
               ),
-              TextSpan(
-                text: '${(critChance * 100).round()}%',
-                style: fs(
-                  family: F.num,
-                  size: 17,
-                  wght: 800,
-                  ls: .34,
-                  color: C.blue,
+            ),
+            // `.tags`：本单已经挂上生效的道具（原型 `Exec.crit()` 里按
+            // `['dbl','crit','shield'].filter(k => A[k])` 拼出来的那串 `<i>`）
+            if (tags.isNotEmpty) const SizedBox(width: 8),
+            // ⚠️ 顺序照原型写死（`['dbl','crit','shield'].filter(k => A[k])`）——
+            //    传进来的是 Set，无序，直接遍历会时对时错
+            for (final String k in Item.execIds)
+              if (tags.contains(k))
+                Padding(
+                  padding: const EdgeInsets.only(
+                    right: 5,
+                  ), // `.tags { gap: 5px }`
+                  child: _tag(k),
                 ),
-              ),
-            ],
-          ),
+          ],
         ),
       ],
+    );
+  }
+
+  /// `.ex-crit .tags i` —— 10px 等宽、实心青底、深色字
+  Widget _tag(String id) {
+    final Item? it = Item.byId(id);
+    if (it == null) return const SizedBox.shrink();
+    return Container(
+      key: Key('exec.tag.$id'),
+      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+      decoration: BoxDecoration(
+        color: C.blue,
+        borderRadius: BorderRadius.circular(3),
+      ),
+      child: Text(
+        '${it.glyph} ${it.name}',
+        style: fs(
+          family: F.mono,
+          size: 10,
+          wght: 700,
+          height: 1,
+          color: C.deep,
+        ),
+      ),
     );
   }
 

@@ -9,6 +9,7 @@ import 'package:flutter/services.dart';
 import 'data/content.dart';
 import 'data/rarity.dart';
 import 'data/format.dart';
+import 'data/items.dart';
 import 'design/tokens.dart';
 import 'screens/boot_screen.dart';
 import 'stage/ring_painter.dart';
@@ -189,8 +190,13 @@ class _AppShellState extends State<AppShell>
 
   /// 用掉一个执行类道具（原型 `Store.useItem(k)` 之后那段）
   ///
-  /// ⚠️ **数值变化**（经验翻倍 / 暴击率 +25% / 失败不计连败）走的是 `Store.settle()`
-  /// 那套业务规则，还没定。这里只做界面能确认的部分：标成「已生效」+ 她那句台词。
+  /// ```js
+  /// useItem(k) { const A = S.active; if (!A || A[k] || !S.items[k]) return false;
+  ///              S.items[k]--; A[k] = true; ... }
+  /// ```
+  /// 扣库存这件事照做了（`#exItemN` 那个数要跟着掉，抽屉里的「持有 ×n」也要对）；
+  /// ⚠️ 但**数值效果**（经验翻倍 / 暴击率 +25% / 失败不计连败）走的是 `Store.settle()`
+  /// 那套业务规则，还没定，所以那部分没做。
   void _useItem(String id) {
     final String? say = switch (id) {
       'dbl' => LINES.itemDbl,
@@ -199,7 +205,15 @@ class _AppShellState extends State<AppShell>
       _ => null,
     };
     setState(() {
-      if (say != null) _usedItems.add(id);
+      if (say != null) {
+        _usedItems.add(id);
+        final int n = _host.items[id] ?? 0;
+        if (n > 0) {
+          _host = _host.copyWith(
+            items: <String, int>{..._host.items, id: n - 1},
+          );
+        }
+      }
       _drawerOn = false;
     });
     if (say != null) _sayAside(say, holdMs: 1800);
@@ -505,7 +519,10 @@ class _AppShellState extends State<AppShell>
                     quest: _quest,
                     elapsed: _execReadout().elapsed,
                     critChance: .12,
-                    itemCount: 3,
+                    // 原型是按持有数算的（`Exec.slots()` 末尾那个 reduce），
+                    // 不是写死的 3 —— 用掉道具后这个数要跟着掉
+                    itemCount: Item.execCount(_host.items),
+                    tags: _usedItems,
                     evidenceCount: 0,
                     visible: exec,
                     // 指纹钤印那一下：原型 `Plate.seal()` 是

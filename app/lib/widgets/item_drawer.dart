@@ -47,7 +47,9 @@ class ItemDrawer extends StatelessWidget {
   final VoidCallback? onShop;
 
   /// 抽屉里只列执行期可用的那三样（原型写死 `['dbl','crit','shield']`）
-  static const List<String> execIds = <String>['dbl', 'crit', 'shield'];
+  /// 抽屉里只列执行期可用的那三样（原型写死 `['dbl','crit','shield']`）
+  /// —— 与执行面板的标签共用 `Item.execIds`，免得两处各写一份
+  static const List<String> execIds = Item.execIds;
 
   @override
   Widget build(BuildContext context) {
