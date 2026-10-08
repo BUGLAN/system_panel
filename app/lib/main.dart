@@ -209,10 +209,14 @@ class _AppShellState extends State<AppShell>
   ///
   /// [busy] 对应原型的 `App.run()`：她说「回来那几句」是**多拍演出**，
   /// 整段持有 `busy`，期间点别处一律没反应（flows.js L26 / L171）。碎碎念不持有。
-  void _sayAside(String text, {int holdMs = 3200, bool busy = false}) {
+  /// [holdMs] 不给就按原型的默认算（`clamp(420 + 字数*42, 900, 2400)`，见 `LINES.defaultHold`）。
+  /// ⚠️ 原型每个调用点几乎都显式给了 hold，而且都很短（200~900ms）；
+  ///    只有"回来的那几句"不给 —— 那几句就必须走这个默认。
+  void _sayAside(String text, {int? holdMs, bool busy = false}) {
+    final int hold = holdMs ?? LINES.defaultHold(text);
     setState(() {
       _aside = text;
-      _asideUntil = DateTime.now().add(Duration(milliseconds: holdMs));
+      _asideUntil = DateTime.now().add(Duration(milliseconds: hold));
       if (busy) _busy = true;
     });
   }
@@ -480,8 +484,11 @@ class _AppShellState extends State<AppShell>
                     );
                   },
                   // 指纹按到一半松手（原型 `Plate.hold()` 的 `up()`）
-                  onWaver: () =>
-                      _sayAside(LINES.waver[_rnd.nextInt(LINES.waver.length)]),
+                  onWaver: () => _sayAside(
+                    // 原型：`Line.say(line('waver'), { emo:'smug', hold:1400 })`
+                    LINES.waver[_rnd.nextInt(LINES.waver.length)],
+                    holdMs: 1400,
+                  ),
                   onAccept: () {
                     // 原型 `App.dispatch()` → `App.run()`：忙的时候直接返回
                     if (_busy) return;
@@ -850,7 +857,8 @@ class _AppShellState extends State<AppShell>
     if (line == null) return;
     // 演出还在跑就先不打断她
     if (_busy) return;
-    _sayAside(line, holdMs: 3200, busy: true);
+    // 原型这几句**不给 hold**（flows.js L189）→ 走按字数算的默认值
+    _sayAside(line, busy: true);
   }
 
   /// 相机弹簧（`stage.js` L100-103）：切页时把镜头**推**过去，而不是瞬移。

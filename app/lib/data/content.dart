@@ -88,6 +88,22 @@ class LINES {
   /// 认输后那句补救（content.js L397）—— 与失败页的补救**单**（`#fvRem`）不是一回事
   static const String remedyLine = '补救的路，我给你留着：[[{dl}]]前，做一半。做到了，这次不算。';
 
+  /// 原型 `Line.say()` **不给** `hold` 时的默认停顿（`ui.js` L111）：
+  ///
+  /// ```js
+  /// await wait(o.hold ?? clamp(420 + plain(text).length * 42, 900, 2400));
+  /// ```
+  ///
+  /// ⚠️ 这是个**按字数算**的值，不是固定值 —— 我原先一律用 3200ms，
+  /// 比原型的上限 2400 还长，短句子会多挂一倍时间。
+  /// `plain()` 是剥掉 `[[…]]` 之后的纯文本长度。
+  static int defaultHold(String text) {
+    final String s = text.replaceAll('[[', '').replaceAll(']]', '');
+    // ⚠️ 用 `String.length`（UTF-16 码元数）而不是 `characters` ——
+    //    原型是 JS 的 `plain(text).length`，同样是 UTF-16 码元数，两边才对得上。
+    return (420 + s.length * 42).clamp(900, 2400).toInt();
+  }
+
   /// 用掉一个执行类道具（content.js L358-360）
   static const String itemDbl = '双倍卡，挂上了。最好别浪费。';
   static const String itemCrit = '暴击芯片，插好了。运气这东西，买得到一点。';

@@ -67,4 +67,43 @@ void main() {
       }
     });
   });
+
+  group('默认停顿（原型 `clamp(420 + plain(text).length * 42, 900, 2400)`）', () {
+    test('短句夹到 900', () {
+      // 5 字 → 420+210 = 630 → 900
+      expect(LINES.defaultHold('一二三四五'), 900);
+    });
+
+    test('中等长度按字数算', () {
+      // 20 字 → 420+840 = 1260
+      expect(LINES.defaultHold('一二三四五六七八九十' * 2), 1260);
+    });
+
+    test('长句夹到 2400', () {
+      // 60 字 → 420+2520 = 2940 → 2400
+      expect(LINES.defaultHold('一' * 60), 2400);
+    });
+
+    test('⚠️ 高亮标记不计入字数（原型走的是 plain(text)）', () {
+      // 注意：中间那个空格也算一个码元 —— 原型用的是 JS 的 .length，不是"字数"
+      const String plain = '我手里有 4 单。都是给你的。'; // 15 个码元
+      const String marked = '我手里有 [[4]] 单。都是给你的。'; // 带标记，多 4 个
+      expect(LINES.defaultHold(marked), LINES.defaultHold(plain));
+      expect(LINES.defaultHold(plain), 420 + 15 * 42);
+    });
+
+    test('回来的那几句真的落在原型范围内', () {
+      for (final String s in <String>[
+        LINES.back10m,
+        LINES.back2h,
+        LINES.back12h,
+        LINES.back36h,
+        LINES.backLong,
+      ]) {
+        final int h = LINES.defaultHold(s);
+        expect(h, greaterThanOrEqualTo(900));
+        expect(h, lessThanOrEqualTo(2400));
+      }
+    });
+  });
 }
