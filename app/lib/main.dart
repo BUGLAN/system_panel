@@ -31,6 +31,7 @@ import 'widgets/fail_layer.dart';
 import 'widgets/fx_layer.dart';
 import 'widgets/fx_particles.dart';
 import 'widgets/hud.dart';
+import 'widgets/item_drawer.dart';
 import 'widgets/line_layer.dart';
 import 'widgets/main_view.dart';
 import 'widgets/plate.dart';
@@ -177,8 +178,29 @@ class _AppShellState extends State<AppShell>
       ); // 演示档：已执行 7 分钟
       _moment = Moment.exec;
       _chatter.resetExec(Duration.zero);
+      // 新的一单：抽屉收起、上一单挂过的道具清掉（原型 `A.dbl/crit/shield` 随新单重建）
+      _drawerOn = false;
+      _usedItems.clear();
     });
     _clock.startFast();
+  }
+
+  /// 用掉一个执行类道具（原型 `Store.useItem(k)` 之后那段）
+  ///
+  /// ⚠️ **数值变化**（经验翻倍 / 暴击率 +25% / 失败不计连败）走的是 `Store.settle()`
+  /// 那套业务规则，还没定。这里只做界面能确认的部分：标成「已生效」+ 她那句台词。
+  void _useItem(String id) {
+    final String? say = switch (id) {
+      'dbl' => LINES.itemDbl,
+      'crit' => LINES.itemCrit,
+      'shield' => LINES.itemShield,
+      _ => null,
+    };
+    setState(() {
+      if (say != null) _usedItems.add(id);
+      _drawerOn = false;
+    });
+    if (say != null) _sayAside(say, holdMs: 1800);
   }
 
   /// 她插一句（`hold` 之后自己收）
@@ -508,9 +530,25 @@ class _AppShellState extends State<AppShell>
                     onQuitProgress: (double p) => setState(() => _quitP = p),
                     onQuit: () {
                       if (_busy) return; // 原型 `App.fail()` → `run()`
+                      setState(() => _drawerOn = false);
                       _beginFail();
                     },
+                    // 点「道具」开合抽屉（原型 `#exItem` → `Exec.drawer()`，再点一次收起）
+                    onItem: () => setState(() => _drawerOn = !_drawerOn),
                   ),
+                ),
+                // 道具抽屉（`.drawer` z-index 5，压在执行面板之上）
+                ItemDrawer(
+                  open: exec && _drawerOn,
+                  counts: _host.items,
+                  used: _usedItems,
+                  coins: _host.coins,
+                  onUse: _useItem,
+                  onShop: () => setState(() {
+                    _drawerOn = false;
+                    _sheetKind = SheetKind.supply;
+                    _moment = Moment.sheet;
+                  }),
                 ),
                 // 结算
                 ResultPanel(
@@ -816,6 +854,12 @@ class _AppShellState extends State<AppShell>
 
   /// 失败时把当前那一环掐暗（原型 `Stage.dimRing(ci, …)` 三下：0 / 90 / 200ms）
   List<double>? _ringMul;
+
+  /// 道具抽屉开着没（原型 `#exDrawer.on`）；再点一次「道具」收起
+  bool _drawerOn = false;
+
+  /// 本单已经挂上生效的道具（原型 `A.dbl / A.crit / A.shield`）
+  final Set<String> _usedItems = <String>{};
 
   /// `Stage.holoTo({bright: .6})` 是**缓动**过去的（每帧 `f += (target-f)*q`），
   /// 不是瞬变；这个控制器负责那 350ms

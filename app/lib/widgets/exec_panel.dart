@@ -39,6 +39,7 @@ class ExecPanel extends StatelessWidget {
     this.onSubmit,
     this.onQuit,
     this.onQuitProgress,
+    this.onItem,
   });
 
   final Quest quest;
@@ -65,6 +66,9 @@ class ExecPanel extends StatelessWidget {
 
   /// 认输进度 —— 原型用它驱动 #veil 的暗度（p×.75）
   final ValueChanged<double>? onQuitProgress;
+
+  /// 点「道具」开合抽屉
+  final VoidCallback? onItem;
 
   @override
   Widget build(BuildContext context) {
@@ -345,45 +349,48 @@ class ExecPanel extends StatelessWidget {
     );
   }
 
-  /// .btn.ghost —— 道具
+  /// .btn.ghost —— 道具（点它开合抽屉，原型 `#exItem` → `Exec.drawer()`）
   Widget _itemButton() {
-    return Container(
-      key: const Key('exec.item'),
-      height: 54,
-      // Border 占布局、CSS 的 inset 阴影不占 → padding 各减 1px 才与原型同宽
-      padding: const EdgeInsets.symmetric(horizontal: 19),
-      decoration: BoxDecoration(
-        color: const Color(0xB3040E20), // rgba(4,14,32,.7)
-        borderRadius: BorderRadius.circular(27),
-        border: Border.all(color: C.line, width: 1),
-      ),
-      child: Row(
-        children: <Widget>[
-          Text(
-            '道具',
-            style: fs(
-              family: F.cn,
-              size: 15,
-              wght: 600,
-              ls: .9,
-              height: 1,
-              color: C.ice,
-            ),
-          ),
-          if (itemCount > 0) ...<Widget>[
-            const SizedBox(width: 8),
+    return GestureDetector(
+      onTap: onItem,
+      child: Container(
+        key: const Key('exec.item'),
+        height: 54,
+        // Border 占布局、CSS 的 inset 阴影不占 → padding 各减 1px 才与原型同宽
+        padding: const EdgeInsets.symmetric(horizontal: 19),
+        decoration: BoxDecoration(
+          color: const Color(0xB3040E20), // rgba(4,14,32,.7)
+          borderRadius: BorderRadius.circular(27),
+          border: Border.all(color: C.line, width: 1),
+        ),
+        child: Row(
+          children: <Widget>[
             Text(
-              '$itemCount',
+              '道具',
               style: fs(
-                family: F.num,
-                size: 11,
-                wght: 700,
+                family: F.cn,
+                size: 15,
+                wght: 600,
+                ls: .9,
                 height: 1,
-                color: C.blue,
+                color: C.ice,
               ),
             ),
+            if (itemCount > 0) ...<Widget>[
+              const SizedBox(width: 8),
+              Text(
+                '$itemCount',
+                style: fs(
+                  family: F.num,
+                  size: 11,
+                  wght: 700,
+                  height: 1,
+                  color: C.blue,
+                ),
+              ),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }

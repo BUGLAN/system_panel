@@ -71,6 +71,11 @@ class LINES {
   /// 按指纹按到一半松手（content.js L304）—— 原型 `line('waver')` 是三选一随机
   static const List<String> waver = <String>['……犹豫了？', '手抖什么。', '按住。别松。'];
 
+  /// 用掉一个执行类道具（content.js L358-360）
+  static const String itemDbl = '双倍卡，挂上了。最好别浪费。';
+  static const String itemCrit = '暴击芯片，插好了。运气这东西，买得到一点。';
+  static const String itemShield = '免死金牌，上保险了。……你是不是对自己没信心？';
+
   /// 无存档时的 host 占位（flows.js L52）
   static const String hostUnknown = '未找到 · 新宿主';
 }
