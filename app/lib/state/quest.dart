@@ -71,9 +71,9 @@ class Quest {
 
   /// ui.js `rewardHTML` 的纯文本版：`EXP 50 · ◈ 24 体+1 力+1`
   ///
-  /// ⚠️ 保持原型板面的**旧表读数**：plate.dart:750/115 直接读 `rarity.exp/coin`，
-  /// plate_test 也以这串文案钉原型像素真值 —— 面板口径切换是 widgets 侧的
-  /// 返工卡（t8 范围外），这里不动它，零回归。
+  /// ⚠️ **原型旧表遗留读数**（rarity.exp/coin）——t15 起**没有生产读者**：
+  /// plate.dart 的 loot 面板已切 [lootText]（结算经济口径），本 getter 仅由
+  /// rewards_test 的交叉断言钉着存档（旧表字符串不再用于任何界面）。
   String get rewardText {
     final double k = kind == 'remedy' ? .5 : 1;
     final String at = attrs.entries
@@ -85,7 +85,7 @@ class Quest {
   /// 结算经济口径（docs/18 §2.3 Rewards 表）的报酬文案 —— C 级 = `EXP 4 · ◈ 5`。
   ///
   /// 这是「这一单**真会**结算出多少」的真源读数（quest_flow.settle 同表）；
-  /// 派单板 loot 面板换读它之后就与结算一致（迁移点：plate.dart:750）。
+  /// 派单板 loot 面板已切读它（t15 接管 plate.dart:750/115），与结算一致。
   String get lootText {
     final double k = kind == 'remedy' ? .5 : 1;
     final String at = attrs.entries

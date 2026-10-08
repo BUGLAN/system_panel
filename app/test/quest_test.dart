@@ -57,12 +57,17 @@ void main() {
       expect(q().serialText, '№ 0041');
     });
 
-    test('报酬：`EXP n · ◈ m 体+1 力+1`', () {
-      // C 级 50 exp / 24 金币
-      expect(q().rewardText, 'EXP 50 · ◈ 24体+1 力+1');
+    test('报酬：`EXP n · ◈ m 体+1 力+1`（t15：结算经济口径，与结算同表）', () {
+      // C 级 4 exp / 5 金币（docs/18 §2.3 Rewards）
+      expect(q().lootText, 'EXP 4 · ◈ 5体+1 力+1');
     });
 
     test('⚠️ 补救单的报酬**减半**（原型 k = remedy ? .5 : 1）', () {
+      expect(q(kind: 'remedy').lootText, 'EXP 2 · ◈ 3体+1 力+1');
+    });
+
+    test('rewardText = 原型旧表遗留（t15 后无生产读者，仅 rewards_test 交叉钉存档）', () {
+      expect(q().rewardText, 'EXP 50 · ◈ 24体+1 力+1');
       expect(q(kind: 'remedy').rewardText, 'EXP 25 · ◈ 12体+1 力+1');
     });
   });

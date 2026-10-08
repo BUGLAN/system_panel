@@ -7,6 +7,7 @@ import 'dart:ui' show PathMetric;
 import 'package:flutter/material.dart';
 
 import '../data/rarity.dart';
+import '../data/rewards.dart';
 import '../design/tokens.dart';
 import '../state/host_state.dart';
 import '../state/quest.dart';
@@ -112,7 +113,8 @@ class _PlateState extends State<Plate> with TickerProviderStateMixin {
     widget.quest.reason.length,
     '证明${widget.quest.proof}'.length,
     '时限${widget.quest.minutesText}'.length,
-    '报酬EXP${widget.quest.rarity.exp}·◈${widget.quest.rarity.coin}'.length,
+    // t15：loot 面板已切结算经济口径（Rewards），刻字长度跟着同一句文案走
+    '报酬${widget.quest.lootText}'.length,
   ];
 
   @override
@@ -746,9 +748,17 @@ class _Glass extends StatelessWidget {
             '报酬',
             Text.rich(
               TextSpan(
+                // t15：loot 面板切结算经济口径（docs/18 §2.3 Rewards 表，
+                // QuestFlow.settle 同源）——派单板展示 = 结算出账，不再漂移
                 children: <InlineSpan>[
-                  TextSpan(text: 'EXP ${quest.rarity.exp}', style: num),
-                  TextSpan(text: ' · ◈ ${quest.rarity.coin}', style: dd),
+                  TextSpan(
+                    text: 'EXP ${Rewards.expOf(quest.rank)}',
+                    style: num,
+                  ),
+                  TextSpan(
+                    text: ' · ◈ ${Rewards.coinOf(quest.rank)}',
+                    style: dd,
+                  ),
                   TextSpan(
                     text: quest.attrs.entries
                         .map((MapEntry<String, int> e) => '${e.key}+${e.value}')

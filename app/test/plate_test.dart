@@ -44,7 +44,8 @@ void main() {
       expect(q.serialText, '№ 0041');
       expect(q.kindLabel, '主线 · 第 5 环 / 8');
       expect(q.minutesText, '45 分钟');
-      expect(q.rewardText, 'EXP 50 · ◈ 24体+1 力+1');
+      // t15：loot 面板切结算经济口径（Rewards 表，与 QuestFlow.settle 同源）
+      expect(q.lootText, 'EXP 4 · ◈ 5体+1 力+1');
     });
 
     test('时限跨小时的说法（fmtMin）', () {
