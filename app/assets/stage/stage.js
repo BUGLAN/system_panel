@@ -74,7 +74,33 @@
   var src = q.get('src') || 'model/adv_live2d_sakiko_010_casual_spring_01.json';
   el.setAttribute('src', src);
 
-  /* ── 3) 给 Flutter 的把手 ── */
+  /* ── 3.5) 帧率探针：把 rAF 实际刷新率报给 Flutter（诊断掉帧用） ──
+   * 每 3 秒汇总一次：fps（平均）、max（最差单帧 ms）、dpr、画布背衬尺寸。
+   * Flutter 侧 [Live2DWebState] 收到 `t:'fps'` 后 debugPrint。 */
+  (function () {
+    var last = performance.now(), acc = 0, n = 0, worst = 0;
+    function loop(now) {
+      var dt = now - last; last = now;
+      if (dt > 0 && dt < 1000) { acc += dt; n++; if (dt > worst) worst = dt; }
+      if (acc >= 3000) {
+        var sr = el.shadowRoot;
+        var cv = (sr && sr.querySelector('canvas')) || document.querySelector('#stageCv canvas');
+        post({
+          t: 'fps',
+          fps: n ? Math.round(1000 / (acc / n)) : 0,
+          worstMs: Math.round(worst),
+          samples: n,
+          dpr: window.devicePixelRatio || 1,
+          canvas: cv ? (cv.width + 'x' + cv.height) : 'none'
+        });
+        acc = 0; n = 0; worst = 0;
+      }
+      requestAnimationFrame(loop);
+    }
+    requestAnimationFrame(loop);
+  })();
+
+  /* ── 4) 给 Flutter 的把手 ── */
   window.Stage = {
     /** 自检：Flutter 用它确认播放器/会话到底有没有拿到 */
     probe: function () {

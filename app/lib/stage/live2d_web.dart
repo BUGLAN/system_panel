@@ -204,6 +204,12 @@ class Live2DWebState extends State<Live2DWeb> {
           if (total > 0) widget.onProgress?.call((loaded / total).clamp(0, 1));
         case 'error':
           _fail('${m['message']}');
+        case 'fps':
+          // 帧率探针（stage.js 3.5 节）：WebView 里 rAF 的真实刷新率
+          debugPrint(
+            '[stage-web] rAF ${m['fps']}fps · worst ${m['worstMs']}ms · '
+            'dpr ${m['dpr']} · canvas ${m['canvas']}',
+          );
         case 'jserror':
           // WebView 里的 JS 异常只在这里能看到
           _fail('JS：${m['message']}');

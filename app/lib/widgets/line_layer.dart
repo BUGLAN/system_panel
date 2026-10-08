@@ -88,6 +88,8 @@ class LineLayer extends StatelessWidget {
             clipBehavior: Clip.none,
             children: <Widget>[
               // .line::before —— 从屏幕左右两侧淡出的玻璃带
+              // （视觉真源：原型 `backdrop-filter: blur(7px)`，Flutter 端 3.5。
+              //   虽然这是常驻合成里最贵的一笔，但视觉不许动 —— 原样保留。）
               Positioned(
                 left: -20,
                 right: -20,
