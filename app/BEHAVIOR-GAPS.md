@@ -13,7 +13,7 @@
 | A1 | 开机自检 5 行日志 + 进度条，**触碰屏幕才进**（`#boot` pointerdown） | ✅ 已做（点击进大厅） | 日志逐行/进度条的节奏要不要照搬（现在是一次性显示） |
 | A2 | **每秒 tick** `App.second()`：执行中计时、换日、连击检查、碎碎念 | ⏳ 未做 | 换算规则（时区/跨天判定）——`Store.rollDay()` 里的规则要不要照搬 |
 | A3 | **换日**：重置日上限、结算周期计划、连击判定 | ⏳ 未做 | 同上 |
-| A4 | 存档 `localStorage` + 老存档迁移（`migrateAttrs`） | ⏳ 未做（现在是内存 demo 档） | 要不要现在就接持久化（Flutter 侧用哪套存储） |
+| A4 | 存档 `localStorage` + 老存档迁移（`migrateAttrs`） | ⏳ 分层已写好、**实机不落盘**（见下） | 要不要现在就接持久化（Flutter 侧用哪套存储） |
 | A5 | `App.run()` 串行化：演出期间点别处会**排队/打断** | ⏳ 未做 | 排队、打断还是忽略？ |
 
 ## B · 她（Live2D 角色本体）
@@ -89,3 +89,32 @@
 4. **E1~E3 按压类** —— 参数都量好了，照搬即可
 5. **D2/D5 派单与失败的分支** —— 业务规则，需要你定
 6. **F1/F2 声音震动** —— 需要你定"用采样还是合成"
+
+---
+
+## 附：A4 存档的实机阻塞（2026-10-08 记录）
+
+**分层已经写好并单测通过**（`state/save_file.dart` + `HostState`/`Goal` 的
+`toJson`/`fromJson`，12 条测试全绿，含「老档缺字段走默认」「读坏了兜住」「wipe 后冻结」）。
+
+**但实机上不落盘**，证据：
+
+| 观察 | 结果 |
+|---|---|
+| `setString` 抛异常吗 | **不抛**（catch 里挂了日志，从没打过） |
+| 写完立刻回读 | **空** |
+| 重启后再读 | **空** |
+| `/data/data/<pkg>/` 下新增文件 | **一个都没有**（`find -newermt` 空） |
+| 插件注册 | `GeneratedPluginRegistrant` 里**有** `SharedPreferencesPlugin` |
+| 换 API（legacy ↔ `SharedPreferencesAsync`） | **一样** |
+
+也就是说：Dart 侧的通道调用「成功」了，但 Android 侧什么也没写。
+`shared_preferences` 2.5.6 / Flutter 3.47.6 / 模拟器 API 37。
+
+**排查建议**（下一步）：
+1. 打 `--verbose` 看通道有没有真的发出去（可能是引擎 attach 时机）
+2. 换 `path_provider` + 手写 JSON 文件，绕开这个插件
+3. 或自己写一个最简单的 MethodChannel 探针，确认通道本身通不通
+
+**当前影响**：不影响使用 —— 读不到档就退回演示档（`HostState.demo` / `Goal.demo()`），
+不会崩；但「改过的目标活不过一次重启」。

@@ -13,6 +13,7 @@ import 'stage/ring_painter.dart';
 import 'state/host_state.dart';
 import 'state/goal.dart';
 import 'state/app_clock.dart';
+import 'state/save_file.dart';
 import 'state/quest.dart';
 import 'state/result.dart';
 import 'widgets/bg_layer.dart';
@@ -86,14 +87,18 @@ class AppShell extends StatefulWidget {
 class _AppShellState extends State<AppShell>
     with SingleTickerProviderStateMixin {
   /// 行为逻辑未定，先用与原型「老宿主 · 第 23 天」一致的演示档
-  static const HostState _host = HostState.demo;
+  /// （启动时会被存档覆盖 —— 见 SaveFile）
+  HostState _host = HostState.demo;
   static const Quest _quest = Quest.demo;
   static const QuestResult _result = QuestResult.demo;
 
   Moment _moment = Moment.boot;
 
-  /// 主线（`Goal.demo()` 的起点是「今天」，只取一次）
-  late final Goal _goal = Goal.demo();
+  /// 主线（`Goal.demo()` 的起点是「今天」；启动时会被存档覆盖）
+  Goal _goal = Goal.demo();
+
+  /// 存档（store.js L34-52）
+  final SaveFile _save = SaveFile();
 
   /// 主线全景里展开的是哪一环（null = 没展开，只有抬头）
   int? _pickedRing;
@@ -381,7 +386,10 @@ class _AppShellState extends State<AppShell>
                   quest: _quest,
                   host: _host,
                   visible: dispatch,
-                  onAccept: _beginExec,
+                  onAccept: () {
+                    _beginExec();
+                    _persist();
+                  },
                 ),
                 // 执行面板
                 // ⚠️ 必须包一层 ListenableBuilder 订阅时钟 —— 否则 `_clock` 每 250ms
@@ -517,7 +525,7 @@ class _AppShellState extends State<AppShell>
                   kind: _sheetKind,
                   visible: sheet,
                   onClose: () => setState(() => _moment = Moment.lobby),
-                  onWipe: () => setState(() => _moment = Moment.onboard),
+                  onWipe: _wipe,
                 ),
                 // 当前环的挂签（大厅里挂在她脚下那一环的右端）
                 RingTag(
@@ -569,12 +577,38 @@ class _AppShellState extends State<AppShell>
   /// 绑定：收起输入框 → 回大厅 → 报一个「见面礼」
   /// （原型 `Store.bind()` 之后 `Banner.show('见面礼','双倍卡 ×1','×2')`，2200ms 后自己收）
   void _bind() {
+    // 把宿主敲的目标落进档案（原型的 `Store.bind(name, plan)`）。
+    // ⚠️ 原型在这里还会用 LLM 把一句话拆成 5~8 环（docs/13），
+    //    那属于业务规则，等宿主约束；这里先只替换目标文案 + 存盘。
+    final String typed = _ask.text.trim();
     setState(() {
+      if (typed.isNotEmpty) {
+        _goal = _goal.copyWith(
+          text: typed,
+          short: typed.characters.length > 6
+              ? typed.characters.take(6).toString()
+              : typed,
+        );
+      }
       _moment = Moment.lobby;
       _banner = true;
     });
+    _persist();
     Future<void>.delayed(const Duration(milliseconds: 2200), () {
       if (mounted) setState(() => _banner = false);
+    });
+  }
+
+  /// 重置存档（`Store.wipe()`）：删档 + 冻结 + 回绑定仪式
+  Future<void> _wipe() async {
+    final SaveData d = await _save.wipe(
+      fallback: SaveData(host: HostState.demo, goal: Goal.demo()),
+    );
+    if (!mounted) return;
+    setState(() {
+      _host = d.host;
+      _goal = d.goal;
+      _moment = Moment.onboard;
     });
   }
 
@@ -604,6 +638,36 @@ class _AppShellState extends State<AppShell>
   void initState() {
     super.initState();
     _clock.startSeconds(_onSecond); // 原型 setInterval(App.second, 1000)
+    _restore();
+  }
+
+  /// 读档（store.js L34）—— 没有档就用演示档
+  Future<void> _restore() async {
+    final SaveData d = await _save.load(
+      fallback: SaveData(host: HostState.demo, goal: Goal.demo()),
+    );
+    if (!mounted) return;
+    setState(() {
+      _host = d.host;
+      _goal = d.goal;
+    });
+  }
+
+  /// 存盘（store.js L43）
+  ///
+  /// ⚠️ **实机上这一步目前不落盘**：`setString` 不抛异常、但回读是空的，
+  /// 且 `/data/data/<pkg>/` 下不会出现任何存储文件（legacy 与 async 两套 API 都一样，
+  /// 插件在 `GeneratedPluginRegistrant` 里是注册过的）。
+  /// 存疑点在 Android 侧的通道，见 `BEHAVIOR-GAPS.md` A4。
+  /// 这里保留一条**只在读写不一致时**才打的日志 —— 免得它继续静默失败。
+  Future<void> _persist() async {
+    await _save.save(SaveData(host: _host, goal: _goal));
+    final SaveData back = await _save.load();
+    if (back.goal.text != _goal.text) {
+      debugPrint(
+        '[save] ⚠️ 写后回读不一致：wrote=[${_goal.text}] read=[${back.goal.text}]',
+      );
+    }
   }
 
   @override

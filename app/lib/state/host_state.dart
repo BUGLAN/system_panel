@@ -116,4 +116,104 @@ class HostState {
     ownedTitles: <String>['bind'],
     items: <String, int>{'dbl': 0, 'crit': 0, 'shield': 0, 'swap': 0},
   );
+
+  // ── 存档（store.js L34-52）────────────────────────────────
+
+  /// **在 `fallback` 上合并** —— 缺的字段走默认值，这就是老存档的迁移方式。
+  /// 原型是 `Object.assign(this.fresh(), JSON.parse(raw))`。
+  factory HostState.fromJson(
+    Map<String, dynamic>? json, {
+    required HostState fallback,
+  }) {
+    if (json == null) return fallback;
+    T pick<T>(String k, T def) => json[k] is T ? json[k] as T : def;
+    Map<String, int> attrsOf(String k, Map<String, int> def) {
+      final Object? raw = json[k];
+      if (raw is! Map) return def;
+      return <String, int>{
+        for (final MapEntry<Object?, Object?> e in raw.entries)
+          if (e.key is String && e.value is int)
+            e.key! as String: e.value! as int,
+      };
+    }
+
+    return HostState(
+      name: pick<String>('name', fallback.name),
+      lv: pick<int>('lv', fallback.lv),
+      exp: pick<int>('exp', fallback.exp),
+      coins: pick<int>('coins', fallback.coins),
+      streak: pick<int>('streak', fallback.streak),
+      title: pick<String>('title', fallback.title),
+      queue: pick<int>('queue', fallback.queue),
+      ringIndex: pick<int>('ringIndex', fallback.ringIndex),
+      ringTotal: pick<int>('ringTotal', fallback.ringTotal),
+      attrs: attrsOf('attrs', fallback.attrs),
+      doneCount: pick<int>('doneCount', fallback.doneCount),
+      critCount: pick<int>('critCount', fallback.critCount),
+      failCount: pick<int>('failCount', fallback.failCount),
+      bestStreak: pick<int>('bestStreak', fallback.bestStreak),
+      ownedTitles: json['ownedTitles'] is List
+          ? <String>[
+              for (final Object? t in json['ownedTitles'] as List)
+                if (t is String) t,
+            ]
+          : fallback.ownedTitles,
+      items: attrsOf('items', fallback.items),
+    );
+  }
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+    'name': name,
+    'lv': lv,
+    'exp': exp,
+    'coins': coins,
+    'streak': streak,
+    'title': title,
+    'queue': queue,
+    'ringIndex': ringIndex,
+    'ringTotal': ringTotal,
+    'attrs': attrs,
+    'doneCount': doneCount,
+    'critCount': critCount,
+    'failCount': failCount,
+    'bestStreak': bestStreak,
+    'ownedTitles': ownedTitles,
+    'items': items,
+  };
+
+  HostState copyWith({
+    String? name,
+    int? lv,
+    int? exp,
+    int? coins,
+    int? streak,
+    String? title,
+    int? queue,
+    int? ringIndex,
+    int? ringTotal,
+    Map<String, int>? attrs,
+    int? doneCount,
+    int? critCount,
+    int? failCount,
+    int? bestStreak,
+    List<String>? ownedTitles,
+    Map<String, int>? items,
+  }) => HostState(
+    name: name ?? this.name,
+    lv: lv ?? this.lv,
+    exp: exp ?? this.exp,
+    coins: coins ?? this.coins,
+    streak: streak ?? this.streak,
+    title: title ?? this.title,
+    queue: queue ?? this.queue,
+    ringIndex: ringIndex ?? this.ringIndex,
+    ringTotal: ringTotal ?? this.ringTotal,
+    attrs: attrs ?? this.attrs,
+    doneCount: doneCount ?? this.doneCount,
+    critCount: critCount ?? this.critCount,
+    failCount: failCount ?? this.failCount,
+    bestStreak: bestStreak ?? this.bestStreak,
+    ownedTitles: ownedTitles ?? this.ownedTitles,
+    items: items ?? this.items,
+  );
 }

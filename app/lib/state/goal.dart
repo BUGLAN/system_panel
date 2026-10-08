@@ -63,6 +63,36 @@ class GoalRing {
         return '未解锁';
     }
   }
+
+  // ── 存档 ──────────────────────────────────────────────────
+
+  factory GoalRing.fromJson(Map<String, dynamic> j) => GoalRing(
+    short: j['short'] is String ? j['short'] as String : '',
+    title: j['title'] is String ? j['title'] as String : '',
+    proof: j['proof'] is String ? j['proof'] as String : '',
+    minutes: j['minutes'] is int ? j['minutes'] as int : 0,
+    rank: j['rank'] is String ? j['rank'] as String : 'F',
+    state: RingState.of(j['state'] is String ? j['state'] as String : 'lock'),
+    finalRing: j['final'] == true,
+    held: j['heldMs'] is int
+        ? Duration(milliseconds: j['heldMs'] as int)
+        : null,
+    doneAt: j['doneAt'] is String
+        ? DateTime.tryParse(j['doneAt'] as String)
+        : null,
+  );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+    'short': short,
+    'title': title,
+    'proof': proof,
+    'minutes': minutes,
+    'rank': rank,
+    'state': state.name,
+    'final': finalRing,
+    if (held != null) 'heldMs': held!.inMilliseconds,
+    if (doneAt != null) 'doneAt': doneAt!.toIso8601String(),
+  };
 }
 
 /// 一句话目标 → 5~8 环主线链（真源 `makeGoal`）
@@ -168,4 +198,48 @@ class Goal {
   /// `at` 用「今天」——原型就是 `Clock.now()`，所以「起于 X 月 X 日」每天都变。
   static Goal demo() =>
       Goal(text: '三个月跑完半马', short: '半马', at: DateTime.now(), rings: _demoRings);
+
+  /// 未绑定：没有目标也没有环
+  factory Goal.empty() =>
+      Goal(text: '', short: '', at: DateTime.now(), rings: const <GoalRing>[]);
+
+  bool get isEmpty => rings.isEmpty;
+
+  // ── 存档（store.js L34-52 的"在默认值上合并"）──────────────
+
+  factory Goal.fromJson(Map<String, dynamic>? json, {required Goal fallback}) {
+    if (json == null || json['rings'] is! List) return fallback;
+    final List<GoalRing> rings = <GoalRing>[
+      for (final Object? r in json['rings'] as List)
+        if (r is Map) GoalRing.fromJson(Map<String, dynamic>.from(r)),
+    ];
+    if (rings.isEmpty) return fallback;
+    return Goal(
+      text: json['text'] is String ? json['text'] as String : fallback.text,
+      short: json['short'] is String ? json['short'] as String : fallback.short,
+      at: json['at'] is String
+          ? (DateTime.tryParse(json['at'] as String) ?? fallback.at)
+          : fallback.at,
+      rings: rings,
+    );
+  }
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+    'text': text,
+    'short': short,
+    'at': at.toIso8601String(),
+    'rings': <Map<String, dynamic>>[for (final GoalRing r in rings) r.toJson()],
+  };
+
+  Goal copyWith({
+    String? text,
+    String? short,
+    DateTime? at,
+    List<GoalRing>? rings,
+  }) => Goal(
+    text: text ?? this.text,
+    short: short ?? this.short,
+    at: at ?? this.at,
+    rings: rings ?? this.rings,
+  );
 }
