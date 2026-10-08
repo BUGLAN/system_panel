@@ -130,7 +130,9 @@ class Live2DWeb extends StatefulWidget {
   final double scale;
   final Offset offset;
 
-  final VoidCallback? onReady;
+  /// 播放器就绪（把 State 交出去 —— WebStagePort 靠它发 emote/motion）
+  final ValueChanged<Live2DWebState>? onReady;
+
   final ValueChanged<String>? onFailed;
 
   /// 0~1
@@ -197,7 +199,7 @@ class Live2DWebState extends State<Live2DWeb> {
           // ⚠️ 就绪时**主动推一次相机** —— 否则只会等到 scale/offset 变化时才推，
           //    而它们通常在就绪前就定好了，于是永远推不过去（一直是默认值）。
           _pushCam();
-          widget.onReady?.call();
+          widget.onReady?.call(this);
         case 'progress':
           final double total = (m['total'] as num?)?.toDouble() ?? 0;
           final double loaded = (m['loaded'] as num?)?.toDouble() ?? 0;
@@ -228,7 +230,7 @@ class Live2DWebState extends State<Live2DWeb> {
     _lastLog = s;
     if (s.contains('"ready":true')) {
       if (mounted) setState(() => _ready = true);
-      widget.onReady?.call();
+      widget.onReady?.call(this);
     }
   }
 
@@ -248,6 +250,21 @@ class Live2DWebState extends State<Live2DWeb> {
         'Stage.cam(${widget.scale}, ${widget.offset.dx}, ${widget.offset.dy})',
       ),
     );
+  }
+
+  /// 表情入口（原型 `Stage.emote(name)`——名字就是 stage.js 的 12 情绪键，
+  /// 播放器内部查自己的 EMO_EXP）。转发失败静默：WebView 是降级路径。
+  void emote(String name) {
+    final WebViewController? c = _web;
+    if (c == null || !_ready || _failed) return;
+    unawaited(c.runJavaScript("try{Stage.emote('$name')}catch(e){}"));
+  }
+
+  /// 动作入口（原型 `Stage.motion(verb)`——动词是 stage.js MOVE 的键）
+  void motion(String verb) {
+    final WebViewController? c = _web;
+    if (c == null || !_ready || _failed) return;
+    unawaited(c.runJavaScript("try{Stage.motion('$verb')}catch(e){}"));
   }
 
   @override

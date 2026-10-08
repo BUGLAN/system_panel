@@ -16,7 +16,9 @@ import 'stage/ring_painter.dart';
 import 'state/host_state.dart';
 import 'state/goal.dart';
 import 'stage/camera.dart';
+import 'stage/live2d_stage.dart';
 import 'stage/live2d_web.dart';
+import 'stage/stage_port.dart';
 import 'state/app_clock.dart';
 import 'state/away.dart';
 import 'state/voice.dart';
@@ -103,6 +105,29 @@ class _AppShellState extends State<AppShell>
         with
         TickerProviderStateMixin,
         WidgetsBindingObserver {
+  /// ── 舞台渲染路线（docs/18 §1.5；HANDOFF-LIVE2D-IOS）──────────────
+  ///
+  /// ⚠️ **2026-10-09 MuMu 实测：走止损线，默认 false（WebView）。**
+  /// 原生在 MuMu 上「loadModel=true 但不上屏」复现旧 AVD 结论，且拿到新证据：
+  /// Live2DTextureView 在树里（1080×1080，位置/尺寸正确）、loadModel 第 2 次
+  /// true、但渲染线程每帧报 GL 0x501（INVALID_VALUE）于顶点提交——emugl 转译层
+  /// 与插件的 shader/attrib 用法不兼容（旧 AVD 无此日志）。完整证据链见
+  /// `app/STAGE-OPTIONS.md`「MuMu · 原生舞台复验」节。
+  ///
+  /// **翻回原生的条件**：flutter_live2d 插件升级（或换非模拟器 GPU 栈）后，
+  /// 改回 `true` 跑一轮大厅截图 + gfxinfo 对照即可；桥接层（StagePort）两条
+  /// 路线都已就绪，切换零成本。
+  ///
+  /// 运行期原生加载失败也会自动落到 WebView（`_stageFallback`）——
+  /// WebView 版保留作降级与验收参照（HANDOFF 明示）。
+  static const bool kNativeStage = false;
+
+  /// 她的把手（emote/motion 桥）；原生失败落 WebView 后换成 WebStagePort
+  StagePort? _stagePort;
+
+  /// 原生舞台加载失败 → 运行期降级到 WebView
+  bool _stageFallback = false;
+
   /// 行为逻辑未定，先用与原型「老宿主 · 第 23 天」一致的演示档
   /// （启动时会被存档覆盖 —— 见 SaveFile）
   HostState _host = HostState.demo;
@@ -200,6 +225,8 @@ class _AppShellState extends State<AppShell>
     // —— 计时不再写死"已执行 7 分钟"）
     final Quest? head = _flow.head;
     if (head != null) _flow.accept(head);
+    // 原型 `App.dispatch()` 接单那一拍：Stage.motion('nod')
+    _stagePort?.act('nod');
     setState(() {
       _execStart = _flow.active?.startAt ?? DateTime.now();
       _moment = Moment.exec;
@@ -446,42 +473,43 @@ class _AppShellState extends State<AppShell>
                 //    原型的层序就是 `#bg → #stage → #ui`，实测这个位置**层序完全正确**
                 //    （字幕/环/HUD 都压在她之上，见 `.verify/_stageback.png`）。
                 //
-                //    诊断开关注释：曾经用 `kStageOnTop` 把她挪到根 Stack 最上层做对照，
-                //    结果是"能看见但压住整个界面" —— 由此确认**合成层序一直是好的**，
-                //    早先看不见是资产打包/Content-Type 那些坑造成的，不是层序问题。
-                //    对照已做完，开关移除。
-                Live2DWeb(
-                  visible: true,
-                  // ── 相机（大厅）─────────────────────────────────────────
-                  // 数值来自原型 `js/stage.js` L250-260 的相机表，注释里就写着标定依据：
-                  //   「S 的取值 = camFit(H) × 系数，系数就是**她占屏高的百分比**
-                  //     旧稿大厅 91%、主线全景 68%、开机待机 60%」
-                  //   `CAMS.lobby = { S: camFit(H)*.92, ay:-.535, sx:W/2, sy:H*.505 }`
-                  // 换算过来就是：**大厅里她占屏高 92%**，头顶约在 4.5%H、脚底约 96.5%H。
-                  //
-                  // 这两个数是在设备上量出来再反解的（`.verify/probe_cal.py`）：
-                  //   量到当时她 top=99 bot=807（占屏高 83.9%）
-                  //   目标 top=38 bot=814（92%）→ scale = 1.096、再上移 30px
-                  // ⚠️ 缩放是绕元素中心（CSS transform-origin 默认 center），
-                  //    所以 dy 是纯屏幕像素、不受 scale 影响。
-                  // 换了模型或改了布局，重新量一次即可（方法同上）。
-                  // 这两个数的来历：
-                  //   ① 目标（原型给的）：大厅里她占屏高 **92%**
-                  //      —— `js/stage.js` L250-260 的相机表，注释写着「S = camFit(H) × 系数，
-                  //         系数就是她占屏高的百分比；旧稿大厅 91%」
-                  //   ② 现状（几何算的）：元素是 `height:100%`、画布 2.4 单位、
-                  //      她身体约 `BODY.top - BODY.bot = .44 - (-1.51) = 1.95` 单位
-                  //      → scale=1 时她占 1.95/2.4 = **81.25%**
-                  //   ③ 所以 scale = 92 / 81.25 = **1.132**
-                  //
-                  // ⚠️ 我一开始想用"量截图里她的上下边界"来标定，**量错了** ——
-                  //    取的那条竖条在底部会吃到委托按钮与地面光晕，三次量到的 bot 都是 807
-                  //    （固定不动），等于拿噪声当信号。要精确标定得换方法：找一张干净背景
-                  //    （或临时隐藏底栏）再量，或者直接用 alpha 包围盒。这里先用算出来的值。
-                  scale: 1.132,
-                  offset: Offset.zero,
-                  onReady: () => debugPrint('[stage-web] 播放器就绪'),
-                  onFailed: (String why) => debugPrint('[stage-web] 失败：$why'),
+                // ── 渲染路线（docs/18 §1.5）────────────────────────────
+                // 默认走**原生 flutter_live2d**（Live2DStage，几何相机=布局矩形
+                // 复刻 Cam）；原生加载失败自动落到 WebView 降级（保留作验收参照）。
+                // kNativeStage=false 可整条切回 WebView（A/B 对照开关）。
+                // 相机随弹簧推镜头逐帧刷新（与下方环场同一数据源 _cam）。
+                ValueListenableBuilder<Cam>(
+                  valueListenable: _cam,
+                  builder: (BuildContext _, Cam camNow, Widget? _) =>
+                      kNativeStage && !_stageFallback
+                      ? Live2DStage(
+                          visible: true,
+                          cam: camNow,
+                          onReady: (Live2DStageHandle handle) {
+                            _stagePort = NativeStagePort(handle);
+                            debugPrint('[stage] 原生舞台就绪（flutter_live2d）');
+                          },
+                          onFailed: () {
+                            debugPrint(
+                              '[stage] 原生舞台加载失败 → WebView 降级',
+                            );
+                            if (mounted) setState(() => _stageFallback = true);
+                          },
+                        )
+                      : Live2DWeb(
+                          visible: true,
+                          // ── 相机（大厅）─────────────────────────────
+                          // WebView 路线的标定史（.verify/probe_cal.py / 大厅
+                          // 92%）→ scale 1.132；只作降级，不再维护。
+                          scale: 1.132,
+                          offset: Offset.zero,
+                          onReady: (Live2DWebState s) {
+                            _stagePort = WebStagePort(s);
+                            debugPrint('[stage-web] 播放器就绪（降级路线）');
+                          },
+                          onFailed: (String why) =>
+                              debugPrint('[stage-web] 失败：$why'),
+                        ),
                 ),
                 // 环场：她脚下到头顶那 8 个环。**画在独立画布上，与 Live2D 无关**
                 // （`stage.js` L127 `cv.id='ringCv'`），启动时 `App.boot()` 会把
@@ -619,6 +647,8 @@ class _AppShellState extends State<AppShell>
                         _host = _flow.host;
                         _goal = _flow.goal;
                       });
+                      // 原型 settle() L372：结算时她专注读单
+                      _stagePort?.mood('focus');
                       _persist();
                     },
                     onQuitProgress: (double p) => setState(() => _quitP = p),
@@ -1026,9 +1056,9 @@ class _AppShellState extends State<AppShell>
   void _beginFail({String how = 'quit'}) {
     _clock.stopFast();
     // 原型 `_fail()` L529：`Stage.setCam('fail'); Stage.emote('sad'); Stage.motion('down')`
-    // 表情照做了（`emote('sad')` → `exp_sad01`）。
-    // ⚠️ 路线 ② 之后，表情要走 JS 桥（`Stage.emote(...)`）—— 桥还没接，
-    //    所以这行暂时拿掉，等把手补齐再恢复。
+    // —— 原生/WebView 桥已接通（T7），这里恢复当时的"暂时拿掉"：
+    _stagePort?.mood('sad');
+    _stagePort?.act('down');
     // 真实判负（store.js fail）：failCount 记账、主线单回队首、生成补救单
     // —— 失败页不再是死局：补救单可接可弃（见 _onChoice）
     final FailOutcome? fo = _flow.fail(how: how);
@@ -1116,6 +1146,19 @@ class _AppShellState extends State<AppShell>
     if (!mounted || _moment != Moment.result || _resultChoicesOn) return;
     setState(() => _resultChoicesOn = true);
     final QuestResult r = _result;
+    // 原型 settle() L442-444 的 tier 情绪/动作（桥接通后恢复）
+    _stagePort?.mood(switch (r.rarity.i) {
+      <= 1 => 'smug',
+      <= 3 => 'pleased',
+      <= 5 => 'tsun',
+      _ => 'tsun',
+    });
+    if (r.crit) {
+      _stagePort?.mood('surprised');
+      _stagePort?.act('surprise');
+    } else if (r.rarity.i >= 4) {
+      _stagePort?.act('happy');
+    }
     final String line;
     if (r.tooFast) {
       line = '[[${r.held.inSeconds}]] 秒就交？做了吗你就交。';

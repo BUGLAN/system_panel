@@ -262,3 +262,64 @@ JS 桥驱动 `setCam` / `emote` / `motion`。
 
 无论走哪条，**先要宿主拍板**：这是"要不要为她的模型写一个格式转换器"的取舍，
 不是技术能不能做的问题。
+
+## MuMu · 原生舞台复验（2026-10-09 · T7）—— 结论：止损，默认回 WebView
+
+> **t7 任务按 docs/18 §1.5.1 五关重试路线①，MuMu（127.0.0.1:16512，Android 12，
+> 宿主 GPU 栈与旧 AVD 不同）复验到第 3 关（上屏关）触发硬止损线：**
+> **loadModel 成功、视图在树、尺寸正确，但角色不上屏——旧 AVD 同款结论在 MuMu 复现，
+> 且拿到比旧 AVD 更深一层的新证据。按纪律默认舞台退回 WebView（`kNativeStage = false`
+> 收尾），不再沉没成本。**
+
+### 复验过程（对照 docs/18 §1.5.1 五关）
+
+| 关 | 结果 | 证据 |
+|---|---|---|
+| ① 编译关 | ✅ | CMake 反射覆盖未触发（无 CXX1300）；`:flutter_live2d` 直接编过 |
+| ② 挂载关 | ✅ | `kNativeStage` 编译期开关 + 运行期降级（`_stageFallback`）双保险落地；StagePort 抽象（`lib/stage/stage_port.dart`）两实现等价 |
+| ③ 上屏关 | ❌ **止损** | 见下方证据链 |
+| ④ 层序关 | （无法验证——她没上屏；挂载点保持原位：天幕之后、环场/UI 之前） | — |
+| ⑤ 性能关 | （无法验证——同上；无意义帧 gfxinfo 50th=5ms 无参考价值） | — |
+
+### 上屏关证据链（每一步都核实过）
+
+1. **loadModel 成功**（重试机制生效，正好是它设计时要吃的竞态）：
+   `[stage] loadModel 第 1 次 → false (LOAD_FAILED Native loadModel returned false)`
+   → `[stage] loadModel 第 2 次 → true` → `[stage] 原生舞台就绪（flutter_live2d）`
+2. **视图在树、位置/尺寸正确**（docs/18 §1.5.1-3 的 dumpsys 判据）：
+   `com.linh18nd.flutter_live2d.Live2DTextureView{3d47bd4 V.ED..... ......ID 0,0-1080,1080}`
+   —— 1080×1080 物理 px = 几何相机矩形（boot 相机 s=.64 → 540 逻辑 × 2 DPR），
+   **布局矩形复刻相机（`Positioned.fromRect`）工作正常**。
+3. **角色不绘制**：boot/lobby 两态截图均无她（`.verify/t7/01~03`），环场/天幕/HUD 等
+   Flutter 层全部正常。
+4. **新证据（旧 AVD 没抓到过）**：渲染线程**每帧**刷
+   `emuglGLESv2_enc GL2Encoder s_glEnableVertexAttribArray / s_glVertexAttribPointer
+   → GL error 0x501 (GL_INVALID_VALUE)` —— 插件的顶点属性提交在 MuMu 的 emugl
+   转译层上**每次都失败**。即：不是合成/层序问题（视图在画），是 **GL 调用本身
+   被转译层拒绝**（shader attrib 布局/数量与 emugl 的兼容性问题）。这解释了旧 AVD
+   的同症状（当时没有这一层日志）。
+5. 已排除项：插件模型缓存（`run-as ... rm -rf cache/flutter_live2d_models` 清过再试）、
+   模型数据（同一份数据 WebView 路线正常）、Impeller（旧排查已证无关）。
+
+### 止损处置（已落地）
+
+- `main.dart kNativeStage = false` —— 默认走 WebView；原生实现**全量保留**
+  （`Live2DStage` 几何相机 + `StagePort` 双实现 + `stage_port_test.dart` 12 例桥接表
+  一致性单测），**翻回 = 改一个常量**。
+- 恢复 `emote('sad')`（`_beginFail`）与接单 `nod`/结算 tier 情绪/暴击 `surprise` 挂在
+  `StagePort` 上——两条路线通用，WebView 走原型播放器自己的同名表。
+- 相机标定接口已备好未执行（她没上屏没有标定对象）：`tools/ref/calib_alpha.py`
+  （alpha 包围盒/背景亮度阈值法，**禁截图轮廓量测**）↔ `Live2DStage.StageCalib`
+  三常数（kSize/dx/dy），`stage_port_test.dart` 已钉死大厅矩形的数学
+  （92% 屏高、顶 4.5% 底 96.5%）。
+
+### 翻回原生的条件（给未来的自己）
+
+1. `flutter_live2d` 插件升级（关注其 GL 初始化/attrib 绑定的修复），或
+2. 换非模拟器 GPU 栈（真机）验证，或
+3. MuMu 更换图形转译模式后复测。
+
+复验动作：`kNativeStage = true` → `adb shell run-as com.systempanel.app rm -rf
+cache/flutter_live2d_models`（换数据/清缓存步骤）→ `flutter run -d 127.0.0.1:16512`
+→ 大厅截图 + `dumpsys activity top | grep Live2DTextureView` + logcat 查
+`[stage]`/GL 0x501 → 上屏则跑 `tools/ref/calib_alpha.py` 标定 `StageCalib`。
