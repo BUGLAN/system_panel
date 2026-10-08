@@ -1,4 +1,9 @@
 import 'dart:math' as math;
+
+import 'package:flutter/painting.dart';
+
+import 'spring.dart';
+
 import 'dart:ui';
 
 /// ═══════════════════════════════════════════════════════════
@@ -75,6 +80,72 @@ class Cam {
 }
 
 /// 一个环的椭圆参数（stage.js L368-380）
+/// 相机的五个量各挂一根弹簧（`stage.js` L100-103）
+///
+/// ```js
+/// this.cam = {
+///   S:  new Spring(F * .62, 70, .95), ax: new Spring(0, 70, .95), ay: new Spring(-.3, 70, .95),
+///   sx: new Spring(this.W / 2, 70, .95), sy: new Spring(this.H * .3, 70, .95),
+/// };
+/// ```
+/// `setCam(name)` 只改**目标**，每帧 `step(dt)` 逼近 —— 所以切页是"推镜头"而不是瞬移。
+/// ⚠️ 原型的 `setCam` 里 `snap` 为真时直接到位（换模型/尺寸变化后重设用）。
+class CamSpring {
+  CamSpring();
+
+  /// 原型里五根都是 (70, .95)
+  static const double stiff = 70;
+  static const double zeta = .95;
+
+  final Spring _s = Spring(k: stiff, zeta: zeta);
+  final Spring _ax = Spring(k: stiff, zeta: zeta);
+  final Spring _ay = Spring(k: stiff, zeta: zeta);
+  final Spring _sx = Spring(k: stiff, zeta: zeta);
+  final Spring _sy = Spring(k: stiff, zeta: zeta);
+
+  String name = 'boot';
+  Size _size = const Size(390, 844);
+  bool _inited = false;
+
+  Size get size => _size;
+
+  /// 切到某个预设（`setCam(name, snap)`）
+  void set(String camName, Size size, {bool snap = false}) {
+    _size = size;
+    name = camName;
+    final Cam c = Cam.byName(camName);
+    final double sc = c.scale(size.height);
+    final Offset center = c.screenCenter(size);
+    _s.set(sc, snap: snap || !_inited);
+    _ax.set(c.ax, snap: snap || !_inited);
+    _ay.set(c.ay, snap: snap || !_inited);
+    _sx.set(center.dx, snap: snap || !_inited);
+    _sy.set(center.dy, snap: snap || !_inited);
+    _inited = true;
+  }
+
+  /// 推进一帧
+  void step(double dt) {
+    _s.step(dt);
+    _ax.step(dt);
+    _ay.step(dt);
+    _sx.step(dt);
+    _sy.step(dt);
+  }
+
+  bool get done => _s.done && _ax.done && _ay.done && _sx.done && _sy.done;
+
+  /// 当前这一帧的相机（尺寸变化时 sxF/syF 换算成分数）
+  Cam get cam => Cam(
+    _s.x / Cam.camFit(_size.height),
+    _ax.x,
+    _ay.x,
+    _sx.x / _size.width,
+    _sy.x / _size.height,
+  );
+}
+
+/// 某个环的右/左端点（原型 `Stage.ringPoint`）
 class RingGeom {
   const RingGeom({required this.rx, required this.ry, required this.ryy});
 

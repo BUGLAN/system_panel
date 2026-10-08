@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 
 import 'dart:async';
 import 'dart:math' as math;
@@ -13,6 +14,7 @@ import 'screens/boot_screen.dart';
 import 'stage/ring_painter.dart';
 import 'state/host_state.dart';
 import 'state/goal.dart';
+import 'stage/camera.dart';
 import 'state/app_clock.dart';
 import 'state/away.dart';
 import 'state/voice.dart';
@@ -284,6 +286,13 @@ class _AppShellState extends State<AppShell>
       Moment.sheet => 'panel',
       Moment.main => 'full',
     };
+    // 相机切页：只改弹簧的**目标**，每帧由 `_camTicker` 推过去（原型的 `setCam`）。
+    // ⚠️ 这里不能碰 `_cam` 这个 ValueNotifier —— build 期间通知会触发
+    //    "setState() or markNeedsBuild() called during build"；通知只放在 tick 里。
+    if (_camSpring.name != camOf) {
+      _camSpring.set(camOf, MediaQuery.sizeOf(context));
+      if (!_camTicker.isActive) _camTicker.start();
+    }
     final bool main = _moment == Moment.main;
     final bool boot = _moment == Moment.boot;
     // focus+dim：派单与结算都会把 HUD/底栏收走、天幕压暗
@@ -371,20 +380,24 @@ class _AppShellState extends State<AppShell>
                 // 环场：她脚下到头顶那 8 个环。**画在独立画布上，与 Live2D 无关**
                 // （`stage.js` L127 `cv.id='ringCv'`），启动时 `App.boot()` 会把
                 // 8 个环全部 showRing，所以之后一直可见。
-                RingField(
-                  goal: _goal,
-                  cam: camOf,
-                  t: 0,
-                  ringMul: fail ? _ringMul : null,
-                  dim: boot
-                      ? .34 // 开机态的全息参数
-                      : fail
-                      ? 1 -
-                            .4 *
-                                _ringDim
-                                    .value // flows.js L530：holoTo({bright:.6}) 缓动过去
-                      : 1,
-                  scan: .2, // settings.holo → Stage.scanT
+                ValueListenableBuilder<Cam>(
+                  valueListenable: _cam,
+                  builder: (BuildContext _, Cam camNow, Widget? _) => RingField(
+                    goal: _goal,
+                    cam: camOf,
+                    camObj: camNow, // 弹簧推出来的那一帧（切页是"推镜头"不是瞬移）
+                    t: 0,
+                    ringMul: fail ? _ringMul : null,
+                    dim: boot
+                        ? .34 // 开机态的全息参数
+                        : fail
+                        ? 1 -
+                              .4 *
+                                  _ringDim
+                                      .value // flows.js L530：holoTo({bright:.6}) 缓动过去
+                        : 1,
+                    scan: .2, // settings.holo → Stage.scanT
+                  ),
                 ),
                 // TODO(step8+): 1 · 舞台 —— Live2D 角色 + 套在她身上的主线环 + 环挂签/环标签
                 // 2 · 界面
@@ -781,6 +794,26 @@ class _AppShellState extends State<AppShell>
     _sayAside(line, holdMs: 3200, busy: true);
   }
 
+  /// 相机弹簧（`stage.js` L100-103）：切页时把镜头**推**过去，而不是瞬移。
+  /// 只有环场与挂签吃这个相机（她本人还没接），所以这一改动只影响环的位置/缩放。
+  final CamSpring _camSpring = CamSpring();
+  final ValueNotifier<Cam> _cam = ValueNotifier<Cam>(Cam.byName('boot'));
+  late final Ticker _camTicker = createTicker(_onCamTick);
+  Duration _camLast = Duration.zero;
+
+  void _onCamTick(Duration now) {
+    final double dt = _camLast == Duration.zero
+        ? 1 / 60
+        : (now - _camLast).inMicroseconds / 1e6;
+    _camLast = now;
+    _camSpring.step(dt);
+    _cam.value = _camSpring.cam;
+    if (_camSpring.done) {
+      _camTicker.stop();
+      _camLast = Duration.zero;
+    }
+  }
+
   /// 失败时把当前那一环掐暗（原型 `Stage.dimRing(ci, …)` 三下：0 / 90 / 200ms）
   List<double>? _ringMul;
 
@@ -888,6 +921,8 @@ class _AppShellState extends State<AppShell>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _clock.dispose();
+    _camTicker.dispose();
+    _cam.dispose();
     _ringDim.dispose();
     _flashC.dispose();
     _fx.dispose();

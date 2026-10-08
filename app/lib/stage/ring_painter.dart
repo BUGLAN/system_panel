@@ -25,6 +25,7 @@ class RingField extends StatelessWidget {
     super.key,
     required this.goal,
     this.cam = 'full',
+    this.camObj,
     this.t = 0,
     this.dim = 1,
     this.ringMul,
@@ -36,6 +37,9 @@ class RingField extends StatelessWidget {
 
   /// 相机预设名
   final String cam;
+
+  /// 弹簧推出来的那一帧相机；给了就用它（否则按 `cam` 查静态预设）
+  final Cam? camObj;
 
   /// 动画时间（秒）—— 刻度/彗星/虚线的相位都由它决定
   final double t;
@@ -60,6 +64,7 @@ class RingField extends StatelessWidget {
           painter: RingFieldPainter(
             goal: goal,
             cam: cam,
+            camObj: camObj,
             t: t,
             dim: dim,
             scan: scan,
@@ -74,6 +79,7 @@ class RingFieldPainter extends CustomPainter {
   const RingFieldPainter({
     required this.goal,
     required this.cam,
+    this.camObj,
     required this.t,
     required this.dim,
     this.ringMul,
@@ -82,6 +88,7 @@ class RingFieldPainter extends CustomPainter {
 
   final Goal goal;
   final String cam;
+  final Cam? camObj;
   final double t;
   final double dim;
   final List<double>? ringMul;
@@ -94,7 +101,7 @@ class RingFieldPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final Cam c = Cam.byName(cam);
+    final Cam c = camObj ?? Cam.byName(cam);
     final double s = c.scale(size.height);
     final double px = 1 / s; // ⚠️ 原型就是这么写的，后面会被 max(.4, …) 夹掉
     final double k = s; // 世界单位 → 屏幕
@@ -296,5 +303,9 @@ class RingFieldPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant RingFieldPainter old) =>
-      old.t != t || old.dim != dim || old.cam != cam || old.scan != scan;
+      old.t != t ||
+      old.dim != dim ||
+      old.cam != cam ||
+      old.camObj != camObj ||
+      old.scan != scan;
 }
