@@ -323,4 +323,21 @@ void main() {
       expect(shouldOnboard(back.goal), isFalse);
     });
   });
+
+  group('见面礼（原型 bind 的双倍卡语义保留）', () {
+    test('空表送 1 张；已有则叠加；不改动传入表', () {
+      expect(kBindGiftDbl, 1);
+      expect(kBindGiftItemKey, 'dbl'); // 道具表 items.dart 的双倍卡 key
+      expect(kBindGiftKicker, '见面礼');
+      expect(kBindGiftText, '双倍卡 ×1');
+
+      expect(applyBindGift(const <String, int>{}), <String, int>{'dbl': 1});
+
+      final Map<String, int> src = <String, int>{'dbl': 1, 'crit': 2};
+      final Map<String, int> out = applyBindGift(src);
+      expect(out['dbl'], 2);
+      expect(out['crit'], 2);
+      expect(src['dbl'], 1); // 原表不被改写
+    });
+  });
 }

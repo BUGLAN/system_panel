@@ -1139,9 +1139,24 @@ List<String> memoriesFromInterview({
   return out;
 }
 
-// ── 触发判定（装配归 T8，这里只给规则） ───────────────────────
+// ── 触发判定与绑定语义（装配归 T8，这里只给规则） ─────────────
 
 /// 是否该进绑定/访谈流：**没有主线才要绑**。
 /// 老存档（演示档或真实档）环非空 = 已有主线，永不触发；数据兼容由
 /// `Goal.fromJson` 的合并式迁移保证（缺 `cat/days/interview` 自动补默认）。
 bool shouldOnboard(Goal goal) => goal.isEmpty;
+
+/// 见面礼（原型 `Store.bind()` 的 `S.items.dbl += 1`）——
+/// 数值语义在此钉死：绑定完成送 **双倍卡 ×1**（道具表 items.dart 不动，
+/// key = 'dbl'）；Banner 演出（`见面礼 · 双倍卡 ×1`，2200ms 自收）归装配。
+const int kBindGiftDbl = 1;
+const String kBindGiftItemKey = 'dbl';
+const String kBindGiftKicker = '见面礼';
+const String kBindGiftText = '双倍卡 ×1';
+
+/// 绑定见面礼：返回加了双倍卡的新 items 表（不改动传入表）。
+/// 装配侧 `host = host.copyWith(items: applyBindGift(host.items))` 即完成入账。
+Map<String, int> applyBindGift(Map<String, int> items) => <String, int>{
+  ...items,
+  kBindGiftItemKey: (items[kBindGiftItemKey] ?? 0) + kBindGiftDbl,
+};
