@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
@@ -5,11 +6,12 @@ import 'dart:ui' show PathMetric;
 
 import 'package:flutter/material.dart';
 
-import 'hold_button.dart';
-
+import '../data/rarity.dart';
 import '../design/tokens.dart';
 import '../state/host_state.dart';
 import '../state/quest.dart';
+import 'hold_button.dart';
+import 'plate_timeline.dart';
 
 /// ═══════════════════════════════════════════════════════════
 ///  派单板（app.css L242-303 `#plate` · ui.js `Plate.build`）
@@ -50,7 +52,7 @@ class Plate extends StatefulWidget {
   State<Plate> createState() => _PlateState();
 }
 
-class _PlateState extends State<Plate> with SingleTickerProviderStateMixin {
+class _PlateState extends State<Plate> with TickerProviderStateMixin {
   // CSS cubic-bezier(.2,.75,.25,1)
   static const Curve _landCurve = Cubic(.2, .75, .25, 1);
 
@@ -59,19 +61,182 @@ class _PlateState extends State<Plate> with SingleTickerProviderStateMixin {
     duration: const Duration(milliseconds: 560),
   );
 
+  /// 稀有度滚动（`Plate.rankRoll` 的那个 for 循环）
+  late final AnimationController _roll = AnimationController(vsync: this);
+
+  /// 激光逐段刻字（`Plate.engrave` 的那个 for 循环）
+  late final AnimationController _eng = AnimationController(vsync: this);
+
+  RankRollTimeline? _rollTl;
+  EngraveTimeline? _engTl;
+
+  /// 此刻显示到第几档
+  int _shownIndex = 0;
+
+  /// `rankLock` 那一下（CSS `@keyframes rankLock`）
+  bool _lock = false;
+
+  /// 每一段的刻字进度
+  List<double> _engK = <double>[1, 1, 1, 1, 1, 1, 1, 1];
+
+  /// 激光头的位置（相对玻璃板）
+  Offset? _laser;
+
+  /// `#plPrint` 的不透明度：刻完才有（原型 `opacity = .25` → `1`）
+  double _printOpacity = 1;
+
+  /// 每一段在玻璃板里的位置（激光要按它走）
+  final List<GlobalKey> _engKeys = List<GlobalKey>.generate(
+    8,
+    (int _) => GlobalKey(),
+  );
+
+  /// 八段刻字的文案长度（原型用 `e.textContent.length` 定时长）
+  List<int> get _engLengths => <int>[
+    'TO · ${widget.host.name} · LV${widget.host.lv}'.length,
+    widget.quest.serialText.length,
+    widget.quest.kindLabel.length,
+    widget.quest.name.length,
+    widget.quest.reason.length,
+    '证明${widget.quest.proof}'.length,
+    '时限${widget.quest.minutesText}'.length,
+    '报酬EXP${widget.quest.rarity.exp}·◈${widget.quest.rarity.coin}'.length,
+  ];
+
   @override
   void initState() {
     super.initState();
-    if (widget.animateLand) {
-      _land.forward();
-    } else {
-      _land.value = 1;
+    if (widget.visible) _start();
+  }
+
+  /// ⚠️ **不能只在 initState 里启动** —— `Plate` 从开机起就挂在树里
+  /// （只是 `visible: false`），initState 那会儿仪式就演完一遍了，
+  /// 等宿主真点进派单板时看到的是终态（实机踩过：连拍 5 帧一模一样）。
+  /// 原型是 `Plate.build()` + `land()` 在**派单那一刻**才跑，所以这里跟着 visible 走。
+  @override
+  void didUpdateWidget(covariant Plate old) {
+    super.didUpdateWidget(old);
+    if (!old.visible && widget.visible) {
+      _start();
+    } else if (widget.visible && old.quest.serial != widget.quest.serial) {
+      _start(); // 换单 = 重新刻一块
     }
+  }
+
+  void _start() {
+    _shownIndex = 0;
+    _lock = false;
+    _engK = List<double>.filled(8, 0);
+    _printOpacity = .25;
+    _roll.value = 0;
+    _eng.value = 0;
+    _laser = null;
+    if (widget.animateLand) {
+      _land
+        ..value = 0
+        ..forward().then((void _) => _ceremony());
+    } else {
+      // 静态比对：直接落在终态，渲染结果与以前逐字节一致
+      _land.value = 1;
+      _shownIndex = widget.quest.rarity.i;
+      _engK = List<double>.filled(8, 1);
+      _printOpacity = 1;
+    }
+  }
+
+  /// 落板 → 揭稀有度 → 逐字刻 → 指纹可用（`flows.js` L279 的调用顺序）
+  Future<void> _ceremony() async {
+    if (!mounted) return;
+    // ⚠️ 原型的 `land()` 在动画后再等 440 + 150ms 才 resolve
+    await Future<void>.delayed(const Duration(milliseconds: 590));
+    if (!mounted) return;
+    await _rankRoll();
+    if (!mounted) return;
+    await _engrave();
+  }
+
+  Future<void> _rankRoll() async {
+    final RankRollTimeline tl = RankRollTimeline(target: widget.quest.rarity.i);
+    _rollTl = tl;
+    if (tl.total <= 0) {
+      setState(() => _shownIndex = tl.target);
+      return;
+    }
+    _roll
+      ..duration = Duration(milliseconds: tl.total.round())
+      ..addListener(_onRollTick);
+    final Completer<void> done = Completer<void>();
+    _roll.forward().then((void _) => done.complete());
+    await done.future;
+    _roll.removeListener(_onRollTick);
+    if (!mounted) return;
+    setState(() => _lock = true); // 末级砸下来那一下
+  }
+
+  void _onRollTick() {
+    final RankRollTimeline? tl = _rollTl;
+    if (tl == null) return;
+    final int i = tl.indexAt(_roll.value * tl.total);
+    if (i != _shownIndex) setState(() => _shownIndex = i);
+  }
+
+  Future<void> _engrave() async {
+    final EngraveTimeline tl = EngraveTimeline(_engLengths);
+    _engTl = tl;
+    if (tl.total <= 0) return;
+    setState(() {
+      _engK = List<double>.filled(8, 0);
+      _printOpacity = .25;
+    });
+    // 位置要等一帧布局完才量得到
+    await Future<void>.delayed(const Duration(milliseconds: 16));
+    if (!mounted) return;
+    _eng
+      ..duration = Duration(milliseconds: tl.total.round())
+      ..addListener(_onEngTick);
+    final Completer<void> done = Completer<void>();
+    _eng.forward().then((void _) => done.complete());
+    await done.future;
+    _eng.removeListener(_onEngTick);
+    if (!mounted) return;
+    setState(() {
+      _laser = null;
+      _printOpacity = 1; // 刻完指纹才能按（原型 `.4s` 过渡）
+    });
+  }
+
+  void _onEngTick() {
+    final EngraveTimeline? tl = _engTl;
+    if (tl == null) return;
+    final double t = _eng.value * tl.total;
+    final int active = tl.activeAt(t);
+    setState(() {
+      _engK = <double>[for (int i = 0; i < 8; i++) tl.kAt(i, t)];
+      if (active < 0) {
+        _laser = null;
+      } else {
+        final Rect? r = _localRect(active);
+        _laser = r == null
+            ? null
+            : Offset(r.left + r.width * tl.kAt(active, t), r.center.dy);
+      }
+    });
+  }
+
+  /// 第 i 段在玻璃板坐标系里的位置（原型 `rel(e)`）
+  Rect? _localRect(int i) {
+    final RenderBox? box =
+        _engKeys[i].currentContext?.findRenderObject() as RenderBox?;
+    final RenderBox? root = context.findRenderObject() as RenderBox?;
+    if (box == null || root == null || !box.hasSize) return null;
+    return box.localToGlobal(Offset.zero, ancestor: root) & box.size;
   }
 
   @override
   void dispose() {
     _land.dispose();
+    _roll.dispose();
+    _eng.dispose();
     super.dispose();
   }
 
@@ -115,23 +280,97 @@ class _PlateState extends State<Plate> with SingleTickerProviderStateMixin {
           quest: widget.quest,
           host: widget.host,
           onAccept: widget.onAccept,
+          engKeys: _engKeys,
+          reveal: PlateReveal(
+            shownIndex: _shownIndex,
+            lock: _lock,
+            engK: _engK,
+            printOpacity: _printOpacity,
+            laser: _laser,
+          ),
         ),
       ),
     );
   }
 }
 
+/// 揭晓进行到哪了 —— `Plate.rankRoll` / `Plate.engrave` 两个循环的当前状态。
+///
+/// 静态比对（`animateLand: false`）时它落在终态：全亮、指纹可点，
+/// 所以**不会改变任何既有截图的观感**。
+class PlateReveal {
+  const PlateReveal({
+    required this.shownIndex,
+    this.lock = false,
+    this.engK = const <double>[1, 1, 1, 1, 1, 1, 1, 1],
+    this.printOpacity = 1,
+    this.laser,
+  });
+
+  /// 此刻显示到第几档稀有度（0 基）
+  final int shownIndex;
+
+  /// `rankLock` 那一下
+  final bool lock;
+
+  /// 八段刻字各自的进度
+  final List<double> engK;
+
+  /// `#plPrint` 的不透明度
+  final double printOpacity;
+
+  /// 激光头位置（相对玻璃板）
+  final Offset? laser;
+}
+
+/// `clip-path: inset(-20% X% -20% 0)` —— 从左往右刻出来
+class _EngraveClipper extends CustomClipper<Rect> {
+  const _EngraveClipper(this.k);
+
+  final double k;
+
+  @override
+  Rect getClip(Size s) =>
+      Rect.fromLTRB(0, -s.height * .2, s.width * k, s.height * 1.2);
+
+  @override
+  bool shouldReclip(_EngraveClipper old) => old.k != k;
+}
+
+/// 玻璃板：斜切玻璃 + 内容 + 稀有度骰子（`Plate.build` 的 DOM 部分）
 class _Glass extends StatelessWidget {
   const _Glass({
     super.key,
     required this.quest,
     required this.host,
     this.onAccept,
+    this.reveal = const PlateReveal(shownIndex: 0),
+    this.engKeys,
   });
 
   final Quest quest;
   final HostState host;
   final VoidCallback? onAccept;
+
+  /// 揭晓状态（默认终态）
+  final PlateReveal reveal;
+
+  /// 八段刻字各自的 key —— 激光要按它们的位置走（原型 `rel(e)`）
+  final List<GlobalKey>? engKeys;
+
+  /// `[data-eng]` —— 激光逐字刻出来的那一段。
+  ///
+  /// 原型靠 CSS：`clip-path: inset(-20% 100% -20% 0)`，`.done` 时右边距归零。
+  /// **刻完（k ≥ 1）时直接返回 child，不套 ClipRect** —— 这样静态比对
+  /// （`animateLand: false`）下渲染树与以前逐字节一致，绝不会影响既有截图。
+  Widget _eng(int i, Widget child) {
+    final double k = i < reveal.engK.length ? reveal.engK[i] : 1;
+    // KeyedSubtree 不产生 RenderObject（零视觉影响），但它的 element 能反查到
+    // 子节点的 RenderBox —— 激光就是靠它定位的
+    final Widget keyed = KeyedSubtree(key: engKeys?[i], child: child);
+    if (k >= 1) return keyed;
+    return ClipRect(clipper: _EngraveClipper(k), child: keyed);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -248,15 +487,18 @@ class _Glass extends StatelessWidget {
               children: <Widget>[
                 _head(),
                 const SizedBox(height: 18),
-                Text(
-                  quest.kindLabel,
-                  style: fs(
-                    family: F.mono,
-                    size: 10,
-                    wght: 600,
-                    ls: 2,
-                    height: 1,
-                    color: C.blue,
+                _eng(
+                  2,
+                  Text(
+                    quest.kindLabel,
+                    style: fs(
+                      family: F.mono,
+                      size: 10,
+                      wght: 600,
+                      ls: 2,
+                      height: 1,
+                      color: C.blue,
+                    ),
                   ),
                 ),
                 const SizedBox(height: 10),
@@ -264,18 +506,21 @@ class _Glass extends StatelessWidget {
                   constraints: const BoxConstraints(minHeight: 64),
                   child: Padding(
                     padding: const EdgeInsets.only(right: 92),
-                    child: Text(
-                      quest.name,
-                      style: fs(
-                        family: F.hd,
-                        size: 26,
-                        wght: 400,
-                        ls: .52,
-                        height: 1.22,
-                        color: const Color(0xFFF4FDFF),
-                        shadows: <Shadow>[
-                          Shadow(color: C.blue.withAlpha(89), blurRadius: 18),
-                        ],
+                    child: _eng(
+                      3,
+                      Text(
+                        quest.name,
+                        style: fs(
+                          family: F.hd,
+                          size: 26,
+                          wght: 400,
+                          ls: .52,
+                          height: 1.22,
+                          color: const Color(0xFFF4FDFF),
+                          shadows: <Shadow>[
+                            Shadow(color: C.blue.withAlpha(89), blurRadius: 18),
+                          ],
+                        ),
                       ),
                     ),
                   ),
@@ -285,18 +530,46 @@ class _Glass extends StatelessWidget {
                 const SizedBox(height: 14),
                 _spec(),
                 const Spacer(), // .pl-print 的 margin-top: auto
-                _print(rk),
+                // `#plPrint` 要刻完字才可点（原型 `opacity = .25` → `1`）
+                Opacity(opacity: reveal.printOpacity, child: _print(rk)),
               ],
             ),
           ),
         ),
+        // .laser —— 刻字时那点白激光（原型按 `rel(e)` 每帧定位）
+        if (reveal.laser != null)
+          Positioned(
+            left: reveal.laser!.dx - 3,
+            top: reveal.laser!.dy - 3,
+            width: 6,
+            height: 6,
+            child: IgnorePointer(
+              child: DecoratedBox(
+                key: const Key('plate.laser'),
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: const Color(0xFFFFFFFF),
+                  boxShadow: <BoxShadow>[
+                    const BoxShadow(color: Color(0xFFFFFFFF), blurRadius: 6),
+                    BoxShadow(color: C.blue, blurRadius: 16),
+                    BoxShadow(color: C.blue, blurRadius: 32),
+                  ],
+                ),
+              ),
+            ),
+          ),
         // .pl-rank
         Positioned(
           right: 16,
           top: 34,
           width: 86,
           height: 104,
-          child: _Rank(key: const Key('plate.rank'), quest: quest),
+          child: _Rank(
+            key: const Key('plate.rank'),
+            quest: quest,
+            shownIndex: reveal.shownIndex,
+            lock: reveal.lock,
+          ),
         ),
       ],
     );
@@ -314,24 +587,27 @@ class _Glass extends StatelessWidget {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: <Widget>[
-        Text.rich(
-          TextSpan(
-            children: <InlineSpan>[
-              TextSpan(text: 'TO · ', style: base),
-              TextSpan(
-                text: host.name,
-                style: base.copyWith(
-                  color: C.ice,
-                  fontVariations: const <FontVariation>[
-                    FontVariation('wght', 700),
-                  ],
+        _eng(
+          0,
+          Text.rich(
+            TextSpan(
+              children: <InlineSpan>[
+                TextSpan(text: 'TO · ', style: base),
+                TextSpan(
+                  text: host.name,
+                  style: base.copyWith(
+                    color: C.ice,
+                    fontVariations: const <FontVariation>[
+                      FontVariation('wght', 700),
+                    ],
+                  ),
                 ),
-              ),
-              TextSpan(text: ' · LV${host.lv}', style: base),
-            ],
+                TextSpan(text: ' · LV${host.lv}', style: base),
+              ],
+            ),
           ),
         ),
-        Text(quest.serialText, style: base),
+        _eng(1, Text(quest.serialText, style: base)),
       ],
     );
   }
@@ -339,43 +615,46 @@ class _Glass extends StatelessWidget {
   /// .pl-why —— 带「附言」小牌的那句
   Widget _why() {
     if (quest.reason.isEmpty) return const SizedBox.shrink();
-    return Text.rich(
-      TextSpan(
-        children: <InlineSpan>[
-          WidgetSpan(
-            alignment: PlaceholderAlignment.baseline,
-            baseline: TextBaseline.alphabetic,
-            child: Container(
-              margin: const EdgeInsets.only(right: 8),
-              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-              decoration: BoxDecoration(
-                color: C.blue,
-                borderRadius: BorderRadius.circular(3),
-              ),
-              child: Text(
-                '附言',
-                style: fs(
-                  family: F.mono,
-                  size: 9.5,
-                  wght: 600,
-                  ls: 1.14,
-                  height: 1.3,
-                  color: C.deep,
+    return _eng(
+      4,
+      Text.rich(
+        TextSpan(
+          children: <InlineSpan>[
+            WidgetSpan(
+              alignment: PlaceholderAlignment.baseline,
+              baseline: TextBaseline.alphabetic,
+              child: Container(
+                margin: const EdgeInsets.only(right: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                decoration: BoxDecoration(
+                  color: C.blue,
+                  borderRadius: BorderRadius.circular(3),
+                ),
+                child: Text(
+                  '附言',
+                  style: fs(
+                    family: F.mono,
+                    size: 9.5,
+                    wght: 600,
+                    ls: 1.14,
+                    height: 1.3,
+                    color: C.deep,
+                  ),
                 ),
               ),
             ),
-          ),
-          TextSpan(
-            text: quest.reason,
-            style: fs(
-              family: F.cn,
-              size: 13.5,
-              wght: 400,
-              height: 1.6,
-              color: const Color(0xFFB4C8E2),
+            TextSpan(
+              text: quest.reason,
+              style: fs(
+                family: F.cn,
+                size: 13.5,
+                wght: 400,
+                height: 1.6,
+                color: const Color(0xFFB4C8E2),
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -401,32 +680,35 @@ class _Glass extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        _specRow('证明', Text(quest.proof, style: dd), dt),
+        _eng(5, _specRow('证明', Text(quest.proof, style: dd), dt)),
         const SizedBox(height: 7),
-        _specRow('时限', Text(quest.minutesText, style: dd), dt),
+        _eng(6, _specRow('时限', Text(quest.minutesText, style: dd), dt)),
         const SizedBox(height: 7),
-        _specRow(
-          '报酬',
-          Text.rich(
-            TextSpan(
-              children: <InlineSpan>[
-                TextSpan(text: 'EXP ${quest.rarity.exp}', style: num),
-                TextSpan(text: ' · ◈ ${quest.rarity.coin}', style: dd),
-                TextSpan(
-                  text: quest.attrs.entries
-                      .map((MapEntry<String, int> e) => '${e.key}+${e.value}')
-                      .join(' '),
-                  style: fs(
-                    family: F.cn,
-                    size: 12,
-                    wght: 400,
-                    color: const Color(0xFFCFE9FF),
+        _eng(
+          7,
+          _specRow(
+            '报酬',
+            Text.rich(
+              TextSpan(
+                children: <InlineSpan>[
+                  TextSpan(text: 'EXP ${quest.rarity.exp}', style: num),
+                  TextSpan(text: ' · ◈ ${quest.rarity.coin}', style: dd),
+                  TextSpan(
+                    text: quest.attrs.entries
+                        .map((MapEntry<String, int> e) => '${e.key}+${e.value}')
+                        .join(' '),
+                    style: fs(
+                      family: F.cn,
+                      size: 12,
+                      wght: 400,
+                      color: const Color(0xFFCFE9FF),
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
+            dt,
           ),
-          dt,
         ),
       ],
     );
@@ -560,45 +842,70 @@ class _ScanlinePainter extends CustomPainter {
 
 /// .pl-rank —— 右上角的等级骰子：一圈进度 + 大字 + 七格刻度
 class _Rank extends StatelessWidget {
-  const _Rank({super.key, required this.quest});
+  const _Rank({
+    super.key,
+    required this.quest,
+    required this.shownIndex,
+    this.lock = false,
+  });
 
   final Quest quest;
 
+  /// 揭晓滚到第几档（静态终态 = `quest.rarity.i`）
+  final int shownIndex;
+
+  /// `rankLock` 那一下（末档砸下来）
+  final bool lock;
+
   @override
   Widget build(BuildContext context) {
-    final Color rk = quest.rarity.color;
-    final int i = quest.rarity.i;
+    // 滚动过程中显示的是"当前滚到的那一档"，不是最终那一档
+    final int i = shownIndex;
+    final Color rk = Rarity.of(kRanks[i]).color;
+    // `@keyframes rankLock { 0% { scale(1.9); brightness(2.2) } }`
+    final Widget ring = SizedBox(
+      key: const Key('plate.ring'),
+      width: 78,
+      height: 78,
+      child: Stack(
+        alignment: Alignment.center,
+        children: <Widget>[
+          Positioned.fill(
+            child: CustomPaint(
+              painter: _RankRingPainter(color: rk, index: i),
+            ),
+          ),
+          Text(
+            kRanks[i],
+            style: fs(
+              family: F.num,
+              size: 52,
+              wght: 900,
+              wdth: 80,
+              height: 1,
+              color: rk,
+              shadows: <Shadow>[
+                Shadow(color: rk.withAlpha(179), blurRadius: 22),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
     return Column(
       children: <Widget>[
-        SizedBox(
-          key: const Key('plate.ring'),
-          width: 78,
-          height: 78,
-          child: Stack(
-            alignment: Alignment.center,
-            children: <Widget>[
-              Positioned.fill(
-                child: CustomPaint(
-                  painter: _RankRingPainter(color: rk, index: i),
-                ),
-              ),
-              Text(
-                quest.rank,
-                style: fs(
-                  family: F.num,
-                  size: 52,
-                  wght: 900,
-                  wdth: 80,
-                  height: 1,
-                  color: rk,
-                  shadows: <Shadow>[
-                    Shadow(color: rk.withAlpha(179), blurRadius: 22),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
+        if (lock)
+          TweenAnimationBuilder<double>(
+            key: const Key('plate.lock'),
+            tween: Tween<double>(begin: 1.9, end: 1),
+            duration: const Duration(milliseconds: 600),
+            curve: Curves.easeOutBack,
+            builder: (BuildContext _, double s, Widget? child) =>
+                Transform.scale(scale: s, child: child),
+            child: ring,
+          )
+        else
+          ring,
         const SizedBox(height: 9),
         Row(
           mainAxisSize: MainAxisSize.min,
