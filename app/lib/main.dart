@@ -13,6 +13,7 @@ import 'stage/ring_painter.dart';
 import 'state/host_state.dart';
 import 'state/goal.dart';
 import 'state/app_clock.dart';
+import 'state/away.dart';
 import 'state/save_file.dart';
 import 'state/quest.dart';
 import 'state/result.dart';
@@ -85,7 +86,7 @@ class AppShell extends StatefulWidget {
 }
 
 class _AppShellState extends State<AppShell>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   /// 行为逻辑未定，先用与原型「老宿主 · 第 23 天」一致的演示档
   /// （启动时会被存档覆盖 —— 见 SaveFile）
   HostState _host = HostState.demo;
@@ -166,10 +167,14 @@ class _AppShellState extends State<AppShell>
   }
 
   /// 她插一句（`hold` 之后自己收）
-  void _sayAside(String text, {int holdMs = 3200}) {
+  ///
+  /// [busy] 对应原型的 `App.run()`：她说「回来那几句」是**多拍演出**，
+  /// 整段持有 `busy`，期间点别处一律没反应（flows.js L26 / L171）。碎碎念不持有。
+  void _sayAside(String text, {int holdMs = 3200, bool busy = false}) {
     setState(() {
       _aside = text;
       _asideUntil = DateTime.now().add(Duration(milliseconds: holdMs));
+      if (busy) _busy = true;
     });
   }
 
@@ -180,6 +185,7 @@ class _AppShellState extends State<AppShell>
       setState(() {
         _aside = null;
         _asideUntil = null;
+        _busy = false; // 演出收场，恢复接客
       });
     }
     // ⚠️ 原型这里是 `!$('#line').classList.contains('on')` —— 它的页面字幕
@@ -191,7 +197,7 @@ class _AppShellState extends State<AppShell>
       setState(() => _moment = Moment.fail);
       return;
     }
-    final bool lineQuiet = _aside == null;
+    final bool lineQuiet = _aside == null && !_busy;
     if (_moment == Moment.lobby &&
         now.difference(_lastAct) > ChatterScheduler.quietAfterAction &&
         lineQuiet) {
@@ -321,8 +327,21 @@ class _AppShellState extends State<AppShell>
                     ),
                   ),
                 ),
-                // 任意按下都算「宿主还在」（原型 main.js L40 的捕获阶段监听）
+                // 任意按下都算「宿主还在」（原型 main.js L40 在整屏捕获阶段监听，
+                // **不受 busy 影响** —— 演出期间也在记）
                 // 同时：点背景 = 跳过打字机（原型 Tap 忽略 button/input/sheet/tag 上的点）
+                Positioned.fill(
+                  child: Listener(
+                    behavior: HitTestBehavior.translucent,
+                    onPointerDown: (PointerDownEvent _) {
+                      if (_lastAct.isBefore(
+                        DateTime.now().subtract(const Duration(seconds: 1)),
+                      )) {
+                        setState(() => _lastAct = DateTime.now());
+                      }
+                    },
+                  ),
+                ),
                 Positioned.fill(
                   child: GestureDetector(
                     behavior: HitTestBehavior.opaque,
@@ -387,6 +406,8 @@ class _AppShellState extends State<AppShell>
                   host: _host,
                   visible: dispatch,
                   onAccept: () {
+                    // 原型 `App.dispatch()` → `App.run()`：忙的时候直接返回
+                    if (_busy) return;
                     _beginExec();
                     _persist();
                   },
@@ -406,6 +427,7 @@ class _AppShellState extends State<AppShell>
                     // 指纹钤印那一下：原型 `Plate.seal()` 是
                     // `FX.flash('#bff6ff', .24, 280)` + `FX.shake(4, 220)`
                     onSubmit: () {
+                      if (_busy) return; // 原型 `App.submit()` → `run()`
                       _clock.stopFast();
                       _pulse(color: const Color(0xFFBFF6FF), a: .24, ms: 280);
                       // 钤印那一下：涟漪 + 火花 + 爆散（ui.js L346-347 / L358）
@@ -423,11 +445,14 @@ class _AppShellState extends State<AppShell>
                       setState(() => _moment = Moment.result);
                     },
                     onQuitProgress: (double p) => setState(() => _quitP = p),
-                    onQuit: () => setState(() {
-                      _clock.stopFast();
-                      _quitP = 0;
-                      _moment = Moment.fail;
-                    }),
+                    onQuit: () {
+                      if (_busy) return; // 原型 `App.fail()` → `run()`
+                      setState(() {
+                        _clock.stopFast();
+                        _quitP = 0;
+                        _moment = Moment.fail;
+                      });
+                    },
                   ),
                 ),
                 // 结算
@@ -565,10 +590,7 @@ class _AppShellState extends State<AppShell>
           ),
           // 3 · 覆盖层：开机自检（z 20，压在所有东西上面）
           if (boot)
-            BootScreen(
-              host: '${_host.name} · LV${_host.lv}',
-              onWake: () => setState(() => _moment = Moment.lobby),
-            ),
+            BootScreen(host: '${_host.name} · LV${_host.lv}', onWake: _wake),
         ],
       ),
     );
@@ -640,8 +662,65 @@ class _AppShellState extends State<AppShell>
   @override
   void initState() {
     super.initState();
+    // 原型 document.visibilitychange —— 记下你什么时候走的
+    WidgetsBinding.instance.addObserver(this);
     _clock.startSeconds(_onSecond); // 原型 setInterval(App.second, 1000)
     _restore();
+  }
+
+  /// ═══ 生命周期：她记得你走了多久（flows.js L186-193）═══
+  ///
+  /// 前台时用 _hiddenAt 算；冷启动用存档里的 lastSeen 算（跨进程也算数）。
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState s) {
+    switch (s) {
+      case AppLifecycleState.paused:
+      case AppLifecycleState.hidden:
+        _hiddenAt ??= DateTime.now();
+        _persist(); // 走之前把 lastSeen 落下
+      case AppLifecycleState.resumed:
+        final DateTime? hid = _hiddenAt;
+        _hiddenAt = null;
+        if (hid == null) return;
+        _greetAfter(hid);
+      case AppLifecycleState.inactive:
+      case AppLifecycleState.detached:
+        break;
+    }
+  }
+
+  /// 离开太短就不吭声（way > 6e4）
+  void _greetAfter(DateTime since) {
+    final Duration away = DateTime.now().difference(since);
+    final String? line = AwayGreeting.lineFor(away);
+    if (line == null) return;
+    // 演出还在跑就先不打断她
+    if (_busy) return;
+    _sayAside(line, holdMs: 3200, busy: true);
+  }
+
+  /// 什么时候被切到后台的（原型 `App.hiddenAt`）
+  DateTime? _hiddenAt;
+
+  /// 上次离开的时间（原型 `S.prevSeen`）—— 冷启动时从存档读出来
+  DateTime? _prevSeen;
+
+  /// 演出串行化（flows.js L26-29 `App.run`）：
+  /// **忙的时候新的流程入口直接忽略**（不排队、不打断），原型就是这么写的。
+  /// 目前只在「她正在说回来那几句」这种多拍演出里持有。
+  bool _busy = false;
+
+  /// 开机屏之后进大厅 —— 原型在这里跑 `App.greet(true)`：
+  /// **冷启动一定会说一句**（`if (fromBoot || away > 6e4)`，默认档就是 back10m）
+  void _wake() {
+    setState(() => _moment = Moment.lobby);
+    final DateTime? seen = _prevSeen;
+    final Duration away = seen == null
+        ? Duration.zero
+        : DateTime.now().difference(seen);
+    // `fromBoot` 会强制开口，所以 null（离开太短）也要退回默认那一档
+    final AwayKind k = AwayGreeting.kindFor(away) ?? AwayKind.back10m;
+    _sayAside(AwayGreeting.text(k, away), holdMs: 3200, busy: true);
   }
 
   /// 读档（store.js L34）—— 没有档就用演示档
@@ -657,6 +736,8 @@ class _AppShellState extends State<AppShell>
     setState(() {
       _host = d.host;
       _goal = d.goal;
+      // 原型 `load()` 里的 `S.prevSeen = S.lastSeen` —— 冷启动算"你走了多久"用
+      _prevSeen = d.lastSeen;
     });
   }
 
@@ -681,6 +762,7 @@ class _AppShellState extends State<AppShell>
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _clock.dispose();
     _flashC.dispose();
     _fx.dispose();

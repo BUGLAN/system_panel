@@ -60,6 +60,14 @@ class LINES {
   /// 走神时那一句
   static const String doze = '……（待机）';
 
+  /// 回来时她记得你走了多久（content.js L290-294）
+  /// 选哪一句由 `state/away.dart` 按离开时长决定（flows.js L186-193）
+  static const String back10m = '又回来了？……刚走就想我了？不用回答。';
+  static const String back2h = '离开了 [[{dur}]]。去干正事了吧。';
+  static const String back12h = '[[{dur}]] 没见。我数着呢。——系统的本职工作而已。';
+  static const String back36h = '一整天。你知道这一天我在干嘛吗？等。系统没有别的事可干。';
+  static const String backLong = '[[{days}]] 天。我差点以为你把我卸载了。……没卸就好。';
+
   /// 无存档时的 host 占位（flows.js L52）
   static const String hostUnknown = '未找到 · 新宿主';
 }

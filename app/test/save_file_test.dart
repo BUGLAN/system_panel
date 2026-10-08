@@ -174,4 +174,27 @@ void main() {
       expect((await f.load()).goal.text, '考研上岸');
     });
   });
+  group('lastSeen（回来时算"你走了多久"用）', () {
+    test('存盘时自动盖上时间戳，读回来还在', () async {
+      final SaveFile f = SaveFile();
+      final DateTime before = DateTime.now().subtract(
+        const Duration(seconds: 2),
+      );
+      await f.save(sample());
+      final SaveData back = await f.load();
+      expect(back.lastSeen, isNotNull);
+      expect(back.lastSeen!.isAfter(before), isTrue);
+      // 存档里没写 lastSeen 时不能崩
+      resetStore(<String, Object>{SaveFile.key: '{"host":{"name":"没时间戳"}}'});
+      final SaveData two = await SaveFile().load();
+      expect(two.lastSeen, isNull);
+      expect(two.host.name, '没时间戳');
+    });
+
+    test('时间戳格式不对也兜住', () async {
+      resetStore(<String, Object>{SaveFile.key: '{"lastSeen":"不是时间"}'});
+      final SaveData d = await SaveFile().load();
+      expect(d.lastSeen, isNull);
+    });
+  });
 }

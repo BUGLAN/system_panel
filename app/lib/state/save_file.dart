@@ -48,9 +48,8 @@ class SaveFile {
     try {
       await _p().setString(
         key,
-        jsonEncode(
-          data.toJson()..['lastSeen'] = DateTime.now().toIso8601String(),
-        ),
+        // 原型 `save()` 先 `S.lastSeen = Clock.now()` 再 stringify
+        jsonEncode(data.copyWith(lastSeen: DateTime.now()).toJson()),
       );
     } catch (e, st) {
       // 原型这里是配额爆了就把照片扔掉重存；我们暂无照片
@@ -108,10 +107,13 @@ class SaveFile {
 
 /// 存下来的那一坨：宿主档案 + 主线。
 class SaveData {
-  const SaveData({required this.host, required this.goal});
+  const SaveData({required this.host, required this.goal, this.lastSeen});
 
   final HostState host;
   final Goal goal;
+
+  /// 上次离开的时间（原型 `S.prevSeen` / `S.lastSeen`）—— 回来时算"你走了多久"用
+  final DateTime? lastSeen;
 
   /// 全新档 = 未绑定（原型的 `Store.fresh()`）
   factory SaveData.fresh() =>
@@ -135,14 +137,22 @@ class SaveData {
             : null,
         fallback: fallback.goal,
       ),
+      lastSeen: json['lastSeen'] is String
+          ? (DateTime.tryParse(json['lastSeen'] as String) ?? fallback.lastSeen)
+          : fallback.lastSeen,
     );
   }
 
   Map<String, dynamic> toJson() => <String, dynamic>{
     'host': host.toJson(),
     'goal': goal.toJson(),
+    if (lastSeen != null) 'lastSeen': lastSeen!.toIso8601String(),
   };
 
-  SaveData copyWith({HostState? host, Goal? goal}) =>
-      SaveData(host: host ?? this.host, goal: goal ?? this.goal);
+  SaveData copyWith({HostState? host, Goal? goal, DateTime? lastSeen}) =>
+      SaveData(
+        host: host ?? this.host,
+        goal: goal ?? this.goal,
+        lastSeen: lastSeen ?? this.lastSeen,
+      );
 }
