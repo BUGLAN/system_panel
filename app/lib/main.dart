@@ -14,6 +14,7 @@ import 'state/host_state.dart';
 import 'state/goal.dart';
 import 'state/app_clock.dart';
 import 'state/away.dart';
+import 'state/voice.dart';
 import 'state/save_file.dart';
 import 'state/quest.dart';
 import 'state/result.dart';
@@ -101,6 +102,10 @@ class _AppShellState extends State<AppShell>
   /// 存档（store.js L34-52）
   final SaveFile _save = SaveFile();
 
+  /// 口型包络（audio.js L180-230）—— 打字机逐字喂它，波形条读它。
+  /// **不需要 Live2D**：模型到位后 `ParamMouthOpenY` 直接读同一个 `mouth`。
+  final VoiceEnvelope _voice = VoiceEnvelope();
+
   /// 主线全景里展开的是哪一环（null = 没展开，只有抬头）
   int? _pickedRing;
 
@@ -186,6 +191,7 @@ class _AppShellState extends State<AppShell>
         _aside = null;
         _asideUntil = null;
         _busy = false; // 演出收场，恢复接客
+        _voice.hush(); // 字幕收起 → 闭嘴（原型 `Line.hide()` 里也调了一次）
       });
     }
     // ⚠️ 原型这里是 `!$('#line').classList.contains('on')` —— 它的页面字幕
@@ -347,6 +353,8 @@ class _AppShellState extends State<AppShell>
                     behavior: HitTestBehavior.opaque,
                     onTap: () => setState(() {
                       _tap++;
+                      // 跳过打字机时闭嘴（原型 `ui.js` L106 `if (cut) Voice.hush()`）
+                      _voice.hush();
                       _lastAct = DateTime.now();
                     }),
                   ),
@@ -511,6 +519,10 @@ class _AppShellState extends State<AppShell>
                   soft: fail,
                   fail: fail,
                   skipToken: _tap, // 点背景跳过打字机
+                  // 口型包络：打字机每显形一个字就把目标开口度设一下，
+                  // SYSTEM 后面那排波形条跟着动（原型 ui.js L70-73 / L96）
+                  voice: _voice,
+                  onChar: _voice.syllable,
                   // 原型里那句主线台词说完就 Line.hide()，点环展开详情时它已经不在——
                   // 两者都显示会叠在详情卡上
                   visible:

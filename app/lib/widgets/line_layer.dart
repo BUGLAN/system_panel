@@ -2,6 +2,9 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
+import '../state/voice.dart';
+import 'voice_bars.dart';
+
 import 'type_text.dart';
 
 import '../design/tokens.dart';
@@ -26,6 +29,8 @@ class LineLayer extends StatelessWidget {
     this.waveScale = .15,
     this.fail = false,
     this.skipToken = 0,
+    this.voice,
+    this.onChar,
   });
 
   final String text;
@@ -49,6 +54,13 @@ class LineLayer extends StatelessWidget {
 
   /// 每 +1 就跳过打字机，整句立刻铺完（原型 `Tap.next()`）
   final int skipToken;
+
+  /// 口型包络 —— 给了它，SYSTEM 后面那排条就变成活的（`ui.js` L70-73）。
+  /// 没给就退回静态的 `waveScale`，行为与之前完全一致。
+  final VoiceEnvelope? voice;
+
+  /// 逐字回调（调用方转给 `VoiceEnvelope.syllable`）
+  final ValueChanged<String>? onChar;
 
   @override
   Widget build(BuildContext context) {
@@ -142,6 +154,7 @@ class LineLayer extends StatelessWidget {
                         text: text,
                         soft: soft,
                         skipToken: skipToken,
+                        onChar: onChar,
                         style: fs(
                           family: F.cn,
                           size: 17,
@@ -185,24 +198,28 @@ class LineLayer extends StatelessWidget {
         ),
         const SizedBox(width: 8),
         // .wave —— 五根随声音起伏的竖条
-        SizedBox(
-          height: 12,
-          child: Row(
-            children: List<Widget>.generate(5, (int i) {
-              return Padding(
-                padding: EdgeInsets.only(right: i == 4 ? 0 : 2),
-                child: Container(
-                  width: 2,
-                  height: 12 * waveScale,
-                  decoration: BoxDecoration(
-                    color: bar,
-                    borderRadius: BorderRadius.circular(1),
+        // 给了口型包络就用活的那套（原型 `ui.js` L70-73 由 `Voice.mouth` 驱动）
+        if (voice != null)
+          VoiceBars(voice: voice!, color: bar)
+        else
+          SizedBox(
+            height: 12,
+            child: Row(
+              children: List<Widget>.generate(5, (int i) {
+                return Padding(
+                  padding: EdgeInsets.only(right: i == 4 ? 0 : 2),
+                  child: Container(
+                    width: 2,
+                    height: 12 * waveScale,
+                    decoration: BoxDecoration(
+                      color: bar,
+                      borderRadius: BorderRadius.circular(1),
+                    ),
                   ),
-                ),
-              );
-            }),
+                );
+              }),
+            ),
           ),
-        ),
         const SizedBox(width: 8),
         if (mood.isNotEmpty)
           Text.rich(

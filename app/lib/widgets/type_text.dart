@@ -24,6 +24,7 @@ class TypeText extends StatefulWidget {
     this.skipToken = 0,
     this.style,
     this.onDone,
+    this.onChar,
   });
 
   final String text;
@@ -41,6 +42,11 @@ class TypeText extends StatefulWidget {
 
   /// 打完时回调（原型随后按 `hold` 停留）
   final VoidCallback? onDone;
+
+  /// **每显形一个字**回调一次 —— 原型在同一个位置调 `Voice.syllable(ch)`
+  /// （`ui.js` L96），口型和波形条就是从这里动的。
+  /// 跳过（整句立刻铺完）时**不**逐字回调，由调用方自己 `hush()`。
+  final ValueChanged<String>? onChar;
 
   @override
   State<TypeText> createState() => _TypeTextState();
@@ -62,6 +68,12 @@ class _TypeTextState extends State<TypeText>
   late double _total;
   AnimationController? _c;
   bool _done = false;
+
+  /// 已经回调过 `onChar` 的字数（含高亮片段里的字，与 `_chars` 对齐）
+  int _shown = 0;
+
+  /// `_build()` 期间为 true —— 用来吞掉控制器 setter 打进来的那次 `_tick`
+  bool _building = false;
 
   /// `richChars()`（util.js）—— 把 `[[…]]` 之间标成高亮
   static List<_Ch> richChars(String s) {
@@ -98,6 +110,7 @@ class _TypeTextState extends State<TypeText>
   }
 
   void _build() {
+    _building = true;
     final double speed = (widget.speed ?? (widget.soft ? 42 : 34)).toDouble();
     _chars = richChars(widget.text);
     double t = 0;
@@ -119,16 +132,32 @@ class _TypeTextState extends State<TypeText>
       ..duration = Duration(microseconds: ((_total + 120) * 1000).round())
       ..value = 0;
     if (widget.skipToken == 0) {
+      _shown = 0;
+      _building = false;
       _c!.forward();
     } else {
+      // 跳过：整句立刻铺完，但**不逐字回调**（原型在这里 `Voice.hush()`）
+      _shown = _chars.length;
       _c!.value = 1;
       _done = true;
+      _building = false;
     }
   }
 
   /// 打字结束点（不含那 120ms 淡入尾巴）
   void _tick() {
-    if (!_done && _c!.value * (_total + 120) >= _total) {
+    // ⚠️ `AnimationController.value` 的 setter 是**无条件** `notifyListeners()` ——
+    //    `_build()` 里那句 `..value = 0` 也会打进来，而那时 `_shown` 还是上一句的旧值、
+    //    `now` 又是 0，于是把 `at == 0` 的第一个字多喂了一次口型。
+    //    （实机症状：每句第一个字的口型会抖一下；测试症状：`['甲','甲']`。）
+    if (_building) return;
+    final double now = _c!.value * (_total + 120);
+    // 逐字回调 —— 与原型 `ui.js` L96 同一时机（该字显形那一刻）
+    while (_shown < _chars.length && _chars[_shown].at <= now) {
+      widget.onChar?.call(_chars[_shown].ch);
+      _shown++;
+    }
+    if (!_done && now >= _total) {
       _done = true;
       widget.onDone?.call();
     }

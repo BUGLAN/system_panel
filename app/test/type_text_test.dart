@@ -144,4 +144,72 @@ void main() {
       expect(tester.takeException(), isNull);
     });
   });
+
+  group('逐字回调 onChar（口型的喂料口）', () {
+    testWidgets('按顺序每字回调一次，正好等于字数', (WidgetTester tester) async {
+      final List<String> seen = <String>[];
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: TypeText(text: '甲乙丙丁', onChar: seen.add),
+          ),
+        ),
+      );
+      await tester.pump();
+      // 第一个字的显形时刻就是 0 —— 原型 `Line.say` 的循环里它也是立刻调的
+      expect(seen, <String>['甲']);
+      // 每字 34ms，四个字约 136ms
+      for (int i = 0; i < 20; i++) {
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+      expect(seen, <String>['甲', '乙', '丙', '丁']);
+    });
+
+    testWidgets('标点也算一个字（由 VoiceEnvelope 决定闭不闭嘴）', (WidgetTester tester) async {
+      final List<String> seen = <String>[];
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: TypeText(text: '好。', onChar: seen.add),
+          ),
+        ),
+      );
+      await tester.pump();
+      for (int i = 0; i < 30; i++) {
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+      expect(seen, <String>['好', '。']);
+    });
+
+    testWidgets('⚠️ 跳过时不逐字回调（原型那里是 Voice.hush()）', (WidgetTester tester) async {
+      final List<String> seen = <String>[];
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: TypeText(text: '甲乙丙丁戊', skipToken: 1, onChar: seen.add),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 200));
+      expect(seen, isEmpty, reason: '整句直接铺完，不该逐字喂口型');
+      expect(_alphas(tester).every((double a) => a == 1), isTrue);
+    });
+
+    testWidgets('高亮片段里的字也回调', (WidgetTester tester) async {
+      final List<String> seen = <String>[];
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: TypeText(text: '跑完 [[5]] 公里', onChar: seen.add),
+          ),
+        ),
+      );
+      await tester.pump();
+      for (int i = 0; i < 40; i++) {
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+      expect(seen.join(''), '跑完 5 公里');
+    });
+  });
 }
