@@ -95,13 +95,20 @@ class GoalRing {
   };
 }
 
-/// 一句话目标 → 5~8 环主线链（真源 `makeGoal`）
+/// 一句话目标 → 主线链（真源 `makeGoal`；老链 5~8 环，首次新目标 3 天 3 环）。
+///
+/// plan 元数据（docs/18 §2.1 / §3.1-T6）：[cat] 目标类型、[days] 周期天数、
+/// [interview] 访谈答案（卡 id → 答案）。三者也随存档持久化，供周期任务
+/// 生成与小祥记忆读取；老存档缺这些字段时在 fallback 上合并出默认值。
 class Goal {
   const Goal({
     required this.text,
     required this.short,
     required this.at,
     required this.rings,
+    this.cat = '',
+    this.days = 0,
+    this.interview = const <String, String>{},
   });
 
   final String text;
@@ -113,6 +120,16 @@ class Goal {
   final DateTime at;
 
   final List<GoalRing> rings;
+
+  /// 目标类型 id（`run/slim/fit/lang/exam/sleep/make/code/bold/gen`，
+  /// 原型 `CATS` 十类）—— 空串表示老存档/未识别（`goal_gen.dart`）。
+  final String cat;
+
+  /// 周期天数：首次新目标 = 3（每天一环，docs/18 §2.1）；0 = 未按天规划（老链/演示档）。
+  final int days;
+
+  /// 访谈答案（卡 id → 答案原文）—— 访谈即第一批记忆，也供周期任务生成读取。
+  final Map<String, String> interview;
 
   int get doneCount =>
       rings.where((GoalRing r) => r.state == RingState.done).length;
@@ -220,6 +237,16 @@ class Goal {
       at: json['at'] is String
           ? (DateTime.tryParse(json['at'] as String) ?? fallback.at)
           : fallback.at,
+      cat: json['cat'] is String ? json['cat'] as String : fallback.cat,
+      days: json['days'] is int ? json['days'] as int : fallback.days,
+      interview: json['interview'] is Map
+          ? <String, String>{
+              for (final MapEntry<Object?, Object?> e
+                  in (json['interview'] as Map).entries)
+                if (e.key is String && e.value is String)
+                  e.key! as String: e.value! as String,
+            }
+          : fallback.interview,
       rings: rings,
     );
   }
@@ -228,6 +255,9 @@ class Goal {
     'text': text,
     'short': short,
     'at': at.toIso8601String(),
+    'cat': cat,
+    'days': days,
+    'interview': interview,
     'rings': <Map<String, dynamic>>[for (final GoalRing r in rings) r.toJson()],
   };
 
@@ -236,10 +266,16 @@ class Goal {
     String? short,
     DateTime? at,
     List<GoalRing>? rings,
+    String? cat,
+    int? days,
+    Map<String, String>? interview,
   }) => Goal(
     text: text ?? this.text,
     short: short ?? this.short,
     at: at ?? this.at,
     rings: rings ?? this.rings,
+    cat: cat ?? this.cat,
+    days: days ?? this.days,
+    interview: interview ?? this.interview,
   );
 }
