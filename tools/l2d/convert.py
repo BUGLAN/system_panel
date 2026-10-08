@@ -53,7 +53,10 @@ import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 SRC = ROOT / "prototype" / "opus-v2-dir" / "live2d" / "sakiko"
-OUT = SRC / "std"
+# ⚠️ 默认直接写进 app 的 assets —— `flutter_live2d` 要求模型目录在
+#    `pubspec.yaml` 的 `flutter.assets` 里声明。该目录在 `.gitignore` 之下，
+#    不会入库（模型版权红线）。
+OUT = ROOT / "app" / "assets" / "live2d" / "sakiko"
 
 # Unity 的 CubismPhysicsSourceComponent：0=X, 1=Y, 2=Angle
 PHYS_AXIS = {0: "X", 1: "Y", 2: "Angle"}
@@ -221,7 +224,10 @@ def write_expressions(exprs):
     d = OUT / "expressions"
     d.mkdir(parents=True, exist_ok=True)
     names = []
-    for e in exprs:
+    # ⚠️ **按名字排序**再写。prefab 里表情的顺序是随机的（导出顺序），
+    #    `model3.json` 的 `Expressions` 数组顺序 = 插件 `setExpression(index)`
+    #    的下标，所以顺序必须确定、可读 —— 否则调用方没法按名字查下标。
+    for e in sorted(exprs, key=lambda x: str(x.get("m_Name") or x.get("name") or "")):
         raw = e.get("m_Name") or e.get("name") or "exp"
         name = asset_name(raw)
         ps = []

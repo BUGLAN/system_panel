@@ -9,6 +9,7 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  flutter_live2d: ^1.0.2
   flutter_svg: ^2.3.0
   shared_preferences: ^2.5.6
 
@@ -24,6 +25,20 @@ flutter:
   # 天幕背景（宿主用 ComfyUI 生成的 Qwen-Image 底图，垫在 #bg .sky 最底层）
   assets:
     - assets/img/bg-void.jpg
+    # 她的模型（标准 Live2D，本机转换）—— 见 assets/live2d/README
+    #
+    # ⚠️ 这个目录里除了 README 之外都不入库（版权红线，见 assets/live2d/.gitignore）。
+    #    新克隆要跑一次：`python tools/l2d/convert.py`。
+    #    目录本身留了 README 占位，所以即使没转，`flutter build` 也不会因为
+    #    "asset directory not found" 失败 —— 只会让舞台退回全息剪影。
+    #
+    # ⚠️ **Flutter 声明目录时不递归子目录** —— 只写 `assets/live2d/sakiko/`
+    #    的话，`motions/`、`expressions/`、`textures/` 里的文件**不会进包**，
+    #    模型加载时找不到贴图/动作。子目录必须逐个列出来。
+    - assets/live2d/sakiko/
+    - assets/live2d/sakiko/motions/
+    - assets/live2d/sakiko/expressions/
+    - assets/live2d/sakiko/textures/
 
   # 字体四件套 —— 真源：prototype/opus-v2-dir/css/app.css 的 @font-face
   # 四个都是可变字体，字重/字宽必须在代码里用 fontVariations 指定：

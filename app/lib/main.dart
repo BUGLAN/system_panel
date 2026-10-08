@@ -16,6 +16,7 @@ import 'stage/ring_painter.dart';
 import 'state/host_state.dart';
 import 'state/goal.dart';
 import 'stage/camera.dart';
+import 'stage/live2d_stage.dart';
 import 'state/app_clock.dart';
 import 'state/away.dart';
 import 'state/voice.dart';
@@ -419,6 +420,14 @@ class _AppShellState extends State<AppShell>
                 ),
                 // 投影光束（在面板之下、天幕之上）
                 SheetBeam(visible: sheet),
+                // 她本人（`#stage`）—— 必须放在 Flutter UI **下面**：
+                // 平台视图是 opaque 的，会吃掉触摸；更靠上的组件先命中，
+                // 所以字幕/按钮/手势照样能点（原型里 `#stage` 也在 `#ui` 之前）。
+                Live2DStage(
+                  visible: true,
+                  onReady: (Live2DStageHandle h) => _stage = h,
+                  onFailed: () => debugPrint('[stage] 退回全息剪影（没有模型数据）'),
+                ),
                 // 环场：她脚下到头顶那 8 个环。**画在独立画布上，与 Live2D 无关**
                 // （`stage.js` L127 `cv.id='ringCv'`），启动时 `App.boot()` 会把
                 // 8 个环全部 showRing，所以之后一直可见。
@@ -901,6 +910,9 @@ class _AppShellState extends State<AppShell>
   /// 失败时把当前那一环掐暗（原型 `Stage.dimRing(ci, …)` 三下：0 / 90 / 200ms）
   List<double>? _ringMul;
 
+  /// 她本人的把手（模型加载好之后才有；拿不到就是 `null`，舞台退回剪影）
+  Live2DStageHandle? _stage;
+
   /// 道具抽屉开着没（原型 `#exDrawer.on`）；再点一次「道具」收起
   bool _drawerOn = false;
 
@@ -935,6 +947,14 @@ class _AppShellState extends State<AppShell>
   /// 进入失败态（认输与超时共用）：原型 `_fail()` 的视觉前几下
   void _beginFail() {
     _clock.stopFast();
+    // 原型 `_fail()` L529：`Stage.setCam('fail'); Stage.emote('sad'); Stage.motion('down')`
+    // 表情照做了（`emote('sad')` → `exp_sad01`）。
+    // ⚠️ `motion('down')` 还没接 —— 原型是按它自己的动作名表查的，而我这边是从
+    //    prefab 推出来的 17 个组（sad/nod/serious/…），没有叫 `down` 的；
+    //    得先弄清原型那套名字到模型动作的映射，不硬凑。
+    final int sad = Live2DStage.expressionIndex('exp_sad01');
+    final Live2DStageHandle? st = _stage;
+    if (sad >= 0 && st != null) unawaited(st.expression(sad));
     setState(() {
       _moment = Moment.fail;
       _quitP = 0;

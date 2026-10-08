@@ -1,0 +1,16 @@
+# 模型数据不入库 —— 版权红线（见 14-系统形象与表演规则 / prototype 那边的说明）
+#
+# sakiko 来自 BanG Dream! Our Notes 游戏数据包，版权归 Bushiroad / Craft Egg /
+# Ishimori 所有。这里只放**本机转换出来的**标准 Live2D 文件
+# （`tools/l2d/convert.py` 的产物），仅供本机验证，不入库不发布。
+#
+# 用法：
+#   python tools/l2d/convert.py      # 从 prototype/…/sakiko 转出到这里
+#   cd app && flutter run
+# ⚠️ 否定规则必须"先放行目录、再重新忽略内容"，否则 git 根本不会进 sakiko/
+#    去找那个 README（`*` 忽略的是目录本身）
+*
+!.gitignore
+!sakiko/
+sakiko/*
+!sakiko/README.md
