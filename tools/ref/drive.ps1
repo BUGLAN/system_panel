@@ -114,8 +114,10 @@ if ($want -contains "fail") {
 if (($want -contains "onboard") -or ($want -contains "banner")) {
     Write-Host "[onboard]"
     Sh "pm clear $PKG"
-    Sh "am start -n $PKG/.MainActivity"; Sleep 12
-    Tap $WAKE[0] $WAKE[1]; Sleep 5
+    # ⚠️ `pm clear` 之后开机自检更慢（要重建存档），12s 不够 —— 会抓到「触碰屏幕 · 唤醒系统」
+    #    那一屏，然后被当成"回归"（4.8%）。给足 18s 再唤醒。
+    Sh "am start -n $PKG/.MainActivity"; Sleep 18
+    Tap $WAKE[0] $WAKE[1]; Sleep 6
     Tap $MENU[0] $MENU[1]; Sleep 2
     Hold $WIPE[0] $WIPE[1] 2400; Sleep 2.5
     if ($want -contains "onboard") { Shot "flutter-step13-onboard.png" }

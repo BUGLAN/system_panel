@@ -11,6 +11,7 @@ import '../design/tokens.dart';
 import '../state/host_state.dart';
 import '../state/quest.dart';
 import 'hold_button.dart';
+import 'press_scale.dart';
 import 'plate_timeline.dart';
 
 /// ═══════════════════════════════════════════════════════════
@@ -1178,42 +1179,47 @@ class PlateAlt extends StatelessWidget {
             children: <Widget>[
               for (int i = 0; i < labels.length; i++) ...<Widget>[
                 if (i > 0) const SizedBox(width: 10),
-                Container(
-                  height: 36,
-                  // Border 占布局、CSS 的 inset 阴影不占 → padding 各减 1px
-                  padding: const EdgeInsets.symmetric(horizontal: 14),
-                  decoration: BoxDecoration(
-                    color: const Color(0xDB040C1C), // rgba(4,12,28,.86)
-                    borderRadius: BorderRadius.circular(18),
-                    border: Border.all(
-                      color: const Color(0x4D8FA6C4),
-                      width: 1,
-                    ), // rgba(143,166,196,.3)
-                  ),
-                  child: Row(
-                    children: <Widget>[
-                      Text(
-                        '宿主 · ',
-                        style: fs(
-                          family: F.mono,
-                          size: 9,
-                          wght: 500,
-                          ls: .9,
-                          height: 1,
-                          color: C.dim,
-                        ),
+                // `#plateAlt button:active { color: var(--ice); box-shadow: inset 0 0 0 1px var(--blue) }`
+                PressBuilder(
+                  builder: (BuildContext _, bool down) => Container(
+                    height: 36,
+                    // Border 占布局、CSS 的 inset 阴影不占 → padding 各减 1px
+                    padding: const EdgeInsets.symmetric(horizontal: 14),
+                    decoration: BoxDecoration(
+                      color: const Color(0xDB040C1C), // rgba(4,12,28,.86)
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(
+                        color: down
+                            ? C.blue
+                            : const Color(0x4D8FA6C4), // rgba(143,166,196,.3)
+                        width: 1,
                       ),
-                      Text(
-                        labels[i],
-                        style: fs(
-                          family: F.cn,
-                          size: 13,
-                          wght: 400,
-                          height: 1,
-                          color: const Color(0xFFC3D2E6),
+                    ),
+                    child: Row(
+                      children: <Widget>[
+                        Text(
+                          '宿主 · ',
+                          style: fs(
+                            family: F.mono,
+                            size: 9,
+                            wght: 500,
+                            ls: .9,
+                            height: 1,
+                            color: C.dim,
+                          ),
                         ),
-                      ),
-                    ],
+                        Text(
+                          labels[i],
+                          style: fs(
+                            family: F.cn,
+                            size: 13,
+                            wght: 400,
+                            height: 1,
+                            color: down ? C.ice : const Color(0xFFC3D2E6),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ],

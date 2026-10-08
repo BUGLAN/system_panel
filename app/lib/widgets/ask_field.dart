@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'press_scale.dart';
+
 import '../design/tokens.dart';
 
 /// ═══════════════════════════════════════════════════════════
@@ -81,16 +83,18 @@ class AskField extends StatelessWidget {
   }
 
   /// `.presets button` —— 注意它继承了 `#ask button` 的 `height:42` 与 `font-weight:700`
+  /// 按下：`#ask .presets button:active { background: rgba(56,225,255,.2) }`（瞬变，无过渡）
   Widget _preset(String text) {
-    return GestureDetector(
+    return PressBuilder(
       onTap: onPreset == null ? null : () => onPreset!(text),
-      behavior: HitTestBehavior.opaque,
-      child: Container(
+      builder: (BuildContext _, bool down) => Container(
         height: 42,
         // Border 占布局、CSS 的 inset 阴影不占 → padding 各减 1px
         padding: const EdgeInsets.symmetric(horizontal: 12),
         decoration: BoxDecoration(
-          color: const Color(0xD1040C1C), // rgba(4,12,28,.82)
+          color: down
+              ? const Color(0x3338E1FF) // rgba(56,225,255,.2)
+              : const Color(0xD1040C1C), // rgba(4,12,28,.82)
           borderRadius: BorderRadius.circular(16),
           border: Border.all(color: C.line, width: 1),
         ),
