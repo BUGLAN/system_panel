@@ -423,11 +423,18 @@ class _AppShellState extends State<AppShell>
                 // 她本人（`#stage`）—— 必须放在 Flutter UI **下面**：
                 // 平台视图是 opaque 的，会吃掉触摸；更靠上的组件先命中，
                 // 所以字幕/按钮/手势照样能点（原型里 `#stage` 也在 `#ui` 之前）。
+                // ⚠️ **她的位置必须是这里** —— 天幕之后、环场/UI 之前。
+                //    原型的层序就是 `#bg → #stage → #ui`，实测这个位置**层序完全正确**
+                //    （字幕/环/HUD 都压在她之上，见 `.verify/_stageback.png`）。
+                //
+                //    诊断开关注释：曾经用 `kStageOnTop` 把她挪到根 Stack 最上层做对照，
+                //    结果是"能看见但压住整个界面" —— 由此确认**合成层序一直是好的**，
+                //    早先看不见是资产打包/Content-Type 那些坑造成的，不是层序问题。
+                //    对照已做完，开关移除。
                 Live2DWeb(
                   visible: true,
                   onReady: () => debugPrint('[stage-web] 播放器就绪'),
-                  onFailed: (String why) =>
-                      debugPrint('[stage-web] 失败，退回全息剪影：$why'),
+                  onFailed: (String why) => debugPrint('[stage-web] 失败：$why'),
                 ),
                 // 环场：她脚下到头顶那 8 个环。**画在独立画布上，与 Live2D 无关**
                 // （`stage.js` L127 `cv.id='ringCv'`），启动时 `App.boot()` 会把
