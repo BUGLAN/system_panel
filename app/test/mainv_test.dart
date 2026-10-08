@@ -116,6 +116,18 @@ void main() {
       expect(find.text('换目标'), findsOneWidget);
     });
 
+    testWidgets('「换目标」可点（D5：main.dart 由此唤起小祥对话）', (WidgetTester tester) async {
+      final List<int> taps = <int>[];
+      await _mount(
+        tester,
+        MainView(goal: Goal.demo(), onNewGoal: () => taps.add(1)),
+      );
+      await tester.tap(find.byKey(const Key('main.newGoal')));
+      await tester.pump();
+      expect(taps, hasLength(1));
+      await tester.pumpWidget(const SizedBox());
+    });
+
     testWidgets('抬头与详情卡落在实测坐标上', (WidgetTester tester) async {
       await _mount(tester, MainView(goal: Goal.demo(), selected: 4));
       final Rect top = tester.getRect(find.byKey(const Key('main.top')));

@@ -38,11 +38,16 @@ class ResultPanel extends StatefulWidget {
     this.animate = true,
     this.onImpact,
     this.onDone,
+    this.onTalk,
   });
 
   final QuestResult result;
   final bool visible;
   final VoidCallback? onSave;
+
+  /// 「找小祥说说」（docs/18 §2.7 入口 A）：带本单结算上下文开对话层。
+  /// 主线当前环不可换的钳制在工具层（swap_quest），这里只管唤起。
+  final VoidCallback? onTalk;
 
   /// 演出开关；比对截图时用 `false` 直接落终态
   final bool animate;
@@ -232,6 +237,12 @@ class _ResultPanelState extends State<ResultPanel>
               top: 86,
               child: _rise(_tl.saveAt, 400, 0, _saveButton()),
             ),
+            // 「找小祥说说」（入口 A）：与保存战报对称的左侧次级钮
+            Positioned(
+              left: 18,
+              top: 86,
+              child: _rise(_tl.saveAt, 400, 0, _talkButton()),
+            ),
             // .rs-stack
             Positioned(
               left: 20,
@@ -283,6 +294,34 @@ class _ResultPanelState extends State<ResultPanel>
             const SizedBox(width: 7),
             Text(
               '保存战报',
+              style: fs(family: F.cn, size: 12, wght: 400, color: C.ice),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 「找小祥说说」——次级钮（ghost 描边，与保存战报同高同排）
+  Widget _talkButton() {
+    return GestureDetector(
+      onTap: widget.onTalk,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        key: const Key('result.talk'),
+        height: 34,
+        padding: const EdgeInsets.symmetric(horizontal: 13),
+        decoration: BoxDecoration(
+          color: C.blue.withAlpha(20), // rgba(56,225,255,.08)
+          borderRadius: BorderRadius.circular(17),
+          border: Border.all(color: C.line2, width: 1),
+        ),
+        child: Row(
+          children: <Widget>[
+            SvgPicture.string(kIconChat, width: 14, height: 14),
+            const SizedBox(width: 7),
+            Text(
+              '找小祥说说',
               style: fs(family: F.cn, size: 12, wght: 400, color: C.ice),
             ),
           ],

@@ -6,6 +6,15 @@ import 'dart:math' as math;
 
 import 'package:flutter/services.dart';
 
+import 'agent/copy.dart';
+import 'agent/llm_client.dart';
+import 'agent/llm_gateway.dart';
+import 'agent/memory.dart';
+import 'agent/settings_store.dart';
+import 'agent/vision.dart';
+import 'chat/chat_history.dart';
+import 'chat/chat_panel.dart';
+import 'chat/chat_service.dart';
 import 'data/content.dart';
 import 'data/rarity.dart';
 import 'data/format.dart';
@@ -29,6 +38,7 @@ import 'state/result.dart';
 import 'widgets/bg_layer.dart';
 import 'widgets/ask_field.dart';
 import 'widgets/banner.dart';
+import 'widgets/chat_bar.dart';
 import 'widgets/choices.dart';
 import 'widgets/dock.dart';
 import 'widgets/exec_panel.dart';
@@ -251,6 +261,176 @@ class _AppShellState extends State<AppShell>
   String? _aside;
   DateTime? _asideUntil;
 
+  // ── 小祥：文案接管 + 对话层（docs/18 §2.5/§2.6/§2.7，t10）────────
+  //
+  // SystemCopyProvider 四入口接 LLM（LlmGateway 包 t9 的 LlmClient）；
+  // 断网/没配 Key 时 CopyLine.source == template → **保留现有原句逐字不动**
+  // （发布='接不接？' / 结算=档位台词 / 毒舌=LINES.waver / 追问=LINES.askGoal），
+  // 只有 LLM 真回了话才顶掉——兜底态与历史截图逐字节一致。
+
+  /// 聊天历史（opus-v2/chat/v1，滚 200，重启仍在）
+  final ChatHistory _chat = ChatHistory();
+
+  /// LLM 忙时的占位锁
+  bool _chatOpen = false;
+  bool _chatThinking = false;
+
+  /// 本轮对话的场合上下文（「找小祥说说 / 换目标」注入，docs/18 §2.7）
+  String? _chatScenario;
+
+  /// 文案接管后的 LLM 台词（null = 还没接到/回退原句）
+  String? _probeLine; // 追问（绑定仪式）
+  String? _dispatchLine; // 发布（派单板）
+
+  /// 聊天消息 id（会话内唯一即可）
+  int _chatSeq = 0;
+  String _chatId() => 'm${DateTime.now().microsecondsSinceEpoch}_${_chatSeq++}';
+
+  /// LLM 网关 + 文案/聊天服务（initState 异步装配；没配 Key 也能跑，全走兜底）
+  SystemCopyProvider? _copy;
+  ChatService? _chatService;
+
+  Future<void> _initAgent() async {
+    final AgentSettings s = await SettingsStore().load();
+    await _chat.load();
+    if (!mounted) return;
+    final LlmGateway gw = LlmGateway(
+      LlmClient(
+        config: LlmConfig(
+          baseUrl: s.baseUrl,
+          apiKey: s.apiKey,
+          model: s.model,
+        ),
+      ),
+    );
+    final MemoryStore mem = MemoryStore();
+    setState(() {
+      _copy = SystemCopyProvider(llm: gw, memory: mem);
+      _chatService = ChatService(gateway: gw, memory: mem);
+    });
+  }
+
+  /// 打开对话层。[scenario] 传场合上下文（结算复盘 / 换目标），只影响她接下来的回复
+  void _openChat({String? scenario}) {
+    setState(() {
+      _chatScenario = scenario;
+      _chatOpen = true;
+    });
+  }
+
+  /// 发送一条：宿主气泡立刻上屏 → 思考中 → 她的回复（LLM/兜底）→ mood 联动
+  Future<void> _sendChat(String text) async {
+    final ChatService? svc = _chatService;
+    if (svc == null || _chatThinking) return;
+    await _chat.append(ChatMessage.host(_chatId(), text));
+    setState(() => _chatThinking = true);
+    final ChatMessage reply = await svc.reply(
+      text,
+      history: _chat.messages,
+      scenario: _chatScenario,
+      statusLine: ChatService.statusLineOf(
+        name: _host.name,
+        lv: _host.lv,
+        streak: _host.streak,
+        queue: _host.queue,
+        goalShort: _goal.short,
+      ),
+    );
+    if (!mounted) return;
+    setState(() => _chatThinking = false);
+    await _chat.append(reply);
+    if (!mounted) return;
+    setState(() {});
+    // emotion 标签 → 舞台 mood（docs/18 §2.6 演出联动）
+    _stagePort?.mood(reply.emotion);
+  }
+
+  /// 语音入口（预留态）：点了不假装可用，她用气泡说明
+  Future<void> _onVoiceTap() async {
+    if (_chatThinking) return;
+    await _chat.append(
+      ChatMessage.sys(_chatId(), '语音模块还没装配，先用打的。入口给你留着。', emotion: 'neutral'),
+    );
+    if (mounted) setState(() {});
+  }
+
+  // ── 文案接管：发布 / 结算 / 毒舌 / 追问（docs/18 §2.5 四语气）────────
+
+  /// 发布：进派单板时取一句（LLM 回了才顶掉「接不接？」）
+  Future<void> _takeDispatchLine() async {
+    final SystemCopyProvider? copy = _copy;
+    if (copy == null) return;
+    final CopyLine line = await copy.dispatchLine(
+      CopyContext.fromState(host: _host, goal: _goal, quest: _quest),
+    );
+    if (!mounted || _moment != Moment.dispatch || _chatOpen) return;
+    if (line.source == CopySource.llm) {
+      setState(() => _dispatchLine = line.text);
+    }
+  }
+
+  /// 结算：演出播完那句档位点评（LLM 回了才顶掉内置档位台词）
+  Future<void> _takeSettleLine(QuestResult r) async {
+    final SystemCopyProvider? copy = _copy;
+    if (copy == null) return;
+    final CopyLine line = await copy.settleLine(
+      CopyContext.fromState(host: _host, goal: _goal, result: r),
+    );
+    if (!mounted || _moment != Moment.result || _chatOpen) return;
+    if (line.source == CopySource.llm) {
+      _sayAside(line.text, holdMs: 2600);
+      _stagePort?.mood(line.emotion);
+    }
+  }
+
+  /// 毒舌：按到一半松手（waver 原句先行，LLM 毒舌到了再顶）
+  void _onWaverRoast() {
+    _sayAside(
+      LINES.waver[_rnd.nextInt(LINES.waver.length)],
+      holdMs: 1400,
+    );
+    final SystemCopyProvider? copy = _copy;
+    if (copy == null) return;
+    copy
+        .roastLine(
+          CopyContext.fromState(host: _host, goal: _goal, quest: _quest),
+          reason: '接单按到一半松了手',
+        )
+        .then((CopyLine line) {
+      if (!mounted || _moment != Moment.dispatch) return;
+      if (line.source == CopySource.llm) _sayAside(line.text, holdMs: 1600);
+    });
+  }
+
+  /// 追问：绑定仪式的问目标（LLM 回了才顶掉 LINES.askGoal）
+  Future<void> _takeProbeLine(String topic) async {
+    final SystemCopyProvider? copy = _copy;
+    if (copy == null) return;
+    final CopyLine line = await copy.probeLine(
+      CopyContext.fromState(host: _host, goal: _goal),
+      topic: topic,
+    );
+    if (!mounted || _moment != Moment.onboard) return;
+    if (line.source == CopySource.llm) {
+      setState(() => _probeLine = line.text);
+    }
+  }
+
+  /// 「找小祥说说」的场合上下文（docs/18 §2.7：当前任务+结算结果注入；
+  /// 主线当前环拒换的钳制在工具层，这里只把事实告诉她）
+  String get _resultTalkScenario {
+    final QuestResult r = _result;
+    return '结算后复盘：本单「${r.quest.name}」（${r.rarity.rank} 级，'
+        'EXP+${r.exp}、◈+${r.coin}${r.crit ? '，暴击' : ''}）。'
+        '宿主可能想聊聊下一单。换任务钳制：主线当前环不可换；日常走换单券。';
+  }
+
+  /// 「换目标」的场合上下文（docs/18 §2.7：旧主线环清空、队列主线单撤下
+  /// 的确认语义由换目标流程负责，这里先让对话带着这个话题开起来）
+  static const String _newGoalScenario =
+      '换目标：宿主在主线页按了「换目标」。先追问为什么换、新目标是什么、'
+      '打算给几天；提醒他：旧主线环会清空、队列里的主线单会撤下，想清楚再动。';
+
   /// 上一次宿主操作（原型 `App.lastAct`）
   DateTime _lastAct = DateTime.now();
 
@@ -467,8 +647,11 @@ class _AppShellState extends State<AppShell>
                             child: child,
                           ),
                     child: BgLayer(
-                      // 绑定仪式还没立目标，天幕上写的还是 SYSTEM
-                      word: (boot || onboard) ? 'SYSTEM' : '半马',
+                      // 绑定仪式还没立目标，天幕上写的还是 SYSTEM；
+                      // 之后绑死 _goal.short（D10：绑定/换目标后自动跟随）
+                      word: (boot || onboard)
+                          ? 'SYSTEM'
+                          : _goal.short,
                       latin: boot || onboard,
                     ),
                   ),
@@ -578,6 +761,15 @@ class _AppShellState extends State<AppShell>
                   visible: lobby || exec,
                   onMenu: () => _openSheet(SheetKind.system),
                 ),
+                // 对话入口（docs/18 §2.6「HUD 对话按钮」）：hud.dart 的单写者
+                // 纪律在 t9，这颗玻璃圆钮由本文件挂载——HUD 行下方左上，
+                // 在 Stack 里压着 Live2D 平台视图，触摸先命中它
+                if (lobby)
+                  Positioned(
+                    left: 16,
+                    top: 78,
+                    child: ChatEntryButton(onTap: () => _openChat()),
+                  ),
                 Dock(
                   state: _host,
                   visible: lobby,
@@ -626,11 +818,7 @@ class _AppShellState extends State<AppShell>
                     );
                   },
                   // 指纹按到一半松手（原型 `Plate.hold()` 的 `up()`）
-                  onWaver: () => _sayAside(
-                    // 原型：`Line.say(line('waver'), { emo:'smug', hold:1400 })`
-                    LINES.waver[_rnd.nextInt(LINES.waver.length)],
-                    holdMs: 1400,
-                  ),
+                  onWaver: _onWaverRoast,
                   onAccept: () {
                     // 原型 `App.dispatch()` → `App.run()`：忙的时候直接返回
                     if (_busy) return;
@@ -653,6 +841,24 @@ class _AppShellState extends State<AppShell>
                     itemCount: Item.execCount(_host.items),
                     tags: _usedItems,
                     evidenceCount: 0,
+                    // D9 装配（t9 受控管线 + t14 档案口径）：证据进
+                    // active.evidence，结算暴击率按 已校验7%/未校验4% 联动
+                    evidence: _flow.active?.evidence,
+                    onEvidenceChanged: (List<EvidenceShot> list) {
+                      final ActiveQuest? a = _flow.active;
+                      if (a == null) return;
+                      setState(() {
+                        a.evidence
+                          ..clear()
+                          ..addAll(list);
+                      });
+                    },
+                    onRemoveEvidence: (int i) {
+                      final List<EvidenceShot> ev =
+                          _flow.active?.evidence ?? const <EvidenceShot>[];
+                      if (i < 0 || i >= ev.length) return;
+                      setState(() => _flow.removeEvidence(ev[i].id));
+                    },
                     visible: exec,
                     // 指纹钤印那一下：原型 `Plate.seal()` 是
                     // `FX.flash('#bff6ff', .24, 280)` + `FX.shake(4, 220)`
@@ -723,6 +929,8 @@ class _AppShellState extends State<AppShell>
                   // 演出播完 → 弹【再来一单。/先歇会儿。|收工。】（卡死根因④：
                   // 这是结算页唯一的退出路径，原型 flows.js L460-462）
                   onDone: _onResultDone,
+                  // 「找小祥说说」（docs/18 §2.7 入口 A）：带结算上下文开对话层
+                  onTalk: () => _openChat(scenario: _resultTalkScenario),
                   // 印章砸下那一刻（原型 `settle()` 的 ②）：
                   //   FX.flash('#ffffff', .16, 180)
                   //   FX.shake(ri >= 4 ? 7 : 4, 280)
@@ -785,6 +993,9 @@ class _AppShellState extends State<AppShell>
                 PlateAlt(
                   labels: const <String>['换一个', '等会儿'],
                   visible: dispatch,
+                  // D4 装配（t5 的回调 + t14 的 flow 业务）：
+                  // 0=换一个→retreat（降一档/换 F/口头巨人）；1=等会儿→回大厅
+                  onPick: _onPlateAlt,
                 ),
                 LineLayer(
                   // 文案真源：content.js L298 `holding` / L397 `mainline`
@@ -792,7 +1003,8 @@ class _AppShellState extends State<AppShell>
                   text:
                       _aside ??
                       (dispatch
-                          ? '接不接？'
+                          // 发布文案接管：LLM 回了顶掉原句，兜底保持「接不接？」
+                          ? _dispatchLine ?? '接不接？'
                           : result && _resultChoicesOn
                           // 结算页的退出问话（原型 flows.js L462 的 choose()）
                           ? _flow.queueEmpty ? '收工？……明天见。' : '还做吗？'
@@ -805,7 +1017,8 @@ class _AppShellState extends State<AppShell>
                           : main
                           ? LINES.mainline(_goal.doneCount, _goal.rings.length)
                           : onboard
-                          ? LINES.askGoal
+                          // 追问文案接管：兜底保持 LINES.askGoal 原句
+                          ? _probeLine ?? LINES.askGoal
                           : LINES.holding.replaceFirst(
                               '[[{n}]]',
                               '[[${_host.queue}]]',
@@ -866,6 +1079,23 @@ class _AppShellState extends State<AppShell>
                   // 关掉回**开它的那个页面**（原型 `App.closeSheet()` → `_sheetFrom`）
                   onClose: () => setState(() => _moment = _sheetFrom),
                   onWipe: _wipe,
+                  // D6/D7 装配（t9 组件回调 + t14 flow 业务）：挂称号 / 购买
+                  onEquipTitle: (String id) {
+                    if (!_flow.equip(id)) return; // 未解锁/口头巨人期：组件已禁用，双保险
+                    setState(() => _host = _flow.host);
+                    _persist();
+                    _sayAside('换上了。……还行。', holdMs: 1400);
+                  },
+                  onBuyItem: (String id) {
+                    if (_flow.buy(id)) {
+                      setState(() => _host = _flow.host);
+                      _persist();
+                      _sayAside('钱货两讫。省着点用。', holdMs: 1400);
+                    } else {
+                      // 组件在买不起时点不动；走到这里说明竞态扣空，接住即可
+                      _sayAside('钱不够。……方向都给你指好了。', holdMs: 1400);
+                    }
+                  },
                 ),
                 // 当前环的挂签（大厅里挂在她脚下那一环的右端）
                 RingTag(
@@ -892,6 +1122,8 @@ class _AppShellState extends State<AppShell>
                   visible: main,
                   onClose: () => setState(() => _moment = Moment.lobby),
                   onDispatch: _enterDispatchOrRest,
+                  // D5：换目标 → 带场合上下文唤起小祥对话（docs/18 §2.7）
+                  onNewGoal: () => _openChat(scenario: _newGoalScenario),
                 ),
                 // 「执行中」药丸（`ui.js` L60）：**执行页自己不显示它**，
                 // 只在 大厅/主线/面板 上挂；点它回执行页。收起执行面板后就靠它回去。
@@ -905,6 +1137,16 @@ class _AppShellState extends State<AppShell>
                       _moment = Moment.exec;
                     }),
                   ),
+                ),
+                // 对话层（docs/18 §2.6）：叠加，不替换；她仍在背景可见
+                // ——层序在 Live2D/字幕之上、亮帧与横幅之下
+                ChatPanel(
+                  visible: _chatOpen,
+                  messages: _chat.messages,
+                  thinking: _chatThinking,
+                  onSend: _sendChat,
+                  onClose: () => setState(() => _chatOpen = false),
+                  onVoiceTap: _onVoiceTap,
                 ),
                 // 横幅（z 5，压在所有东西上面）
                 SysBanner(
@@ -968,6 +1210,7 @@ class _AppShellState extends State<AppShell>
       _goal = d.goal;
       _moment = Moment.onboard;
     });
+    _takeProbeLine('绑定：宿主想变成什么样'); // 追问文案接管（兜底=askGoal 原句）
   }
 
   /// 打一帧亮帧 + 抖一下 —— 原型里这两件事总是成对出现，参数按事件给。
@@ -999,6 +1242,7 @@ class _AppShellState extends State<AppShell>
     WidgetsBinding.instance.addObserver(this);
     _clock.startSeconds(_onSecond); // 原型 setInterval(App.second, 1000)
     _restore();
+    _initAgent(); // 小祥：设置→LLM 网关→文案/聊天服务 + 聊天历史读档
   }
 
   /// ═══ 生命周期：她记得你走了多久（flows.js L186-193）═══
@@ -1175,8 +1419,51 @@ class _AppShellState extends State<AppShell>
     }
   }
 
+  /// 板下两颗按钮的岔路（原型 dispatch 循环，flows.js L250-321）：
+  ///  · `labels[1]`「等会儿」= later：单子**原样留在她手里**（store.js:234
+  ///    只 save），回大厅——`flows.js` L315 的 `this.lobby()`
+  ///  · `labels[0]`「换一个」= retreat（store.js:235-250 全语义，t14 移植）：
+  ///    非 F 降一档重刻 · F 还退休换一张别的 F · 累计 3 次强制戴「口头巨人」。
+  ///    降档的 serial 不变 → 派单板不重播落板仪式，骰子静态换到新档
+  ///    （原型 `Plate.reRank` 的换档动画是另一笔打磨账，这里先保证数据与可点）
+  void _onPlateAlt(int i) {
+    if (_busy) return;
+    final Quest? head = _flow.head;
+    if (head == null) return;
+    if (i == 1) {
+      // 「等会儿」台词（content.js L338 later 二选一）
+      const List<String> later = <String>[
+        '它不会跑。我也不会。',
+        '行，先放我这。别让我等太久。',
+      ];
+      _sayAside(later[_rnd.nextInt(later.length)], holdMs: 1500);
+      setState(() => _moment = Moment.lobby);
+      _persist();
+      return;
+    }
+    final RetreatOutcome? info = _flow.retreat(head);
+    if (info == null) return; // 不在她手里（竞态）：忽略
+    setState(() => _host = _flow.host);
+    _persist();
+    // retreat1/2/3（content.js L339-341，按当日第几次分档）
+    _sayAside(
+      switch (info.count) {
+        1 => '目标是你立的。……给你个台阶：[[降一档]]。',
+        2 => '今天第 [[${info.count}]] 次退了。系统开始给你建档案了。',
+        _ => '第 [[${info.count}]] 次。行，接下来的单，[[按幼儿档]]给你配。',
+      },
+      holdMs: 1500,
+    );
+    if (info.shame) {
+      // 口头巨人强制佩戴（flows.js L323-327 的 shame；横幅内容是写死的
+      // 见面礼，这里用插话宣布——横幅通用化归横幅自己的任务）
+      _sayAside('「口头巨人」。退缩满三次的勋章，[[摘不掉]]，完成一单再说。', holdMs: 2400);
+    }
+  }
+
   /// 结算演出播完（原型 `choose()` 前的那一刻）：弹选项 + 她按档位说一句
-  /// （flows.js L442-447 的 tier 台词，T5 由 SystemCopyProvider 接管）
+  /// （flows.js L442-447 的 tier 台词，t10 已由 SystemCopyProvider 接管：
+  /// LLM 回了顶掉下面这句，兜底保持原句）
   void _onResultDone() {
     if (!mounted || _moment != Moment.result || _resultChoicesOn) return;
     setState(() => _resultChoicesOn = true);
@@ -1208,6 +1495,7 @@ class _AppShellState extends State<AppShell>
       };
     }
     _sayAside(line, holdMs: 2600);
+    _takeSettleLine(r); // 结算文案接管：LLM 回了顶掉上面这句兜底
   }
 
   /// 「保存战报」（D1 最小可用版）：结算数据 → 文本 → 剪贴板 + 插话确认
@@ -1235,6 +1523,7 @@ class _AppShellState extends State<AppShell>
       return;
     }
     setState(() => _moment = Moment.dispatch);
+    _takeDispatchLine(); // 发布文案接管：LLM 回了顶掉「接不接？」
   }
 
   /// 原型 `hhmm(Clock.now())`

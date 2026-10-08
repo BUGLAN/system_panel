@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:system_panel/state/host_state.dart';
+import 'package:system_panel/widgets/chat_bar.dart';
 import 'package:system_panel/widgets/dock.dart';
 import 'package:system_panel/widgets/hud.dart';
 import 'package:system_panel/widgets/line_layer.dart';
@@ -150,6 +151,28 @@ void main() {
       expect(line.right, 370);
       expect(line.top, closeTo(506.4, .5));
       expect(line.height, closeTo(71, 1.5));
+      await tester.pumpWidget(const SizedBox());
+    });
+  });
+
+  group('对话入口（docs/18 §2.6，t10）', () {
+    testWidgets('大厅左上 34×34 玻璃圆钮：HUD 行下方、可点开聊', (WidgetTester tester) async {
+      // main.dart 的装配位：left 16 / top 78（HUD 行 74 之下）
+      final List<int> opens = <int>[];
+      await _mount(
+        tester,
+        Positioned(
+          left: 16,
+          top: 78,
+          child: ChatEntryButton(onTap: () => opens.add(1)),
+        ),
+      );
+      final Rect r = tester.getRect(find.byKey(const Key('chat.entry')));
+      expect(r, const Rect.fromLTWH(16, 78, 34, 34));
+      expect(opens, isEmpty);
+      await tester.tap(find.byKey(const Key('chat.entry')));
+      await tester.pump();
+      expect(opens, hasLength(1));
       await tester.pumpWidget(const SizedBox());
     });
   });
