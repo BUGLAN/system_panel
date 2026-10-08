@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
@@ -7,6 +8,8 @@ import 'hold_button.dart';
 
 import 'package:flutter_svg/flutter_svg.dart';
 
+import '../agent/llm_client.dart';
+import '../agent/settings_store.dart';
 import '../data/items.dart';
 import '../data/titles.dart';
 import '../design/tokens.dart';
@@ -36,6 +39,9 @@ class Sheet extends StatelessWidget {
     this.visible = true,
     this.onClose,
     this.onWipe,
+    this.onEquipTitle,
+    this.onBuyItem,
+    this.onSettingsChanged,
   });
 
   final HostState host;
@@ -48,6 +54,17 @@ class Sheet extends StatelessWidget {
 
   /// 「按住 2 秒」重置存档 —— 原型重置后 `location.reload()`，未绑定就回到绑定仪式
   final VoidCallback? onWipe;
+
+  /// D6：点已解锁称号挂上（规则在组件内侧守卫：未解锁忽略；
+  /// 口头巨人生效中禁止换挂 —— store.js `equip`）。宿主侧接到 QuestFlow.equip。
+  final ValueChanged<String>? onEquipTitle;
+
+  /// D7：点购买（买得起才触发；买不起按钮已置灰）。宿主侧接到 QuestFlow.buy。
+  final ValueChanged<String>? onBuyItem;
+
+  /// D8/LLM：系统页任意设置变化回传（四开关 + 视觉校验组），
+  /// 持久化由设置组自己经 SettingsStore 落盘，这里只是给宿主同步的机会。
+  final ValueChanged<AgentSettings>? onSettingsChanged;
 
   static const Map<SheetKind, List<String>> _titles = <SheetKind, List<String>>{
     SheetKind.archive: <String>['ARCHIVE · 宿主档案', '档案'],
@@ -465,26 +482,37 @@ class Sheet extends StatelessWidget {
         : t.shame
         ? const Color(0x66FF4D5E) // rgba(255,77,94,.4)
         : C.line2;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-      decoration: BoxDecoration(
-        color: equipped ? C.blue : (owned ? C.blue.withAlpha(15) : null),
-        borderRadius: BorderRadius.circular(15),
-        border: Border.all(color: border, width: 1),
-        boxShadow: equipped
-            ? <BoxShadow>[
-                BoxShadow(color: C.blue.withAlpha(89), blurRadius: 14),
-              ]
-            : null,
-      ),
-      child: Text(
-        owned ? t.name : '？？？ · ${t.hint}',
-        style: fs(
-          family: F.cn,
-          size: 12,
-          wght: equipped ? 650 : 400,
-          height: 1,
-          color: fg,
+    return GestureDetector(
+      key: Key('sheet.title.${t.id}'),
+      behavior: HitTestBehavior.opaque,
+      // D6：点已解锁称号 → 挂上（store.js equip 的两道门：
+      //   没解锁的点不动；「口头巨人」生效中禁止换挂，耻辱章摘不掉）
+      onTap: () {
+        if (!owned) return;
+        if (host.title == 'mouth') return;
+        onEquipTitle?.call(t.id);
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+        decoration: BoxDecoration(
+          color: equipped ? C.blue : (owned ? C.blue.withAlpha(15) : null),
+          borderRadius: BorderRadius.circular(15),
+          border: Border.all(color: border, width: 1),
+          boxShadow: equipped
+              ? <BoxShadow>[
+                  BoxShadow(color: C.blue.withAlpha(89), blurRadius: 14),
+                ]
+              : null,
+        ),
+        child: Text(
+          owned ? t.name : '？？？ · ${t.hint}',
+          style: fs(
+            family: F.cn,
+            size: 12,
+            wght: equipped ? 650 : 400,
+            height: 1,
+            color: fg,
+          ),
         ),
       ),
     );
@@ -624,7 +652,7 @@ class Sheet extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 12),
-          _buy(it.price, afford),
+          _buy(it, it.price, afford),
         ],
       ),
     );
@@ -676,80 +704,233 @@ class Sheet extends StatelessWidget {
     );
   }
 
-  /// `.buy`
-  Widget _buy(int price, bool afford) {
+  /// `.buy` —— D7：买得起 → 点了触发 onBuyItem（扣币加道具在宿主侧结算）；
+  /// 买不起保持原型语义「自动禁用」（置灰、点不动）。
+  Widget _buy(Item it, int price, bool afford) {
     final Color fg = afford ? C.deep : const Color(0xFF4F607B);
-    return Container(
-      height: 34,
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      decoration: BoxDecoration(
-        color: afford ? C.blue : C.blue.withAlpha(26), // rgba(56,225,255,.1)
-        borderRadius: BorderRadius.circular(17),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: <Widget>[
-          SvgPicture.string(
-            afford ? kIconCoinDark : kIconCoinMuted,
-            width: 11,
-            height: 11,
-          ),
-          const SizedBox(width: 5),
-          Text(
-            '$price',
-            style: fs(family: F.num, size: 13, wght: 800, color: fg),
-          ),
-        ],
+    return GestureDetector(
+      key: Key('sheet.buy.${it.id}'),
+      behavior: HitTestBehavior.opaque,
+      onTap: afford ? () => onBuyItem?.call(it.id) : null,
+      child: Container(
+        height: 34,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        decoration: BoxDecoration(
+          color: afford ? C.blue : C.blue.withAlpha(26), // rgba(56,225,255,.1)
+          borderRadius: BorderRadius.circular(17),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            SvgPicture.string(
+              afford ? kIconCoinDark : kIconCoinMuted,
+              width: 11,
+              height: 11,
+            ),
+            const SizedBox(width: 5),
+            Text(
+              '$price',
+              style: fs(family: F.num, size: 13, wght: 800, color: fg),
+            ),
+          ],
+        ),
       ),
     );
   }
 
-  /// ── 系统（只有四个开关 + 一个按住重置） ──────────────────
+  /// ── 系统（四个开关 + LLM·视觉校验组 + 按住重置，D8） ────────
+  /// 状态与持久化都在 [_SystemPane]：四开关与 LLM 组写
+  /// `opus-v2/settings/v1`，重启保留。
   Widget _system() {
+    return _SystemPane(
+      settingsSeed: settings,
+      onWipe: onWipe,
+      onSettingsChanged: onSettingsChanged,
+    );
+  }
+}
+
+/// ── 系统子面板（D8 四开关 + LLM·视觉校验组） ────────────────
+///
+/// 自己持有状态：四开关与 LLM 组经 [SettingsStore]（`opus-v2/settings/v1`）
+/// 持久化，重启保留；文本改动防抖 400ms 落盘，关面板时兜底写最后一笔。
+class _SystemPane extends StatefulWidget {
+  const _SystemPane({
+    required this.settingsSeed,
+    this.onWipe,
+    this.onSettingsChanged,
+  });
+
+  /// 存档加载完成前的初值（main.dart 未接 settings 时 = AppSettings.demo）
+  final AppSettings settingsSeed;
+  final VoidCallback? onWipe;
+  final ValueChanged<AgentSettings>? onSettingsChanged;
+
+  @override
+  State<_SystemPane> createState() => _SystemPaneState();
+}
+
+class _SystemPaneState extends State<_SystemPane> {
+  final SettingsStore _store = SettingsStore();
+  late AgentSettings _s;
+  late final TextEditingController _baseC;
+  late final TextEditingController _keyC;
+  late final TextEditingController _modelC;
+  Timer? _debounce;
+  bool _testing = false;
+  bool? _testOk;
+  String _testStatus = '';
+
+  @override
+  void initState() {
+    super.initState();
+    final AppSettings seed = widget.settingsSeed;
+    _s = AgentSettings(
+      sound: seed.sound,
+      haptic: seed.haptic,
+      holo: seed.holo,
+      voice: seed.voice,
+    );
+    _baseC = TextEditingController(text: _s.baseUrl);
+    _keyC = TextEditingController(text: _s.apiKey);
+    _modelC = TextEditingController(text: _s.model);
+    _load();
+  }
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    // 关面板时把没等到防抖的最后一笔直接落盘
+    _store.save(_s);
+    _baseC.dispose();
+    _keyC.dispose();
+    _modelC.dispose();
+    super.dispose();
+  }
+
+  Future<void> _load() async {
+    final AgentSettings s = await _store.load();
+    if (!mounted) return;
+    setState(() {
+      _s = s;
+      _baseC.text = s.baseUrl;
+      _keyC.text = s.apiKey;
+      _modelC.text = s.model;
+    });
+  }
+
+  void _update(AgentSettings Function(AgentSettings) fn) {
+    setState(() => _s = fn(_s));
+    widget.onSettingsChanged?.call(_s);
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 400), () {
+      _store.save(_s);
+    });
+  }
+
+  void _onField(String key, String v) {
+    switch (key) {
+      case 'sheet.llm.base':
+        _update((AgentSettings s) => s.copyWith(baseUrl: v));
+      case 'sheet.llm.key':
+        _update((AgentSettings s) => s.copyWith(apiKey: v));
+      case 'sheet.llm.model':
+        _update((AgentSettings s) => s.copyWith(model: v));
+    }
+  }
+
+  /// 「测试连接」：按当前输入（含未落盘的）发一条最小请求，回显成败与原因。
+  /// LlmClient 不抛异常，这里永远能落到一行结论。
+  Future<void> _testConn() async {
+    if (_testing) return;
+    final LlmConfig config = LlmConfig(
+      baseUrl: _s.baseUrl,
+      apiKey: _s.apiKey,
+      model: _s.model,
+    );
+    setState(() {
+      _testing = true;
+      _testOk = null;
+      _testStatus = '测试中…';
+    });
+    final LlmReply r = await LlmClient(config: config).ping();
+    if (!mounted) return;
+    setState(() {
+      _testing = false;
+      _testOk = r.ok;
+      _testStatus = r.ok
+          ? (config.modelWasNormalized
+                ? '连接成功 · ${config.model}→${config.normalizedModel}'
+                : '连接成功 · ${config.normalizedModel}')
+          : '失败 · ${_failureText(r.failure, r.detail)}';
+    });
+  }
+
+  static String _failureText(LlmFailure? kind, String? detail) {
+    switch (kind) {
+      case LlmFailure.noKey:
+        return '未配置 API Key';
+      case LlmFailure.timeout:
+      case LlmFailure.network:
+        return detail ?? '网络不可达';
+      case LlmFailure.httpError:
+      case LlmFailure.badResponse:
+      case null:
+        return detail ?? '未知原因';
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final List<Widget> rows = <Widget>[
       _setRow(
         '音效',
         '全部现场合成，没有音频文件',
-        _seg('sound', <List<String>>[
+        _seg('sound', const <List<String>>[
           <String>['1', '开'],
           <String>['0', '关'],
-        ], settings.sound ? '1' : '0'),
+        ], _s.sound ? '1' : '0', (String v) {
+          _update((AgentSettings s) => s.copyWith(sound: v == '1'));
+        }),
       ),
       _setRow(
         '她的声音',
         '人声用浏览器自带中文语音，效果看设备',
-        _seg('voice', AppSettings.voiceOptions, settings.voice),
+        _seg('voice', AppSettings.voiceOptions, _s.voice, (String v) {
+          _update((AgentSettings s) => s.copyWith(voice: v));
+        }),
       ),
       _setRow(
         '震动',
         '仅安卓浏览器有效',
-        _seg('haptic', <List<String>>[
+        _seg('haptic', const <List<String>>[
           <String>['1', '开'],
           <String>['0', '关'],
-        ], settings.haptic ? '1' : '0'),
+        ], _s.haptic ? '1' : '0', (String v) {
+          _update((AgentSettings s) => s.copyWith(haptic: v == '1'));
+        }),
       ),
       _setRow(
         '全息描边',
         '她身上的电光轮廓；低端机可关',
-        _seg('holo', <List<String>>[
+        _seg('holo', const <List<String>>[
           <String>['1', '开'],
           <String>['0', '关'],
-        ], settings.holo ? '1' : '0'),
+        ], _s.holo ? '1' : '0', (String v) {
+          _update((AgentSettings s) => s.copyWith(holo: v == '1'));
+        }),
       ),
+      _llmSection(),
       _setRow('重置存档', '一切从绑定重新开始', _danger()),
     ];
     return Column(
+      key: const Key('sheet.set'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
-        Column(
-          key: const Key('sheet.set'),
-          children: <Widget>[
-            for (int i = 0; i < rows.length; i++) ...<Widget>[
-              if (i > 0) const SizedBox(height: 2), // .set gap
-              rows[i],
-            ],
-          ],
-        ),
+        for (int i = 0; i < rows.length; i++) ...<Widget>[
+          if (i > 0) const SizedBox(height: 2), // .set gap
+          rows[i],
+        ],
         const SizedBox(height: 18), // .about margin-top
         Text(
           'SYSTEM · opus-v2-dir\n她派任务，你去现实里做，拍下证据，她结算。\n存档只在这台设备的浏览器里。',
@@ -762,6 +943,112 @@ class Sheet extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+
+  /// LLM·视觉校验组（docs/18 §2.4）：开关 + BaseURL + Key(掩码) + 模型名 + 测试连接
+  Widget _llmSection() {
+    return Padding(
+      padding: const EdgeInsets.only(top: 16),
+      child: Column(
+        key: const Key('sheet.llm'),
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          _kicker('LLM · 视觉校验'),
+          _setRow(
+            '视觉校验',
+            '拍照后交她核一眼；关=纯信任，全按未校验计',
+            _seg('vision', const <List<String>>[
+              <String>['1', '开'],
+              <String>['0', '关'],
+            ], _s.visionEnabled ? '1' : '0', (String v) {
+              _update((AgentSettings s) => s.copyWith(visionEnabled: v == '1'));
+            }),
+          ),
+          _llmField(
+            '接口地址',
+            'OpenAI 兼容端点，默认官方 DeepSeek',
+            _baseC,
+            'sheet.llm.base',
+          ),
+          _llmField(
+            'API Key',
+            '只存本机；留空=不校验，证据标「未校验」',
+            _keyC,
+            'sheet.llm.key',
+            obscure: true,
+          ),
+          _llmField(
+            '模型名',
+            '默认 deepseek-v4.1flash（请求前自动归一）',
+            _modelC,
+            'sheet.llm.model',
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: <Widget>[
+              _testButton(),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  _testStatus,
+                  key: const Key('sheet.llm.status'),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: fs(
+                    family: F.mono,
+                    size: 10.5,
+                    wght: 500,
+                    color: _testOk == null
+                        ? C.mist
+                        : (_testOk!
+                              ? C.blue
+                              : const Color(0xFFFF8F99)),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Key 只存在本机；照片仅在开启校验时上行。校验失败不阻塞提交。',
+            style: fs(
+              family: F.cn,
+              size: 10.5,
+              wght: 400,
+              height: 1.6,
+              color: const Color(0xFF5F7190),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 与档案/补给页 `.sec` 同款的小节头
+  Widget _kicker(String text) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 2, bottom: 10),
+      child: SizedBox(
+        height: 13,
+        child: Row(
+          children: <Widget>[
+            Text(
+              text,
+              style: fs(
+                family: F.mono,
+                size: 10,
+                wght: 400,
+                ls: 1.6,
+                height: 1,
+                color: C.mist,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(child: Container(height: 1, color: C.line2)),
+          ],
+        ),
+      ),
     );
   }
 
@@ -798,8 +1085,13 @@ class Sheet extends StatelessWidget {
     );
   }
 
-  /// `.seg` —— 分段开关
-  Widget _seg(String key, List<List<String>> options, String current) {
+  /// `.seg` —— 分段开关（D8：可点了，段值变化经 onPick 落盘）
+  Widget _seg(
+    String key,
+    List<List<String>> options,
+    String current,
+    ValueChanged<String> onPick,
+  ) {
     return Container(
       padding: const EdgeInsets.all(2), // CSS 3，Border 占 1
       decoration: BoxDecoration(
@@ -811,21 +1103,26 @@ class Sheet extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
           for (final List<String> o in options)
-            Container(
-              height: 28,
-              padding: const EdgeInsets.symmetric(horizontal: 10),
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: o[0] == current ? C.blue : null,
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: Text(
-                o[1],
-                style: fs(
-                  family: F.cn,
-                  size: 12,
-                  wght: o[0] == current ? 650 : 400,
-                  color: o[0] == current ? C.deep : C.mist,
+            GestureDetector(
+              key: Key('sheet.seg.$key.${o[0]}'),
+              behavior: HitTestBehavior.opaque,
+              onTap: () => onPick(o[0]),
+              child: Container(
+                height: 28,
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: o[0] == current ? C.blue : null,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Text(
+                  o[1],
+                  style: fs(
+                    family: F.cn,
+                    size: 12,
+                    wght: o[0] == current ? 650 : 400,
+                    color: o[0] == current ? C.deep : C.mist,
+                  ),
                 ),
               ),
             ),
@@ -833,6 +1130,96 @@ class Sheet extends StatelessWidget {
       ),
     );
   }
+
+  /// 「测试连接」按钮（测试中禁点）
+  Widget _testButton() {
+    return GestureDetector(
+      key: const Key('sheet.llm.test'),
+      behavior: HitTestBehavior.opaque,
+      onTap: _testing ? null : _testConn,
+      child: Container(
+        height: 34,
+        padding: const EdgeInsets.symmetric(horizontal: 14),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: _testing ? C.blue.withAlpha(15) : C.blue.withAlpha(26),
+          borderRadius: BorderRadius.circular(17),
+          border: Border.all(color: C.line, width: 1),
+        ),
+        child: Text(
+          _testing ? '测试中…' : '测试连接',
+          style: fs(
+            family: F.cn,
+            size: 12.5,
+            wght: 500,
+            height: 1,
+            color: _testing ? C.mist : C.ice,
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 设置组的一行「标签 + 提示 + 输入框」
+  Widget _llmField(
+    String label,
+    String hint,
+    TextEditingController c,
+    String key, {
+    bool obscure = false,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 10, bottom: 2),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: <Widget>[
+              Text(
+                label,
+                style: fs(family: F.cn, size: 14, wght: 400, color: C.ice),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  hint,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: fs(family: F.cn, size: 10, wght: 400, color: C.mist),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          TextField(
+            key: Key(key),
+            controller: c,
+            obscureText: obscure,
+            style: fs(family: F.mono, size: 12.5, wght: 500, color: C.ice),
+            cursorColor: C.blue,
+            onChanged: (String v) => _onField(key, v),
+            decoration: InputDecoration(
+              isDense: true,
+              filled: true,
+              fillColor: C.blue.withAlpha(10),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 10,
+                vertical: 9,
+              ),
+              enabledBorder: _fieldBorder(C.line2),
+              focusedBorder: _fieldBorder(C.blue),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  OutlineInputBorder _fieldBorder(Color color) => OutlineInputBorder(
+    borderRadius: BorderRadius.circular(8),
+    borderSide: BorderSide(color: color, width: 1),
+  );
 
   /// `.danger` —— 按住 2 秒重置（ui.js L624）
   ///
@@ -842,7 +1229,7 @@ class Sheet extends StatelessWidget {
     return HoldButton(
       duration: const Duration(seconds: 2),
       decay: const Duration(seconds: 1),
-      onComplete: () => onWipe?.call(),
+      onComplete: () => widget.onWipe?.call(),
       builder: (BuildContext context, double p) => Container(
         key: const Key('sheet.danger'),
         height: 36,
@@ -886,9 +1273,7 @@ class Sheet extends StatelessWidget {
   }
 }
 
-enum SheetKind { archive, supply, system }
-
-/// `#beam` —— 从她胸口打到面板上沿的两条边 + 一个渐变三角
+enum SheetKind { archive, supply, system }/// `#beam` —— 从她胸口打到面板上沿的两条边 + 一个渐变三角
 class SheetBeam extends StatelessWidget {
   const SheetBeam({super.key, this.visible = true});
 

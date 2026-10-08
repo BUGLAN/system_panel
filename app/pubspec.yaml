@@ -13,6 +13,13 @@ dependencies:
   flutter_svg: ^2.3.0
   shared_preferences: ^2.5.6
   webview_flutter: ^4.14.1
+  # ── Agent 层三件套（docs/18 §3.3，t4 集中一次加齐）──
+  # http：LLM OpenAI 兼容调用（纯 Dart，无平台代码）
+  http: ^1.2.0
+  # image_picker：证据拍照/选图（Android 走 MediaStore，无需 manifest 权限）
+  image_picker: ^1.1.0
+  # path_provider：证据照片落 App 文档目录 evidence/
+  path_provider: ^2.1.0
 
 dev_dependencies:
   flutter_test:

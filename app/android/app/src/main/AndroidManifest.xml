@@ -1,4 +1,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- LLM / 视觉校验上行（OpenAI 兼容，全 https）。
+         debug/profile 模板已带这条；release 构建必需 —— docs/18 §3.3。 -->
+    <uses-permission android:name="android.permission.INTERNET"/>
     <application
         android:label="system_panel"
         android:name="${applicationName}"
