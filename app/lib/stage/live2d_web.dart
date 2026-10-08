@@ -194,6 +194,9 @@ class Live2DWebState extends State<Live2DWeb> {
         case 'ready':
           if (!mounted) return;
           setState(() => _ready = true);
+          // ⚠️ 就绪时**主动推一次相机** —— 否则只会等到 scale/offset 变化时才推，
+          //    而它们通常在就绪前就定好了，于是永远推不过去（一直是默认值）。
+          _pushCam();
           widget.onReady?.call();
         case 'progress':
           final double total = (m['total'] as num?)?.toDouble() ?? 0;
@@ -230,18 +233,22 @@ class Live2DWebState extends State<Live2DWeb> {
     widget.onFailed?.call(why);
   }
 
+  /// 把当前相机推给页面（就绪后才有意义）
+  void _pushCam() {
+    final WebViewController? c = _web;
+    if (c == null) return;
+    unawaited(
+      c.runJavaScript(
+        'Stage.cam(${widget.scale}, ${widget.offset.dx}, ${widget.offset.dy})',
+      ),
+    );
+  }
+
   @override
   void didUpdateWidget(covariant Live2DWeb oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.scale != widget.scale || oldWidget.offset != widget.offset) {
-      final WebViewController? c = _web;
-      if (c != null && _ready) {
-        unawaited(
-          c.runJavaScript(
-            'Stage.cam(${widget.scale}, ${widget.offset.dx}, ${widget.offset.dy})',
-          ),
-        );
-      }
+      if (_ready) _pushCam();
     }
   }
 

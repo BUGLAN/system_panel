@@ -98,14 +98,19 @@ FlashPainter? _flashPaint(WidgetTester tester) {
   return tester.widget<CustomPaint>(f.first).painter! as FlashPainter;
 }
 
+/// 取出震屏偏移。
+///
+/// ⚠️ **不抖的时候 `ShakeLayer` 根本不套 `Transform`** —— 这不是省事，是必须：
+/// 这层包住整个 App（含 Live2D 平台视图），而平台视图**无法应用任意变换**，
+/// 祖先链上只要有一个 `Transform`，合成器就干脆不合成它
+/// （症状：模型加载成功、渲染循环在跑、视图也在层级里，屏幕上却什么都没有）。
+/// 所以"没有 Transform"就等于偏移 0。
 Offset _offsetOf(WidgetTester tester) {
-  final Transform t = tester.widget<Transform>(
-    find
-        .descendant(
-          of: find.byType(ShakeLayer),
-          matching: find.byType(Transform),
-        )
-        .first,
+  final Finder f = find.descendant(
+    of: find.byType(ShakeLayer),
+    matching: find.byType(Transform),
   );
+  if (f.evaluate().isEmpty) return Offset.zero;
+  final Transform t = tester.widget<Transform>(f.first);
   return Offset(t.transform[12], t.transform[13]);
 }
