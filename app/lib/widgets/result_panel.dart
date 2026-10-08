@@ -37,6 +37,7 @@ class ResultPanel extends StatefulWidget {
     this.onSave,
     this.animate = true,
     this.onImpact,
+    this.onDone,
   });
 
   final QuestResult result;
@@ -48,6 +49,10 @@ class ResultPanel extends StatefulWidget {
 
   /// 印章砸下那一刻（原型在这里 flash + shake + burst）
   final ValueChanged<int>? onImpact;
+
+  /// 结算演出播完（T2：此刻弹出【再来一单。/先歇会儿。|收工。】，
+  /// 原型 flows.js L460-462 是她把话说完才 `choose()`）
+  final VoidCallback? onDone;
 
   @override
   State<ResultPanel> createState() => _ResultPanelState();
@@ -99,16 +104,28 @@ class _ResultPanelState extends State<ResultPanel>
     if (!widget.animate) {
       _t = _tl.total;
       _c.value = 1;
+      _notifyDone();
       return;
     }
     _t = 0;
     _c
       ..duration = Duration(milliseconds: _tl.total.round())
       ..addListener(_onTick);
-    _c.forward(from: 0);
+    // 演出播完 → onDone（原型这里是她说完话后弹 choose()）
+    _c.forward(from: 0).whenComplete(_notifyDone);
     // 印章砸下那一下的 FX（原型在 `w(820)` 之后）
     Future<void>.delayed(Duration(milliseconds: _tl.impactAt.round()), () {
       if (mounted) widget.onImpact?.call(widget.result.rarity.i);
+    });
+  }
+
+  /// onDone 必须**过一帧再回调**：initState/didUpdateWidget 里直接调，
+  /// 调用方的 setState 会撞上"build 期间 setState"。
+  void _notifyDone() {
+    final VoidCallback? cb = widget.onDone;
+    if (cb == null) return;
+    WidgetsBinding.instance.addPostFrameCallback((Duration _) {
+      if (mounted) cb();
     });
   }
 
@@ -441,11 +458,15 @@ class _ResultPanelState extends State<ResultPanel>
   /// .rs-bar
   Widget _bar() {
     // 原型：条的起点是"结算前"，`expTo` 涨到"结算后"（`.rs-bar i` 的 width 过渡）
+    // T2：升级过的话分母换成新档的 need、读数是溢出后的余额
     final double before = (result.beforeExp / result.beforeNeed).clamp(
       0.0,
       1.0,
     );
-    final double after = (result.afterExp / result.beforeNeed).clamp(0.0, 1.0);
+    final double after = (result.expAfterSettle / result.finalNeed).clamp(
+      0.0,
+      1.0,
+    );
     final double frac = before + (after - before) * _tl.barProgressAt(_t);
     return Container(
       key: const Key('result.bar'),
@@ -498,7 +519,8 @@ class _ResultPanelState extends State<ResultPanel>
             children: <InlineSpan>[
               TextSpan(text: 'LV ', style: base),
               TextSpan(
-                text: '${result.beforeLv}',
+                // T2：升级过的单这里显示新等级（原型 `lv.textContent = up`）
+                text: '${result.lvAfter}',
                 style: fs(
                   family: F.num,
                   size: 12,
@@ -510,7 +532,10 @@ class _ResultPanelState extends State<ResultPanel>
             ],
           ),
         ),
-        Text('${result.afterExp} / ${result.beforeNeed}', style: base),
+        Text(
+          '${result.expAfterSettle} / ${result.finalNeed}',
+          style: base,
+        ),
       ],
     );
   }

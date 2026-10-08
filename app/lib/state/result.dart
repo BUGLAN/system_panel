@@ -21,6 +21,18 @@ class QuestResult {
     required this.photos,
     required this.chance,
     this.near = 0,
+    // ── T2 补全：真实结算（store.js settle() 返回值）的其余字段 ──
+    this.ups = const <int>[],
+    this.titles = const <String>[],
+    this.ringClear = -1,
+    this.finale = false,
+    this.redeemed = false,
+    this.empty = false,
+    this.tooFast = false,
+    this.held = Duration.zero,
+    this.afterLv,
+    this.afterNeed,
+    this.endExp,
   });
 
   final Quest quest;
@@ -60,6 +72,49 @@ class QuestResult {
   final int near;
 
   Rarity get rarity => quest.rarity;
+
+  // ── T2 补全的字段（demo 档全部走默认值，老界面零感知）──────────
+
+  /// 升到的每一级（空 = 这一单没升级；原型 `res.ups`）
+  final List<int> ups;
+
+  /// 本次解锁的称号 id（原型 `res.titles`）
+  final List<String> titles;
+
+  /// 点亮的主线环（-1 = 非主线单或主线未推进；原型 `res.ringClear`）
+  final int ringClear;
+
+  /// 主线收官（最后一环也清了）
+  final bool finale;
+
+  /// 补救单抵消了那次失败（原型 `res.redeemed`）
+  final bool redeemed;
+
+  /// 队列空了 —— 结算页该弹【收工。】而不是【再来一单。】
+  final bool empty;
+
+  /// 执行不足 60 秒就交（她会拆穿）
+  final bool tooFast;
+
+  /// 这单执行了多久
+  final Duration held;
+
+  /// 结算后的等级 / 升级所需（升级过才与 before 不同；null = 未升级）
+  final int? afterLv;
+  final int? afterNeed;
+
+  /// 结算后的经验余额（升级过时 ≠ beforeExp + exp；原型 `res.after.exp`）
+  final int? endExp;
+
+  /// 结算后停在几级（界面 LV 读数）
+  int get lvAfter => afterLv ?? beforeLv;
+
+  /// 结算后"升到下一级"所需（经验条分母；升级后会换档）
+  int get finalNeed => afterNeed ?? beforeNeed;
+
+  /// 结算后的经验读数：没升级 = beforeExp + exp；升级过 = 溢出后的余额
+  /// （原型 `res.after.exp`）
+  int get expAfterSettle => ups.isEmpty ? afterExp : (endExp ?? exp);
 
   /// 结算后停在多少经验（`.rs-lv` 右侧那行）
   int get afterExp => beforeExp + exp;

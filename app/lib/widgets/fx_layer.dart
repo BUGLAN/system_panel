@@ -95,6 +95,17 @@ class _ShakeLayerState extends State<ShakeLayer>
     with SingleTickerProviderStateMixin {
   final math.Random _rnd = math.Random();
 
+  /// ⚠️ **把整棵子树用 GlobalKey 钉住** —— 抖/不抖之间切换 `Transform`
+  /// 分支时，子树是「搬过去」（全部 State 原样保留）而不是「重挂」。
+  ///
+  /// **不钉的代价就是「提交任务卡死」的真正元凶**：结算砸印必抖
+  /// （`onImpact` 最小 shakePx=4）→ 抖动切换 `Transform` 分支 → 整个
+  /// Stack 连 Plate / 结算面板 / Live2D WebView 一起重挂 → 结算演出从头
+  /// 重播 → 820ms 后又砸印又抖 → **死循环**，演出永远走不到结算卡。
+  /// 实测症状：结算页卡在稀有度大字 + 粒子越积越多、WebView 反复重载、
+  /// 派单板的骰子也永远在滚（`onRankFx` 的 A/S 抖同理）。
+  final GlobalKey _subtreeKey = GlobalKey();
+
   /// ⚠️ 必须用 AnimationController，不能用 `Future.delayed` + `DateTime.now()`——
   /// 那样跑的是真实时钟，widget test 的假时钟推不动它（踩过：测试里抖完不归位）。
   late final AnimationController _c = AnimationController(
@@ -156,7 +167,11 @@ class _ShakeLayerState extends State<ShakeLayer>
     //
     // 代价：真抖的那 240ms 里她不会跟着抖（平台视图跟不上）。
     // 目前接受 —— 先把"她出得来"这件事做对，抖不抖是后面的事。
-    if (_dx == 0 && _dy == 0) return widget.child;
-    return Transform.translate(offset: Offset(_dx, _dy), child: widget.child);
+    //
+    // ⚠️ 两个分支的**共同子层**必须带同一个 GlobalKey（见 _subtreeKey 注）：
+    // 分支切换 = 「搬子树」而不是「重建子树」。
+    final Widget child = KeyedSubtree(key: _subtreeKey, child: widget.child);
+    if (_dx == 0 && _dy == 0) return child;
+    return Transform.translate(offset: Offset(_dx, _dy), child: child);
   }
 }

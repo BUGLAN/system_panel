@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:system_panel/state/quest.dart';
 import 'package:system_panel/state/result.dart';
 import 'package:system_panel/widgets/result_panel.dart';
 
@@ -28,6 +29,44 @@ void main() {
       expect(r.afterExp, 214 + 50);
       expect(r.chancePct, 12);
       expect(r.rarity.rank, 'C');
+    });
+
+    test('T2 新字段：demo 全走默认（不升级 / 无称号 / 队列未空 / 未推进主线）', () {
+      const QuestResult r = QuestResult.demo;
+      expect(r.ups, isEmpty);
+      expect(r.titles, isEmpty);
+      expect(r.ringClear, -1);
+      expect(r.finale, isFalse);
+      expect(r.redeemed, isFalse);
+      expect(r.empty, isFalse);
+      expect(r.tooFast, isFalse);
+      expect(r.lvAfter, 7);
+      expect(r.finalNeed, 340);
+      expect(r.expAfterSettle, 264);
+    });
+
+    test('T2 升级口径：LV 读数换新档、经验条用新分母与余额', () {
+      const QuestResult r = QuestResult(
+        quest: Quest.demo,
+        beforeLv: 1,
+        beforeExp: 17,
+        beforeNeed: 18,
+        exp: 40,
+        coin: 20,
+        attrs: <String, int>{'体': 1},
+        streak: 2,
+        streakUp: true,
+        crit: true,
+        dbl: true,
+        photos: 0,
+        chance: .12,
+        ups: <int>[2, 3],
+        afterLv: 3,
+        afterNeed: 30,
+      );
+      expect(r.lvAfter, 3);
+      expect(r.finalNeed, 30);
+      expect(r.expAfterSettle, 40, reason: '升级过 = 溢出后的余额');
     });
   });
 
@@ -121,6 +160,76 @@ void main() {
         ),
       );
       expect(find.byKey(const Key('result.stack')), findsNothing);
+    });
+
+    testWidgets('T2：演出播完回调 onDone（结算页的退出选项靠它弹出）', (
+      WidgetTester tester,
+    ) async {
+      int done = 0;
+      await _mount(
+        tester,
+        ResultPanel(
+          result: QuestResult.demo,
+          onDone: () => done++,
+        ),
+      );
+      // 演出全程 ~3.7s；播完 + 过一帧（postFrameCallback）后应恰好回调一次
+      await tester.pump(const Duration(seconds: 5));
+      await tester.pump();
+      expect(done, 1);
+      await tester.pump(const Duration(seconds: 5));
+      await tester.pump();
+      expect(done, 1, reason: '不重复回调');
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('T2：animate:false 落终态也要回调 onDone（比对模式不哑火）', (
+      WidgetTester tester,
+    ) async {
+      int done = 0;
+      await _mount(
+        tester,
+        ResultPanel(
+          result: QuestResult.demo,
+          animate: false,
+          onDone: () => done++,
+        ),
+      );
+      await tester.pump();
+      expect(done, 1);
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('T2：升级过的结算显示新等级与新分母（LV3 · 40/30）', (
+      WidgetTester tester,
+    ) async {
+      await _mount(
+        tester,
+        const ResultPanel(
+          result: QuestResult(
+            quest: Quest.demo,
+            beforeLv: 1,
+            beforeExp: 17,
+            beforeNeed: 18,
+            exp: 40,
+            coin: 20,
+            attrs: <String, int>{'体': 1},
+            streak: 2,
+            streakUp: true,
+            crit: false,
+            dbl: false,
+            photos: 0,
+            chance: .12,
+            ups: <int>[2, 3],
+            afterLv: 3,
+            afterNeed: 30,
+            endExp: 40,
+          ),
+          animate: false,
+        ),
+      );
+      expect(find.text('40 / 30'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
     });
   });
 }

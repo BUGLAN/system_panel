@@ -22,6 +22,7 @@ import 'state/away.dart';
 import 'state/voice.dart';
 import 'state/save_file.dart';
 import 'state/quest.dart';
+import 'state/quest_flow.dart';
 import 'state/result.dart';
 import 'widgets/bg_layer.dart';
 import 'widgets/ask_field.dart';
@@ -105,8 +106,28 @@ class _AppShellState extends State<AppShell>
   /// 行为逻辑未定，先用与原型「老宿主 · 第 23 天」一致的演示档
   /// （启动时会被存档覆盖 —— 见 SaveFile）
   HostState _host = HostState.demo;
-  static const Quest _quest = Quest.demo;
-  static const QuestResult _result = QuestResult.demo;
+
+  /// 业务唯一真源：队列 / 接单 / 道具 / 结算 / 认输（store.js 移植，quest_flow.dart）。
+  /// 「提交卡死」根因①②的修复点：提交不再只是切页面，而是经 `_flow.settle()`
+  /// 产出真实结算并落到档案 / 主线 / 队列。
+  QuestFlow _flow = QuestFlow.demo();
+
+  /// 最近一次结算（提交时由 QuestFlow.settle 产出；初值仅兜底显示）
+  QuestResult _result = QuestResult.demo;
+
+  /// 派单板显示的是队首（原型 `Store.head()`）
+  Quest get _quest => _flow.head ?? Quest.demo;
+
+  /// 执行面板显示的是"正在执行的那一单"—— 接单后队首已经换成下一张了
+  Quest get _execQuest => _flow.active?.task ?? _quest;
+
+  /// 结算演出播完后的岔路口开关（弹【再来一单。/先歇会儿。|收工。】）
+  bool _resultChoicesOn = false;
+
+  /// 失败页的记录（原型 `hhmm(Clock.now())` 与 `info.remedy`）
+  DateTime _failAt = DateTime.now();
+  bool _failTimeout = false;
+  Remedy? _failRemedy;
 
   Moment _moment = Moment.boot;
 
@@ -175,29 +196,29 @@ class _AppShellState extends State<AppShell>
 
   /// 进执行态时把计时归零重算（原型 `Store.accept()` 里记 startAt）
   void _beginExec() {
+    // 真实接单：队首出队 + 记 startAt（原型 `Store.accept`；D12 修复
+    // —— 计时不再写死"已执行 7 分钟"）
+    final Quest? head = _flow.head;
+    if (head != null) _flow.accept(head);
     setState(() {
-      _execStart = DateTime.now().subtract(
-        const Duration(minutes: 7),
-      ); // 演示档：已执行 7 分钟
+      _execStart = _flow.active?.startAt ?? DateTime.now();
       _moment = Moment.exec;
       _chatter.resetExec(Duration.zero);
       // 新的一单：抽屉收起、上一单挂过的道具清掉（原型 `A.dbl/crit/shield` 随新单重建）
       _drawerOn = false;
       _usedItems.clear();
+      _resultChoicesOn = false;
       _active = true; // 原型 `S.active` —— 收起后它仍然为真
+      _host = _flow.host;
+      _goal = _flow.goal;
     });
     _clock.startFast();
   }
 
-  /// 用掉一个执行类道具（原型 `Store.useItem(k)` 之后那段）
+  /// 用掉一个执行类道具（原型 `Store.useItem(k)`）
   ///
-  /// ```js
-  /// useItem(k) { const A = S.active; if (!A || A[k] || !S.items[k]) return false;
-  ///              S.items[k]--; A[k] = true; ... }
-  /// ```
-  /// 扣库存这件事照做了（`#exItemN` 那个数要跟着掉，抽屉里的「持有 ×n」也要对）；
-  /// ⚠️ 但**数值效果**（经验翻倍 / 暴击率 +25% / 失败不计连败）走的是 `Store.settle()`
-  /// 那套业务规则，还没定，所以那部分没做。
+  /// 扣库存与"挂到本单"的标记都走 QuestFlow（结算的 ×2 / 暴击率 +25% /
+  /// 免死全读它的 A.dbl / A.crit / A.shield）；插话与界面标签留在这层。
   void _useItem(String id) {
     final String? say = switch (id) {
       'dbl' => LINES.itemDbl,
@@ -206,14 +227,9 @@ class _AppShellState extends State<AppShell>
       _ => null,
     };
     setState(() {
-      if (say != null) {
+      if (say != null && _flow.useItem(id)) {
         _usedItems.add(id);
-        final int n = _host.items[id] ?? 0;
-        if (n > 0) {
-          _host = _host.copyWith(
-            items: <String, int>{..._host.items, id: n - 1},
-          );
-        }
+        _host = _flow.host;
       }
       _drawerOn = false;
     });
@@ -252,7 +268,7 @@ class _AppShellState extends State<AppShell>
     //    所以改成「她没有正在插话」（见 BEHAVIOR-GAPS.md D 组）
     // 超时判负（原型 Exec.tick() 末尾： >= lim → App.fail('timeout')）
     if (_moment == Moment.exec && _execReadout().timedOut) {
-      _beginFail(); // 原型 `Exec.tick()` 末尾：e >= lim → App.fail('timeout')
+      _beginFail(how: 'timeout');
       return;
     }
     final bool lineQuiet = _aside == null && !_busy;
@@ -289,7 +305,7 @@ class _AppShellState extends State<AppShell>
   ExecReadout _execReadout() => ExecReadout.of(
     startAt: _execStart,
     now: _clock.now,
-    limit: Duration(minutes: _quest.minutes),
+    limit: Duration(minutes: _execQuest.minutes),
   );
 
   late final DateTime _sessionStart = DateTime.now();
@@ -343,10 +359,13 @@ class _AppShellState extends State<AppShell>
 
     // lineAt（flows.js L23）：
     //   lobby = H*.6，dispatch = H-568，fail = H*.47，sheet = H*.38 - 104，main = H-192
+    //   result = H-230（flows.js L23 的 result 档 —— 结算页她的台词位）
     final double lineY = dispatch
         ? size.height - 568
         : fail
         ? size.height * .47
+        : result
+        ? size.height - 230
         : sheet
         ? size.height * .38 - 104
         : main
@@ -499,7 +518,8 @@ class _AppShellState extends State<AppShell>
                 Dock(
                   state: _host,
                   visible: lobby,
-                  onCta: () => setState(() => _moment = Moment.dispatch),
+                  // 队列空（今日已清）不再放行派单板 —— 免得接 到"幻影"演示单
+                  onCta: _enterDispatchOrRest,
                   onSide: (int i) {
                     if (i == 0) {
                       setState(() {
@@ -561,9 +581,10 @@ class _AppShellState extends State<AppShell>
                 ListenableBuilder(
                   listenable: _clock,
                   builder: (BuildContext context, Widget? child) => ExecPanel(
-                    quest: _quest,
+                    quest: _execQuest,
                     elapsed: _execReadout().elapsed,
-                    critChance: .12,
+                    // 暴击率不再是写死的 .12：证据/连击/暴击芯片联动（quest_flow）
+                    critChance: _flow.critChance(),
                     // 原型是按持有数算的（`Exec.slots()` 末尾那个 reduce），
                     // 不是写死的 3 —— 用掉道具后这个数要跟着掉
                     itemCount: Item.execCount(_host.items),
@@ -589,7 +610,16 @@ class _AppShellState extends State<AppShell>
                       );
                       _fx.spark(195, 726, n: 18);
                       _fx.burst(195, 540, n: 60);
-                      setState(() => _moment = Moment.result);
+                      // 真实结算（store.js settle 的移植）：经验/金币/六维/连击/
+                      // 升级/主线环/称号全部落账，再进结算页 —— 卡死根因①②
+                      setState(() {
+                        _result = _flow.settle() ?? _result;
+                        _resultChoicesOn = false;
+                        _moment = Moment.result;
+                        _host = _flow.host;
+                        _goal = _flow.goal;
+                      });
+                      _persist();
                     },
                     onQuitProgress: (double p) => setState(() => _quitP = p),
                     onQuit: () {
@@ -623,7 +653,11 @@ class _AppShellState extends State<AppShell>
                 ResultPanel(
                   result: _result,
                   visible: result,
-                  onSave: () {},
+                  // 「保存战报」（D1）：结算数据 → 文本战报 → 剪贴板 + 插话确认
+                  onSave: _saveReport,
+                  // 演出播完 → 弹【再来一单。/先歇会儿。|收工。】（卡死根因④：
+                  // 这是结算页唯一的退出路径，原型 flows.js L460-462）
+                  onDone: _onResultDone,
                   // 印章砸下那一刻（原型 `settle()` 的 ②）：
                   //   FX.flash('#ffffff', .16, 180)
                   //   FX.shake(ri >= 4 ? 7 : 4, 280)
@@ -655,10 +689,11 @@ class _AppShellState extends State<AppShell>
                     );
                   },
                 ),
-                // 失败 / 补救（在 veil 之下）
+                // 失败 / 补救（在 veil 之下）—— 记录时间与补救单来自真实认输
                 FailLayer(
-                  recordedAt: '20:02',
-                  remedy: Remedy.demo,
+                  recordedAt: _hhmm(_failAt),
+                  timeout: _failTimeout,
+                  remedy: _failRemedy ?? Remedy.demo,
                   visible: fail,
                 ),
                 // 屏幕空间特效（#fx 在 DOM 里排在 #ui 之后、#veil 之前）
@@ -693,11 +728,14 @@ class _AppShellState extends State<AppShell>
                       _aside ??
                       (dispatch
                           ? '接不接？'
+                          : result && _resultChoicesOn
+                          // 结算页的退出问话（原型 flows.js L462 的 choose()）
+                          ? _flow.queueEmpty ? '收工？……明天见。' : '还做吗？'
                           : fail
-                          // `[[{dl}]]` 是时间（原型的补救台词在 content.js L397）
+                          // `[[{dl}]]` 是补救单截止（真实认输时间 + 24h）
                           ? LINES.remedyLine.replaceFirst(
                               '[[{dl}]]',
-                              '[[明天 20:02]]',
+                              '[[明天 ${_hhmm(_flow.remedyDeadline ?? _failAt)}]]',
                             )
                           : main
                           ? LINES.mainline(_goal.doneCount, _goal.rings.length)
@@ -721,20 +759,22 @@ class _AppShellState extends State<AppShell>
                   voice: _voice,
                   onChar: _voice.syllable,
                   // 原型里那句主线台词说完就 Line.hide()，点环展开详情时它已经不在——
-                  // 两者都显示会叠在详情卡上
+                  // 两者都显示会叠在详情卡上。结算页只在「她说话」和「问还做吗」时出现
                   visible:
                       lobby ||
                       dispatch ||
                       fail ||
                       onboard ||
+                      (result && (_aside != null || _resultChoicesOn)) ||
                       (main && _pickedRing == null),
                 ),
+                // 回应：结算收尾【再来一单。/先歇会儿。|收工。】
+                // 失败页【……接。/今天算了。】（原型的 choose()，此前没接 onPick
+                // 是「提交卡死」根因③④ —— 点了永远没反应）
                 Choices(
-                  items: const <Choice>[
-                    Choice('……接。', main: true),
-                    Choice('今天算了。'),
-                  ],
-                  visible: fail,
+                  items: _choices,
+                  visible: _choicesOn,
+                  onPick: _onChoice,
                 ),
                 // 绑定仪式：她在上面问，宿主在这儿敲（z 4，在 veil 之上）
                 AskField(
@@ -783,10 +823,10 @@ class _AppShellState extends State<AppShell>
                   selected: main ? _pickedRing : null,
                   // 原型 `canGo = !S.active && cur >= 0 && 队列里有主线单`——
                   // veteran 档三条都成立，所以那颗蓝色主按钮是显示的
-                  canDispatch: main,
+                  canDispatch: main && !_flow.queueEmpty,
                   visible: main,
                   onClose: () => setState(() => _moment = Moment.lobby),
-                  onDispatch: () => setState(() => _moment = Moment.dispatch),
+                  onDispatch: _enterDispatchOrRest,
                 ),
                 // 「执行中」药丸（`ui.js` L60）：**执行页自己不显示它**，
                 // 只在 大厅/主线/面板 上挂；点它回执行页。收起执行面板后就靠它回去。
@@ -838,6 +878,10 @@ class _AppShellState extends State<AppShell>
               : typed,
         );
       }
+      // 绑定即建队列：首环 + 当日日常（store.js bind() 的最小版；
+      // 完整访谈流与首目标 3 天在 T6 接管）
+      _flow = QuestFlow(host: _host, goal: _goal)..seedForCurrentGoal();
+      _host = _flow.host;
       _moment = Moment.lobby;
       _banner = true;
     });
@@ -854,7 +898,8 @@ class _AppShellState extends State<AppShell>
     );
     if (!mounted) return;
     setState(() {
-      _host = d.host;
+      _flow = QuestFlow.fromSave(host: d.host, goal: d.goal, queue: d.queue);
+      _host = _flow.host;
       _goal = d.goal;
       _moment = Moment.onboard;
     });
@@ -978,15 +1023,33 @@ class _AppShellState extends State<AppShell>
   )..addListener(() => setState(() {}));
 
   /// 进入失败态（认输与超时共用）：原型 `_fail()` 的视觉前几下
-  void _beginFail() {
+  void _beginFail({String how = 'quit'}) {
     _clock.stopFast();
     // 原型 `_fail()` L529：`Stage.setCam('fail'); Stage.emote('sad'); Stage.motion('down')`
     // 表情照做了（`emote('sad')` → `exp_sad01`）。
     // ⚠️ 路线 ② 之后，表情要走 JS 桥（`Stage.emote(...)`）—— 桥还没接，
     //    所以这行暂时拿掉，等把手补齐再恢复。
+    // 真实判负（store.js fail）：failCount 记账、主线单回队首、生成补救单
+    // —— 失败页不再是死局：补救单可接可弃（见 _onChoice）
+    final FailOutcome? fo = _flow.fail(how: how);
     setState(() {
       _moment = Moment.fail;
       _quitP = 0;
+      _resultChoicesOn = false;
+      _failAt = DateTime.now();
+      _failTimeout = how == 'timeout';
+      final Quest? r = fo?.remedy;
+      _failRemedy = r == null
+          ? null
+          : Remedy(
+              // FailLayer 自己会补「（做一半）」字样，这里给基础名
+              name: fo!.task.name,
+              minutes: r.minutes,
+              rank: r.rank,
+              deadline: '明天 ${_hhmm(fo.remedyDeadline ?? _failAt)}',
+            );
+      _host = _flow.host;
+      _goal = _flow.goal;
     });
     _ringDim.forward(from: 0);
     final int ci = _goal.currentIndex;
@@ -998,6 +1061,107 @@ class _AppShellState extends State<AppShell>
       if (mounted) _setRingMul(ci, .15);
     });
   }
+
+  // ── 结算页 / 失败页的出口（「提交卡死」根因③④的修复）──────────────
+
+  /// 回应选项什么时候出现：结算演出播完，或失败页进场（原型是她说完话
+  /// 再 `choose()`；失败页那几句插话的时长不阻塞选项）
+  bool get _choicesOn =>
+      _moment == Moment.fail ||
+      (_moment == Moment.result && _resultChoicesOn);
+
+  /// 两套选项：队列空时只剩【收工。】（flows.js L462）
+  List<Choice> get _choices {
+    if (_moment == Moment.result && _resultChoicesOn) {
+      return _flow.queueEmpty
+          ? const <Choice>[Choice('收工。', main: true)]
+          : const <Choice>[Choice('再来一单。', main: true), Choice('先歇会儿。')];
+    }
+    if (_moment == Moment.fail) {
+      return const <Choice>[Choice('……接。', main: true), Choice('今天算了。')];
+    }
+    return const <Choice>[];
+  }
+
+  /// 选完的岔路（flows.js L464-465 / L554-558）：
+  ///   再来一单 → 派单板 · 先歇会儿/收工 → 大厅
+  ///   ……接 → 补救单插回队首 → 派单板 · 今天算了 → 大厅
+  void _onChoice(int i) {
+    if (_busy) return;
+    if (_moment == Moment.result) {
+      final bool more = i == 0 && !_flow.queueEmpty;
+      setState(() {
+        _resultChoicesOn = false;
+        _moment = more ? Moment.dispatch : Moment.lobby;
+      });
+      return;
+    }
+    if (_moment == Moment.fail) {
+      if (i == 0) {
+        _flow.takeRemedy(now: true);
+        setState(() {
+          _host = _flow.host;
+          _moment = Moment.dispatch;
+        });
+        _persist();
+        return;
+      }
+      setState(() => _moment = Moment.lobby);
+    }
+  }
+
+  /// 结算演出播完（原型 `choose()` 前的那一刻）：弹选项 + 她按档位说一句
+  /// （flows.js L442-447 的 tier 台词，T5 由 SystemCopyProvider 接管）
+  void _onResultDone() {
+    if (!mounted || _moment != Moment.result || _resultChoicesOn) return;
+    setState(() => _resultChoicesOn = true);
+    final QuestResult r = _result;
+    final String line;
+    if (r.tooFast) {
+      line = '[[${r.held.inSeconds}]] 秒就交？做了吗你就交。';
+    } else if (r.crit) {
+      line = '暴击。手气不错——不过别指望每次都有。';
+    } else {
+      line = switch (r.rarity.i) {
+        <= 1 => '收下了。小单也是单，积少成多。',
+        <= 3 => 'C 级的活儿，干得像模像样。我认。',
+        <= 5 => '这个完成度……勉强配得上这张单。',
+        _ => 'S 级都敢接敢交。行，你有点东西。',
+      };
+    }
+    _sayAside(line, holdMs: 2600);
+  }
+
+  /// 「保存战报」（D1 最小可用版）：结算数据 → 文本 → 剪贴板 + 插话确认
+  Future<void> _saveReport() async {
+    final QuestResult r = _result;
+    final String upsText = r.ups.isEmpty ? '' : ' · 升级 LV${r.ups.last}';
+    final String report =
+        'SYSTEM 战报\n'
+        '${r.quest.serialText} ${r.quest.name}（${r.rarity.rank} 级）\n'
+        'EXP +${r.exp} · 金币 +${r.coin}$upsText · 连击 ${r.streak} 天';
+    try {
+      await Clipboard.setData(ClipboardData(text: report));
+      _sayAside('战报抄进剪贴板了。拿去炫耀吧。', holdMs: 1800);
+    } catch (_) {
+      _sayAside('战报没存上。……是设备的问题，不怪你。', holdMs: 1800);
+    }
+  }
+
+  /// 进派单板的唯一入口：队列空就不进（rollDay 的"每日补发"在 T6，
+  /// 之前先用一句插话接住，别让宿主接 到幻影单）
+  void _enterDispatchOrRest() {
+    if (_busy) return;
+    if (_flow.queueEmpty) {
+      _sayAside('今天的单，清干净了。明天再来。', holdMs: 2200);
+      return;
+    }
+    setState(() => _moment = Moment.dispatch);
+  }
+
+  /// 原型 `hhmm(Clock.now())`
+  static String _hhmm(DateTime d) =>
+      '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
 
   void _setRingMul(int i, double v) {
     if (i < 0) return;
@@ -1047,20 +1211,27 @@ class _AppShellState extends State<AppShell>
     final String? err = await _save.selfTest();
     if (err != null) debugPrint('[save] ⚠️ 存储不可用：$err');
     if (!mounted) return;
+    // 老档没有队列 → QuestFlow 按现状补种子（合并式迁移，不清档）
+    final bool seeded = d.queue.isEmpty;
     setState(() {
-      _host = d.host;
-      _goal = d.goal;
+      _flow = QuestFlow.fromSave(host: d.host, goal: d.goal, queue: d.queue);
+      _host = _flow.host;
+      _goal = _flow.goal;
       // 原型 `load()` 里的 `S.prevSeen = S.lastSeen` —— 冷启动算"你走了多久"用
       _prevSeen = d.lastSeen;
     });
+    // 补出来的种子要落一次盘，重启后队列还在
+    if (seeded && _flow.queue.isNotEmpty) _persist();
   }
 
-  /// 存盘（store.js L43）
+  /// 存盘（store.js L43）—— 档案 + 主线 + 她手里的队列
   ///
   /// 启动时的自检（`SaveFile.selfTest`）是**通过**的，但这里写完整存档后回读是空的
   /// —— 所以下面多打一行原始串长度，用来区分「没写进去」和「写进去了解析不出来」。
   Future<void> _persist() async {
-    await _save.save(SaveData(host: _host, goal: _goal));
+    await _save.save(
+      SaveData(host: _host, goal: _goal, queue: _flow.queue),
+    );
     final String? raw = await _save.rawRead();
     final SaveData back = await _save.load();
     if (back.goal.text != _goal.text) {
