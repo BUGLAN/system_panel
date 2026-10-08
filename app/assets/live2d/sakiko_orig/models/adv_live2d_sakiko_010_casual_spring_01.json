@@ -1,0 +1,111 @@
+{
+ "files": {
+  "adv_live2d_sakiko_010_casual_spring_01.moc3": {
+   "asset": "assets/fae099c3bdea98e9187442821ac4b4e62f887481460bcd1b0fa515b45d0d777e.moc3.gz",
+   "size": 6558656,
+   "stored": 1413305
+  },
+  "adv_live2d_sakiko_010_casual_spring_01.prefab.json": {
+   "parts": [
+    [
+     "key",
+     "assets/897161964d52d1f9dee31580c96239949c7db0a49bc97823080d50ede15dc99c.json.gz",
+     110,
+     86
+    ],
+    [
+     "nodes",
+     "assets/63fb31adc1edfb73f89c52b25b84dc872a02b62c3adc55e2151568ee57f1e0c7.json.gz",
+     7379603,
+     485201
+    ],
+    [
+     "canvas",
+     "assets/808d0b9b92adfe23b7be1587521682031302330400156a1ff343404175348b94.json.gz",
+     104,
+     94
+    ]
+   ],
+   "size": 7379844
+  },
+  "model.json": {
+   "asset": "assets/e32d9bbaf558ba3748bddeacdb48995315a341c5bba9cc644485588b13aa3293.json.gz",
+   "size": 998,
+   "stored": 408
+  },
+  "shaders/Live2D_Cubism_Lit-URP-ADV-optimize.json": {
+   "asset": "assets/294409d4a76657de2d24c08f34967764fe286b12f6d09977c06a42ccd51c6178.json.gz",
+   "size": 11877,
+   "stored": 1462
+  },
+  "shaders/Live2D_Cubism_Lit-URP-ADV-optimize/gles3/s0p0_vertex_0.glsl": {
+   "asset": "assets/1ab0b5ffbcc56e31cd58d05286a3fabe786e14431009f9d840eba27bdd827116.glsl.gz",
+   "size": 12018,
+   "stored": 2011
+  },
+  "shaders/Live2D_Cubism_Lit-URP-ADV-optimize/gles3/s0p0_vertex_1.glsl": {
+   "asset": "assets/52a623bf1ccea31db12047c424188cb97553f6791b29ca87883975ce90ccf0c4.glsl.gz",
+   "size": 13795,
+   "stored": 2355
+  },
+  "shaders/Live2D_Cubism_Lit-URP-ADV-optimize/gles3/s0p0_vertex_3.glsl": {
+   "asset": "assets/23c5baaa47490353217fdc0ec44cdf81a9014db97067ebf612a8968a640593bc.glsl.gz",
+   "size": 13831,
+   "stored": 2364
+  },
+  "shaders/Live2D_Cubism_Lit-URP-ADV-optimize/gles3/s0p0_vertex_4.glsl": {
+   "asset": "assets/76ba0c9e55f6819bcaab2beb4059e20a3b96623afba1cdf97bfc2aed1d17e7dd.glsl.gz",
+   "size": 15021,
+   "stored": 2601
+  },
+  "shaders/Live2D_Cubism_Lit-URP-ADV-optimize/gles3/s0p0_vertex_5.glsl": {
+   "asset": "assets/3e596cdf7b4cb59cd64eaf95210128a6001f9645adfdeb50da2eaf5e05cbe672.glsl.gz",
+   "size": 16802,
+   "stored": 2930
+  },
+  "shaders/Live2D_Cubism_Lit-URP-ADV-optimize/gles3/s0p0_vertex_7.glsl": {
+   "asset": "assets/b76ce71628e85d2eae8ff3aa7ea3a2db0fa015edda9aaad4b43c0404f4beeb50.glsl.gz",
+   "size": 16838,
+   "stored": 2939
+  },
+  "shaders/Live2D_Cubism_Mask.json": {
+   "asset": "assets/1fb98c24253c28d076eb61c29d02fa56c93f591c15d3c0c17c602f3e74eb6a70.json.gz",
+   "size": 4649,
+   "stored": 725
+  },
+  "shaders/Live2D_Cubism_Mask/gles3/s0p0_vertex_0.glsl": {
+   "asset": "assets/e675927421e12afc3f3834e04cf04dea3db125857cf6cfe06dcc0a5908cde2b1.glsl.gz",
+   "size": 2459,
+   "stored": 716
+  },
+  "shaders/shaders.json": {
+   "asset": "assets/be0a00b9074fd458eaed77bfdc1d895b4c2331a040f67757f15d47b0920defcb.json.gz",
+   "size": 1556,
+   "stored": 353
+  },
+  "textures/texture_00-f765bdff.png": {
+   "asset": "assets/304264e4bed46d906796fdb92296fcced44df15a363825290e3df007004d4024.png",
+   "size": 2062566
+  },
+  "textures/texture_01-8f9725cd.png": {
+   "asset": "assets/23632a6a488b0cf233dcb5f99af65cefa636b5490cfb9f8268c64ea422e37893.png",
+   "size": 2085124
+  }
+ },
+ "format": 3,
+ "id": "adv_live2d_sakiko_010_casual_spring_01",
+ "key": "Character/Live2D/010_adv/adv_live2d_sakiko_010_casual_spring_01/model/adv_live2d_sakiko_010_casual_spring_01",
+ "model": {
+  "canvas": {
+   "height": 9000.0,
+   "mocVersion": 5,
+   "originX": 3000.0,
+   "originY": 4500.0,
+   "pixelsPerUnit": 6000.0,
+   "width": 6000.0
+  },
+  "group": "010_adv",
+  "nodes": 766,
+  "textures": 2
+ }
+}

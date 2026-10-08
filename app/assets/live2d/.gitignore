@@ -1,16 +1,14 @@
-# 模型数据不入库 —— 版权红线（见 14-系统形象与表演规则 / prototype 那边的说明）
+# ⚠️ 宿主拍板（2026-10-08）：取消本目录的入库屏蔽。
 #
-# sakiko 来自 BanG Dream! Our Notes 游戏数据包，版权归 Bushiroad / Craft Egg /
-# Ishimori 所有。这里只放**本机转换出来的**标准 Live2D 文件
-# （`tools/l2d/convert.py` 的产物），仅供本机验证，不入库不发布。
+# 原规则（已撤下）：本目录整体 `*` 忽略、只留 README —— 因为 sakiko 来自
+# BanG Dream! Our Notes 游戏数据包，版权归 Bushiroad / Craft Egg / Ishimori；
+# Hiyori 与 Cubism Core 归 Live2D Inc.。取消屏蔽意味着这些素材**随 git 仓库分发**，
+# 仓库必须保持私有，绝不可推公开远端。
 #
-# 用法：
-#   python tools/l2d/convert.py      # 从 prototype/…/sakiko 转出到这里
-#   cd app && flutter run
-# ⚠️ 否定规则必须"先放行目录、再重新忽略内容"，否则 git 根本不会进 sakiko/
-#    去找那个 README（`*` 忽略的是目录本身）
-*
-!.gitignore
-!sakiko/
-sakiko/*
-!sakiko/README.md
+# 取消的原因：跨机开发（Mac 侧）需要 clone 后即可构建，不再单独拷贝模型。
+# 若将来要恢复红线，把下面五条规则加回来即可（"先放行目录、再重新忽略内容"）：
+#   *
+#   !.gitignore
+#   !sakiko/
+#   sakiko/*
+#   !sakiko/README.md
