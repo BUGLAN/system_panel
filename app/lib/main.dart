@@ -62,8 +62,43 @@ void main() {
 class SysApp extends StatelessWidget {
   const SysApp({super.key});
 
+  /// ⚠️ **诊断开关（T7 attempt 2）**：true = 裸舞台页（只有 Live2DStage，
+  /// 无天幕/环场/任何 Flutter 层）——用来二分「原生不上屏」的责任方：
+  /// 裸页能上屏 = 我们 App 的树有合成冲突（可修）；裸页也黑 = 插件/emugl
+  /// 不兼容（scope 外，止损）。结论记 STAGE-OPTIONS；平时保持 false。
+  static const bool kStageBareProbe = false;
+
   @override
   Widget build(BuildContext context) {
+    if (kStageBareProbe) {
+      return MaterialApp(
+        debugShowCheckedModeBanner: false,
+        home: Scaffold(
+          backgroundColor: const Color(0xFF0A0E1A),
+          body: Stack(
+            fit: StackFit.expand,
+            children: <Widget>[
+              Live2DStage(
+                visible: true,
+                cam: Cam.byName('lobby'),
+                onReady: (Live2DStageHandle h) =>
+                    debugPrint('[bare] 裸舞台就绪'),
+                onFailed: () => debugPrint('[bare] 裸舞台失败'),
+              ),
+              // 一块对照 Flutter 内容（左上角），确认 Flutter 层还在画
+              const Positioned(
+                left: 8,
+                top: 8,
+                child: Text(
+                  'FLUTTER OVERLAY',
+                  style: TextStyle(color: Colors.cyanAccent, fontSize: 12),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
     return MaterialApp(
       title: 'SYSTEM · 宿主',
       debugShowCheckedModeBanner: false,

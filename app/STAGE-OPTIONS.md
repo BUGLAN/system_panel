@@ -323,3 +323,22 @@ JS 桥驱动 `setCam` / `emote` / `motion`。
 cache/flutter_live2d_models`（换数据/清缓存步骤）→ `flutter run -d 127.0.0.1:16512`
 → 大厅截图 + `dumpsys activity top | grep Live2DTextureView` + logcat 查
 `[stage]`/GL 0x501 → 上屏则跑 `tools/ref/calib_alpha.py` 标定 `StageCalib`。
+
+### attempt 2 追加（2026-10-09 深挖）—— 二分定案：责任在插件，不在我们
+
+- **裸舞台二分实验**（`SysApp.kStageBareProbe`，诊断开关保留、默认 false）：
+  只挂 `Live2DStage` 的裸页（无天幕/环场/ShakeLayer/任何 Flutter 层，
+  仅一块对照文字确认 Flutter 在画）→ **依旧全黑，且应用进程退出回桌面**
+  （`.verify/t7/05~06`；flutter run 报 "Lost connection to device"）。
+  → **合成/层序/我们 App 的树全部排除**：flutter_live2d 1.0.2 在 MuMu 的
+  emugl GL 转译层上不仅不渲染，裸跑还会崩进程。
+- **插件源码核查**（pub cache 1.0.2）：Android 侧 = `PlatformViewLink` +
+  `initExpensiveAndroidView`（HC 混合合成）+ 自建 `Live2DRenderHub` 线程
+  （独立 EGLContext GLES2 + TextureView SurfaceTexture）+ C++ 渲染
+  （`Live2DBridge.nativeOnDrawFrame`）。GL 0x501 出自 C++ 顶点提交，
+  Dart/Kotlin 层无任何开关可绕；Cubism Core 6.0.1 正常加载
+  （logcat：`Live2D Cubism SDK Core Version 6.0.1`），无 shader 编译日志。
+- **归因定案**：flutter_live2d 1.0.2 的 C++ 渲染管线与 MuMu 的 emugl GL
+  转译层不兼容（旧 AVD 同为 emugl，同因）。修它 = 改插件 C++（workspace 外、
+  pubspec 锁 1.0.2），**不在任何任务 scope 内**。
+- 裸探针开关（`SysApp.kStageBareProbe`）默认 false 且不影响正常路径，保留供复验。
