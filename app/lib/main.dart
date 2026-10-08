@@ -625,12 +625,19 @@ class _AppShellState extends State<AppShell>
                       (dispatch
                           ? '接不接？'
                           : fail
-                          ? '补救的路，我给你留着：明天 20:02 前，做一半。做到了，这次不算。'
+                          // `[[{dl}]]` 是时间（原型的补救台词在 content.js L397）
+                          ? LINES.remedyLine.replaceFirst(
+                              '[[{dl}]]',
+                              '[[明天 20:02]]',
+                            )
                           : main
-                          ? '${_goal.doneCount}/${_goal.rings.length} 环。顶上那个，是你的目标。'
+                          ? LINES.mainline(_goal.doneCount, _goal.rings.length)
                           : onboard
-                          ? '说吧。你想变成什么样？一句话。'
-                          : '我手里有 ${_host.queue} 单。都是给你的。'),
+                          ? LINES.askGoal
+                          : LINES.holding.replaceFirst(
+                              '[[{n}]]',
+                              '[[${_host.queue}]]',
+                            )),
                   mood: onboard
                       ? '专注'
                       : dispatch

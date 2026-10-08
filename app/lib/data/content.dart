@@ -71,6 +71,23 @@ class LINES {
   /// 按指纹按到一半松手（content.js L304）—— 原型 `line('waver')` 是三选一随机
   static const List<String> waver = <String>['……犹豫了？', '手抖什么。', '按住。别松。'];
 
+  /// ── 页面字幕（原型 `App.lineAt(mode)` 那几句）────────────────────────
+  ///
+  /// ⚠️ `[[…]]` 是**高亮**（`util.js` `richChars()` → `<em>`：青色 + 字重 650 + 辉光）。
+  /// 这几句原本被我写死在 `main.dart` 的 `LineLayer` 里，**高亮全丢了** ——
+  /// 原型里数字/关键词是要亮的，实测截图能看出来。搬进表里才可测（见 content_test）。
+  /// 大厅（content.js L313）
+  static const String holding = '我手里有 [[{n}]] 单。都是给你的。';
+
+  /// 绑定仪式问目标（content.js L280）
+  static const String askGoal = '说吧。你想变成什么样？[[一句话]]。';
+
+  /// 主线全景（content.js L397）
+  static String mainline(int d, int n) => '[[$d/$n]] 环。顶上那个，是你的目标。';
+
+  /// 认输后那句补救（content.js L397）—— 与失败页的补救**单**（`#fvRem`）不是一回事
+  static const String remedyLine = '补救的路，我给你留着：[[{dl}]]前，做一半。做到了，这次不算。';
+
   /// 用掉一个执行类道具（content.js L358-360）
   static const String itemDbl = '双倍卡，挂上了。最好别浪费。';
   static const String itemCrit = '暴击芯片，插好了。运气这东西，买得到一点。';
