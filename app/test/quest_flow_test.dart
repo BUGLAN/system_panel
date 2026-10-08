@@ -2,6 +2,8 @@ import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:system_panel/agent/vision.dart';
+import 'package:system_panel/data/rarity.dart';
 import 'package:system_panel/state/goal.dart';
 import 'package:system_panel/state/host_state.dart';
 import 'package:system_panel/state/quest.dart';
@@ -44,6 +46,59 @@ void main() {
     rank: 'D',
     attrs: <String, int>{'体': 1},
   );
+
+  /// D 级日常（retreat 降一档用：D → E，同 serial 重刻）
+  const Quest dQuest = Quest(
+    serial: 911,
+    kind: 'daily',
+    ring: -1,
+    ringTotal: 0,
+    name: '把一件拖了一周的小事做完',
+    reason: '',
+    proof: '完成截图',
+    minutes: 25,
+    rank: 'D',
+    attrs: <String, int>{'知': 1, '智': 1},
+  );
+
+  /// C 级日常（三连退触发「口头巨人」用：C→D→E→F 换单）
+  const Quest cQuest = Quest(
+    serial: 912,
+    kind: 'daily',
+    ring: -1,
+    ringTotal: 0,
+    name: '做一顿饭',
+    reason: '',
+    proof: '饭菜照片',
+    minutes: 40,
+    rank: 'C',
+    attrs: <String, int>{'体': 1, '知': 1},
+  );
+
+  /// F 级日常（F 还退＝换另一张 F 用）
+  const Quest fQuest = Quest(
+    serial: 913,
+    kind: 'daily',
+    ring: -1,
+    ringTotal: 0,
+    name: '发呆 10 分钟，不碰手机',
+    reason: '',
+    proof: '计时截图',
+    minutes: 12,
+    rank: 'F',
+    attrs: <String, int>{'知': 1},
+  );
+
+  /// 一张带校验状态的证据（t14：暴击口径分已校验/未校验）
+  EvidenceShot shot(String id, EvidenceStatus status) => EvidenceShot(
+    id: id,
+    path: 'evidence/q900/$id.jpg',
+    status: status,
+    takenAt: DateTime(2026, 1, 1, 10),
+  );
+
+  int attrSum(Quest q) =>
+      q.attrs.values.fold<int>(0, (int s, int v) => s + v);
 
   /// 干净宿主（lv1 exp0、三件执行道具各 1），时间钉死，随机源钉死
   QuestFlow freshFlow({HostState? host, Goal? goal, List<Quest>? queue}) {
@@ -160,11 +215,13 @@ void main() {
       final QuestFlow f = QuestFlow.demo(); // streak 6
       expect(f.critChance(), 0); // 没接单
       f.accept(f.head!);
-      expect(f.critChance(), closeTo(.12, 1e-9)); // .06 + 6×.01
+      expect(f.critChance(), closeTo(.12, 1e-9)); // .06 + 6×.01，0 证据不回归
       f.useItem('crit');
       expect(f.critChance(), closeTo(.37, 1e-9));
-      f.active!.photos = 3;
-      expect(f.critChance(), closeTo(.55, 1e-9)); // .37 + 3×.06
+      for (int i = 0; i < 3; i++) {
+        expect(f.addEvidence(shot('v$i', EvidenceStatus.verified)), isTrue);
+      }
+      expect(f.critChance(), closeTo(.58, 1e-9)); // .37 + 3×.07（已校验 7%/张）
     });
   });
 
@@ -517,6 +574,220 @@ void main() {
         }
       }
       expect(f.host.doneCount, HostState.demo.doneCount + 3); // demo 档本身 31 单
+    });
+  });
+
+  group('证据状态进结算（t14：已校验 7% / 未校验 4%，封顶 .85）', () {
+    test('口径分档：1 已校验 + 1 未校验 = .06+.07+.04，不与底值双重计', () {
+      final QuestFlow f = freshFlow(); // streak 0
+      f.accept(eQuest);
+      expect(f.addEvidence(shot('a', EvidenceStatus.verified)), isTrue);
+      expect(f.addEvidence(shot('b', EvidenceStatus.unverified)), isTrue);
+      expect(f.active!.verifiedCount, 1);
+      expect(f.active!.unverifiedCount, 1);
+      expect(f.critChance(), closeTo(.06 + .07 + .04, 1e-9));
+      // 存疑按未校验计（exec_panel 同口径）
+      expect(f.addEvidence(shot('c', EvidenceStatus.suspect)), isTrue);
+      expect(f.critChance(), closeTo(.06 + .07 + .04 + .04, 1e-9));
+    });
+
+    test('settle 用的 chance 就是证据联动口径（进 QuestResult.chance）', () {
+      final QuestFlow f = freshFlow();
+      f.accept(eQuest);
+      f.addEvidence(shot('a', EvidenceStatus.verified));
+      f.addEvidence(shot('b', EvidenceStatus.unverified));
+      final QuestResult? r = f.settle(forceCrit: false);
+      expect(r!.photos, 2);
+      expect(r.chance, closeTo(.17, 1e-9));
+    });
+
+    test('封顶 .85：证据计数喂爆也不会超（口径唯一真源 vision.critChance）', () {
+      final QuestFlow f = freshFlow();
+      f.accept(eQuest);
+      expect(f.critChance(verified: 99, unverified: 99), .85);
+    });
+
+    test('addEvidence：最多 3 张（flows.js snap 的 >=3 拦截）；remove 按 id', () {
+      final QuestFlow f = freshFlow();
+      expect(f.addEvidence(shot('x', EvidenceStatus.unverified)), isFalse);
+      f.accept(eQuest);
+      for (int i = 0; i < QuestFlow.kMaxEvidence; i++) {
+        expect(f.addEvidence(shot('s$i', EvidenceStatus.verified)), isTrue);
+      }
+      expect(f.addEvidence(shot('s9', EvidenceStatus.verified)), isFalse);
+      expect(f.active!.photos, 3);
+      expect(f.removeEvidence('s1'), isTrue);
+      expect(f.active!.photos, 2);
+      expect(f.removeEvidence('没有这张'), isFalse);
+    });
+  });
+
+  group('换一个 retreat（store.js L235-250 全语义）', () {
+    test('非 F 级：同一张单降一档重刻（serial 不变），六维按新档点数重分', () {
+      final QuestFlow f = freshFlow(queue: <Quest>[dQuest]);
+      final RetreatOutcome? o = f.retreat(dQuest, now: DateTime(2026, 1, 1, 9));
+      expect(o, isNotNull);
+      expect(o!.task.rank, 'D', reason: '旧档位留在 outcome.task');
+      expect(o.replacement, isNotNull);
+      expect(o.replacement!.rank, 'E', reason: 'rankShift(-1)：D → E');
+      expect(
+        o.replacement!.serial,
+        dQuest.serial,
+        reason: '同一张单重刻，不是换新单',
+      );
+      expect(o.replacement!.name, dQuest.name);
+      expect(o.replacement!.minutes, dQuest.minutes);
+      expect(
+        attrSum(o.replacement!),
+        Rarity.of('E').pt,
+        reason: '六维按新档点数（E=1）重分',
+      );
+      expect(f.head?.rank, 'E');
+      expect(f.queue.length, 1);
+      expect(f.retreatedTimes(dQuest.serial), 1);
+      expect(f.retreatToday, 1);
+      expect(f.retreatTotal, 1);
+    });
+
+    test('F 级还退：换另一张 F 日常顶位（新 serial、F 档、1 点六维）', () {
+      final QuestFlow f = freshFlow(queue: <Quest>[fQuest]);
+      final RetreatOutcome? o = f.retreat(fQuest, now: DateTime(2026, 1, 1, 9));
+      expect(o, isNotNull);
+      final Quest? nt = o!.replacement;
+      expect(nt, isNotNull, reason: '日常池不会空');
+      expect(nt!.serial, isNot(fQuest.serial), reason: '换上来的是另一张单');
+      expect(nt.rank, 'F', reason: 'F 还退不降档，换一张别的 F');
+      expect(nt.kind, 'daily');
+      expect(attrSum(nt), Rarity.of('F').pt);
+      expect(nt.reason, isNotEmpty, reason: '换上的单要重新配一句附言');
+      expect(f.head?.serial, nt.serial);
+      expect(f.queue.length, 1);
+      expect(f.retreatedTimes(fQuest.serial), 0, reason: '换单不算这张单的退缩次数');
+    });
+
+    test('跨日：retreatToday 归零重计，retreatTotal 继续累计', () {
+      final QuestFlow f = freshFlow(queue: <Quest>[dQuest]);
+      f.retreat(dQuest, now: DateTime(2026, 1, 1, 9)); // D→E（原地重刻）
+      f.retreat(f.head!, now: DateTime(2026, 1, 1, 20)); // E→F（原地重刻）
+      expect(f.retreatToday, 2);
+      expect(f.retreatTotal, 2);
+      f.retreat(f.head!, now: DateTime(2026, 1, 2, 9)); // 跨天：已是 F → 换一张
+      expect(f.retreatToday, 1, reason: '当日计数跨天归零');
+      expect(f.retreatTotal, 3, reason: '累计跨天继续涨');
+    });
+
+    test('不在她手里的单 → null，计数不动', () {
+      final QuestFlow f = freshFlow(queue: <Quest>[dQuest]);
+      expect(f.retreat(eQuest), isNull);
+      expect(f.retreatToday, 0);
+      expect(f.retreatTotal, 0);
+    });
+
+    test('累计退缩 ≥3 → 强制佩戴「口头巨人」（只触发一次）', () {
+      final QuestFlow f = freshFlow(queue: <Quest>[cQuest]);
+      final DateTime t = DateTime(2026, 1, 1, 9);
+      expect(f.retreat(cQuest, now: t)!.shame, isFalse); // C→D
+      expect(f.retreat(f.head!, now: t)!.shame, isFalse); // D→E
+      final RetreatOutcome? third = f.retreat(f.head!, now: t); // E→F（原地）
+      expect(third!.shame, isTrue);
+      expect(third.count, 3);
+      expect(f.host.ownedTitles, contains('mouth'));
+      expect(f.host.title, 'mouth');
+      expect(f.titleBeforeShame, 'bind');
+      // 第 4 次：已经是 F → 换一张别的 F；已解锁过，不再触发
+      final int before = f.head!.serial;
+      final RetreatOutcome? fourth = f.retreat(f.head!, now: t);
+      expect(fourth!.shame, isFalse);
+      expect(fourth.replacement!.serial, isNot(before), reason: 'F 还退换成新单');
+      expect(f.retreatTotal, 4);
+      expect(f.host.ownedTitles.where((String t2) => t2 == 'mouth').length, 1);
+    });
+  });
+
+  group('称号佩戴 equip（store.js L385）', () {
+    test('未解锁 → false 忽略；已解锁 → 换挂 + 存档通知', () {
+      final QuestFlow f = QuestFlow.demo(); // veteran 档：title = done15
+      int saved = 0;
+      f.onChanged = () => saved++;
+      expect(f.equip('rankS'), isFalse, reason: '没解锁过的称号不认');
+      expect(f.host.title, 'done15');
+      expect(saved, 0, reason: '失败不发存档通知');
+      expect(f.equip('first'), isTrue);
+      expect(f.host.title, 'first');
+      expect(saved, 1);
+      expect(f.equip('done15'), isTrue, reason: '重复/换回也是成功（原型同款）');
+      expect(f.host.title, 'done15');
+      expect(saved, 2);
+    });
+
+    test('「口头巨人」生效中禁换挂（摘不掉，完成一单再说）', () {
+      final QuestFlow f = freshFlow(queue: <Quest>[cQuest]);
+      final DateTime t = DateTime(2026, 1, 1, 9);
+      for (int i = 0; i < 3; i++) {
+        f.retreat(f.head!, now: t);
+      }
+      expect(f.host.title, 'mouth');
+      expect(f.equip('bind'), isFalse);
+      expect(f.host.title, 'mouth', reason: '强制期里换挂一律拒绝');
+    });
+
+    test('强制期在交成一单后结束：换回称号，新称号照常解锁（store.js L311）', () {
+      final QuestFlow f = freshFlow(queue: <Quest>[cQuest]);
+      final DateTime t = DateTime(2026, 1, 1, 9);
+      for (int i = 0; i < 3; i++) {
+        f.retreat(f.head!, now: t);
+      }
+      expect(f.host.title, 'mouth');
+      f.accept(f.head!, now: DateTime(2026, 1, 1, 10));
+      final QuestResult? r = f.settle(
+        now: DateTime(2026, 1, 1, 10, 30),
+        forceCrit: false,
+      );
+      expect(r, isNotNull);
+      expect(f.host.title, 'first', reason: '强制期结束换回，再戴上本次解锁的 first');
+      expect(f.titleBeforeShame, isNull);
+      expect(f.host.ownedTitles, containsAll(<String>['mouth', 'first']));
+    });
+  });
+
+  group('补给 buy（store.js L380-384）', () {
+    test('买得起：扣金币 + 道具 +1 + 存档通知；买不起：false 且分文不动', () {
+      final QuestFlow f = freshFlow(host: HostState.empty.copyWith(coins: 100));
+      int saved = 0;
+      f.onChanged = () => saved++;
+      expect(f.buy('dbl'), isTrue); // 双倍卡 60
+      expect(f.host.coins, 40);
+      expect(f.host.items['dbl'], 1);
+      expect(saved, 1);
+      expect(f.buy('crit'), isFalse, reason: '暴击芯片 45 > 40 买不起');
+      expect(f.host.coins, 40);
+      expect(f.host.items['crit'], 0);
+      expect(saved, 1, reason: '失败不发存档通知');
+      expect(f.buy('不存在的道具'), isFalse);
+    });
+
+    test('金币原样不够就false：边界正好等于价格 → 买得起', () {
+      final QuestFlow f = freshFlow(host: HostState.empty.copyWith(coins: 30));
+      expect(f.buy('swap'), isTrue, reason: '换单券 30 = 30');
+      expect(f.host.coins, 0);
+      expect(f.host.items['swap'], 1);
+    });
+  });
+
+  group('接口与 t10 装配对齐', () {
+    test('sheet/plate 的回调形状能直接接上（ValueChanged<String> / retreat）', () {
+      final QuestFlow f = QuestFlow.demo();
+      // Sheet.onEquipTitle / onBuyItem 都是 ValueChanged<String>
+      final void Function(String) onEquip = f.equip;
+      final void Function(String) onBuy = f.buy;
+      onEquip('crit'); // demo 档已解锁 crit → 换挂
+      expect(f.host.title, 'crit');
+      onBuy('shield'); // 340 ≥ 90 → 真买
+      expect(f.host.items['shield'], HostState.demo.items['shield']! + 1);
+      // PlateAlt.onPick 是 ValueChanged<int>：main.dart 侧 idx==0 → retreat(head)
+      final RetreatOutcome? o = f.retreat(f.head!);
+      expect(o, isNotNull);
+      expect(o!.replacement?.rank, 'D', reason: 'demo 队首 C → 降一档 D');
     });
   });
 }

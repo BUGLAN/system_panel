@@ -1,7 +1,9 @@
 import 'dart:math' as math;
 
+import '../agent/vision.dart' as vision;
 import '../data/attrs.dart';
 import '../data/format.dart';
+import '../data/items.dart';
 import '../data/rarity.dart';
 import 'goal.dart';
 import 'host_state.dart';
@@ -16,6 +18,10 @@ import 'result.dart';
 ///  不做任何结算（docs/18 §1.2 根因①②）——现在全部经这里产出真实
 ///  QuestResult 并落到档案 / 主线 / 队列，再由 main.dart 持久化。
 ///
+///  返工卡（t14）增补：换一个 retreat（计数+口头巨人+降档/换单）、
+///  补给 buy（扣币加道具）、挂称号 equip（mouth 强制期禁换挂）、
+///  证据带校验状态进暴击率（vision.dart evidenceCritBonus 7%/4%，封顶 .85）。
+///
 ///  ⚠️ 界面层只读公开 API；数值**只能经结算**进档案（Agent 工具的钳制同样如此）。
 ///
 ///  数值表：docs/18-Agent系统升级方案.md §2.3（E~S 奖励 + need=12+lv×6）。
@@ -24,7 +30,11 @@ import 'result.dart';
 
 /// 正在执行的那一单（原型 `S.active = { task, startAt, photos, dbl, crit, shield }`）
 class ActiveQuest {
-  ActiveQuest({required this.task, required this.startAt});
+  ActiveQuest({
+    required this.task,
+    required this.startAt,
+    List<vision.EvidenceShot>? evidence,
+  }) : evidence = evidence ?? <vision.EvidenceShot>[];
 
   final Quest task;
 
@@ -36,8 +46,21 @@ class ActiveQuest {
   bool crit = false;
   bool shield = false;
 
-  /// 已交的证据份数（拍照接线在 T4，结算口径先占位）
-  int photos = 0;
+  /// 本单的证据（docs/18 §2.4：每张带校验状态 ✓/存疑/未校验）。
+  /// 原型的 `A.photos` 是纯份数数组；这里升级为 vision.dart 的 EvidenceShot，
+  /// 暴击口径按已校验/未校验分别计（`critChance`）。
+  final List<vision.EvidenceShot> evidence;
+
+  /// 已交证据份数（旧口径：结算页/战报还读这个数）
+  int get photos => evidence.length;
+
+  /// 已校验份数（LLM 判真）；存疑与未校验一律按未校验计（exec_panel 同口径）
+  int get verifiedCount => evidence
+      .where((vision.EvidenceShot s) => s.status == vision.EvidenceStatus.verified)
+      .length;
+
+  /// 未校验份数 = 总数 - 已校验
+  int get unverifiedCount => evidence.length - verifiedCount;
 }
 
 /// 认输 / 超时的产出（原型 `Store.fail()` 的返回值，T2 消费补救单与时长）
@@ -57,6 +80,33 @@ class FailOutcome {
   /// 生成的补救单（原型同款：做一半 · 降两档 · 24 小时有效）
   final Quest? remedy;
   final DateTime? remedyDeadline;
+}
+
+/// 「换一个」的产出（原型 `Store.retreat()` 返回的 `{ n, shame }` 加上新单）。
+class RetreatOutcome {
+  const RetreatOutcome({
+    required this.task,
+    required this.count,
+    required this.total,
+    required this.shame,
+    this.replacement,
+  });
+
+  /// 退掉的那一单（降档前的样子 —— 结算台词/界面重刻要读它的旧档位）
+  final Quest task;
+
+  /// 换上的那一单：非 F 级 = 同 serial 降一档重刻；F 级还退 = 另一张 F 日常。
+  /// null = F 级但日常池枯了，原单原样留着（原型 `if (nt)` 的兜底）。
+  final Quest? replacement;
+
+  /// 今天第几次退缩（含本次；原型 `info.n`，台词 retreat1/2/3 按它分档）
+  final int count;
+
+  /// 累计退缩次数（跨日不清；原型 `S.retreatTotal`）
+  final int total;
+
+  /// 本次触发了「口头巨人」强制佩戴（累计 ≥3 且还没解锁过）
+  final bool shame;
 }
 
 /// 一张日常模板（原型 `DAILY_COMMON`，content.js L224-239）。
@@ -103,10 +153,41 @@ class QuestFlow {
   DateTime? _lastDoneDay;
   int _failStreak = 0;
 
+  /// 退缩计数（store.js `S.retreatDay / retreatToday / retreatTotal`；
+  /// 随存档迁移在 T6 补字段 —— 与 lastDoneDay 同一批）
+  DateTime? _retreatDay;
+  int _retreatToday = 0;
+  int _retreatTotal = 0;
+
+  /// 「口头巨人」戴上之前的称号（store.js `S.prevTitle`）——
+  /// 结算交成这一单就换回去（强制期结束，原型 ui.js L609「完成一单再说」）
+  String? _titleBeforeShame;
+
+  /// 每张单被退缩过几次（原型 `T.retreated`；key = serial）
+  final Map<int, int> _retreated = <int, int>{};
+
+  /// 执行页最多挂 3 张证据（原型 flows.js `snap()` 的 `>= 3` 拦截）
+  static const int kMaxEvidence = 3;
+
   ActiveQuest? get active => _active;
   Quest? get remedyOffer => _remedyOffer;
   DateTime? get remedyDeadline => _remedyDeadline;
   int get failStreak => _failStreak;
+
+  /// 今天退缩了几次 / 累计退缩几次（store.js `S.retreatToday / retreatTotal`）
+  int get retreatToday => _retreatToday;
+  int get retreatTotal => _retreatTotal;
+
+  /// 「口头巨人」戴上之前的称号（null = 不是从强制期里来的）
+  String? get titleBeforeShame => _titleBeforeShame;
+
+  /// 某张单（按 serial）被退缩过几次（原型 `T.retreated`）
+  int retreatedTimes(int serial) => _retreated[serial] ?? 0;
+
+  /// 存档通知（原型每个宿主回应末尾的 `this.save()`）：equip/buy/retreat
+  /// 改完状态后回调整 —— main.dart 把它接到 `_persist()` 即可（t10 装配）。
+  void Function()? onChanged;
+  void _notify() => onChanged?.call();
 
   /// 队首（原型 `Store.head()`；T2 不做演示开关，直接给第一张）
   Quest? get head => queue.isEmpty ? null : queue.first;
@@ -380,16 +461,23 @@ class QuestFlow {
     return true;
   }
 
-  /// 暴击率（store.js `critChance`）：底 6% + 每份证据 6%（≤3）+ 连击 1%/天（≤10）
-  /// + 暴击芯片 25%，封顶 85%。
+  /// 暴击率（store.js `critChance` 的证据联动升级版，docs/18 §2.4）：
+  /// 底 6% + **已校验 7%/张 + 未校验 4%/张**（vision.dart `evidenceCritBonus`）
+  /// + 连击 1%/天（≤10）+ 暴击芯片 25%，封顶 85%。
+  ///
+  /// 口径唯一真源 = vision.dart 的 `critChance`（内部已含底值/连击/芯片，
+  /// 这里只喂证据计数 —— 基础值与证据加成**不二次叠加**）。
   /// ⚠️ 演示档（streak 6、0 证据、无芯片）= .12 —— 与原写死值一致，实测不回归。
-  double critChance({int? photos}) {
+  ///
+  /// [verified]/[unverified] 只给测试与预览用（缺省读执行中那单的真实证据）。
+  double critChance({int? verified, int? unverified}) {
     final ActiveQuest? a = _active;
     if (a == null) return 0;
-    final int p = photos ?? a.photos;
-    return math.min(
-      .85,
-      .06 + .06 * math.min(3, p) + math.min(10, host.streak) * .01 + (a.crit ? .25 : 0),
+    return vision.critChance(
+      verified: verified ?? a.verifiedCount,
+      unverified: unverified ?? a.unverifiedCount,
+      streak: host.streak,
+      critItem: a.crit,
     );
   }
 
@@ -512,6 +600,13 @@ class QuestFlow {
       redeemed: redeemed,
       finale: finale,
     );
+    // 「口头巨人」强制期结束：这一单交成了 → 换回退缩前的称号
+    // （store.js L311 的 unshamed；原型 ui.js L609「完成一单再说」）
+    final String? prev = _titleBeforeShame;
+    if (host.title == 'mouth' && prev != null) {
+      host = host.copyWith(title: prev);
+      _titleBeforeShame = null;
+    }
     if (titles.isNotEmpty) {
       host = host.copyWith(
         ownedTitles: <String>{...host.ownedTitles, ...titles}.toList(),
@@ -631,6 +726,125 @@ class QuestFlow {
     _syncQueueCount();
     return r;
   }
+
+  // ── 换一个 / 补给 / 挂称号（store.js retreat / buy / equip）──────────
+
+  /// 挂证据：接到执行中那单上（拍照接线归 t4）。最多 [kMaxEvidence] 张
+  /// （原型 flows.js `snap()` 拦在 3）；没接单/已满 → false。
+  bool addEvidence(vision.EvidenceShot shot) {
+    final ActiveQuest? a = _active;
+    if (a == null) return false;
+    if (a.evidence.length >= kMaxEvidence) return false;
+    a.evidence.add(shot);
+    return true;
+  }
+
+  /// 撤一张证据（执行页长按删除，按 [id] 找）。没找到/没接单 → false。
+  bool removeEvidence(String id) {
+    final ActiveQuest? a = _active;
+    if (a == null) return false;
+    final int n = a.evidence.length;
+    a.evidence.removeWhere((vision.EvidenceShot s) => s.id == id);
+    return a.evidence.length != n;
+  }
+
+  /// 「换一个」（store.js `retreat` L235-250 的全语义）：
+  ///  · 当日计数重置（跨天归零）→ retreatToday/Total 各 +1；
+  ///  · 累计 ≥3 且还没解锁过 → 强制佩戴「口头巨人」（耻辱称号，禁摘）；
+  ///  · 非 F 级：**同一张单**降一档重刻（`rankShift(-1)`，六维按新档点数重分，
+  ///    serial 不变 —— 她只是把这张单刻薄了一点）；
+  ///  · F 级还退：换**另一张** F 日常顶到这个位置（池子枯了就原样留着）。
+  ///
+  /// [t] 不在她手里 → null（调用方自行兜底）。
+  RetreatOutcome? retreat(Quest t, {DateTime? now}) {
+    final int idx = queue.indexWhere((Quest q) => q.serial == t.serial);
+    if (idx < 0) return null;
+    final DateTime t0 = now ?? DateTime.now();
+    final DateTime today = DateTime(t0.year, t0.month, t0.day);
+    if (_retreatDay == null || !_isSameDay(_retreatDay!, today)) {
+      _retreatDay = today;
+      _retreatToday = 0;
+    }
+    _retreatToday++;
+    _retreatTotal++;
+    bool shame = false;
+    if (_retreatTotal >= 3 && !host.ownedTitles.contains('mouth')) {
+      _titleBeforeShame = host.title;
+      host = host.copyWith(
+        ownedTitles: <String>{...host.ownedTitles, 'mouth'}.toList(),
+        title: 'mouth',
+      );
+      shame = true;
+    }
+
+    Quest? replacement;
+    if (t.rank == 'F') {
+      // F 还退：换一张别的 F（原型 `genDaily(1)[0]` → 钉回 F 档）
+      final List<Quest> gen = genDaily(1);
+      if (gen.isNotEmpty) {
+        final Quest nt = _reRank(gen.first, 'F', reason: reasonFor(gen.first));
+        queue[idx] = nt;
+        replacement = nt;
+      }
+    } else {
+      final String nr = rankShift(t.rank, -1);
+      final Quest nt = _reRank(t, nr);
+      queue[idx] = nt;
+      replacement = nt;
+      _retreated[t.serial] = (_retreated[t.serial] ?? 0) + 1;
+    }
+
+    _syncQueueCount();
+    _notify();
+    return RetreatOutcome(
+      task: t,
+      replacement: replacement,
+      count: _retreatToday,
+      total: _retreatTotal,
+      shame: shame,
+    );
+  }
+
+  /// 购买（store.js `buy` L380-384）：买不起/没这个道具 → false；
+  /// 成功 = 扣金币 + 道具 +1 + 存档通知。
+  bool buy(String id) {
+    final Item? it = Item.byId(id);
+    if (it == null) return false;
+    if (host.coins < it.price) return false;
+    host = host.copyWith(
+      coins: host.coins - it.price,
+      items: <String, int>{...host.items, id: (host.items[id] ?? 0) + 1},
+    );
+    _notify();
+    return true;
+  }
+
+  /// 称号佩戴（store.js `equip` L385）：未解锁 → false（忽略）；
+  /// 「口头巨人」生效中禁换挂 → false（摘不掉，完成一单再说）；
+  /// 成功 = 换挂 + 存档通知 + true（重复点当前称号也成功，原型同款）。
+  bool equip(String id) {
+    if (!host.ownedTitles.contains(id)) return false;
+    if (host.title == 'mouth') return false;
+    host = host.copyWith(title: id);
+    _notify();
+    return true;
+  }
+
+  /// 同一张单换个档重刻：六维按新档点数重分。
+  /// ⚠️ 本侧没有基准维 baseA，用现分配当权重 —— fail() 的补救单同口径。
+  Quest _reRank(Quest q, String rank, {String? reason}) => Quest(
+    serial: q.serial,
+    kind: q.kind,
+    ring: q.ring,
+    ringTotal: q.ringTotal,
+    name: q.name,
+    reason: reason ?? q.reason,
+    proof: q.proof,
+    minutes: q.minutes,
+    rank: rank,
+    attrs: splitAttrs(q.attrs, Rarity.of(rank).pt),
+    hinted: q.hinted,
+  );
 
   static bool _isSameDay(DateTime a, DateTime b) =>
       a.year == b.year && a.month == b.month && a.day == b.day;
