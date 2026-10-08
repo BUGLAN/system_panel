@@ -1,9 +1,63 @@
 # 舞台（Live2D 角色）落地路线
 
+> **2026-10-08 更新：转换器已经写完并跑通。**
+> 见 `tools/l2d/convert.py` —— 它把 sakiko 的 Unity prefab 转成标准 Live2D 文件，
+> 产物结构已逐项验证（见文末）。**所以走 ① 不再是"要不要写转换器"的取舍，
+> 而是"接哪个插件"的问题。**
+
 > 2026-10-08 调研。除"她"以外，舞台的其余部分（镜头数学、身上的环、环挂签、
 > 投影光束、亮帧/震屏）**都已经在 `app/` 里跑起来了** —— 见
 > `lib/stage/camera.dart`、`lib/stage/ring_painter.dart`、`lib/widgets/ring_tag.dart`。
 > 这一页只解决"人形"这一件事。
+
+## ✅ 转换器（`tools/l2d/convert.py`）
+
+### 为什么可行 —— 查过数据，不是猜
+
+`sakiko/models/adv_..._01.json` 是一个 Unity 工程序列化：`.moc3`（标准）+ 2 张贴图（标准）
++ 一个 7.4MB 的 prefab。prefab 里 766 个节点带这些组件：
+
+| 组件 | 数量 | 里面是什么 |
+|---|---|---|
+| `CubismParameter` / `CubismPart` / `CubismDrawable` | 210 / 160 / 389 | 参数、部件、网格 |
+| `CubismExpressionData` | 28 | **表情**：`{Type, FadeInTime, FadeOutTime, Parameters:[{Id,Value,Blend}]}` |
+| （动作资产） | 64 | **动作**：`{MotionName, MotionLength, FadeInTime, FadeOutTime, ParameterIds, ParameterCurves:[{m_Curve:[{time,value,inSlope,outSlope}]}], ParameterFadeInTimes, ParameterFadeOutTimes}` |
+| `CubismPhysicsController` | 1 | **物理**：`_rig.SubRigs[{Name, Input, Output, Particles, Normalization}]` + `Gravity/Wind/Fps` |
+
+也就是说：**表情的字段与 `exp3.json` 几乎同名；动作是 Cubism 的 `CubismFadeMotionData`
+（摊平的动作，参数 ID 可读）；物理与 `physics3.json` 字段一一对应。**
+这不是逆向工程二进制，是**换一层壳 + 一个标准插值转换**。
+
+### 关键换算：Unity Hermite → Live2D 贝塞尔段
+
+```
+c1 = (t0 + dt/3, v0 + outSlope(t0) * dt/3)
+c2 = (t1 - dt/3, v1 - inSlope(t1)  * dt/3)
+```
+
+⚠️ 那个 `1/3` 是 `--slope-scale`，**不是写死的** —— Unity 各版本对 tangent 的缩放约定
+不完全一致。对不上的症状是"动作幅度明显偏大/偏小"。
+
+### 产物（`live2d/sakiko/std/`，在 `.gitignore` 之下）
+
+```
+sakiko.model3.json · sakiko.moc3 · sakiko.physics3.json
+textures/texture_00.png · texture_01.png
+motions/*.motion3.json （64，17 组） · expressions/*.exp3.json （28）
+```
+
+### 已验证
+
+| 项 | 结果 |
+|---|---|
+| moc3 | 魔数 `MOC3`，6,558,656 字节（与清单记的大小一字不差） |
+| motion3 | `Version 3` · `ParamAngleX` · `Segments: [1, x0,y0, c1,c2,终点 …]`（贝塞尔段格式正确） |
+| exp3 | `Type: "Live2D Expression"` · `Parameters[{Id,Value,Blend}]` |
+| physics3 | 28 条 rig · 52 输入 · 57 输出 · 83 顶点 · 名字可读（`前髪揺れ`） |
+| model3 | `EyeBlink ['ParamEyeLOpen','ParamEyeROpen']` · `LipSync ['ParamMouthOpenY']` · 17 动作组 · 28 表情 |
+
+**还没做的**：把它真正加载起来渲染 —— 下一步是接 `flutter_live2d`（mocVersion 5，
+需要插件里带的 Cubism Core 够新，这是下一个要验的点）。
 
 ## 现状：原型里的她是怎么渲染的
 
