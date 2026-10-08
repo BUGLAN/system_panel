@@ -68,9 +68,21 @@ class Live2DStage extends StatefulWidget {
   /// 加载失败（拿不到模型就退回剪影）
   final VoidCallback? onFailed;
 
+  /// ⚠️ **对照实验开关**：临时换成标准模型 Hiyori 来定位问题。
+  ///
+  /// **实验做完了，结论留在 `app/STAGE-OPTIONS.md`：**
+  /// 换成标准模型 Hiyori 之后**照样什么都看不见**（而它 `loadModel` 第一次就返回
+  /// true，sakiko 要两次）。所以 —— **问题不在我转换的模型，在插件/合成的这一层。**
+  /// 想复现细节时把它改成 `true` 即可。
+  static const bool useHiyoriControl = false;
+
   /// 本机转换出来的模型（`tools/l2d/convert.py`）
-  static const String modelDir = 'assets/live2d/sakiko/';
-  static const String modelFile = 'sakiko.model3.json';
+  static const String modelDir = useHiyoriControl
+      ? 'assets/live2d/hiyori/'
+      : 'assets/live2d/sakiko/';
+  static const String modelFile = useHiyoriControl
+      ? 'Hiyori.model3.json'
+      : 'sakiko.model3.json';
 
   /// `model3.json` 里 `Expressions` 的顺序。
   ///
@@ -119,10 +131,10 @@ class Live2DStage extends StatefulWidget {
 class _Live2DStageState extends State<Live2DStage> {
   final Live2DViewController _ctrl = Live2DViewController();
 
-  /// 模型是不是真加载出来了
-  bool _ok = false;
-
-  /// 加载失败（不再尝试，退回剪影）
+  /// 加载失败（不再尝试，把平台视图从树里摘掉，退回剪影）
+  ///
+  /// ⚠️ 只在**加载流程结束之后**才可能为真 —— 那时 surface 早就建好了，
+  ///    所以这样收掉是安全的；换成一开始就 `Opacity(0)` 会死锁（见 build 的注释）。
   bool _failed = false;
   bool _reported = false;
 
@@ -155,10 +167,14 @@ class _Live2DStageState extends State<Live2DStage> {
         );
       }
       if (!mounted) return;
-      setState(() => _ok = ok);
       if (ok) {
         // 默认待机动作与表情（与游戏剧情里一致：`mtn_idle01_C` / `exp_idle01`）
-        unawaited(_ctrl.startMotion(group: 'idle', priority: 1));
+        unawaited(
+          _ctrl.startMotion(
+            group: Live2DStage.useHiyoriControl ? 'Idle' : 'idle',
+            priority: 1,
+          ),
+        );
         final int ei = Live2DStage.expressionIndex('exp_idle01');
         if (ei >= 0) unawaited(_ctrl.setExpression(ei));
         widget.onReady?.call(Live2DStageHandle(_ctrl));
@@ -167,7 +183,6 @@ class _Live2DStageState extends State<Live2DStage> {
       }
     } on Object catch (e) {
       debugPrint('[stage] 模型加载失败：$e');
-      if (mounted) setState(() => _ok = false);
       _fail();
     }
   }
@@ -188,6 +203,10 @@ class _Live2DStageState extends State<Live2DStage> {
   @override
   Widget build(BuildContext context) {
     if (!widget.visible) return const SizedBox.shrink();
+    // 确认加载失败 → 把平台视图摘掉，让舞台露出下面的全息剪影。
+    // ⚠️ 只有**加载流程结束**后才可能走到这里 —— 那时 surface 早建好了，
+    //    所以摘掉是安全的；反过来"一开始就 opacity 0"会死锁（见下）。
+    if (_failed) return const SizedBox.shrink();
     // ⚠️⚠️ **一开始就必须让它可见，绝不能 opacity: 0。**
     //
     //    踩过的坑（第二轮才定位到）：`flutter_live2d` 的原生侧把 loadModel

@@ -39,6 +39,11 @@ flutter:
     - assets/live2d/sakiko/motions/
     - assets/live2d/sakiko/expressions/
     - assets/live2d/sakiko/textures/
+    # ⚠️ 对照组：标准模型 Hiyori（用来区分"我转换的模型有问题"还是
+    #    "插件/模拟器不渲染"）。这个也是版权素材，同样在 .gitignore 之下。
+    - assets/live2d/hiyori/
+    - assets/live2d/hiyori/motions/
+    - assets/live2d/hiyori/Hiyori.2048/
 
   # 字体四件套 —— 真源：prototype/opus-v2-dir/css/app.css 的 @font-face
   # 四个都是可变字体，字重/字宽必须在代码里用 fontVariations 指定：
