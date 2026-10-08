@@ -27,6 +27,7 @@ import 'widgets/banner.dart';
 import 'widgets/choices.dart';
 import 'widgets/dock.dart';
 import 'widgets/exec_panel.dart';
+import 'widgets/exec_pill.dart';
 import 'widgets/fail_layer.dart';
 import 'widgets/fx_layer.dart';
 import 'widgets/fx_particles.dart';
@@ -181,6 +182,7 @@ class _AppShellState extends State<AppShell>
       // 新的一单：抽屉收起、上一单挂过的道具清掉（原型 `A.dbl/crit/shield` 随新单重建）
       _drawerOn = false;
       _usedItems.clear();
+      _active = true; // 原型 `S.active` —— 收起后它仍然为真
     });
     _clock.startFast();
   }
@@ -429,10 +431,7 @@ class _AppShellState extends State<AppShell>
                 Hud(
                   state: _host,
                   visible: lobby || exec,
-                  onMenu: () => setState(() {
-                    _sheetKind = SheetKind.system;
-                    _moment = Moment.sheet;
-                  }),
+                  onMenu: () => _openSheet(SheetKind.system),
                 ),
                 Dock(
                   state: _host,
@@ -445,12 +444,7 @@ class _AppShellState extends State<AppShell>
                         _moment = Moment.main;
                       });
                     } else if (i == 1 || i == 2) {
-                      setState(() {
-                        _sheetKind = i == 1
-                            ? SheetKind.archive
-                            : SheetKind.supply;
-                        _moment = Moment.sheet;
-                      });
+                      _openSheet(i == 1 ? SheetKind.archive : SheetKind.supply);
                     }
                   },
                 ),
@@ -512,6 +506,7 @@ class _AppShellState extends State<AppShell>
                     onSubmit: () {
                       if (_busy) return; // 原型 `App.submit()` → `run()`
                       _clock.stopFast();
+                      _active = false; // 交出去了，药丸该消失
                       _pulse(color: const Color(0xFFBFF6FF), a: .24, ms: 280);
                       // 钤印那一下：涟漪 + 火花 + 爆散（ui.js L346-347 / L358）
                       _fx.ripple(
@@ -530,11 +525,19 @@ class _AppShellState extends State<AppShell>
                     onQuitProgress: (double p) => setState(() => _quitP = p),
                     onQuit: () {
                       if (_busy) return; // 原型 `App.fail()` → `run()`
-                      setState(() => _drawerOn = false);
+                      setState(() {
+                        _drawerOn = false;
+                        _active = false; // 认输了，这一单不再是"执行中"
+                      });
                       _beginFail();
                     },
                     // 点「道具」开合抽屉（原型 `#exItem` → `Exec.drawer()`，再点一次收起）
                     onItem: () => setState(() => _drawerOn = !_drawerOn),
+                    // 收起 ▾（原型 `#exMin` → `App.lobby()`）：回大厅，**计时不停**
+                    onCollapse: () => setState(() {
+                      _drawerOn = false;
+                      _moment = Moment.lobby;
+                    }),
                   ),
                 ),
                 // 道具抽屉（`.drawer` z-index 5，压在执行面板之上）
@@ -544,11 +547,8 @@ class _AppShellState extends State<AppShell>
                   used: _usedItems,
                   coins: _host.coins,
                   onUse: _useItem,
-                  onShop: () => setState(() {
-                    _drawerOn = false;
-                    _sheetKind = SheetKind.supply;
-                    _moment = Moment.sheet;
-                  }),
+                  // 「去补给」—— 从执行页开的面板，关掉要回执行页（`_sheetFrom`）
+                  onShop: () => _openSheet(SheetKind.supply),
                 ),
                 // 结算
                 ResultPanel(
@@ -682,7 +682,8 @@ class _AppShellState extends State<AppShell>
                   host: _host,
                   kind: _sheetKind,
                   visible: sheet,
-                  onClose: () => setState(() => _moment = Moment.lobby),
+                  // 关掉回**开它的那个页面**（原型 `App.closeSheet()` → `_sheetFrom`）
+                  onClose: () => setState(() => _moment = _sheetFrom),
                   onWipe: _wipe,
                 ),
                 // 当前环的挂签（大厅里挂在她脚下那一环的右端）
@@ -710,6 +711,19 @@ class _AppShellState extends State<AppShell>
                   visible: main,
                   onClose: () => setState(() => _moment = Moment.lobby),
                   onDispatch: () => setState(() => _moment = Moment.dispatch),
+                ),
+                // 「执行中」药丸（`ui.js` L60）：**执行页自己不显示它**，
+                // 只在 大厅/主线/面板 上挂；点它回执行页。收起执行面板后就靠它回去。
+                ListenableBuilder(
+                  listenable: _clock,
+                  builder: (BuildContext _, Widget? _) => ExecPill(
+                    visible: _active && (lobby || main || sheet),
+                    elapsed: _execReadout().elapsed,
+                    onTap: () => setState(() {
+                      if (_busy) return;
+                      _moment = Moment.exec;
+                    }),
+                  ),
                 ),
                 // 横幅（z 5，压在所有东西上面）
                 SysBanner(
@@ -857,6 +871,24 @@ class _AppShellState extends State<AppShell>
 
   /// 道具抽屉开着没（原型 `#exDrawer.on`）；再点一次「道具」收起
   bool _drawerOn = false;
+
+  /// 有没有一单正在执行（原型 `S.active`）—— 收起后它仍然为真，
+  /// 所以大厅里那颗「执行中」药丸会一直挂着（`ui.js` L60）
+  bool _active = false;
+
+  /// 投影面板是从哪开出来的（原型 `App._sheetFrom`）—— 关掉要回原处：
+  /// 从执行页开的就得回执行页，不能一律回大厅
+  Moment _sheetFrom = Moment.lobby;
+
+  /// 开投影面板（原型 `App.sheet(kind)`）
+  void _openSheet(SheetKind kind) {
+    setState(() {
+      _sheetFrom = _moment == Moment.exec ? Moment.exec : Moment.lobby;
+      _sheetKind = kind;
+      _moment = Moment.sheet;
+      _drawerOn = false;
+    });
+  }
 
   /// 本单已经挂上生效的道具（原型 `A.dbl / A.crit / A.shield`）
   final Set<String> _usedItems = <String>{};

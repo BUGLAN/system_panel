@@ -40,6 +40,7 @@ class ExecPanel extends StatelessWidget {
     this.onQuit,
     this.onQuitProgress,
     this.onItem,
+    this.onCollapse,
   });
 
   final Quest quest;
@@ -69,6 +70,9 @@ class ExecPanel extends StatelessWidget {
 
   /// 点「道具」开合抽屉
   final VoidCallback? onItem;
+
+  /// 收起 ▾（回大厅，计时继续）
+  final VoidCallback? onCollapse;
 
   @override
   Widget build(BuildContext context) {
@@ -500,16 +504,26 @@ class ExecPanel extends StatelessWidget {
     );
   }
 
-  /// .mini —— 收起 ▾
+  /// .mini —— 收起 ▾（原型 `#exMin` → `App.lobby()`：回大厅，**计时不停**）
   Widget _miniButton() {
-    return Container(
-      key: const Key('exec.min'),
-      height: 40,
-      padding: const EdgeInsets.symmetric(horizontal: 14),
-      alignment: Alignment.center,
-      child: Text(
-        '收起 ▾',
-        style: fs(family: F.cn, size: 12, wght: 400, height: 1, color: C.mist),
+    return GestureDetector(
+      onTap: onCollapse,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        key: const Key('exec.min'),
+        height: 40,
+        padding: const EdgeInsets.symmetric(horizontal: 14),
+        alignment: Alignment.center,
+        child: Text(
+          '收起 ▾',
+          style: fs(
+            family: F.cn,
+            size: 12,
+            wght: 400,
+            height: 1,
+            color: C.mist,
+          ),
+        ),
       ),
     );
   }
