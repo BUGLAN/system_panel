@@ -1159,11 +1159,29 @@ class _FingerprintPainter extends CustomPainter {
 }
 
 /// #plateAlt —— 板子下面那两个「宿主 · …」按钮（app.css L299-303）
+///
+/// D4（docs/18 §1.3 死按钮清单）：「换一个 / 等会儿」原先没有回调参数、纯展示，
+/// 点了没反应。现接 [onPick]，语义按原型 dispatch 循环钉死：
+///  - `labels[0]`「换一个」= **retreat**：这一单降一档重刻（F 级还退＝换一张别的 F）；
+///    当日累计退缩 3 次强制佩戴「口头巨人」——业务在 `QuestFlow.retreat`
+///    （原型 store.js L235-250 / flows.js L282-298），main.dart 装配归 t10；
+///  - `labels[1]`「等会儿」= **later**：单子原样留在她手里、回大厅
+///    （原型 `Store.later()` store.js L234 / flows.js L315）。
 class PlateAlt extends StatelessWidget {
-  const PlateAlt({super.key, required this.labels, this.visible = true});
+  const PlateAlt({
+    super.key,
+    required this.labels,
+    this.visible = true,
+    this.onPick,
+  });
 
   final List<String> labels;
   final bool visible;
+
+  /// 按下第 i 颗（原型 `Plate.alt(opts, onPick)`：
+  /// `b.onclick = () => { Sound.play('tap'); onPick(o.v); }`，ui.js L337-341）。
+  /// null = 尚未接线：保留按下变色的 `:active` 反馈，但点了不触发业务（不假装成功）。
+  final ValueChanged<int>? onPick;
 
   @override
   Widget build(BuildContext context) {
@@ -1184,7 +1202,11 @@ class PlateAlt extends StatelessWidget {
                 if (i > 0) const SizedBox(width: 10),
                 // `#plateAlt button:active { color: var(--ice); box-shadow: inset 0 0 0 1px var(--blue) }`
                 PressBuilder(
+                  // D4：原型每颗按钮都有 onclick（ui.js L339），这里原先没接——
+                  // 「换一个 / 等会儿」点下去毫无反应的死按钮就是它
+                  onTap: onPick == null ? null : () => onPick!(i),
                   builder: (BuildContext _, bool down) => Container(
+                    key: Key('plate.alt.$i'),
                     height: 36,
                     // Border 占布局、CSS 的 inset 阴影不占 → padding 各减 1px
                     padding: const EdgeInsets.symmetric(horizontal: 14),

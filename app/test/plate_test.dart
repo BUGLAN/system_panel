@@ -178,6 +178,54 @@ void main() {
       expect(row.bottom, closeTo(826, .5)); // bottom:18 + 高 36
       await tester.pumpWidget(const SizedBox());
     });
+
+    testWidgets('D4：点「换一个 / 等会儿」回调 onPick(0/1)', (WidgetTester tester) async {
+      // 数据源 mock：业务（QuestFlow.retreat / later）在 QuestFlow，装配归 main.dart（t10）。
+      // 这里按 docs/18 §1.3-D4 的接口契约用闭包记录回调，钉住索引语义：
+      // 0 = retreat（换一个：降一档 / F 级换同档他单 / 当日 3 次戴「口头巨人」）
+      // 1 = later（等会儿：单子留在队列、回大厅）
+      final List<int> picked = <int>[];
+      await _mount(
+        tester,
+        PlateAlt(
+          labels: const <String>['换一个', '等会儿'],
+          onPick: picked.add,
+        ),
+      );
+      await tester.tap(find.byKey(const Key('plate.alt.0')));
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('plate.alt.1')));
+      await tester.pump();
+      expect(picked, <int>[0, 1]);
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('D4：没接线（onPick 缺省）时按下只有 :active 变色、不抛异常', (
+      WidgetTester tester,
+    ) async {
+      await _mount(tester, const PlateAlt(labels: <String>['换一个', '等会儿']));
+      await tester.tap(find.byKey(const Key('plate.alt.0')));
+      await tester.pump();
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('D4：收起时断掉命中（点不到）', (WidgetTester tester) async {
+      int? picked;
+      await _mount(
+        tester,
+        PlateAlt(
+          labels: const <String>['换一个', '等会儿'],
+          visible: false,
+          onPick: (int i) => picked = i,
+        ),
+      );
+      // IgnorePointer 生效时 tap 落空（warnIfMissed 关掉警告，断言确实没触发）
+      await tester.tap(find.byKey(const Key('plate.alt.0')), warnIfMissed: false);
+      await tester.pump();
+      expect(picked, isNull);
+      await tester.pumpWidget(const SizedBox());
+    });
   });
   // ── 数据契约 ──────────────────────────────────────────────
   // 演示档的每个字段都必须与原型 `Store.veteran()` 的 `Store.head()` 一致。
