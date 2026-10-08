@@ -127,12 +127,52 @@ class QuestFlow {
     List<Quest>? queue,
     int? serial,
     math.Random? rnd,
-  }) : queue = queue ?? <Quest>[],
+  }) : queue = List<Quest>.of(
+         queue ?? const <Quest>[],
+       ),
        _serial = serial ?? kFirstSerial,
        _rnd = rnd ?? math.Random();
 
   /// 单号从 41 起算 —— 与演示档 Quest.demo 的 № 0041 接上
   static const int kFirstSerial = 41;
+
+  /// 单子的存档形态（t16/B3：active 随档走，队列与执行中单据共用这一套；
+  /// save_file.dart 的存档层委托到这里，Quest 模型保持纯数据）。
+  static Map<String, dynamic> questToJson(Quest q) => <String, dynamic>{
+    'serial': q.serial,
+    'kind': q.kind,
+    'ring': q.ring,
+    'ringTotal': q.ringTotal,
+    'name': q.name,
+    'reason': q.reason,
+    'proof': q.proof,
+    'minutes': q.minutes,
+    'rank': q.rank,
+    'attrs': q.attrs,
+    if (q.hinted) 'hinted': true,
+  };
+
+  /// **字段缺/类型不对全走默认** —— 与存档「在默认值上合并」同一口径
+  static Quest questFromJson(Map<String, dynamic> j) => Quest(
+    serial: j['serial'] is int ? j['serial'] as int : 0,
+    kind: j['kind'] is String ? j['kind'] as String : 'daily',
+    ring: j['ring'] is int ? j['ring'] as int : -1,
+    ringTotal: j['ringTotal'] is int ? j['ringTotal'] as int : 0,
+    name: j['name'] is String ? j['name'] as String : '',
+    reason: j['reason'] is String ? j['reason'] as String : '',
+    proof: j['proof'] is String ? j['proof'] as String : '',
+    minutes: j['minutes'] is int ? j['minutes'] as int : 15,
+    rank: j['rank'] is String ? j['rank'] as String : 'F',
+    attrs: j['attrs'] is Map
+        ? <String, int>{
+            for (final MapEntry<Object?, Object?> e
+                in (j['attrs'] as Map).entries)
+              if (e.key is String && e.value is int)
+                e.key! as String: e.value! as int,
+          }
+        : const <String, int>{},
+    hinted: j['hinted'] == true,
+  );
 
   /// 宿主档案（结算/认输的唯一入账口）
   HostState host;
@@ -479,6 +519,65 @@ class QuestFlow {
       streak: host.streak,
       critItem: a.crit,
     );
+  }
+
+  /// 暴击率**底值**（不含证据加成）——t16/B4 显示口径单一真源的另一半：
+  /// 执行页手里已经拿着证据列表，它自己加 `evidenceCritBonus`；
+  /// 这里若再给全量 [critChance]，证据加成就会被算两遍（gate 实测双计）。
+  /// 底值/连击/芯片仍走 vision.critChance 单一公式，只是证据计数归零。
+  double critBase() {
+    final ActiveQuest? a = _active;
+    if (a == null) return 0;
+    return vision.critChance(
+      verified: 0,
+      unverified: 0,
+      streak: host.streak,
+      critItem: a.crit,
+    );
+  }
+
+  // ── 执行中单据的持久化（docs/18 §2.8：active 随档走，t16/B3）──────
+
+  /// 执行中单据的快照（任务/计时起点/道具标记/证据）。
+  /// 证据只带存档字段（相对路径+状态；absPath 是会话内渲染用的，不进档）。
+  Map<String, dynamic>? activeToSaveJson() {
+    final ActiveQuest? a = _active;
+    if (a == null) return null;
+    return <String, dynamic>{
+      'task': questToJson(a.task),
+      'startAt': a.startAt.toIso8601String(),
+      if (a.dbl) 'dbl': true,
+      if (a.crit) 'crit': true,
+      if (a.shield) 'shield': true,
+      'evidence': <Map<String, dynamic>>[
+        for (final vision.EvidenceShot s in a.evidence) s.toJson(),
+      ],
+    };
+  }
+
+  /// 从存档恢复执行中单据（杀进程重启后任务/计时起点/证据保持）。
+  /// [json] 为 null 或形状不对 = 无执行中单据，静默忽略（合并式迁移口径）。
+  void restoreActiveFromJson(Map<String, dynamic>? json) {
+    if (json == null) return;
+    final Object? taskJson = json['task'];
+    if (taskJson is! Map) return;
+    final Quest task = questFromJson(Map<String, dynamic>.from(taskJson));
+    final DateTime startAt =
+        DateTime.tryParse('${json['startAt'] ?? ''}') ?? DateTime.now();
+    final ActiveQuest a = ActiveQuest(
+      task: task,
+      startAt: startAt,
+      evidence: <vision.EvidenceShot>[
+        if (json['evidence'] is List)
+          for (final Object? e in json['evidence'] as List)
+            if (e is Map)
+              vision.EvidenceShot.fromJson(Map<String, dynamic>.from(e)),
+      ],
+    );
+    if (json['dbl'] == true) a.dbl = true;
+    if (json['crit'] == true) a.crit = true;
+    if (json['shield'] == true) a.shield = true;
+    _active = a;
   }
 
   // ── 结算（store.js `settle`；提交任务的真正语义）────────────────

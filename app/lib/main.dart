@@ -175,6 +175,9 @@ class _AppShellState extends State<AppShell>
   /// 原生舞台加载失败 → 运行期降级到 WebView
   bool _stageFallback = false;
 
+  /// t16/B3：读档恢复了执行中单据 → 唤醒后直接回执行页（计时按 startAt 推导）
+  bool _resumedExec = false;
+
   /// 行为逻辑未定，先用与原型「老宿主 · 第 23 天」一致的演示档
   /// （启动时会被存档覆盖 —— 见 SaveFile）
   HostState _host = HostState.demo;
@@ -853,8 +856,10 @@ class _AppShellState extends State<AppShell>
                   builder: (BuildContext context, Widget? child) => ExecPanel(
                     quest: _execQuest,
                     elapsed: _execReadout().elapsed,
-                    // 暴击率不再是写死的 .12：证据/连击/暴击芯片联动（quest_flow）
-                    critChance: _flow.critChance(),
+                    // 暴击率显示口径（t16/B4 单一真源）：底值由 QuestFlow.critBase 出，
+                    // 证据加成由面板按手里的证据列表自己加 evidenceCritBonus——
+                    // 这里若给全量 critChance，证据加成就算两遍（gate 实测双计）
+                    critChance: _flow.critBase(),
                     // 原型是按持有数算的（`Exec.slots()` 末尾那个 reduce），
                     // 不是写死的 3 —— 用掉道具后这个数要跟着掉
                     itemCount: Item.execCount(_host.items),
@@ -1706,8 +1711,9 @@ class _AppShellState extends State<AppShell>
 
   /// 开机屏之后进大厅 —— 原型在这里跑 `App.greet(true)`：
   /// **冷启动一定会说一句**（`if (fromBoot || away > 6e4)`，默认档就是 back10m）
+  /// ⚠️ t16/B3：若存档恢复了执行中单据，唤醒后直接回执行页（不落大厅）
   void _wake() {
-    setState(() => _moment = Moment.lobby);
+    setState(() => _moment = _resumedExec ? Moment.exec : Moment.lobby);
     final DateTime? seen = _prevSeen;
     final Duration away = seen == null
         ? Duration.zero
@@ -1731,6 +1737,14 @@ class _AppShellState extends State<AppShell>
     final bool seeded = d.queue.isEmpty;
     setState(() {
       _flow = QuestFlow.fromSave(host: d.host, goal: d.goal, queue: d.queue);
+      // t16/B3：执行中单据随档恢复（任务/计时起点/道具标记/证据）——
+      // 杀进程重启后回到执行页，计时按 startAt 推导不归零
+      _flow.restoreActiveFromJson(d.activeJson);
+      _resumedExec = _flow.active != null;
+      if (_resumedExec) {
+        _execStart = _flow.active!.startAt;
+        _active = true; // 「执行中」药丸照挂
+      }
       _host = _flow.host;
       _goal = _flow.goal;
       // 原型 `load()` 里的 `S.prevSeen = S.lastSeen` —— 冷启动算"你走了多久"用
@@ -1743,13 +1757,18 @@ class _AppShellState extends State<AppShell>
     _rollDayIfNeeded(fromSeen: d.lastSeen);
   }
 
-  /// 存盘（store.js L43）—— 档案 + 主线 + 她手里的队列
+  /// 存盘（store.js L43）—— 档案 + 主线 + 她手里的队列 + 执行中单据（t16/B3）
   ///
   /// 启动时的自检（`SaveFile.selfTest`）是**通过**的，但这里写完整存档后回读是空的
   /// —— 所以下面多打一行原始串长度，用来区分「没写进去」和「写进去了解析不出来」。
   Future<void> _persist() async {
     await _save.save(
-      SaveData(host: _host, goal: _goal, queue: _flow.queue),
+      SaveData(
+        host: _host,
+        goal: _goal,
+        queue: _flow.queue,
+        activeJson: _flow.activeToSaveJson(),
+      ),
     );
     final String? raw = await _save.rawRead();
     final SaveData back = await _save.load();

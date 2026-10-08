@@ -184,6 +184,53 @@ void main() {
       expect(f.queue.length, 1);
       expect(f.head?.serial, eQuest.serial);
     });
+
+    test('⚠️ 回归 t16/B1：无档 fallback 的 queue 是 const []，种子化不得抛且队列可变', () {
+      // 复刻真机崩溃链：SaveData 默认 queue = const []（**不可变**）→
+      // 首装/无档时 load() 原样返回 fallback → fromSave(queue: fallback.queue)
+      // → seedForCurrentGoal() 的 queue.add() 抛
+      // 「Cannot add to an unmodifiable list」→ 冷启/wipe 直接崩、绑定流不可达。
+      final SaveData fallback = SaveData(
+        host: HostState.demo,
+        goal: Goal.demo(),
+      );
+      expect(fallback.queue, isEmpty);
+      // 先证明 fallback 的队列确实不可变（防线若被移除，这条先红）
+      expect(
+        () => fallback.queue.add(eQuest),
+        throwsUnsupportedError,
+        reason: 'SaveData 默认 queue 必须保持 const []——本测试依赖它复现 B1',
+      );
+
+      final QuestFlow f = QuestFlow.fromSave(
+        host: fallback.host,
+        goal: fallback.goal,
+        queue: fallback.queue, // ← 不可变表原样传入（真实崩溃参数）
+      );
+      expect(() => f.seedForCurrentGoal(), returnsNormally);
+      expect(f.queue, isNotEmpty);
+      expect(f.head?.kind, 'main');
+      // 队列必须可变：accept 的 removeWhere、补救单 insert 都要改它
+      f.queue.add(eQuest);
+      expect(f.queue.last.serial, eQuest.serial);
+      f.queue.removeLast();
+      expect(f.queue.contains(eQuest), isFalse);
+    });
+
+    test('⚠️ 回归 t16/B1 连锁：wipe 的 fallback 队列同样可种子化（frozen 语义不变）', () async {
+      final SaveFile f = SaveFile();
+      await f.wipe(fallback: SaveData(host: HostState.demo, goal: Goal.demo()));
+      // wipe 后 frozen=true —— 存盘被静默跳过是**既有语义**，本测试不回退它；
+      // 这里只锁「wipe 返回的 fallback 队列能安全喂给 QuestFlow」。
+      final SaveData d = await f.wipe(fallback: SaveData(host: HostState.demo, goal: Goal.demo()));
+      final QuestFlow flow = QuestFlow.fromSave(
+        host: d.host,
+        goal: d.goal,
+        queue: d.queue,
+      );
+      expect(() => flow.seedForCurrentGoal(), returnsNormally);
+      expect(flow.queue, isNotEmpty);
+    });
   });
 
   group('接单与道具', () {
@@ -788,6 +835,108 @@ void main() {
       final RetreatOutcome? o = f.retreat(f.head!);
       expect(o, isNotNull);
       expect(o!.replacement?.rank, 'D', reason: 'demo 队首 C → 降一档 D');
+    });
+  });
+
+  group('执行中单据持久化（t16/B3：接单后杀进程，任务/计时起点/证据保持）', () {
+    test('activeToSaveJson / restoreActiveFromJson：任务/起点/道具/证据全保持', () {
+      final QuestFlow f = freshFlow();
+      f.accept(eQuest, now: DateTime(2026, 1, 1, 10));
+      expect(f.useItem('dbl'), isTrue);
+      f.active!.evidence.add(shot('ev1', EvidenceStatus.verified));
+
+      final Map<String, dynamic>? json = f.activeToSaveJson();
+      expect(json, isNotNull);
+      expect(json!['startAt'], '2026-01-01T10:00:00.000');
+      expect(json['dbl'], true);
+
+      final QuestFlow g = freshFlow();
+      g.restoreActiveFromJson(json);
+      expect(g.active, isNotNull);
+      expect(g.active!.task.serial, eQuest.serial);
+      expect(g.active!.startAt, DateTime(2026, 1, 1, 10));
+      expect(g.active!.dbl, isTrue);
+      expect(g.active!.crit, isFalse);
+      expect(g.active!.verifiedCount, 1);
+      expect(g.active!.photos, 1);
+    });
+
+    test('SaveData 往返带上 active（datastore 形态）', () {
+      final QuestFlow f = freshFlow();
+      f.accept(eQuest, now: DateTime(2026, 1, 1, 10));
+      f.active!.evidence.add(shot('ev2', EvidenceStatus.unverified));
+      final SaveData d = SaveData(
+        host: f.host,
+        goal: f.goal,
+        queue: f.queue,
+        activeJson: f.activeToSaveJson(),
+      );
+      final SaveData back = SaveData.fromJson(d.toJson(), fallback: SaveData.fresh());
+      expect(back.activeJson, isNotNull);
+      final QuestFlow g = freshFlow();
+      g.restoreActiveFromJson(back.activeJson);
+      expect(g.active?.task.serial, eQuest.serial);
+      expect(g.active!.photos, 1);
+    });
+
+    test('restore 后计时按 startAt 推导：杀进程重启计时不归零', () {
+      final QuestFlow f = freshFlow();
+      f.accept(eQuest, now: DateTime(2026, 1, 1, 10));
+      final Map<String, dynamic>? json = f.activeToSaveJson();
+      final QuestFlow g = freshFlow();
+      g.restoreActiveFromJson(json);
+      final QuestResult? r = g.settle(
+        now: DateTime(2026, 1, 1, 10, 30),
+        forceCrit: false,
+      );
+      expect(r!.held, const Duration(minutes: 30), reason: '计时起点随档恢复');
+    });
+
+    test('restoreActiveFromJson(null/坏形状) 静默忽略（合并式迁移口径）', () {
+      final QuestFlow f = freshFlow();
+      f.restoreActiveFromJson(null);
+      expect(f.active, isNull);
+      f.restoreActiveFromJson(<String, dynamic>{'task': '不是 map'});
+      expect(f.active, isNull);
+      f.restoreActiveFromJson(<String, dynamic>{});
+      expect(f.active, isNull);
+    });
+  });
+
+  group('暴击率单一真源（t16/B4：显示口径不得双计证据加成）', () {
+    test('critBase 不含证据加成；critChance = critBase + evidenceCritBonus', () {
+      final QuestFlow f = freshFlow(); // streak 0，底值 6%
+      f.accept(eQuest);
+      f.active!.evidence.add(shot('v1', EvidenceStatus.verified));
+      f.active!.evidence.add(shot('u1', EvidenceStatus.unverified));
+
+      final double base = f.critBase();
+      expect(base, closeTo(.06, 1e-9), reason: '底值不含证据/连击以外的任何项');
+      final double full = f.critChance();
+      expect(full, closeTo(.06 + .07 + .04, 1e-9));
+      expect(
+        full,
+        closeTo(base + evidenceCritBonus(verified: 1, unverified: 1), 1e-9),
+        reason: '显示口径 = 底值 + 证据加成，只能加一次',
+      );
+    });
+
+    test('暴击芯片在底值里；封顶 85% 由公式兜住', () {
+      final QuestFlow f = freshFlow();
+      f.accept(eQuest);
+      f.useItem('crit');
+      expect(f.critBase(), closeTo(.31, 1e-9)); // .06 + .25
+      f.active!.evidence
+        ..add(shot('a', EvidenceStatus.verified))
+        ..add(shot('b', EvidenceStatus.verified))
+        ..add(shot('c', EvidenceStatus.verified));
+      // .31 + 3×.07 = .52（未到封顶；封顶 .85 由 vision.critChance 的 min 兜住，
+      // 这里验证的是「底值+证据加成 = 全量」这一口径不被双计突破）
+      expect(f.critChance(), closeTo(.52, 1e-9));
+      expect(
+        f.critChance(),
+        closeTo(f.critBase() + evidenceCritBonus(verified: 3, unverified: 0), 1e-9),
+      );
     });
   });
 }

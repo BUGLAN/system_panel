@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'goal.dart';
 import 'host_state.dart';
 import 'quest.dart';
+import 'quest_flow.dart';
 
 /// ═══════════════════════════════════════════════════════════
 ///  存档（store.js L4 / L34-52）
@@ -106,12 +107,13 @@ class SaveFile {
   bool get frozen => _frozen;
 }
 
-/// 存下来的那一坨：宿主档案 + 主线 + 她手里的队列。
+/// 存下来的那一坨：宿主档案 + 主线 + 她手里的队列 + 执行中单据。
 class SaveData {
   const SaveData({
     required this.host,
     required this.goal,
     this.queue = const <Quest>[],
+    this.activeJson,
     this.lastSeen,
   });
 
@@ -121,6 +123,11 @@ class SaveData {
   /// 她手里还没派出去的单（T2 起随档走：结算后杀进程，队列还在）。
   /// 老档缺这个字段 → 默认空表，读档后由 QuestFlow 按现状补种子（合并式迁移）。
   final List<Quest> queue;
+
+  /// 执行中单据的存档形态（t16/B3：接单后杀进程，任务/计时起点/证据保持）。
+  /// 由 `QuestFlow.activeToSaveJson()` 产出、`restoreActiveFromJson()` 消费；
+  /// 这里只当不透明 map 搬运 —— 老档缺字段 = null（无执行中单）。
+  final Map<String, dynamic>? activeJson;
 
   /// 上次离开的时间（原型 `S.prevSeen` / `S.lastSeen`）—— 回来时算"你走了多久"用
   final DateTime? lastSeen;
@@ -150,9 +157,12 @@ class SaveData {
       queue: json['queue'] is List
           ? <Quest>[
               for (final Object? q in json['queue'] as List)
-                if (q is Map) _questFromJson(Map<String, dynamic>.from(q)),
+                if (q is Map) QuestFlow.questFromJson(Map<String, dynamic>.from(q)),
             ]
           : fallback.queue,
+      activeJson: json['active'] is Map
+          ? Map<String, dynamic>.from(json['active'] as Map)
+          : fallback.activeJson,
       lastSeen: json['lastSeen'] is String
           ? (DateTime.tryParse(json['lastSeen'] as String) ?? fallback.lastSeen)
           : fallback.lastSeen,
@@ -162,7 +172,8 @@ class SaveData {
   Map<String, dynamic> toJson() => <String, dynamic>{
     'host': host.toJson(),
     'goal': goal.toJson(),
-    'queue': <Map<String, dynamic>>[for (final Quest q in queue) _questJson(q)],
+    'queue': <Map<String, dynamic>>[for (final Quest q in queue) QuestFlow.questToJson(q)],
+    if (activeJson != null) 'active': activeJson,
     if (lastSeen != null) 'lastSeen': lastSeen!.toIso8601String(),
   };
 
@@ -170,50 +181,13 @@ class SaveData {
     HostState? host,
     Goal? goal,
     List<Quest>? queue,
+    Map<String, dynamic>? activeJson,
     DateTime? lastSeen,
   }) => SaveData(
     host: host ?? this.host,
     goal: goal ?? this.goal,
     queue: queue ?? this.queue,
+    activeJson: activeJson ?? this.activeJson,
     lastSeen: lastSeen ?? this.lastSeen,
-  );
-
-  /// 单子的存档形态（store.js 里单子本来就是存档的一部分）。
-  /// ⚠️ 放在存档层而不是 Quest 上：quest.dart 的模型保持纯数据，
-  /// 序列化职责归持久化层（T6 若给 Quest 加字段只动这里）。
-  static Map<String, dynamic> _questJson(Quest q) => <String, dynamic>{
-    'serial': q.serial,
-    'kind': q.kind,
-    'ring': q.ring,
-    'ringTotal': q.ringTotal,
-    'name': q.name,
-    'reason': q.reason,
-    'proof': q.proof,
-    'minutes': q.minutes,
-    'rank': q.rank,
-    'attrs': q.attrs,
-    if (q.hinted) 'hinted': true,
-  };
-
-  /// **字段缺/类型不对全走默认** —— 与本文件「在默认值上合并」同一口径
-  static Quest _questFromJson(Map<String, dynamic> j) => Quest(
-    serial: j['serial'] is int ? j['serial'] as int : 0,
-    kind: j['kind'] is String ? j['kind'] as String : 'daily',
-    ring: j['ring'] is int ? j['ring'] as int : -1,
-    ringTotal: j['ringTotal'] is int ? j['ringTotal'] as int : 0,
-    name: j['name'] is String ? j['name'] as String : '',
-    reason: j['reason'] is String ? j['reason'] as String : '',
-    proof: j['proof'] is String ? j['proof'] as String : '',
-    minutes: j['minutes'] is int ? j['minutes'] as int : 15,
-    rank: j['rank'] is String ? j['rank'] as String : 'F',
-    attrs: j['attrs'] is Map
-        ? <String, int>{
-            for (final MapEntry<Object?, Object?> e
-                in (j['attrs'] as Map).entries)
-              if (e.key is String && e.value is int)
-                e.key! as String: e.value! as int,
-          }
-        : const <String, int>{},
-    hinted: j['hinted'] == true,
   );
 }

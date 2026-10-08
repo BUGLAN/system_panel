@@ -51,7 +51,8 @@ $CTA      = @(640, 1528)
 $FP       = @(390, 1452)     # 指纹（长按 1.5s）
 $SUBMIT   = @(390, 1452)
 $QUIT     = @(138, 1596)     # 认输（长按 1.5s）
-$WIPE     = @(659, 1282)     # 系统面板里的「按住 2 秒」
+$WIPE     = @(660, 1410)     # 系统面板「按住 2 秒」—— ⚠️ t9 加 LLM·视觉校验组后，
+                              # 重置存档被压到折叠线以下：必须先滚到底再按（见 onboard 流程）
 $PRESET3  = @(598, 1348)     # 第三个目标预设
 $ASK_OK   = @(664, 1566)
 
@@ -119,11 +120,29 @@ if (($want -contains "onboard") -or ($want -contains "banner")) {
     Sh "am start -n $PKG/.MainActivity"; Sleep 18
     Tap $WAKE[0] $WAKE[1]; Sleep 6
     Tap $MENU[0] $MENU[1]; Sleep 2
+    # ⚠️ t9 在系统页加了 LLM·视觉校验组（开关+BaseURL+Key+模型名+测试连接），
+    #    把「重置存档 · 按住 2 秒」压到折叠线以下 —— 旧坐标 (659,1282) 按空。
+    #    滚到底（四屏，留足回弹余量），重置行稳定落在 (660,1410~1420)；
+    #    按两次（幂等：第一下若没按中，第二下补上；已重置则落在目标输入区，无害）。
+    Sh "input swipe 390 1300 390 400 600"; Sleep 0.9
+    Sh "input swipe 390 1300 390 400 600"; Sleep 0.9
+    Sh "input swipe 390 1300 390 400 600"; Sleep 0.9
+    Sh "input swipe 390 1300 390 400 600"; Sleep 1
+    Hold $WIPE[0] $WIPE[1] 2400; Sleep 2.5
     Hold $WIPE[0] $WIPE[1] 2400; Sleep 2.5
     if ($want -contains "onboard") { Shot "flutter-step13-onboard.png" }
     if ($want -contains "banner") {
+        # ⚠️ t6 改了绑定流：确定 → 5 张访谈卡 → 生成三天计划 → 回大厅才弹「见面礼」横幅。
+        #    逐卡点「中间 chip + 前进」，等生成后抓 2200ms 的横幅窗口。
         Tap $PRESET3[0] $PRESET3[1]; Sleep 1
-        Tap $ASK_OK[0] $ASK_OK[1]; Sleep 1.2   # 2200ms 的横幅窗口内
+        Tap $ASK_OK[0] $ASK_OK[1]; Sleep 1.5
+        for ($i = 0; $i -lt 5; $i++) {
+            Tap 364 1375          # 访谈卡 chip 行（高卡位）
+            Sleep 0.7
+            Tap 364 1475          # chip 行（低卡位 —— 卡高随题面浮动，两行都点兜底）
+            Sleep 0.9
+        }
+        Sleep 2                   # 生成三天计划 → 回大厅，横幅窗口 2200ms
         Shot "flutter-step13b-banner.png"
     }
 }
