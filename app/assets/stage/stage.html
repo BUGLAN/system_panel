@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>stage</title>
+<style>
+  /* 只要她。背景透明 —— 天幕/环/UI 全部仍然由 Flutter 那层画。 */
+  html, body { margin:0; padding:0; height:100%; overflow:hidden; background:transparent; }
+  #host { position:absolute; inset:0; }
+  /* 尺寸与位置照抄原型 stage.js L122：
+     `left:50%; top:0; transform:translateX(-50%); height:100%; width:auto`
+     —— 宽高比由播放器自己定（画布 1.6×2.4）。
+     相机（缩放/平移）由 stage.js 往这个 transform 上叠。 */
+  #stageCv { position:absolute; left:50%; top:0; transform:translateX(-50%); height:100%; width:auto; }
+</style>
+</head>
+<body>
+<div id="host"></div>
+<!-- Cubism Core：普通脚本 -->
+<script src="vendor/live2dcubismcore.min.js"></script>
+<!-- ⚠️ `vendor/ournotes-live2d.element.min.js` **不能**这样挂 ——
+     它是 ES 模块（末尾 `export{…}`），用普通 `<script src>` 会在**解析阶段**就失败，
+     而且报错发生在 stage.js 注册 onerror 之前，完全看不到信号。
+     正确做法（原型 stage.js L112-115）：由 stage.js 动态 `import()` 后
+     手动调 `defineOurnotesLive2D()`。 -->
+<script src="stage.js"></script>
+</body>
+</html>

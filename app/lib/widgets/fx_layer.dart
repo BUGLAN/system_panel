@@ -147,6 +147,16 @@ class _ShakeLayerState extends State<ShakeLayer>
 
   @override
   Widget build(BuildContext context) {
+    // ⚠️ **不抖的时候绝不套 `Transform`。**
+    //
+    // 这层包住了整个 App（含 Live2D 平台视图）。平台视图**无法应用任意变换** ——
+    // 只要祖先链上有一个 `Transform`，Flutter 的合成器就干脆**不合成它**，
+    // 于是"模型加载成功、渲染循环在跑、视图也在层级里，但屏幕上什么都没有"。
+    // 这个坑很贵：我为它排查了两轮（换标准模型 Hiyori 做对照才排除掉模型数据的问题）。
+    //
+    // 代价：真抖的那 240ms 里她不会跟着抖（平台视图跟不上）。
+    // 目前接受 —— 先把"她出得来"这件事做对，抖不抖是后面的事。
+    if (_dx == 0 && _dy == 0) return widget.child;
     return Transform.translate(offset: Offset(_dx, _dy), child: widget.child);
   }
 }

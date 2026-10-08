@@ -2,7 +2,8 @@
     <application
         android:label="system_panel"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:networkSecurityConfig="@xml/network_security_config">
         <!-- ⚠️ 试过在这里关掉 Impeller
              （`io.flutter.embedding.android.EnableImpeller` = false）来排查
              "Live2D 平台视图不显示" —— **没用**：关掉之后照样看不见，

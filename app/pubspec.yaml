@@ -12,6 +12,7 @@ dependencies:
   flutter_live2d: ^1.0.2
   flutter_svg: ^2.3.0
   shared_preferences: ^2.5.6
+  webview_flutter: ^4.14.1
 
 dev_dependencies:
   flutter_test:
@@ -44,6 +45,14 @@ flutter:
     - assets/live2d/hiyori/
     - assets/live2d/hiyori/motions/
     - assets/live2d/hiyori/Hiyori.2048/
+    # ── 路线 ②（WebView 跑原型自己的播放器）要的三份 ──
+    # 舞台页：**我自己的代码，入库**
+    - assets/stage/
+    # 原型那个播放器 + Cubism Core（版权，不入库）
+    - assets/live2d/vendor/
+    # 原始 prefab 数据（那个播放器只认这个格式；版权，不入库）
+    - assets/live2d/sakiko_orig/models/
+    - assets/live2d/sakiko_orig/assets/
 
   # 字体四件套 —— 真源：prototype/opus-v2-dir/css/app.css 的 @font-face
   # 四个都是可变字体，字重/字宽必须在代码里用 fontVariations 指定：
