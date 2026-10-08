@@ -1,7 +1,11 @@
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'dart:ui' show PathMetric;
+
 import 'package:flutter/material.dart';
+
+import 'hold_button.dart';
 
 import '../design/tokens.dart';
 import '../state/host_state.dart';
@@ -440,12 +444,17 @@ class _Glass extends StatelessWidget {
     );
   }
 
-  /// .pl-print —— 按住指纹那一块（按住 0.9s 才算接单，长短按是行为）
+  /// .pl-print —— 按住指纹那一块（ui.js `Plate.hold()`）
+  ///
+  /// **按满 0.9s** 才算接单；松手以 0.35s 退回。文字三态：
+  /// `按住 · 接下` → `确认中` → `已接下`；副标题 `HOLD TO ACCEPT` → `宿主认证 N%`。
   Widget _print(Color rk) {
-    return GestureDetector(
-      onTap: onAccept,
-      behavior: HitTestBehavior.opaque,
-      child: Container(
+    return HoldButton(
+      duration: const Duration(milliseconds: 900),
+      decay: const Duration(milliseconds: 350),
+      steps: 8, // 每推进 1/8 打一下（原型在此处放音效 + 5ms 震）
+      onComplete: () => onAccept?.call(),
+      builder: (BuildContext context, double p) => Container(
         key: const Key('plate.print'),
         height: 108,
         decoration: const BoxDecoration(
@@ -454,11 +463,11 @@ class _Glass extends StatelessWidget {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: <Widget>[
-            const SizedBox(
-              key: Key('plate.fp'),
+            SizedBox(
+              key: const Key('plate.fp'),
               width: 62,
               height: 70,
-              child: _Fingerprint(),
+              child: _Fingerprint(progress: p),
             ),
             const SizedBox(width: 16),
             Column(
@@ -466,7 +475,7 @@ class _Glass extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
                 Text(
-                  '按住 · 接下',
+                  p > 0 ? (p >= 1 ? '已接下' : '确认中') : '按住 · 接下',
                   style: fs(
                     family: F.hd,
                     size: 17,
@@ -478,7 +487,7 @@ class _Glass extends StatelessWidget {
                 ),
                 const SizedBox(height: 5),
                 Text(
-                  'HOLD TO ACCEPT',
+                  p > 0 ? '宿主认证 ${(p * 100).round()}%' : 'HOLD TO ACCEPT',
                   style: fs(
                     family: F.mono,
                     size: 9.5,
@@ -664,7 +673,10 @@ class _RankRingPainter extends CustomPainter {
 
 /// .fp —— 七条同心弧组成的指纹（ui.js `FP_PATHS`），外加一圈脉冲
 class _Fingerprint extends StatefulWidget {
-  const _Fingerprint();
+  const _Fingerprint({required this.progress});
+
+  /// 按住进度（0~1）—— 七条弧按 i/7*.55 错峰点亮，每条在 .45 内走完
+  final double progress;
 
   @override
   State<_Fingerprint> createState() => _FingerprintState();
@@ -708,7 +720,9 @@ class _FingerprintState extends State<_Fingerprint>
               ),
             ),
             Positioned.fill(
-              child: CustomPaint(painter: const _FingerprintPainter()),
+              child: CustomPaint(
+                painter: _FingerprintPainter(progress: widget.progress),
+              ),
             ),
           ],
         );
@@ -718,7 +732,9 @@ class _FingerprintState extends State<_Fingerprint>
 }
 
 class _FingerprintPainter extends CustomPainter {
-  const _FingerprintPainter();
+  const _FingerprintPainter({required this.progress});
+
+  final double progress;
 
   static const double _cx = 31;
   static const double _cy = 38;
@@ -729,7 +745,10 @@ class _FingerprintPainter extends CustomPainter {
     final double k = s.width / 62;
     canvas.save();
     canvas.scale(k);
-    final Path path = Path();
+    final Paint stroke = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2
+      ..strokeCap = StrokeCap.round;
     for (int i = 0; i < _radii.length; i++) {
       final double r = _radii[i];
       final double a0 = (196 + i * 7) * math.pi / 180;
@@ -739,36 +758,39 @@ class _FingerprintPainter extends CustomPainter {
         width: 2 * r,
         height: 2 * r * 1.12,
       );
-      path.arcTo(rect, a0, a1 - a0, true);
+      final Path path = Path()..arcTo(rect, a0, a1 - a0, true);
+      // 底线
+      canvas.drawPath(path, stroke..color = C.blue.withAlpha(66));
+      // 点亮部分：原型用 `strokeDashoffset`，这里按比例截取路径
+      // 错峰：第 i 条从 `i/7*.55` 开始，`.45` 内走完（ui.js L304）
+      final double start = i / _radii.length * .55;
+      final double kk = ((progress - start) / .45).clamp(0.0, 1.0);
+      if (kk <= 0) continue;
+      final List<Path> parts = <Path>[];
+      for (final PathMetric m in path.computeMetrics()) {
+        parts.add(m.extractPath(0, m.length * kk));
+      }
+      for (final Path part in parts) {
+        canvas.drawPath(
+          part,
+          stroke
+            ..color = C.blue
+            ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4),
+        );
+        canvas.drawPath(
+          part,
+          stroke
+            ..color = C.blue
+            ..maskFilter = null,
+        );
+      }
     }
-    final Paint base = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2
-      ..strokeCap = StrokeCap.round
-      ..color = C.blue.withAlpha(66); // rgba(56,225,255,.26)
-    canvas.drawPath(path, base);
-    canvas.drawPath(
-      path,
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 2
-        ..strokeCap = StrokeCap.round
-        ..color = C.blue
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4),
-    );
-    canvas.drawPath(
-      path,
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 2
-        ..strokeCap = StrokeCap.round
-        ..color = C.blue,
-    );
     canvas.restore();
   }
 
   @override
-  bool shouldRepaint(covariant CustomPainter old) => false;
+  bool shouldRepaint(covariant _FingerprintPainter old) =>
+      old.progress != progress;
 }
 
 /// #plateAlt —— 板子下面那两个「宿主 · …」按钮（app.css L299-303）

@@ -2,6 +2,9 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+
+import 'hold_button.dart';
+
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../data/items.dart';
@@ -831,30 +834,52 @@ class Sheet extends StatelessWidget {
     );
   }
 
-  /// `.danger` —— 按住 2 秒重置（进度条由按住驱动，是行为）
+  /// `.danger` —— 按住 2 秒重置（ui.js L624）
+  ///
+  /// **按满 2.0s**，松手以 1.0s 退回（三处按压件里退得最慢的一处）。
+  /// 按满 → `Store.wipe()` + `location.reload()`；我们这里是回到绑定仪式。
   Widget _danger() {
-    return GestureDetector(
-      onTap: onWipe,
-      behavior: HitTestBehavior.opaque,
-      child: Container(
+    return HoldButton(
+      duration: const Duration(seconds: 2),
+      decay: const Duration(seconds: 1),
+      onComplete: () => onWipe?.call(),
+      builder: (BuildContext context, double p) => Container(
         key: const Key('sheet.danger'),
         height: 36,
-        padding: const EdgeInsets.symmetric(
-          horizontal: 13,
-        ), // CSS 14，Border 占 1
-        alignment: Alignment.center,
+        // `.danger { position:relative; overflow:hidden }` —— 进度条被圆角裁掉
+        clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(18),
           border: Border.all(color: const Color(0x59FF4D5E), width: 1), // .35
         ),
-        child: Text(
-          '按住 2 秒',
-          style: fs(
-            family: F.cn,
-            size: 12.5,
-            wght: 400,
-            color: const Color(0xFFFF8F99),
-          ),
+        child: Stack(
+          children: <Widget>[
+            // `.danger i { left:0; top:0; bottom:0; width:p*100% }` —— 整高的一条
+            Positioned.fill(
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: FractionallySizedBox(
+                  widthFactor: p,
+                  heightFactor: 1,
+                  child: const ColoredBox(color: Color(0x40FF4D5E)),
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 13),
+              child: Center(
+                child: Text(
+                  '按住 2 秒',
+                  style: fs(
+                    family: F.cn,
+                    size: 12.5,
+                    wght: 400,
+                    color: const Color(0xFFFF8F99),
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );

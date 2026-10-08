@@ -179,9 +179,13 @@ class Remedy {
 
 /// `#veil` —— 认输时压下来的那层（radial-gradient 80% 60% at 50% 40%），opacity .6
 class Veil extends StatelessWidget {
-  const Veil({super.key, this.opacity = 0});
+  const Veil({super.key, this.opacity = 0, this.instant = false});
 
   final double opacity;
+
+  /// 按住认输时用 —— 原型在那段时间把 `transition` 设成 `none`，
+  /// veil 跟着手指**一比一**变暗；松手才恢复 900ms 过渡（`ui.js` L456 / L460）
+  final bool instant;
 
   @override
   Widget build(BuildContext context) {
@@ -189,7 +193,7 @@ class Veil extends StatelessWidget {
       child: IgnorePointer(
         child: AnimatedOpacity(
           opacity: opacity,
-          duration: const Duration(milliseconds: 900),
+          duration: instant ? Duration.zero : const Duration(milliseconds: 900),
           child: const CustomPaint(painter: _VeilPainter()),
         ),
       ),

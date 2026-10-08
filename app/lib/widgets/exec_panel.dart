@@ -2,6 +2,8 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
+import 'hold_button.dart';
+
 import '../data/format.dart';
 import '../design/tokens.dart';
 import '../state/quest.dart';
@@ -36,6 +38,7 @@ class ExecPanel extends StatelessWidget {
     this.visible = true,
     this.onSubmit,
     this.onQuit,
+    this.onQuitProgress,
   });
 
   final Quest quest;
@@ -57,8 +60,11 @@ class ExecPanel extends StatelessWidget {
   /// 点「提交 · 让她验收」（原型的验收演出是行为，先只留入口）
   final VoidCallback? onSubmit;
 
-  /// 按住「认输」（原型的按住 1.2s 是行为，先只留入口）
+  /// 按住「认输」（ui.js L449 quitHold，按满 1.2s）
   final VoidCallback? onQuit;
+
+  /// 认输进度 —— 原型用它驱动 #veil 的暗度（p×.75）
+  final ValueChanged<double>? onQuitProgress;
 
   @override
   Widget build(BuildContext context) {
@@ -429,17 +435,23 @@ class ExecPanel extends StatelessWidget {
     );
   }
 
-  /// .quit —— 按住 · 认输（进度条由按住时长驱动，是行为）
+  /// .quit —— 按住 · 认输（ui.js L449 `quitHold`）
+  ///
+  /// **按满 1.2s**，松手以 0.3s 退回。按住期间：
+  ///  · 按钮里的 `i` 宽度 = p×100%
+  ///  · **`#veil` 的不透明度 = p×.75**（屏幕随着按住越来越暗）
+  ///  · 文案从「按住 · 认输」变「松手还来得及」
   Widget _quitButton() {
-    return GestureDetector(
-      onTap: onQuit,
-      behavior: HitTestBehavior.opaque,
-      child: Container(
+    return HoldButton(
+      duration: const Duration(milliseconds: 1200),
+      decay: const Duration(milliseconds: 300),
+      onProgress: onQuitProgress,
+      onComplete: () => onQuit?.call(),
+      builder: (BuildContext context, double p) => Container(
         key: const Key('exec.quit'),
         height: 40,
-        // Border 占布局、CSS 的 inset 阴影不占 → padding 各减 1px
-        padding: const EdgeInsets.symmetric(horizontal: 17),
-        alignment: Alignment.center,
+        // `.quit { position:relative; overflow:hidden }` —— 进度条被圆角裁掉
+        clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
@@ -447,14 +459,35 @@ class ExecPanel extends StatelessWidget {
             width: 1,
           ), // rgba(125,140,165,.25)
         ),
-        child: Text(
-          '按住 · 认输',
-          style: fs(
-            family: F.cn,
-            size: 12.5,
-            wght: 400,
-            color: const Color(0xFF7D8CA5),
-          ),
+        child: Stack(
+          children: <Widget>[
+            // `.quit i { position:absolute; left:0; top:0; bottom:0; width:p*100% }`
+            // —— **整高**的一条，从左边长出来
+            Positioned.fill(
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: FractionallySizedBox(
+                  widthFactor: p,
+                  heightFactor: 1,
+                  child: const ColoredBox(color: Color(0x387D8CA5)),
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 17),
+              child: Center(
+                child: Text(
+                  p > 0 ? '松手还来得及' : '按住 · 认输',
+                  style: fs(
+                    family: F.cn,
+                    size: 12.5,
+                    wght: 400,
+                    color: const Color(0xFF7D8CA5),
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );

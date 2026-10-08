@@ -110,6 +110,9 @@ class _AppShellState extends State<AppShell>
   /// 屏幕空间特效（#fx 画布）
   final FxController _fx = FxController();
 
+  /// 认输按住的进度（原型用它驱动 #veil 的暗度：p × .75）
+  double _quitP = 0;
+
   /// 点一下跳过打字机（原型 Tap.next()）
   int _tap = 0;
 
@@ -411,8 +414,10 @@ class _AppShellState extends State<AppShell>
                       _fx.burst(195, 540, n: 60);
                       setState(() => _moment = Moment.result);
                     },
+                    onQuitProgress: (double p) => setState(() => _quitP = p),
                     onQuit: () => setState(() {
                       _clock.stopFast();
+                      _quitP = 0;
                       _moment = Moment.fail;
                     }),
                   ),
@@ -427,7 +432,11 @@ class _AppShellState extends State<AppShell>
                 ),
                 // 屏幕空间特效（#fx 在 DOM 里排在 #ui 之后、#veil 之前）
                 FxField(controller: _fx),
-                Veil(opacity: fail ? .6 : 0),
+                // 认输按住时屏幕跟着暗下去（最多 75%），认输后停在 60%
+                Veil(
+                  opacity: fail ? .6 : _quitP * .75,
+                  instant: _quitP > 0, // 按住期间跟手，松手才回到 900ms 过渡
+                ),
                 // 亮帧（`#flash` 在 DOM 里排在 veil 之后；正 z 的那些会盖在它上面）
                 // ⚠️ 必须判 isAnimating —— 控制器停在 0 时 `1 - easeOut(0) = 1`，
                 // 会让亮帧**一直开着**（整屏被垫一层 16% 白，一路比对下来才发现）
