@@ -16,6 +16,7 @@ class Quest {
     required this.minutes,
     required this.rank,
     required this.attrs,
+    this.hinted = false,
   });
 
   /// 单号（原型按 4 位补零显示）
@@ -23,6 +24,9 @@ class Quest {
 
   /// 'main' | 'daily' | 'remedy'
   final String kind;
+
+  /// 她替你留的（原型 `T.hinted`）—— 只影响 `kindLabel` 的第四档文案
+  final bool hinted;
 
   /// 主线第几环（0 基）与总环数
   final int ring;
@@ -48,16 +52,12 @@ class Quest {
 
   String get serialText => '№ ${serial.toString().padLeft(4, '0')}';
 
-  /// ui.js L196 的 kind 文案
+  /// ui.js L196 的 kind 文案 —— **四档**，不是三档
   String get kindLabel {
-    switch (kind) {
-      case 'main':
-        return '主线 · 第 ${ring + 1} 环 / $ringTotal';
-      case 'remedy':
-        return '补救 · 24 小时内有效';
-      default:
-        return '日常委托';
-    }
+    if (kind == 'main') return '主线 · 第 ${ring + 1} 环 / $ringTotal';
+    if (kind == 'remedy') return '补救 · 24 小时内有效';
+    if (hinted) return '日常 · 她替你留的';
+    return '日常委托';
   }
 
   /// util.js `fmtMin`

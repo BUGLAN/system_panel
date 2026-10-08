@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:system_panel/widgets/plate_timeline.dart';
 
@@ -129,6 +131,45 @@ void main() {
       expect(kRanks.length, 7);
       expect(kRanks.first, 'F');
       expect(kRanks.last, 'S');
+    });
+  });
+
+  group('落板关键帧（ui.js L231-236）', () {
+    test('起点：scale .16 / rotateX 55°', () {
+      final ({double scale, double rxDeg}) k = landKeyframes(0);
+      expect(k.scale, closeTo(.16, 1e-9));
+      expect(k.rxDeg, closeTo(55, 1e-9));
+    });
+
+    test('终点：scale 1 / rotateX 0°', () {
+      final ({double scale, double rxDeg}) k = landKeyframes(1);
+      expect(k.scale, closeTo(1, 1e-9));
+      expect(k.rxDeg, closeTo(0, 1e-9));
+    });
+
+    test('⚠️ .8 处是**过冲**：scale 1.035、rotateX -5°', () {
+      final ({double scale, double rxDeg}) k = landKeyframes(.8);
+      expect(k.scale, closeTo(1.035, 1e-9));
+      expect(k.rxDeg, closeTo(-5, 1e-9));
+    });
+
+    test('全程最大 scale 就是 1.035（过冲一次就回落）', () {
+      double maxScale = 0;
+      for (int i = 0; i <= 100; i++) {
+        maxScale = math.max(maxScale, landKeyframes(i / 100).scale);
+      }
+      expect(maxScale, closeTo(1.035, 1e-9));
+    });
+
+    test('rotateX 先正后负（前倾 55° → 后仰 -5° → 回正）', () {
+      expect(landKeyframes(.4).rxDeg, greaterThan(0));
+      expect(landKeyframes(.9).rxDeg, lessThan(0));
+      expect(landKeyframes(1).rxDeg, closeTo(0, 1e-9));
+    });
+
+    test('越界钳制', () {
+      expect(landKeyframes(-1).scale, closeTo(.16, 1e-9));
+      expect(landKeyframes(2).scale, closeTo(1, 1e-9));
     });
   });
 }

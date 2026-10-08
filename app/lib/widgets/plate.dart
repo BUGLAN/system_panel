@@ -289,12 +289,15 @@ class _PlateState extends State<Plate> with TickerProviderStateMixin {
         animation: _land,
         builder: (BuildContext _, Widget? child) {
           final double t = _landCurve.transform(_land.value);
+          // 关键帧在 plate_timeline.dart（可单测）：0 → .8 过冲到 1.035，
+          // 再在 .8 → 1 之间弹回 1（`.8` 那帧是 rotateX -5deg）
+          final ({double scale, double rxDeg}) kf = landKeyframes(t);
           final double inv = 1 - t;
           final Matrix4 m = Matrix4.identity()
             ..setEntry(3, 2, -1 / 900) // perspective: 900px
             ..translateByDouble(fromX * inv, fromY * inv, 0, 1)
-            ..rotateX(55 * math.pi / 180 * inv)
-            ..scaleByDouble(.16 + .84 * t, .16 + .84 * t, 1, 1);
+            ..rotateX(kf.rxDeg * math.pi / 180)
+            ..scaleByDouble(kf.scale, kf.scale, 1, 1);
           return Opacity(
             // 关键帧：0 透明 → .35 就 1
             opacity: (_land.value / .35).clamp(0, 1),

@@ -11,6 +11,30 @@ library;
 /// 稀有度七档（`content.js` `RANKS`）
 const List<String> kRanks = <String>['F', 'E', 'D', 'C', 'B', 'A', 'S'];
 
+/// 落板的关键帧（`ui.js` L231-236）
+///
+/// ```js
+/// p.animate([
+///   { transform: 'translate(dx,dy) scale(.16) rotateX(55deg)', opacity: 0 },
+///   { opacity: 1, offset: .35 },
+///   { transform: 'translate(0,0) scale(1.035) rotateX(-5deg)', offset: .8 },
+///   { transform: 'none', opacity: 1 },
+/// ], { duration: 560, easing: 'cubic-bezier(.2,.75,.25,1)' });
+/// ```
+///
+/// ⚠️ 关键是 **`.8` 那一帧是过冲**（`scale(1.035)`、`rotateX(-5deg)`）——
+/// 写成 `.16 → 1` 的单调插值就丢了"压下去再弹回来"的手感。
+/// 抽成纯函数是为了能单测（`plate_timeline_test`）。
+({double scale, double rxDeg}) landKeyframes(double t) {
+  final double k = t.clamp(0.0, 1.0);
+  if (k <= .8) {
+    final double u = k / .8;
+    return (scale: .16 + (1.035 - .16) * u, rxDeg: 55 + (-5 - 55) * u);
+  }
+  final double u = (k - .8) / .2;
+  return (scale: 1.035 + (1 - 1.035) * u, rxDeg: -5 + (0 - -5) * u);
+}
+
 /// `Plate.rankRoll(r, from = 0, down = false)` 的向上滚
 ///
 /// ```js
