@@ -176,7 +176,7 @@ class _SideKeys extends StatelessWidget {
   }
 }
 
-class _Dk extends StatelessWidget {
+class _Dk extends StatefulWidget {
   const _Dk({super.key, required this.label, required this.svg, this.onTap});
 
   final String label;
@@ -184,9 +184,25 @@ class _Dk extends StatelessWidget {
   final VoidCallback? onTap;
 
   @override
+  State<_Dk> createState() => _DkState();
+}
+
+class _DkState extends State<_Dk> {
+  /// `.dk:active .ic` —— 按下时**只缩图标圈**（文字标签不缩），并加一层青光
+  bool _down = false;
+
+  void _set(bool v) {
+    if (_down == v) return;
+    setState(() => _down = v);
+  }
+
+  @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: onTap,
+      onTap: widget.onTap,
+      onTapDown: widget.onTap == null ? null : (_) => _set(true),
+      onTapUp: widget.onTap == null ? null : (_) => _set(false),
+      onTapCancel: widget.onTap == null ? null : () => _set(false),
       behavior: HitTestBehavior.opaque,
       child: _dkBody(context),
     );
@@ -197,19 +213,31 @@ class _Dk extends StatelessWidget {
       width: 58,
       child: Column(
         children: <Widget>[
-          Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: const Color(0x99061024), // rgba(6,16,36,.6)
-              border: Border.all(color: C.line, width: 1),
+          Transform.scale(
+            scale: _down ? .9 : 1,
+            child: Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: const Color(0x99061024), // rgba(6,16,36,.6)
+                border: Border.all(color: C.line, width: 1),
+                // `.dk:active .ic { box-shadow: inset 0 0 0 1px var(--blue),
+                //                   0 0 16px rgba(56,225,255,.4) }`
+                boxShadow: _down
+                    ? <BoxShadow>[
+                        BoxShadow(color: C.blue.withAlpha(102), blurRadius: 16),
+                      ]
+                    : null,
+              ),
+              child: Center(
+                child: SvgPicture.string(widget.svg, width: 21, height: 21),
+              ),
             ),
-            child: Center(child: SvgPicture.string(svg, width: 21, height: 21)),
           ),
           const SizedBox(height: 6),
           Text(
-            label,
+            widget.label,
             style: fs(
               family: F.cn,
               size: 11,
@@ -225,7 +253,7 @@ class _Dk extends StatelessWidget {
 }
 
 /// .cta —— 中央那颗会呼吸的委托环（app.css L218-240）
-class _Cta extends StatelessWidget {
+class _Cta extends StatefulWidget {
   const _Cta({
     required this.state,
     required this.running,
@@ -239,10 +267,31 @@ class _Cta extends StatelessWidget {
   final VoidCallback? onTap;
 
   @override
+  State<_Cta> createState() => _CtaState();
+}
+
+class _CtaState extends State<_Cta> {
+  /// `.cta:active .cta-core { transform: scale(.92) }` —— 只缩芯，
+  /// 外面那圈 18s 转一圈的轨道**不缩**
+  bool _down = false;
+
+  void _set(bool v) {
+    if (_down == v) return;
+    setState(() => _down = v);
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final HostState state = widget.state;
+    final bool running = widget.running;
+    final bool idle = widget.idle;
+    final VoidCallback? onTap = widget.onTap;
     // .cta 有 margin-bottom: 2（外边距，不是内边距）
     return GestureDetector(
       onTap: onTap,
+      onTapDown: onTap == null ? null : (_) => _set(true),
+      onTapUp: onTap == null ? null : (_) => _set(false),
+      onTapCancel: onTap == null ? null : () => _set(false),
       behavior: HitTestBehavior.opaque,
       child: Padding(
         padding: const EdgeInsets.only(bottom: 2),
@@ -267,7 +316,10 @@ class _Cta extends StatelessWidget {
                 top: 8,
                 right: 8,
                 bottom: 8,
-                child: _Core(running: running, idle: idle),
+                child: Transform.scale(
+                  scale: _down ? .92 : 1,
+                  child: _Core(running: running, idle: idle),
+                ),
               ),
               // .cta-n
               if (!running && !idle)

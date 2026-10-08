@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 
 import 'hold_button.dart';
+import 'press_scale.dart';
 
 import '../data/format.dart';
 import '../design/tokens.dart';
@@ -399,12 +400,11 @@ class ExecPanel extends StatelessWidget {
     );
   }
 
-  /// .btn.main —— 提交 · 让她验收
+  /// .btn.main —— 提交 · 让她验收（`.btn:active { scale(.96) }`）
   Widget _submitButton() {
     return Expanded(
-      child: GestureDetector(
+      child: PressScale(
         onTap: onSubmit,
-        behavior: HitTestBehavior.opaque,
         child: Container(
           key: const Key('exec.go'),
           height: 54,
