@@ -67,6 +67,42 @@ class SaveFile {
     return fallback ?? SaveData.fresh();
   }
 
+  /// 解冻。
+  ///
+  /// ⚠️ 原型 `wipe()` 之后紧跟一句 `location.reload()` —— **重载会把冻结一起重置**，
+  /// 所以原型不需要这个方法。我们没有重载：重置后回到绑定仪式、绑定完要存盘，
+  /// 不手动解冻的话那次存盘会被 `save()` 开头的 `if (_frozen) return` **静默跳过**
+  /// （踩过：绑定完目标活不过一次重启，查了半天以为是 Android 侧通道坏了）。
+  void unfreeze() => _frozen = false;
+
+  /// 调试用：直接把原始字符串读回来（区分"没写进去"和"写进去了解析不出来"）
+  Future<String?> rawRead() async {
+    try {
+      return await _p().getString(key);
+    } catch (e) {
+      return 'THREW: $e';
+    }
+  }
+
+  /// 自检：写一个探针键再读回来。
+  ///
+  /// 加这个是因为**实机曾经静默不落盘**（`setString` 不抛异常、回读却是空的、
+  /// 数据目录下一个文件都没有）—— 与其让它继续悄悄失败，不如启动时问一句
+  /// 「这套存储到底能不能用」。返回 null 表示通过，否则是失败原因。
+  Future<String?> selfTest() async {
+    const String probe = 'opus-v2/__selftest';
+    try {
+      final String want = DateTime.now().microsecondsSinceEpoch.toString();
+      await _p().setString(probe, want);
+      final String? got = await _p().getString(probe);
+      await _p().remove(probe);
+      if (got == want) return null;
+      return '写后回读不一致（写入 $want，读回 ${got ?? 'null'}）';
+    } catch (e) {
+      return '抛异常：$e';
+    }
+  }
+
   bool get frozen => _frozen;
 }
 

@@ -159,4 +159,19 @@ void main() {
       expect(h.attrs, HostState.demo.attrs);
     });
   });
+  group('冻结与解冻', () {
+    test('重置后解冻，新的一次绑定能存进去（原型靠 reload 解冻）', () async {
+      final SaveFile f = SaveFile();
+      await f.save(sample());
+      await f.wipe(fallback: SaveData.fresh());
+      expect(f.frozen, isTrue);
+
+      await f.save(sample()); // 冻结中，应被跳过
+      expect((await f.load()).goal.text, '');
+
+      f.unfreeze(); // 绑定那一刻解冻
+      await f.save(sample().copyWith(goal: Goal.demo().copyWith(text: '考研上岸')));
+      expect((await f.load()).goal.text, '考研上岸');
+    });
+  });
 }

@@ -581,6 +581,9 @@ class _AppShellState extends State<AppShell>
     // ⚠️ 原型在这里还会用 LLM 把一句话拆成 5~8 环（docs/13），
     //    那属于业务规则，等宿主约束；这里先只替换目标文案 + 存盘。
     final String typed = _ask.text.trim();
+    // ⚠️ 重置存档会冻结存储（原型靠随后的 location.reload() 解冻，我们没有重载），
+    //    所以重新绑定这一刻要显式解冻，否则这次存盘会被静默跳过。
+    _save.unfreeze();
     setState(() {
       if (typed.isNotEmpty) {
         _goal = _goal.copyWith(
@@ -642,10 +645,14 @@ class _AppShellState extends State<AppShell>
   }
 
   /// 读档（store.js L34）—— 没有档就用演示档
+  /// 顺带跑一次存储自检：实机曾经静默不落盘，这里让它出声
   Future<void> _restore() async {
     final SaveData d = await _save.load(
       fallback: SaveData(host: HostState.demo, goal: Goal.demo()),
     );
+    // 存储自检 —— 通过就不吭声，不通过就把原因喊出来（别静默失败）
+    final String? err = await _save.selfTest();
+    if (err != null) debugPrint('[save] ⚠️ 存储不可用：$err');
     if (!mounted) return;
     setState(() {
       _host = d.host;
@@ -655,17 +662,19 @@ class _AppShellState extends State<AppShell>
 
   /// 存盘（store.js L43）
   ///
-  /// ⚠️ **实机上这一步目前不落盘**：`setString` 不抛异常、但回读是空的，
-  /// 且 `/data/data/<pkg>/` 下不会出现任何存储文件（legacy 与 async 两套 API 都一样，
-  /// 插件在 `GeneratedPluginRegistrant` 里是注册过的）。
-  /// 存疑点在 Android 侧的通道，见 `BEHAVIOR-GAPS.md` A4。
-  /// 这里保留一条**只在读写不一致时**才打的日志 —— 免得它继续静默失败。
+  /// 启动时的自检（`SaveFile.selfTest`）是**通过**的，但这里写完整存档后回读是空的
+  /// —— 所以下面多打一行原始串长度，用来区分「没写进去」和「写进去了解析不出来」。
   Future<void> _persist() async {
     await _save.save(SaveData(host: _host, goal: _goal));
+    final String? raw = await _save.rawRead();
     final SaveData back = await _save.load();
     if (back.goal.text != _goal.text) {
+      final String head = raw == null
+          ? 'null'
+          : raw.substring(0, raw.length < 70 ? raw.length : 70);
       debugPrint(
-        '[save] ⚠️ 写后回读不一致：wrote=[${_goal.text}] read=[${back.goal.text}]',
+        '[save] ⚠️ 回读不一致：wrote=[${_goal.text}] read=[${back.goal.text}] '
+        'rawLen=${raw?.length} rawHead=$head',
       );
     }
   }
