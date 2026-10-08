@@ -578,21 +578,59 @@ class _ResultPanelState extends State<ResultPanel>
     );
   }
 
-  /// .rs-near —— 一句近况（没证据 / 差多少暴击）
+  /// .rs-near —— 一句近况。**两个条件都不成立时整行不显示**（原型只在
+  /// `res.near` 有值、或"没暴击且 0 份证据"时才 `classList.add('on')`）。
+  ///
+  /// ```js
+  /// if (res.near) $('#rsNear').innerHTML = `暴击判定：差 <b>${res.near}%</b>。下次多拍一张证据。`
+  /// else if (!res.crit && !res.photos) $('#rsNear').innerHTML =
+  ///   '本单 0 份证据 · 暴击率只有 <b>' + Math.round(res.chance*100) + '%</b>'
+  /// // 否则什么都不设 —— 那一行保持 opacity 0
+  /// ```
   Widget _near() {
-    final String text = result.photos == 0 && !result.crit
-        ? '本单 ${result.photos} 份证据 · 暴击率只有 ${result.chancePct}%'
-        : '暴击判定：差 ${result.chancePct}%。下次多拍一张证据。';
-    return Text(
-      text,
-      style: fs(
-        family: F.mono,
-        size: 10.5,
-        wght: 500,
-        ls: .63,
-        height: 1.4,
-        color: C.mist,
-      ),
+    final String? text;
+    if (result.near > 0) {
+      text = '暴击判定：差 [[${result.near}%]]。下次多拍一张证据。';
+    } else if (!result.crit && result.photos == 0) {
+      text = '本单 0 份证据 · 暴击率只有 [[${result.chancePct}%]]';
+    } else {
+      text = null; // 不显示
+    }
+    if (text == null) return const SizedBox.shrink();
+    final TextStyle base = fs(
+      family: F.mono,
+      size: 10.5,
+      wght: 500,
+      ls: .63,
+      height: 1.4,
+      color: C.mist,
+    );
+    // 就地拆一次 `[[…]]`（只有一处高亮，不必上完整的富文本解析器）
+    final int i0 = text.indexOf('[[');
+    final int i1 = text.indexOf(']]');
+    final Widget body = (i0 >= 0 && i1 > i0)
+        ? Text.rich(
+            TextSpan(
+              style: base,
+              children: <InlineSpan>[
+                TextSpan(text: text.substring(0, i0)),
+                // `.rs-near b { color: var(--ice) }`
+                TextSpan(
+                  text: text.substring(i0 + 2, i1),
+                  style: base.copyWith(color: C.ice),
+                ),
+                TextSpan(text: text.substring(i1 + 2)),
+              ],
+            ),
+          )
+        : Text(text, style: base);
+    // `.rs-near { opacity: 0; transition: opacity .4s }` + `.on { opacity: 1 }`
+    final bool on = !widget.animate || _tl.nearOn(_t);
+    return AnimatedOpacity(
+      key: const Key('result.near'),
+      opacity: on ? 1 : 0,
+      duration: const Duration(milliseconds: 400),
+      child: body,
     );
   }
 }

@@ -82,6 +82,13 @@ class SettleTimeline {
   double get saveAt =>
       (chipCount <= 0 ? chipAt : chipAtOf(chipCount - 1)) + 220;
 
+  /// `#rsNear` 的出现时刻 —— 原型在最后一张筹码之后**紧接着**就设，
+  /// 没有额外的 `await w(...)`（flows.js L428-430）
+  double get nearAt => chipCount <= 0 ? chipAt : chipAtOf(chipCount - 1);
+
+  /// 近况那行显不显示（`.rs-near.on { opacity: 1 }`）
+  bool nearOn(double t) => t >= nearAt;
+
   double get total => saveAt + 320;
 
   // ── 由时刻推算状态 ────────────────────────────────────────

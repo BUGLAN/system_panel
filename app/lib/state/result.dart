@@ -20,6 +20,7 @@ class QuestResult {
     required this.dbl,
     required this.photos,
     required this.chance,
+    this.near = 0,
   });
 
   final Quest quest;
@@ -46,6 +47,17 @@ class QuestResult {
   /// 交了几份证据、当时的暴击率
   final int photos;
   final double chance;
+
+  /// 暴击判定**差了多少**（百分点）。原型 `store.js` L280：
+  ///
+  /// ```js
+  /// const near = !crit && roll - chance < .08
+  ///   ? Math.max(1, Math.round((roll - chance) * 100)) : 0;
+  /// ```
+  ///
+  /// 只有"差不到 8% 就中"才有值，其余是 0 —— 而 `#rsNear` 那一行
+  /// **只在有值（或 0 份证据）时才显示**，否则整行 opacity 0。
+  final int near;
 
   Rarity get rarity => quest.rarity;
 
