@@ -1,4 +1,5 @@
 import '../data/rarity.dart';
+import '../data/rewards.dart';
 
 /// 一单委托 —— 对应原型里 `Plate.build(T)` 吃到的那份数据。
 ///
@@ -69,12 +70,29 @@ class Quest {
   }
 
   /// ui.js `rewardHTML` 的纯文本版：`EXP 50 · ◈ 24 体+1 力+1`
+  ///
+  /// ⚠️ 保持原型板面的**旧表读数**：plate.dart:750/115 直接读 `rarity.exp/coin`，
+  /// plate_test 也以这串文案钉原型像素真值 —— 面板口径切换是 widgets 侧的
+  /// 返工卡（t8 范围外），这里不动它，零回归。
   String get rewardText {
     final double k = kind == 'remedy' ? .5 : 1;
     final String at = attrs.entries
         .map((MapEntry<String, int> e) => '${e.key}+${e.value}')
         .join(' ');
     return 'EXP ${(rarity.exp * k).round()} · ◈ ${(rarity.coin * k).round()}$at';
+  }
+
+  /// 结算经济口径（docs/18 §2.3 Rewards 表）的报酬文案 —— C 级 = `EXP 4 · ◈ 5`。
+  ///
+  /// 这是「这一单**真会**结算出多少」的真源读数（quest_flow.settle 同表）；
+  /// 派单板 loot 面板换读它之后就与结算一致（迁移点：plate.dart:750）。
+  String get lootText {
+    final double k = kind == 'remedy' ? .5 : 1;
+    final String at = attrs.entries
+        .map((MapEntry<String, int> e) => '${e.key}+${e.value}')
+        .join(' ');
+    return 'EXP ${(Rewards.expOf(rank) * k).round()} · '
+        '◈ ${(Rewards.coinOf(rank) * k).round()}$at';
   }
 
   /// 与原型 `Store.veteran()` 的 `Store.head()` 逐字段一致的那一单

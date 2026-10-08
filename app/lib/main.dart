@@ -24,6 +24,7 @@ import 'screens/boot_screen.dart';
 import 'stage/ring_painter.dart';
 import 'state/host_state.dart';
 import 'state/goal.dart';
+import 'state/goal_gen.dart';
 import 'stage/camera.dart';
 import 'stage/live2d_stage.dart';
 import 'stage/live2d_web.dart';
@@ -47,6 +48,7 @@ import 'widgets/fail_layer.dart';
 import 'widgets/fx_layer.dart';
 import 'widgets/fx_particles.dart';
 import 'widgets/hud.dart';
+import 'widgets/interview_deck.dart';
 import 'widgets/item_drawer.dart';
 import 'widgets/line_layer.dart';
 import 'widgets/main_view.dart';
@@ -217,6 +219,19 @@ class _AppShellState extends State<AppShell>
   /// 绑定仪式的输入框
   final TextEditingController _ask = TextEditingController();
 
+  /// ── 绑定流多幕（docs/18 §2.1 · t8 装配）────────────────────────
+  ///
+  /// 第 0 幕 = 问目标（AskField）；[_interviewCat] 非空 = 第 1 幕访谈卡
+  /// （t4 的 InterviewDeck，按目标类型出 3~5 张）；答完 → `buildFirstGoal`
+  /// 落 3 天 3 环 E/D/C + 见面礼双倍卡 → 大厅（首单已在队列）。
+  GoalCategory? _interviewCat;
+
+  /// 访谈要定的那句话（第 0 幕收进来的目标原文）
+  String _pendingGoalText = '';
+
+  /// 换日游标：上次补发日常的那一天（原型 `S.day`；清晨首次进入补发）
+  DateTime? _lastRollDay;
+
   /// 亮帧：白 16% / 180ms ease-out（docs/08 逐帧里的「亮帧」）
   late final AnimationController _flashC = AnimationController(
     vsync: this,
@@ -290,6 +305,9 @@ class _AppShellState extends State<AppShell>
   SystemCopyProvider? _copy;
   ChatService? _chatService;
 
+  /// 小祥的长期记忆（访谈答案写这里 —— 访谈即第一批记忆，docs/18 §2.1③）
+  MemoryStore? _memory;
+
   Future<void> _initAgent() async {
     final AgentSettings s = await SettingsStore().load();
     await _chat.load();
@@ -305,6 +323,7 @@ class _AppShellState extends State<AppShell>
     );
     final MemoryStore mem = MemoryStore();
     setState(() {
+      _memory = mem;
       _copy = SystemCopyProvider(llm: gw, memory: mem);
       _chatService = ChatService(gateway: gw, memory: mem);
     });
@@ -1017,8 +1036,10 @@ class _AppShellState extends State<AppShell>
                           : main
                           ? LINES.mainline(_goal.doneCount, _goal.rings.length)
                           : onboard
-                          // 追问文案接管：兜底保持 LINES.askGoal 原句
-                          ? _probeLine ?? LINES.askGoal
+                          // 访谈进行中换一句幕词；第 0 幕保持追问接管（兜底=askGoal 原句）
+                          ? _interviewCat != null
+                                ? '答完这几张，我给你排三天。'
+                                : _probeLine ?? LINES.askGoal
                           : LINES.holding.replaceFirst(
                               '[[{n}]]',
                               '[[${_host.queue}]]',
@@ -1054,7 +1075,8 @@ class _AppShellState extends State<AppShell>
                   visible: _choicesOn,
                   onPick: _onChoice,
                 ),
-                // 绑定仪式：她在上面问，宿主在这儿敲（z 4，在 veil 之上）
+                // 绑定仪式 · 第 0 幕：她在上面问，宿主在这儿敲（z 4，在 veil 之上）
+                // 提交后不直接绑定 —— 空泛的追问到具体为止，具体的进访谈卡
                 AskField(
                   prompt: '目标 ›',
                   placeholder: '比如：三个月跑完半马',
@@ -1067,10 +1089,25 @@ class _AppShellState extends State<AppShell>
                     '变优秀',
                   ],
                   controller: _ask,
-                  visible: onboard,
+                  visible: onboard && _interviewCat == null,
                   onPreset: (String v) => _ask.text = v,
-                  onSubmit: _bind,
+                  onSubmit: _onGoalSubmitted,
                 ),
+                // 绑定仪式 · 第 1 幕：卡片式访谈（docs/18 §2.1，t4 组件 + t8 装配）
+                // 答完 → buildFirstGoal 落 3 天 3 环 → 见面礼 → 大厅
+                if (onboard && _interviewCat != null)
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: 96,
+                    child: InterviewDeck(
+                      cards: interviewCardsFor(
+                        _interviewCat!,
+                        level: _host.lv,
+                      ),
+                      onDone: _completeOnboarding,
+                    ),
+                  ),
                 // 投影面板（档案 / 补给 / 系统共用这一层壳）
                 Sheet(
                   host: _host,
@@ -1148,10 +1185,10 @@ class _AppShellState extends State<AppShell>
                   onClose: () => setState(() => _chatOpen = false),
                   onVoiceTap: _onVoiceTap,
                 ),
-                // 横幅（z 5，压在所有东西上面）
+                // 横幅（z 5，压在所有东西上面）—— 绑定见面礼（数值语义在 goal_gen 的 kBindGift*）
                 SysBanner(
-                  kicker: '见面礼',
-                  text: '双倍卡 ×1',
+                  kicker: kBindGiftKicker,
+                  text: kBindGiftText,
                   glyph: '×2',
                   visible: _banner,
                 ),
@@ -1166,36 +1203,142 @@ class _AppShellState extends State<AppShell>
     );
   }
 
-  /// 绑定：收起输入框 → 回大厅 → 报一个「见面礼」
-  /// （原型 `Store.bind()` 之后 `Banner.show('见面礼','双倍卡 ×1','×2')`，2200ms 后自己收）
-  void _bind() {
-    // 把宿主敲的目标落进档案（原型的 `Store.bind(name, plan)`）。
-    // ⚠️ 原型在这里还会用 LLM 把一句话拆成 5~8 环（docs/13），
-    //    那属于业务规则，等宿主约束；这里先只替换目标文案 + 存盘。
+  /// 绑定 · 第 0 幕收卷（原型 `makeGoal` 的空泛判定）：
+  /// 空泛/太短 → 她追问到具体为止（不进访谈）；具体 → 进访谈卡。
+  void _onGoalSubmitted() {
     final String typed = _ask.text.trim();
+    if (isVagueGoal(typed)) {
+      _takeProbeLine(typed.isEmpty ? '目标' : typed); // 追问文案接管（兜底=askGoal）
+      _sayAside('太空了。说点具体的。', holdMs: 1800);
+      return;
+    }
+    setState(() {
+      _pendingGoalText = typed;
+      _interviewCat = detectCategory(typed);
+    });
+    _takeProbeLine(typed);
+  }
+
+  /// 绑定 · 第 1 幕收卷（原型 `Store.bind(name, plan)` 的新政版）：
+  /// 访谈答案 → 3 天 3 环 E/D/C 落档 → 队列 = 首环钉队首 + 当日日常 1~2
+  /// → 见面礼双倍卡 ×1 → 大厅（首单已在队列）。
+  void _completeOnboarding(Map<String, String> answers) {
+    final GoalCategory cat = _interviewCat!;
     // ⚠️ 重置存档会冻结存储（原型靠随后的 location.reload() 解冻，我们没有重载），
     //    所以重新绑定这一刻要显式解冻，否则这次存盘会被静默跳过。
     _save.unfreeze();
     setState(() {
-      if (typed.isNotEmpty) {
-        _goal = _goal.copyWith(
-          text: typed,
-          short: typed.characters.length > 6
-              ? typed.characters.take(6).toString()
-              : typed,
-        );
-      }
-      // 绑定即建队列：首环 + 当日日常（store.js bind() 的最小版；
-      // 完整访谈流与首目标 3 天在 T6 接管）
-      _flow = QuestFlow(host: _host, goal: _goal)..seedForCurrentGoal();
+      _goal = buildFirstGoal(
+        text: _pendingGoalText,
+        cat: cat,
+        answers: answers,
+      );
+      _flow = QuestFlow(host: _host, goal: _goal);
+      // 绑定即建队列：首环 + 当日日常（store.js bind() 的 L165-167；
+      // 每日 1~2 个走 §2.2 新政，不再用 seedForCurrentGoal 的固定 3 张）
+      _flow.queue.add(_flow.ringTask(0));
+      _flow.queue.addAll(_genTodaysDailies());
+      _resyncQueueCount();
+      // 见面礼：双倍卡 ×1（原型 bind() 的 `S.items.dbl += 1`，
+      // 数值语义钉在 kBindGift*；Banner 演出在 build 里挂着）
+      _flow.host = _flow.host.copyWith(items: applyBindGift(_flow.host.items));
       _host = _flow.host;
+      _lastRollDay = startOfDay(DateTime.now());
+      _interviewCat = null;
       _moment = Moment.lobby;
       _banner = true;
     });
     _persist();
+    _rememberInterview(cat, answers);
+    _sayAside('排好了。三天，每天一环。', holdMs: 2200);
     Future<void>.delayed(const Duration(milliseconds: 2200), () {
       if (mounted) setState(() => _banner = false);
     });
+  }
+
+  /// 访谈答案 → 小祥的长期记忆（答案三用之三；记忆挂了不阻塞绑定）
+  Future<void> _rememberInterview(
+    GoalCategory cat,
+    Map<String, String> answers,
+  ) async {
+    final MemoryStore? mem = _memory;
+    if (mem == null) return;
+    for (final String text in memoriesFromInterview(
+      cat: cat,
+      answers: answers,
+      goalText: _pendingGoalText,
+    )) {
+      try {
+        await mem.add(text, source: MemorySource.interview, weight: 2);
+      } catch (_) {
+        return;
+      }
+    }
+  }
+
+  /// 队列读数回同步（HUD 的 `[[{n}]]` 读 host.queue；
+  /// main 直接做队列手术时 QuestFlow 的私有计数帮不上，手动对齐）
+  void _resyncQueueCount() {
+    _flow.host = _flow.host.copyWith(queue: _flow.queue.length);
+    _host = _flow.host;
+  }
+
+  /// 当日日常（docs/18 §2.2）：类型池+通用池出候选 4~6 → 按
+  /// 「最弱维/贴主线」挑 1~2（lv≥5 或连击≥3 为 2）。
+  /// 单号经 [_flow.genDaily] 占位分配（合法单号，绝不与队列撞号 ——
+  /// 占位单本身丢弃不入队）。
+  List<Quest> _genTodaysDailies({int? n}) {
+    final int count = n ?? dailyCountFor(level: _host.lv, streak: _host.streak);
+    final String catId = _goal.cat.isEmpty ? 'gen' : _goal.cat;
+    final List<DailyTemplate> picks = pickDailies(
+      candidates: genDailyCandidates(catId: catId, rnd: _rnd),
+      attrs: _host.attrs,
+      goalCatId: catId,
+      n: count,
+      rnd: _rnd,
+    );
+    final List<Quest> slots = _flow.genDaily(picks.length);
+    return <Quest>[
+      for (int i = 0; i < picks.length && i < slots.length; i++)
+        dailyQuestFrom(
+          picks[i],
+          serial: slots[i].serial,
+          level: _host.lv,
+          rnd: _rnd,
+        ),
+    ];
+  }
+
+  /// 换日（store.js `rollDay` L179-196 的装配）：隔夜日常作废、主线单重钉、
+  /// 补发当日日常 1~2。「清晨首次进入」的判定：换日游标（[_lastRollDay]，
+  /// 冷启动用存档 lastSeen 兜底）不是今天才动手 —— 同一天反复进出不重发。
+  void _rollDayIfNeeded({DateTime? fromSeen, DateTime? now}) {
+    final DateTime t0 = now ?? DateTime.now();
+    final DateTime? anchor = _lastRollDay ?? fromSeen;
+    if (anchor != null && isSameCalendarDay(anchor, t0)) return;
+    if (_goal.isEmpty) {
+      _lastRollDay = startOfDay(t0); // 没绑定就没日常可补
+      return;
+    }
+    final List<Quest> next = rollDayQueue(
+      overnight: _flow.queue,
+      fresh: _genTodaysDailies(),
+      mainTask: () {
+        final int ci = _goal.currentIndex;
+        return ci >= 0 ? _flow.ringTask(ci) : null;
+      },
+      activeIsMain: _flow.active?.task.kind == 'main',
+      remedyDeadline: _flow.remedyDeadline,
+      now: t0,
+    );
+    setState(() {
+      _flow.queue
+        ..clear()
+        ..addAll(next);
+      _resyncQueueCount();
+      _lastRollDay = startOfDay(t0);
+    });
+    _persist();
   }
 
   /// 重置存档（`Store.wipe()`）：删档 + 冻结 + 回绑定仪式
@@ -1209,6 +1352,10 @@ class _AppShellState extends State<AppShell>
       _host = _flow.host;
       _goal = d.goal;
       _moment = Moment.onboard;
+      // 回到绑定仪式第 0 幕（访谈进行到一半被重置的也收回来）
+      _interviewCat = null;
+      _pendingGoalText = '';
+      _lastRollDay = null;
     });
     _takeProbeLine('绑定：宿主想变成什么样'); // 追问文案接管（兜底=askGoal 原句）
   }
@@ -1259,6 +1406,8 @@ class _AppShellState extends State<AppShell>
         final DateTime? hid = _hiddenAt;
         _hiddenAt = null;
         if (hid == null) return;
+        // 后台里跨了天 → 回前台先补发今日日常，再打招呼
+        _rollDayIfNeeded(fromSeen: hid);
         _greetAfter(hid);
       case AppLifecycleState.inactive:
       case AppLifecycleState.detached:
@@ -1514,8 +1663,8 @@ class _AppShellState extends State<AppShell>
     }
   }
 
-  /// 进派单板的唯一入口：队列空就不进（rollDay 的"每日补发"在 T6，
-  /// 之前先用一句插话接住，别让宿主接 到幻影单）
+  /// 进派单板的唯一入口：队列空就不进（换日补发已由 `_rollDayIfNeeded`
+  /// 在启动/回前台时做过；真清空了就用一句插话接住，别让宿主接到幻影单）
   void _enterDispatchOrRest() {
     if (_busy) return;
     if (_flow.queueEmpty) {
@@ -1589,6 +1738,9 @@ class _AppShellState extends State<AppShell>
     });
     // 补出来的种子要落一次盘，重启后队列还在
     if (seeded && _flow.queue.isNotEmpty) _persist();
+    // 换日（store.js rollDay）：隔夜日常作废、主线单重钉、补发当日日常。
+    // 「清晨首次进入」= 存档 lastSeen 的日子不是今天（同日重进不重发）
+    _rollDayIfNeeded(fromSeen: d.lastSeen);
   }
 
   /// 存盘（store.js L43）—— 档案 + 主线 + 她手里的队列

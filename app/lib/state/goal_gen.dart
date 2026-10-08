@@ -1,3 +1,8 @@
+import 'dart:math' as math;
+
+import '../data/rarity.dart';
+import 'quest.dart';
+import 'quest_flow.dart';
 import 'goal.dart';
 
 /// ═══════════════════════════════════════════════════════════
@@ -1160,3 +1165,164 @@ Map<String, int> applyBindGift(Map<String, int> items) => <String, int>{
   ...items,
   kBindGiftItemKey: (items[kBindGiftItemKey] ?? 0) + kBindGiftDbl,
 };
+
+// ═══ 周期任务生成（docs/18 §2.2 · T6-2）══════════════════════════
+//
+// 「每日 1~2 个」取代原型 `dailyCount=clamp(1+⌈lv/3⌉,2,4)`：
+//   候选池 4~6 个（目标类型专属池 + 通用池）→ 按「一单专治最弱维、
+//   一单贴主线、其余随缘」（store.js:108 plan 策略）挑 1~2 个。
+// 换日（`rollDay`，store.js:179-196 语义）：隔夜日常作废、主线单重钉、
+//   清晨首次进入 App 时补发。装配在 main.dart；本模块只出**纯函数**。
+
+/// 每日日常单数：`lv≥5 或连击≥3 → 2`，否则 1（docs/18 §2.2）。
+int dailyCountFor({required int level, required int streak}) =>
+    (level >= 5 || streak >= 3) ? 2 : 1;
+
+/// 日常单的日上限（docs/01：日上限 6；主线单/补救单不占日常配额）。
+const int kDailyCap = 6;
+
+/// 候选池规模：「生成数个、用 1~2 个」—— 每次出 4~6 个候选再挑。
+const int kDailyCandidateMin = 4;
+const int kDailyCandidateMax = 6;
+
+/// 候选池：目标类型专属池在前、通用池补位，随机去重出 4~6 个（docs/18 §2.2）。
+List<DailyTemplate> genDailyCandidates({
+  required String catId,
+  required math.Random rnd,
+  int? n,
+}) {
+  final List<DailyTemplate> pool = dailyPoolFor(catId);
+  final int want =
+      (n ?? kDailyCandidateMin + rnd.nextInt(kDailyCandidateMax - kDailyCandidateMin + 1))
+          .clamp(0, pool.length);
+  final List<DailyTemplate> shuffled = <DailyTemplate>[...pool]..shuffle(rnd);
+  return shuffled.take(want).toList();
+}
+
+/// 从候选里挑 [n] 个（store.js:108 的 plan 策略）：
+/// 第一单专治**最弱维**，第二单**贴主线**（类别六维倾向命中），其余随缘。
+List<DailyTemplate> pickDailies({
+  required List<DailyTemplate> candidates,
+  required Map<String, int> attrs,
+  required String goalCatId,
+  required int n,
+  required math.Random rnd,
+}) {
+  MapEntry<String, int> weak = attrs.isEmpty
+      ? const MapEntry<String, int>('体', 0)
+      : attrs.entries.reduce(
+          (MapEntry<String, int> a, MapEntry<String, int> b) =>
+              b.value < a.value ? b : a,
+        );
+  final Map<String, int> tilt = goalCats[goalCatId]?.tilt ??
+      goalCats['gen']!.tilt;
+  final List<DailyTemplate> out = <DailyTemplate>[];
+  final Set<String> used = <String>{};
+  bool take(bool Function(DailyTemplate) pred) {
+    final List<DailyTemplate> cand = candidates
+        .where((DailyTemplate d) => !used.contains(d.title) && pred(d))
+        .toList();
+    if (cand.isEmpty) return false;
+    final DailyTemplate d = cand[rnd.nextInt(cand.length)];
+    used.add(d.title);
+    out.add(d);
+    return true;
+  }
+
+  final List<bool Function(DailyTemplate)> plan = <bool Function(DailyTemplate)>[
+    (DailyTemplate d) => (d.attrs[weak.key] ?? 0) > 0, // 一单专治短板
+    (DailyTemplate d) =>
+        tilt.keys.any((String k) => (d.attrs[k] ?? 0) > 0), // 一单贴主线
+    for (int i = 0; i < kDailyCap; i++) (DailyTemplate _) => true, // 其余随缘
+  ];
+  for (int i = 0; i < n; i++) {
+    if (!(take(plan[i]) || take((DailyTemplate _) => true))) break;
+  }
+  return out;
+}
+
+/// 日常档位（store.js:112-114 沿用 + docs/18 §2.3 的 F 兼容档新政）：
+/// lv≥4 有 30% 提一档、lv≥8 再 20%；封顶 lv<8 到 D、lv≥8 到 C；
+/// **新生成任务不再出 F**（F 只留给老存档/补救残单，§2.3 表）——
+/// 提档后仍为 F 的钉回 E。
+String dailyRankFor(String baseRank, {required int level, required math.Random rnd}) {
+  String r = baseRank;
+  if (level >= 4 && rnd.nextDouble() < .3) {
+    r = Rarity.ranks[(Rarity.of(r).i + 1).clamp(0, Rarity.ranks.length - 1)];
+  }
+  if (level >= 8 && rnd.nextDouble() < .2) {
+    r = Rarity.ranks[(Rarity.of(r).i + 1).clamp(0, Rarity.ranks.length - 1)];
+  }
+  final int cap = level >= 8 ? 3 : 2;
+  final int i = math.max(1, math.min(Rarity.of(r).i, cap));
+  return Rarity.ranks[i];
+}
+
+/// 模板 → 一张日常单。六维 = 模板权重按档位点数重分
+/// （`QuestFlow.splitAttrs` 静态复用 —— docs/18 §3.3 的只读纪律；
+/// 单号由调用方给，main.dart 经 `_flow.genDaily` 占位取合法单号，绝不撞号）。
+Quest dailyQuestFrom(
+  DailyTemplate t, {
+  required int serial,
+  required int level,
+  required math.Random rnd,
+  String? rank,
+}) {
+  final String r = rank ?? dailyRankFor(t.rank, level: level, rnd: rnd);
+  return Quest(
+    serial: serial,
+    kind: 'daily',
+    ring: -1,
+    ringTotal: 0,
+    name: t.title,
+    reason: '',
+    proof: t.proof,
+    minutes: t.minutes,
+    rank: r,
+    attrs: QuestFlow.splitAttrs(t.attrs, Rarity.of(r).pt),
+  );
+}
+
+/// 换日的**队列手术**（store.js `rollDay` L179-196 移植，纯函数可测）：
+///  · 隔夜的日常与主线单**全部作废**（`kind != 'remedy'` 清空；
+///    昨天被退缩降过档的主线单，新的一天换一张新档位的 —— 重钉）；
+///  · 补救单只留**未过期**的（[remedyDeadline] = 业务层记的截止时刻，
+///    null 视为仍有效）；
+///  · 主线脚下环重钉一张新单：[mainTask] 由调用方造（带合法单号）；
+///    执行中的就是主线单时不重钉（[activeIsMain]，原型 L189）；
+///  · 补发当日日常 [fresh]，**日上限 6** 兜底钳制（只数 kind=='daily'）。
+///
+/// 返回新队列；调用方原位替换业务层的队列并落盘。
+List<Quest> rollDayQueue({
+  required List<Quest> overnight,
+  required List<Quest> fresh,
+  Quest? Function()? mainTask,
+  bool activeIsMain = false,
+  DateTime? remedyDeadline,
+  DateTime? now,
+}) {
+  final DateTime t0 = now ?? DateTime.now();
+  final List<Quest> out = <Quest>[
+    for (final Quest q in overnight)
+      if (q.kind == 'remedy' &&
+          (remedyDeadline == null || !remedyDeadline.isBefore(t0)))
+        q,
+  ];
+  if (!activeIsMain) {
+    final Quest? m = mainTask?.call();
+    if (m != null) out.insert(0, m);
+  }
+  final int usedDaily = out
+      .where((Quest q) => q.kind == 'daily')
+      .length;
+  final int room = math.max(0, kDailyCap - usedDaily);
+  out.addAll(fresh.take(room));
+  return out;
+}
+
+/// 同一天吗（本地日历日；换日判定与 `_startOfDay` 配套）。
+bool isSameCalendarDay(DateTime a, DateTime b) =>
+    a.year == b.year && a.month == b.month && a.day == b.day;
+
+/// 那一天的 0 点（换日游标的存法）。
+DateTime startOfDay(DateTime t) => DateTime(t.year, t.month, t.day);

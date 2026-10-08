@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:system_panel/data/rewards.dart';
 import 'package:system_panel/state/quest.dart';
 
 /// `Quest` 的派生文案（原型 `ui.js` L186-208 的模板）。
@@ -63,6 +64,39 @@ void main() {
 
     test('⚠️ 补救单的报酬**减半**（原型 k = remedy ? .5 : 1）', () {
       expect(q(kind: 'remedy').rewardText, 'EXP 25 · ◈ 12体+1 力+1');
+    });
+  });
+
+  group('lootText = 结算经济口径（docs/18 §2.3 Rewards，t8）', () {
+    test('C 级：EXP 4 · ◈ 5 —— 与 QuestFlow.settle 同表（rewardText 是旧表）', () {
+      expect(q().lootText, 'EXP 4 · ◈ 5体+1 力+1');
+      expect(q().lootText, isNot(q().rewardText));
+    });
+
+    test('补救单减半：C 级 EXP 2 · ◈ 3（金币 2.5 → 3）', () {
+      expect(q(kind: 'remedy').lootText, 'EXP 2 · ◈ 3体+1 力+1');
+    });
+
+    test('逐档与 Rewards 表对齐（E~S 全档）', () {
+      for (final String rank in Rewards.kExpByRank.keys) {
+        final Quest byRank = Quest(
+          serial: 41,
+          kind: 'daily',
+          ring: -1,
+          ringTotal: 0,
+          name: 'x',
+          reason: '',
+          proof: 'y',
+          minutes: 10,
+          rank: rank,
+          attrs: const <String, int>{},
+        );
+        expect(
+          byRank.lootText,
+          'EXP ${Rewards.expOf(rank)} · ◈ ${Rewards.coinOf(rank)}',
+          reason: '档位 $rank',
+        );
+      }
     });
   });
 }
