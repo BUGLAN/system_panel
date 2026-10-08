@@ -27,6 +27,7 @@ class RingField extends StatelessWidget {
     this.cam = 'full',
     this.t = 0,
     this.dim = 1,
+    this.ringMul,
     this.scan = 0,
     this.visible = true,
   });
@@ -41,6 +42,9 @@ class RingField extends StatelessWidget {
 
   /// `fx.bright × ringA`
   final double dim;
+
+  /// 逐环系数（`Stage.ringMul[i]`，默认 1）—— 失败时把当前那一环掐暗
+  final List<double>? ringMul;
 
   /// 待机扫描（`Stage.scan`）
   final double scan;
@@ -72,6 +76,7 @@ class RingFieldPainter extends CustomPainter {
     required this.cam,
     required this.t,
     required this.dim,
+    this.ringMul,
     required this.scan,
   });
 
@@ -79,6 +84,7 @@ class RingFieldPainter extends CustomPainter {
   final String cam;
   final double t;
   final double dim;
+  final List<double>? ringMul;
   final double scan;
 
   static const double _th = math.pi * 2;
@@ -171,7 +177,8 @@ class RingFieldPainter extends CustomPainter {
       final Offset p = c.toScreen(0, g.ry, size);
       final double rx = g.rx * k;
       final double ry = g.ryy * k;
-      final double mul = dim; // ringMul[i] 恒为 1
+      final double mul =
+          dim * ((ringMul != null && i < ringMul!.length) ? ringMul![i] : 1);
 
       switch (ring.state) {
         case RingState.done:

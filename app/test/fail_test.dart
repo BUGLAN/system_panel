@@ -50,7 +50,11 @@ void main() {
     testWidgets('认输记录 + 补救单文案齐全', (WidgetTester tester) async {
       await _mount(
         tester,
-        const FailLayer(recordedAt: '20:02', remedy: Remedy.demo),
+        const FailLayer(
+          recordedAt: '20:02',
+          remedy: Remedy.demo,
+          animate: false,
+        ),
       );
       expect(find.textContaining('认输 · 已记录'), findsWidgets);
       expect(find.textContaining('20:02'), findsWidgets);
@@ -64,6 +68,7 @@ void main() {
       await _mount(
         tester,
         const FailLayer(
+          animate: false,
           recordedAt: '21:30',
           timeout: true,
           remedy: Remedy.demo,
@@ -76,7 +81,11 @@ void main() {
     testWidgets('记录行与补救单落在实测坐标上', (WidgetTester tester) async {
       await _mount(
         tester,
-        const FailLayer(recordedAt: '20:02', remedy: Remedy.demo),
+        const FailLayer(
+          recordedAt: '20:02',
+          remedy: Remedy.demo,
+          animate: false,
+        ),
       );
       final Rect rec = tester.getRect(find.byKey(const Key('fail.rec')));
       expect(rec.left, 0);
@@ -89,7 +98,10 @@ void main() {
     });
 
     testWidgets('没有补救单时只有记录行', (WidgetTester tester) async {
-      await _mount(tester, const FailLayer(recordedAt: '20:02'));
+      await _mount(
+        tester,
+        const FailLayer(recordedAt: '20:02', animate: false),
+      );
       expect(find.byKey(const Key('fail.rec')), findsOneWidget);
       expect(find.byKey(const Key('fail.remedy')), findsNothing);
     });

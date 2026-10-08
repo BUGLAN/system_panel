@@ -14,13 +14,14 @@ import '../design/tokens.dart';
 ///    remedy [24,602,342,64]（kick 16 + 正文两行 20.8）
 ///    line [20,397,350,98] · choices [20,701,350,109]
 /// ═══════════════════════════════════════════════════════════
-class FailLayer extends StatelessWidget {
+class FailLayer extends StatefulWidget {
   const FailLayer({
     super.key,
     required this.recordedAt,
     this.timeout = false,
     this.remedy,
     this.visible = true,
+    this.animate = true,
   });
 
   /// 认输/超时的时间（原型的 `hhmm(Clock.now())`）
@@ -34,13 +35,67 @@ class FailLayer extends StatelessWidget {
 
   final bool visible;
 
+  /// 演出开关；比对截图时用 `false` 直接落终态
+  final bool animate;
+
+  @override
+  State<FailLayer> createState() => _FailLayerState();
+}
+
+class _FailLayerState extends State<FailLayer>
+    with SingleTickerProviderStateMixin {
+  /// `#failv { opacity: 0; transition: opacity .6s }` → `.on { opacity: 1 }`
+  late final AnimationController _fade = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 600),
+    value: 1,
+  );
+
+  /// `.fv-remedy { opacity:0; translateY(6px); transition: all .6s var(--out) }` —— 它是在
+  /// 她那几句话之后才 `.on` 的；那几句话的时长属于业务，这里先给一个固定的 1.4s
+  bool _remedyOn = true;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.visible) _run();
+  }
+
+  /// 与派单板/结算卡同一个坑：这一层也一直挂在树里，演出要跟着"变可见"走
+  @override
+  void didUpdateWidget(covariant FailLayer old) {
+    super.didUpdateWidget(old);
+    if (!old.visible && widget.visible) _run();
+  }
+
+  void _run() {
+    if (!widget.animate) {
+      _fade.value = 1;
+      _remedyOn = true;
+      return;
+    }
+    _fade.forward(from: 0);
+    _remedyOn = false;
+    Future<void>.delayed(const Duration(milliseconds: 1400), () {
+      if (mounted) setState(() => _remedyOn = true);
+    });
+  }
+
+  @override
+  void dispose() {
+    _fade.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
-    if (!visible) return const SizedBox.shrink();
+    final String recordedAt = widget.recordedAt;
+    final bool timeout = widget.timeout;
+    final Remedy? remedy = widget.remedy;
+    if (!widget.visible) return const SizedBox.shrink();
     return Positioned.fill(
-      child: AnimatedOpacity(
-        opacity: 1,
-        duration: const Duration(milliseconds: 600),
+      child: Opacity(
+        opacity: _fade.value,
         child: Stack(
           children: <Widget>[
             // .fv-rec
@@ -83,54 +138,59 @@ class FailLayer extends StatelessWidget {
                 left: 24,
                 right: 24,
                 bottom: 178,
-                child: AnimatedOpacity(
-                  opacity: 1,
+                child: AnimatedSlide(
+                  offset: _remedyOn ? Offset.zero : const Offset(0, .06),
                   duration: const Duration(milliseconds: 600),
-                  child: Column(
-                    key: const Key('fail.remedy'),
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: <Widget>[
-                      Text(
-                        '补救 · REMEDY',
-                        style: fs(
-                          family: F.mono,
-                          size: 10,
-                          wght: 400,
-                          ls: 1.6,
-                          height: 1.6, // 继承 .fv-remedy 的 line-height
-                          color: C.blue.withAlpha(204), // opacity .8
+                  curve: const Cubic(.16, 1, .3, 1), // --out
+                  child: AnimatedOpacity(
+                    opacity: _remedyOn ? 1 : 0,
+                    duration: const Duration(milliseconds: 600),
+                    child: Column(
+                      key: const Key('fail.remedy'),
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        Text(
+                          '补救 · REMEDY',
+                          style: fs(
+                            family: F.mono,
+                            size: 10,
+                            wght: 400,
+                            ls: 1.6,
+                            height: 1.6, // 继承 .fv-remedy 的 line-height
+                            color: C.blue.withAlpha(204), // opacity .8
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text.rich(
-                        TextSpan(
-                          children: <InlineSpan>[
-                            TextSpan(
-                              text: remedy!.name,
-                              style: fs(
-                                family: F.cn,
-                                size: 13,
-                                wght: 600,
-                                height: 1.6,
-                                color: C.blue,
+                        const SizedBox(height: 6),
+                        Text.rich(
+                          TextSpan(
+                            children: <InlineSpan>[
+                              TextSpan(
+                                text: remedy.name,
+                                style: fs(
+                                  family: F.cn,
+                                  size: 13,
+                                  wght: 600,
+                                  height: 1.6,
+                                  color: C.blue,
+                                ),
                               ),
-                            ),
-                            TextSpan(
-                              text:
-                                  '（做一半）· ${remedy!.minutesText}\n截止 ${remedy!.deadline} · '
-                                  '${remedy!.rank} 级 · 做到了，这一笔划掉',
-                              style: fs(
-                                family: F.cn,
-                                size: 13,
-                                wght: 400,
-                                height: 1.6,
-                                color: const Color(0xFF9FB3CC),
+                              TextSpan(
+                                text:
+                                    '（做一半）· ${remedy.minutesText}\n截止 ${remedy.deadline} · '
+                                    '${remedy.rank} 级 · 做到了，这一笔划掉',
+                                style: fs(
+                                  family: F.cn,
+                                  size: 13,
+                                  wght: 400,
+                                  height: 1.6,
+                                  color: const Color(0xFF9FB3CC),
+                                ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               ),

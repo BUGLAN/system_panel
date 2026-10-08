@@ -89,7 +89,13 @@ class AppShell extends StatefulWidget {
 }
 
 class _AppShellState extends State<AppShell>
-    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
+        // ⚠️ 必须用 TickerProviderStateMixin（不是 Single…）—— 主壳有 `_flashC`
+        //    和 `_ringDim` 两个控制器。写错的症状是实机直接红屏：
+        //    「_AppShellState is a SingleTickerProviderStateMixin but multiple tickers
+        //      were created」——analyze 查不出来，只有跑起来才炸。
+        with
+        TickerProviderStateMixin,
+        WidgetsBindingObserver {
   /// 行为逻辑未定，先用与原型「老宿主 · 第 23 天」一致的演示档
   /// （启动时会被存档覆盖 —— 见 SaveFile）
   HostState _host = HostState.demo;
@@ -201,8 +207,7 @@ class _AppShellState extends State<AppShell>
     //    所以改成「她没有正在插话」（见 BEHAVIOR-GAPS.md D 组）
     // 超时判负（原型 Exec.tick() 末尾： >= lim → App.fail('timeout')）
     if (_moment == Moment.exec && _execReadout().timedOut) {
-      _clock.stopFast();
-      setState(() => _moment = Moment.fail);
+      _beginFail(); // 原型 `Exec.tick()` 末尾：e >= lim → App.fail('timeout')
       return;
     }
     final bool lineQuiet = _aside == null && !_busy;
@@ -370,10 +375,14 @@ class _AppShellState extends State<AppShell>
                   goal: _goal,
                   cam: camOf,
                   t: 0,
+                  ringMul: fail ? _ringMul : null,
                   dim: boot
                       ? .34 // 开机态的全息参数
                       : fail
-                      ? .6 // flows.js L530
+                      ? 1 -
+                            .4 *
+                                _ringDim
+                                    .value // flows.js L530：holoTo({bright:.6}) 缓动过去
                       : 1,
                   scan: .2, // settings.holo → Stage.scanT
                 ),
@@ -486,11 +495,7 @@ class _AppShellState extends State<AppShell>
                     onQuitProgress: (double p) => setState(() => _quitP = p),
                     onQuit: () {
                       if (_busy) return; // 原型 `App.fail()` → `run()`
-                      setState(() {
-                        _clock.stopFast();
-                        _quitP = 0;
-                        _moment = Moment.fail;
-                      });
+                      _beginFail();
                     },
                   ),
                 ),
@@ -776,6 +781,48 @@ class _AppShellState extends State<AppShell>
     _sayAside(line, holdMs: 3200, busy: true);
   }
 
+  /// 失败时把当前那一环掐暗（原型 `Stage.dimRing(ci, …)` 三下：0 / 90 / 200ms）
+  List<double>? _ringMul;
+
+  /// `Stage.holoTo({bright: .6})` 是**缓动**过去的（每帧 `f += (target-f)*q`），
+  /// 不是瞬变；这个控制器负责那 350ms
+  late final AnimationController _ringDim = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 350),
+  )..addListener(() => setState(() {}));
+
+  /// 进入失败态（认输与超时共用）：原型 `_fail()` 的视觉前几下
+  void _beginFail() {
+    _clock.stopFast();
+    setState(() {
+      _moment = Moment.fail;
+      _quitP = 0;
+    });
+    _ringDim.forward(from: 0);
+    final int ci = _goal.currentIndex;
+    _setRingMul(ci, .2);
+    Future<void>.delayed(const Duration(milliseconds: 90), () {
+      if (mounted) _setRingMul(ci, .6);
+    });
+    Future<void>.delayed(const Duration(milliseconds: 200), () {
+      if (mounted) _setRingMul(ci, .15);
+    });
+  }
+
+  void _setRingMul(int i, double v) {
+    if (i < 0) return;
+    setState(() {
+      final List<double> m = List<double>.filled(_goal.rings.length, 1);
+      if (_ringMul != null) {
+        for (int k = 0; k < m.length && k < _ringMul!.length; k++) {
+          m[k] = _ringMul![k];
+        }
+      }
+      if (i < m.length) m[i] = v;
+      _ringMul = m;
+    });
+  }
+
   /// 什么时候被切到后台的（原型 `App.hiddenAt`）
   DateTime? _hiddenAt;
 
@@ -841,6 +888,7 @@ class _AppShellState extends State<AppShell>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _clock.dispose();
+    _ringDim.dispose();
     _flashC.dispose();
     _fx.dispose();
     _ask.dispose();
