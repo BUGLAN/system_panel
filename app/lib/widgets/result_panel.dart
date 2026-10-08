@@ -2,6 +2,9 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+
+import 'settle_timeline.dart';
+
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../data/attrs.dart';
@@ -26,21 +29,130 @@ import 'sys_icons.dart';
 ///  跳数 / 盖章 / 经验条上涨 / 保存战报都是行为，等宿主约束；
 ///  这里渲染的是「已经结算完」的静态样子。
 /// ═══════════════════════════════════════════════════════════
-class ResultPanel extends StatelessWidget {
+class ResultPanel extends StatefulWidget {
   const ResultPanel({
     super.key,
     required this.result,
     this.visible = true,
     this.onSave,
+    this.animate = true,
+    this.onImpact,
   });
 
   final QuestResult result;
   final bool visible;
   final VoidCallback? onSave;
 
+  /// 演出开关；比对截图时用 `false` 直接落终态
+  final bool animate;
+
+  /// 印章砸下那一刻（原型在这里 flash + shake + burst）
+  final ValueChanged<int>? onImpact;
+
+  @override
+  State<ResultPanel> createState() => _ResultPanelState();
+}
+
+class _ResultPanelState extends State<ResultPanel>
+    with SingleTickerProviderStateMixin {
+  /// CSS `--out: cubic-bezier(.16, 1, .3, 1)`
+  static const Curve _out = Cubic(.16, 1, .3, 1);
+
+  late final AnimationController _c = AnimationController(vsync: this);
+  late SettleTimeline _tl;
+
+  /// 下面这些渲染方法原本是 Stateless 时写的，用 getter 接上 widget 的字段
+  QuestResult get result => widget.result;
+  VoidCallback? get onSave => widget.onSave;
+
+  /// 当前时刻（ms）
+  double _t = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _tl = _makeTimeline();
+    if (widget.visible) _start();
+  }
+
+  /// ⚠️ 和派单板同一个坑：`ResultPanel` 也一直挂在树里（只是 `visible: false`），
+  /// 所以演出必须跟着"变可见"走，不能在 initState 里跑。
+  @override
+  void didUpdateWidget(covariant ResultPanel old) {
+    super.didUpdateWidget(old);
+    if (!old.visible && widget.visible) {
+      _tl = _makeTimeline();
+      _start();
+    }
+  }
+
+  SettleTimeline _makeTimeline() => SettleTimeline(
+    baseExp: widget.result.baseExp,
+    finalExp: widget.result.exp,
+    crit: widget.result.crit,
+    dbl: widget.result.dbl,
+    chipCount:
+        1 + widget.result.attrs.length + (widget.result.streakUp ? 1 : 0),
+  );
+
+  void _start() {
+    if (!widget.animate) {
+      _t = _tl.total;
+      _c.value = 1;
+      return;
+    }
+    _t = 0;
+    _c
+      ..duration = Duration(milliseconds: _tl.total.round())
+      ..addListener(_onTick);
+    _c.forward(from: 0);
+    // 印章砸下那一下的 FX（原型在 `w(820)` 之后）
+    Future<void>.delayed(Duration(milliseconds: _tl.impactAt.round()), () {
+      if (mounted) widget.onImpact?.call(widget.result.rarity.i);
+    });
+  }
+
+  void _onTick() {
+    final double t = _c.value * _tl.total;
+    // 刚跨过某个门时通知一次（原型是加 `.on` 类）
+    setState(() => _t = t);
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  /// CSS `.rs-head { opacity:0; translateY(8px); transition: all .45s var(--out) }`
+  Widget _rise(double startMs, double durMs, double dy, Widget child) {
+    final double k = ((_t - startMs) / durMs).clamp(0.0, 1.0);
+    final double e = _out.transform(k);
+    return Opacity(
+      opacity: e,
+      child: Transform.translate(offset: Offset(0, dy * (1 - e)), child: child),
+    );
+  }
+
+  /// `.chip { opacity:0; translateY(6px) scale(.9); transition: all .45s var(--spring) }`
+  Widget _pop(double startMs, Widget child) {
+    final double k = ((_t - startMs) / 450).clamp(0.0, 1.0);
+    final double e = Curves.easeOutBack.transform(
+      k,
+    ); // 近似那条 --spring（有 1.12 的过冲）
+    return Opacity(
+      opacity: k,
+      child: Transform.translate(
+        offset: Offset(0, 6 * (1 - e)),
+        child: Transform.scale(scale: .9 + .1 * e, child: child),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    if (!visible) return const SizedBox.shrink();
+    if (!widget.visible) return const SizedBox.shrink();
+    final QuestResult result = widget.result;
     final Color rk = result.rarity.color;
     return Positioned.fill(
       child: LayoutBuilder(
@@ -69,8 +181,40 @@ class ResultPanel extends StatelessWidget {
                 ),
               ),
             ),
+            // ① 验收：扫描线从上扫到下（`scan.animate` 780ms）
+            if (widget.animate && _t < SettleTimeline.scanDur)
+              Positioned(
+                left: 0,
+                right: 0,
+                top: c.maxHeight * _tl.scanTopPct(_t),
+                height: 2,
+                child: IgnorePointer(
+                  child: Opacity(
+                    opacity: _tl.scanOpacity(_t),
+                    child: const DecoratedBox(
+                      key: Key('result.scan'),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: <Color>[
+                            Color(0x009FF0FF),
+                            Color(0xFF9FF0FF),
+                            Color(0x009FF0FF),
+                          ],
+                        ),
+                        boxShadow: <BoxShadow>[
+                          BoxShadow(color: Color(0xFF38E1FF), blurRadius: 18),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
             // .rs-save
-            Positioned(right: 18, top: 86, child: _saveButton()),
+            Positioned(
+              right: 18,
+              top: 86,
+              child: _rise(_tl.saveAt, 400, 0, _saveButton()),
+            ),
             // .rs-stack
             Positioned(
               left: 20,
@@ -81,12 +225,18 @@ class ResultPanel extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: <Widget>[
                   Center(
-                    child: _Glyph(rank: result.quest.rank, color: rk),
+                    child: _Glyph(
+                      rank: result.quest.rank,
+                      color: rk,
+                      // 砸下来那一下（`@keyframes slam`）；null = 还没开始，整块藏着。
+                      // `animate: false`（比对）时直接按终态渲染，零变化。
+                      slam: widget.animate ? _tl.slamAt(_t) : null,
+                    ),
                   ),
                   const SizedBox(height: 14),
-                  _head(rk),
+                  _rise(_tl.headAt, 450, 8, _head(rk)),
                   const SizedBox(height: 14),
-                  _card(),
+                  _rise(_tl.cardAt, 500, 12, _card()),
                 ],
               ),
             ),
@@ -230,7 +380,8 @@ class ResultPanel extends StatelessWidget {
                 ),
               ),
               TextSpan(
-                text: '${result.exp}',
+                // 数字往上跳（原型那个 `count()`）
+                text: '${_tl.expAt(_t)}',
                 style: fs(
                   family: F.num,
                   size: 40,
@@ -249,10 +400,10 @@ class ResultPanel extends StatelessWidget {
           textAlign: TextAlign.center,
         ),
         const Spacer(),
-        // .rs-tags —— 暴击 / 双倍印章
-        if (result.crit) _stamp('CRIT ×2', false),
+        // .rs-tags —— 暴击 / 双倍印章（各自到点才盖下去，`animation: stampIn`）
+        if (result.crit && _tl.stampAt(_t) >= 1) _stamp('CRIT ×2', false),
         if (result.crit && result.dbl) const SizedBox(width: 6),
-        if (result.dbl) _stamp('双倍卡 ×2', true),
+        if (result.dbl && _tl.stampAt(_t) >= 2) _stamp('双倍卡 ×2', true),
       ],
     );
   }
@@ -289,7 +440,13 @@ class ResultPanel extends StatelessWidget {
 
   /// .rs-bar
   Widget _bar() {
-    final double frac = (result.afterExp / result.beforeNeed).clamp(0.0, 1.0);
+    // 原型：条的起点是"结算前"，`expTo` 涨到"结算后"（`.rs-bar i` 的 width 过渡）
+    final double before = (result.beforeExp / result.beforeNeed).clamp(
+      0.0,
+      1.0,
+    );
+    final double after = (result.afterExp / result.beforeNeed).clamp(0.0, 1.0);
+    final double frac = before + (after - before) * _tl.barProgressAt(_t);
     return Container(
       key: const Key('result.bar'),
       height: 6,
@@ -392,7 +549,11 @@ class ResultPanel extends StatelessWidget {
       key: const Key('result.gain'),
       spacing: 7,
       runSpacing: 7,
-      children: chips,
+      // 每枚筹码隔 110ms 弹出来（原型 `await w(110)` 再 `ResultUI.chip()`）
+      // 占位一直保留（原型 `.chip { opacity: 0 }` 也占位），所以 Wrap 不会重排
+      children: <Widget>[
+        for (int i = 0; i < chips.length; i++) _pop(_tl.chipAtOf(i), chips[i]),
+      ],
     );
   }
 
@@ -438,10 +599,13 @@ class ResultPanel extends StatelessWidget {
 
 /// .rs-glyph —— 砸下来的稀有度大字：一圈实环 + 一圈虚线环 + 104px 大字
 class _Glyph extends StatefulWidget {
-  const _Glyph({required this.rank, required this.color});
+  const _Glyph({required this.rank, required this.color, this.slam});
 
   final String rank;
   final Color color;
+
+  /// `@keyframes slam` 的进度；`null` = 不演（静态终态）
+  final double? slam;
 
   @override
   State<_Glyph> createState() => _GlyphState();
@@ -462,7 +626,7 @@ class _GlyphState extends State<_Glyph> with SingleTickerProviderStateMixin {
   @override
   Widget build(BuildContext context) {
     final Color rk = widget.color;
-    return SizedBox(
+    final Widget body = SizedBox(
       key: const Key('result.glyph'),
       width: 136,
       height: 136,
@@ -507,6 +671,16 @@ class _GlyphState extends State<_Glyph> with SingleTickerProviderStateMixin {
           ),
         ],
       ),
+    );
+    // `@keyframes slam { 0% { scale(2.4); opacity: 0; brightness(3) }
+    //                     30% { opacity: 1 } 100% { none } }` —— 700ms
+    // 亮度那一下没做（要用 ColorFilter.matrix 拼一条亮度矩阵），缩放 + 淡入已经够了
+    final double? k = widget.slam;
+    if (k == null) return body;
+    final double e = Curves.easeOutBack.transform(k); // 近似 `--spring` 的过冲
+    return Opacity(
+      opacity: k < .3 ? k / .3 : 1,
+      child: Transform.scale(scale: 2.4 - 1.4 * e, child: body),
     );
   }
 }

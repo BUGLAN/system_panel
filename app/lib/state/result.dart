@@ -52,6 +52,12 @@ class QuestResult {
   /// 结算后停在多少经验（`.rs-lv` 右侧那行）
   int get afterExp => beforeExp + exp;
 
+  /// 暴击/双倍**之前**那一跳的落点（原型 `res.baseExp`）。
+  ///
+  /// ⚠️ 真值由 `Store.settle()` 给，那属于业务规则（还没定）；
+  /// 这里按"暴击 = 翻倍"倒推，未暴击时就是最终值 —— 演示档正好是后者。
+  int get baseExp => crit ? exp ~/ 2 : exp;
+
   /// 暴击率百分比（整数）
   int get chancePct => (chance * 100).round();
 

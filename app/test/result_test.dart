@@ -33,7 +33,10 @@ void main() {
 
   group('结算面板', () {
     testWidgets('文案齐全', (WidgetTester tester) async {
-      await _mount(tester, const ResultPanel(result: QuestResult.demo));
+      await _mount(
+        tester,
+        const ResultPanel(result: QuestResult.demo, animate: false),
+      );
       expect(find.text('保存战报'), findsOneWidget);
       expect(find.text('CLEAR · 主线第 5 环'), findsOneWidget);
       expect(find.text('跑完 5 公里'), findsOneWidget);
@@ -52,7 +55,10 @@ void main() {
     });
 
     testWidgets('结算卡 / 大字 / 经验条 / 保存按钮落在实测坐标上', (WidgetTester tester) async {
-      await _mount(tester, const ResultPanel(result: QuestResult.demo));
+      await _mount(
+        tester,
+        const ResultPanel(result: QuestResult.demo, animate: false),
+      );
       // .rs-stack { left:20; right:20 } → 350 宽
       final Rect stack = tester.getRect(find.byKey(const Key('result.stack')));
       expect(stack.left, 20);
@@ -81,7 +87,10 @@ void main() {
     testWidgets('经验条按 264/340 铺开（漏 heightFactor 会变 0 高）', (
       WidgetTester tester,
     ) async {
-      await _mount(tester, const ResultPanel(result: QuestResult.demo));
+      await _mount(
+        tester,
+        const ResultPanel(result: QuestResult.demo, animate: false),
+      );
       final Rect bar = tester.getRect(find.byKey(const Key('result.bar')));
       final Rect fill = tester.getRect(
         find.byKey(const Key('result.bar.fill')),
@@ -93,7 +102,10 @@ void main() {
     });
 
     testWidgets('暴击 / 双倍时才盖印章', (WidgetTester tester) async {
-      await _mount(tester, const ResultPanel(result: QuestResult.demo));
+      await _mount(
+        tester,
+        const ResultPanel(result: QuestResult.demo, animate: false),
+      );
       expect(find.text('CRIT ×2'), findsNothing);
       expect(find.text('双倍卡 ×2'), findsNothing);
       await tester.pumpWidget(const SizedBox());
@@ -102,7 +114,11 @@ void main() {
     testWidgets('不可见时不占位', (WidgetTester tester) async {
       await _mount(
         tester,
-        const ResultPanel(result: QuestResult.demo, visible: false),
+        const ResultPanel(
+          result: QuestResult.demo,
+          visible: false,
+          animate: false,
+        ),
       );
       expect(find.byKey(const Key('result.stack')), findsNothing);
     });

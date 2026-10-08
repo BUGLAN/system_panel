@@ -495,7 +495,41 @@ class _AppShellState extends State<AppShell>
                   ),
                 ),
                 // 结算
-                ResultPanel(result: _result, visible: result, onSave: () {}),
+                ResultPanel(
+                  result: _result,
+                  visible: result,
+                  onSave: () {},
+                  // 印章砸下那一刻（原型 `settle()` 的 ②）：
+                  //   FX.flash('#ffffff', .16, 180)
+                  //   FX.shake(ri >= 4 ? 7 : 4, 280)
+                  //   FX.burst(g.cx, g.cy, {n: 36 + ri*16,
+                  //     cols: [稀有度色, 蓝, 冰, 蓝, '#7fdcff'],
+                  //     max: 300 + ri*70, life: 1.2 + ri*.08})
+                  // 印章在屏幕上的位置：结算列底部锚定，136×136 的中心约 (195, 252)
+                  onImpact: (int ri) {
+                    final Color rk = Rarity.of(kRanks[ri]).color;
+                    _pulse(
+                      color: Colors.white,
+                      a: .16,
+                      ms: 180,
+                      shakePx: ri >= 4 ? 7 : 4,
+                    );
+                    _fx.burst(
+                      195,
+                      252,
+                      n: 36 + ri * 16,
+                      cols: <Color>[
+                        rk,
+                        C.blue,
+                        const Color(0xFFE9FBFF),
+                        C.blue,
+                        const Color(0xFF7FDCFF),
+                      ],
+                      max: 300 + ri * 70,
+                      life: 1.2 + ri * .08,
+                    );
+                  },
+                ),
                 // 失败 / 补救（在 veil 之下）
                 FailLayer(
                   recordedAt: '20:02',
