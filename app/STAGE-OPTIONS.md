@@ -1,14 +1,59 @@
 # 舞台（Live2D 角色）落地路线
 
-> **2026-10-08 更新：转换器已经写完并跑通。**
-> 见 `tools/l2d/convert.py` —— 它把 sakiko 的 Unity prefab 转成标准 Live2D 文件，
-> 产物结构已逐项验证（见文末）。**所以走 ① 不再是"要不要写转换器"的取舍，
-> 而是"接哪个插件"的问题。**
+> **2026-10-08 实况更新：转换器已跑通，`flutter_live2d` 也接上了 ——
+> 模型能加载，但还没画出来。** 结论与完整排查记录见下面「① 的实况」。
+> 路线本身仍然成立，卡的是**渲染呈现**这一环。
 
-> 2026-10-08 调研。除"她"以外，舞台的其余部分（镜头数学、身上的环、环挂签、
-> 投影光束、亮帧/震屏）**都已经在 `app/` 里跑起来了** —— 见
-> `lib/stage/camera.dart`、`lib/stage/ring_painter.dart`、`lib/widgets/ring_tag.dart`。
-> 这一页只解决"人形"这一件事。
+## ① 的实况（走过一遍之后的记录）
+
+### 做成的
+
+| 环节 | 状态 |
+|---|---|
+| prefab → 标准 Live2D 转换 | ✅ `tools/l2d/convert.py`，产物逐项验过 |
+| 插件编译 | ✅ `flutter_live2d 1.0.2`（Cubism Core 支持 moc3 **3.0–5.3**，我们的模型是 5） |
+| 资产打包 | ✅ 100 个资产进 APK |
+| 原生加载 | ✅ `loadModel` 返回 `true` |
+| **渲染** | ❌ **屏幕上看不到她** |
+
+### 排查路上踩掉的坑（都已修）
+
+1. **CMake 版本**：插件把版本写死 `3.10.2`，而 Google 已从 SDK 仓库下架
+   （`sdkmanager "cmake;3.10.2"` → Package not found）。`local.properties` 的
+   `cmake.dir` **压不过** DSL 里的 `version`。解法：在 `app/android/build.gradle.kts`
+   里用反射统一改写子工程的 CMake 版本为 3.22.1 ——
+   ⚠️ 那个 `subprojects` 块必须放在 `evaluationDependsOn(":app")` **之前**，
+   否则报 "Cannot run Project.afterEvaluate when the project is already evaluated"。
+2. **Flutter 声明资产目录不递归子目录**：只写 `assets/live2d/sakiko/` 的话，
+   `motions/` `expressions/` `textures/` 全**不进包**（实测包里只有 4 个资产，
+   逐个列出子目录后 100 个）。
+3. **`Opacity(0)` 会让加载死锁**：插件原生侧把 `loadModel` 排进渲染线程队列，
+   而队列**只对 EGL surface 已就绪的视图执行**；surface 来自 `TextureView` 的
+   `onSurfaceTextureAvailable`，**必须真的参与绘制**才有。`Opacity(0)` 不画子树
+   → surface 不创建 → `loadModel` 永不执行 → `await` 永远不返回。
+   症状：日志停在「原生视图已就绪 → loadModel」，之后一片安静。
+4. **平台视图外面不能套 `Transform`/`Opacity`**（hybrid composition 走 saveLayer，
+   平台视图可能整个不画）。所以原型那套 `_camMul` 不能靠包一层 Transform 复刻。
+5. **原生加载有竞态**：同一份数据时而 `false` 时而 `true`（实测第 1 次 false、
+   第 2 次 true）。已加重试（最多 5 次）。
+
+### 还没解决的
+
+`loadModel` 返回 `true`、`Live2D-RenderHub` 线程在跑（`ps -T` 看得到），
+但屏幕上什么都没有。
+
+**排除过的假设**：**不是 Impeller** —— 关掉 `EnableImpeller` 之后照样看不见
+（所以不是"Impeller + Android 平台视图"那个已知问题区），已撤回那个开关。
+
+**下一步两条路**：
+
+- **继续挖**：把舞台单独留在一屏（暂时摘掉天幕/环/UI）看是不是被 Flutter 那层
+  盖住了；或者跑插件自带的 `example/`，区分"我集成错了"还是"插件在这个模拟器
+  上就不行"。
+- **退回路线 ②**（WebView 跑原型那套播放器）：渲染结果**有保证**，代价是多一层
+  WebView。这条路一直留着做兜底 —— 需要时它就是答案。
+
+> 建议：**先跑一次插件的 `example/`**（半小时内能出结论），再决定继续挖还是切 ②。
 
 ## ✅ 转换器（`tools/l2d/convert.py`）
 
