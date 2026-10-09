@@ -30,9 +30,9 @@ Future<void> _mount(WidgetTester tester, Widget child) async {
 
 void main() {
   group('宿主档案', () {
-    test('升级所需经验 = 60 + lv*40（store.js L5）', () {
-      expect(HostState.need(1), 100);
-      expect(HostState.need(7), 340);
+    test('升级所需经验 = Rewards 曲线 12 + lv×6（旧 60+lv*40 已废）', () {
+      expect(HostState.need(1), 18);
+      expect(HostState.need(7), 54);
     });
 
     test('演示档与原型「老宿主 · 第 23 天」一致', () {
@@ -44,7 +44,8 @@ void main() {
       expect(s.streak, 6);
       expect(s.title, 'done15');
       expect(s.queue, 4);
-      expect(s.expRatio, closeTo(214 / 340, 1e-9));
+      // t24：分母改结算曲线 12+7×6=54（214/54 越界 → clamp 满环）
+      expect(s.expRatio, 1.0);
     });
   });
 

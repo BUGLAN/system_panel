@@ -85,14 +85,33 @@ class Quest {
   /// 结算经济口径（docs/18 §2.3 Rewards 表）的报酬文案 —— C 级 = `EXP 4 · ◈ 5`。
   ///
   /// 这是「这一单**真会**结算出多少」的真源读数（quest_flow.settle 同表）；
-  /// 派单板 loot 面板已切读它（t15 接管 plate.dart:750/115），与结算一致。
-  String get lootText {
-    final double k = kind == 'remedy' ? .5 : 1;
+  /// 派单板 loot 面板**只能**读它（t24 起 plate.dart 不再自己拼数字）。
+  ///
+  /// [crit]/[dbl] 默认 false —— 队列里等接单的单子还没有道具标记，派单板
+  /// 显示的就是「裸单出账」；结算那一刻才有暴击/双倍（`quest_flow.settle`
+  /// 的 `crit`/`a.dbl`）。真源乘区一律经 [lootTextOf] → `Rewards.payout`。
+  String get lootText =>
+      lootTextOf(rank: rank, remedy: kind == 'remedy', attrs: attrs);
+
+  /// 这一单在 [crit]/[dbl]/补救 条件下的报酬文案（与结算同一个
+  /// [Rewards.payout] 派生）—— 纯函数，方便「显示 = 结算」全档位遍历断言。
+  static String lootTextOf({
+    required String rank,
+    bool remedy = false,
+    bool crit = false,
+    bool dbl = false,
+    Map<String, int> attrs = const <String, int>{},
+  }) {
+    final Payout p = Rewards.payout(
+      rank: rank,
+      crit: crit,
+      dbl: dbl,
+      remedy: remedy,
+    );
     final String at = attrs.entries
         .map((MapEntry<String, int> e) => '${e.key}+${e.value}')
         .join(' ');
-    return 'EXP ${(Rewards.expOf(rank) * k).round()} · '
-        '◈ ${(Rewards.coinOf(rank) * k).round()}$at';
+    return 'EXP ${p.exp} · ◈ ${p.coin}$at';
   }
 
   /// 与原型 `Store.veteran()` 的 `Store.head()` 逐字段一致的那一单

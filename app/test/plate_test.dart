@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:system_panel/data/rarity.dart';
+import 'package:system_panel/data/rewards.dart';
+import 'package:system_panel/state/goal.dart';
 import 'package:system_panel/state/host_state.dart';
 import 'package:system_panel/state/quest.dart';
+import 'package:system_panel/state/quest_flow.dart';
+import 'package:system_panel/state/result.dart';
 import 'package:system_panel/widgets/plate.dart';
 
 /// 派单板（玻璃板 + 等级骰子 + 指纹 + alt 按钮）。
@@ -228,6 +232,155 @@ void main() {
       await tester.pumpWidget(const SizedBox());
     });
   });
+  // ── 显示 = 结算（t24 · 机制化约束）──────────────────────────
+  //
+  // 「显示 ≠ 结算」已经复发两次：t15 把 loot 面板从原型旧表切到 Rewards 表，
+  // 却在补救单场景漏了 ×0.5；t24 之前 plate.dart 又自己拼数字，同 E 级补救单
+  // 两块板显示 `EXP 1 · ◈ 5` / `EXP 0 · ◈ 3`，都不是真源 `1/3`。
+  // 两次都不是「没测试」，而是**没有一条「显示必须从真源派生」的约束**。
+  // 下面这组就是那条约束：全档位遍历 + 真渲染出来的文案 + 真结算出账，
+  // 三方对齐；谁再自己拼一个数就红。
+  group('显示 = 结算（全档位 · 防第三次复发）', () {
+    const List<String> kAllRanks = <String>['F', 'E', 'D', 'C', 'B', 'A', 'S'];
+
+    Quest questOf(
+      String rank, {
+      String kind = 'daily',
+      Map<String, int> attrs = const <String, int>{'体': 1, '力': 1},
+    }) => Quest(
+      serial: 41,
+      kind: kind,
+      ring: -1,
+      ringTotal: 0,
+      name: 'x',
+      reason: '',
+      proof: 'y',
+      minutes: 10,
+      rank: rank,
+      attrs: attrs,
+    );
+
+    /// 渲染真板子，把「报酬」行那条文案原样读回来（不是读 Quest 的 getter，
+    /// 是读 widget 树里真正印出去的那个字符串）
+    Future<String> plateLootText(WidgetTester tester, Quest q) async {
+      await _mount(
+        tester,
+        Plate(quest: q, host: HostState.demo, animateLand: false),
+      );
+      final String text = tester
+          .widgetList<Text>(find.byType(Text))
+          .map((Text t) => t.data)
+          .whereType<String>()
+          .firstWhere((String s) => s.startsWith('EXP '), orElse: () => '');
+      await tester.pumpWidget(const SizedBox());
+      return text;
+    }
+
+    test('全档位（F~S）：板面文案 == Rewards.payout 派生（普通 / 补救 / 暴击 / 双倍 / 叠乘）', () {
+      for (final String rank in kAllRanks) {
+        for (final bool remedy in <bool>[false, true]) {
+          for (final bool crit in <bool>[false, true]) {
+            for (final bool dbl in <bool>[false, true]) {
+              final Payout p = Rewards.payout(
+                rank: rank,
+                crit: crit,
+                dbl: dbl,
+                remedy: remedy,
+              );
+              final String where =
+                  '$rank remedy=$remedy crit=$crit dbl=$dbl';
+              // 真源派生（板面显示就是这一句）
+              expect(
+                Quest.lootTextOf(
+                  rank: rank,
+                  remedy: remedy,
+                  crit: crit,
+                  dbl: dbl,
+                  attrs: const <String, int>{},
+                ),
+                'EXP ${p.exp} · ◈ ${p.coin}',
+                reason: where,
+              );
+              // 结算真源：quest_flow.settle 的同一条公式（补救 ×0.5 → 暴击 ×2
+              // → 双倍 ×2 只吃经验），两边逐档同值
+              final double k = remedy ? .5 : 1;
+              final int base = (Rewards.expOf(rank) * k).round();
+              expect(base * (crit ? 2 : 1) * (dbl ? 2 : 1), p.exp, reason: where);
+              expect(
+                (Rewards.coinOf(rank) * k).round() * (crit ? 2 : 1),
+                p.coin,
+                reason: where,
+              );
+            }
+          }
+        }
+      }
+    });
+
+    test('补救单口径回归：E 级补救 = EXP 1 · ◈ 3（旧写法会印出 1 / 5）', () {
+      final Quest remedyE = questOf('E', kind: 'remedy');
+      expect(remedyE.lootText, 'EXP 1 · ◈ 3体+1 力+1');
+      // 这正是 docs/20 §2.2-1 记录的那次回归：漏 ×0.5 时 = 表值
+      expect(Rewards.expOf('E'), 1);
+      expect(Rewards.coinOf('E'), 5); // 5 × .5 = 2.5 → 3
+    });
+
+    test('补救单真结算 == 板面文案（走 QuestFlow.settle 全链路）', () {
+      for (final String rank in kAllRanks) {
+        final Quest remedy = questOf(rank, kind: 'remedy');
+        final QuestFlow f = QuestFlow(
+          host: HostState.empty,
+          goal: Goal.demo(),
+        )..accept(remedy);
+        final QuestResult r = f.settle(forceCrit: false)!;
+        // 板面那一行必须**逐字**含真结算的两个数（不是各自算一遍再比）
+        expect(
+          remedy.lootText,
+          startsWith('EXP ${r.exp} · ◈ ${r.coin}'),
+          reason: '$rank 补救单：结算出账 vs 板面文案',
+        );
+        // 结算数字本身 = Rewards 表（补救 ×0.5 → 暴击 ×2 → 双倍只吃经验）
+        final Payout p = Rewards.payout(
+          rank: rank,
+          crit: r.crit,
+          dbl: r.dbl,
+          remedy: true,
+        );
+        expect(r.exp, p.exp, reason: '$rank 补救单 EXP');
+        expect(r.coin, p.coin, reason: '$rank 补救单金币');
+      }
+    });
+
+    testWidgets('派单板真渲染：普通单与补救单印出的都是 lootText（含 ×0.5）', (
+      WidgetTester tester,
+    ) async {
+      // 普通 C 级主线（demo 单）：EXP 4 · ◈ 5 体+1 力+1
+      expect(
+        await plateLootText(tester, Quest.demo),
+        Quest.demo.lootText,
+      );
+      expect(await plateLootText(tester, Quest.demo), 'EXP 4 · ◈ 5体+1 力+1');
+
+      // 补救单：F 级（金币 3 × .5 = 1.5 → 2）与 E 级（EXP 1 / 金币 3）
+      final Quest remedyF = questOf('F', kind: 'remedy', attrs: const <String, int>{'知': 2});
+      final Quest remedyE = questOf('E', kind: 'remedy', attrs: const <String, int>{'知': 2});
+      expect(await plateLootText(tester, remedyF), remedyF.lootText);
+      expect(await plateLootText(tester, remedyF), 'EXP 0 · ◈ 2知+2');
+      expect(await plateLootText(tester, remedyE), remedyE.lootText);
+      expect(await plateLootText(tester, remedyE), 'EXP 1 · ◈ 3知+2');
+    });
+
+    test('升级曲线单一真源：HostState.need == Rewards.needFor == QuestFlow.needFor', () {
+      for (int lv = 1; lv <= 30; lv++) {
+        expect(HostState.need(lv), Rewards.needFor(lv), reason: 'LV$lv');
+        expect(QuestFlow.needFor(lv), Rewards.needFor(lv), reason: 'LV$lv');
+      }
+      expect(HostState.need(1), 18);
+      expect(HostState.need(7), 54); // 旧曲线 60+7×40 = 340（已废）
+      expect(HostState.demo.expRatio, 1.0); // 214 / 54 → clamp 到满环
+    });
+  });
+
   // ── 数据契约 ──────────────────────────────────────────────
   // 演示档的每个字段都必须与原型 `Store.veteran()` 的 `Store.head()` 一致。
   // 改这里的数之前，先在原型里跑一次 `Store.veteran(); console.log(Store.head())`。

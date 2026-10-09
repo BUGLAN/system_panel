@@ -6,6 +6,7 @@ import 'package:shared_preferences_platform_interface/in_memory_shared_preferenc
 import 'package:shared_preferences_platform_interface/shared_preferences_async_platform_interface.dart';
 import 'package:system_panel/agent/settings_store.dart';
 import 'package:system_panel/data/items.dart';
+import 'package:system_panel/data/rewards.dart';
 import 'package:system_panel/data/titles.dart';
 import 'package:system_panel/state/host_state.dart';
 import 'package:system_panel/state/quest_flow.dart';
@@ -49,7 +50,10 @@ void main() {
       const HostState s = HostState.demo;
       expect(s.lv, 7);
       expect(s.exp, 214);
-      expect(HostState.need(s.lv), 340);
+      // t24：升级曲线单一真源（Rewards.needFor = 12+lv×6）。旧曲线 60+7×40=340
+      // 已废 —— 它让经验环在 LV7 显示 /340（真实 need 54，环常年看着空着）
+      expect(HostState.need(s.lv), 54);
+      expect(HostState.need(s.lv), Rewards.needFor(s.lv));
       expect(s.attrs, <String, int>{
         '力': 9,
         '敏': 12,
@@ -300,15 +304,45 @@ void main() {
       expect(r.left, closeTo(45, .5)); // (350-300)/2 + 20
     });
 
-    testWidgets('经验条按 214/340 铺开（漏 heightFactor 会变 0 高）', (
+    testWidgets('经验条按 exp/need 铺开（分母 = 结算曲线；漏 heightFactor 会变 0 高）', (
       WidgetTester tester,
     ) async {
+      // 演示档 214 已越过 LV7 的 need=54 → clamp 满环
       await _mount(tester, const Sheet(host: HostState.demo));
       final Rect bar = tester.getRect(find.byKey(const Key('sheet.bar')));
       final Rect fill = tester.getRect(find.byKey(const Key('sheet.bar.fill')));
       expect(bar.height, 6);
       expect(fill.height, 6);
-      expect(fill.width / bar.width, closeTo(214 / 340, .01));
+      expect(fill.width / bar.width, closeTo(1, .01)); // 214 / 54 → clamp 到 1
+
+      // 未满档：20 / 54 —— 旧曲线 /340 会画成 5.9%，一眼能看出换没换曲线
+      await _mount(
+        tester,
+        Sheet(host: HostState.demo.copyWith(exp: 20)),
+      );
+      final Rect bar2 = tester.getRect(find.byKey(const Key('sheet.bar')));
+      final Rect fill2 = tester.getRect(find.byKey(const Key('sheet.bar.fill')));
+      expect(
+        fill2.width / bar2.width,
+        closeTo(20 / Rewards.needFor(7), .01),
+      );
+    });
+
+    testWidgets('经验环分母读的是 rewards.need(lv)（LV7 = /54，不是 /340）', (
+      WidgetTester tester,
+    ) async {
+      await _mount(tester, const Sheet(host: HostState.demo));
+      final Finder row = find.byKey(const Key('sheet.arTop'));
+      expect(row, findsOneWidget);
+      final Iterable<String> texts = tester
+          .widgetList<Text>(find.descendant(of: row, matching: find.byType(Text)))
+          .map((Text t) => t.data ?? t.textSpan?.toPlainText() ?? '');
+      expect(
+        texts.any((String s) => s.contains(' / ${Rewards.needFor(7)}')),
+        isTrue,
+        reason: '经验环读数必须是 /54',
+      );
+      expect(texts.any((String s) => s.contains('/ 340')), isFalse);
     });
 
     testWidgets('四格战绩 + 12 个称号 + 4 件道具都在', (WidgetTester tester) async {

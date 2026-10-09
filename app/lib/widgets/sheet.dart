@@ -11,6 +11,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import '../agent/llm_client.dart';
 import '../agent/settings_store.dart';
 import '../data/items.dart';
+import '../data/rewards.dart';
 import '../data/titles.dart';
 import '../design/tokens.dart';
 import '../state/host_state.dart';
@@ -342,7 +343,10 @@ class Sheet extends StatelessWidget {
                     color: C.ice,
                   ),
                 ),
-                TextSpan(text: ' / ${HostState.need(host.lv)}'),
+                // t24：经验环分母 = 结算升级曲线（`Rewards.needFor`）唯一真源。
+                // 旧版读 `HostState.need` 的 60+lv×40，LV7 显示 /340 而真实
+                // need=54 —— 环常年在用户眼里几乎空着（docs/20 §2.2-2）。
+                TextSpan(text: ' / ${Rewards.needFor(host.lv)}'),
               ]),
               const SizedBox(height: 6),
               _bar(host.expRatio),

@@ -103,5 +103,51 @@ void main() {
         );
       }
     });
+
+    // t24 · 机制化约束（与 plate_test 的同名组互为双保险）：
+    // 「显示 ≠ 结算」已复发两次，这里把**全档位 × 补救 × 暴击 × 双倍**的
+    // 文案一次遍历钉死 —— lootTextOf 的输出只允许来自 Rewards.payout。
+    test('全档位 × 补救/暴击/双倍：文案 == Rewards.payout（防第三次复发）', () {
+      for (final String rank in Rewards.kExpByRank.keys) {
+        for (final bool remedy in <bool>[false, true]) {
+          for (final bool crit in <bool>[false, true]) {
+            for (final bool dbl in <bool>[false, true]) {
+              final Payout p = Rewards.payout(
+                rank: rank,
+                crit: crit,
+                dbl: dbl,
+                remedy: remedy,
+              );
+              expect(
+                Quest.lootTextOf(
+                  rank: rank,
+                  remedy: remedy,
+                  crit: crit,
+                  dbl: dbl,
+                ),
+                'EXP ${p.exp} · ◈ ${p.coin}',
+                reason: '$rank remedy=$remedy crit=$crit dbl=$dbl',
+              );
+            }
+          }
+        }
+      }
+    });
+
+    test('六维后缀跟在金币后面（板面那一行的完整形状）', () {
+      expect(
+        Quest.lootTextOf(
+          rank: 'C',
+          attrs: const <String, int>{'体': 1, '力': 1},
+        ),
+        'EXP 4 · ◈ 5体+1 力+1',
+      );
+      expect(Quest.lootTextOf(rank: 'C'), 'EXP 4 · ◈ 5');
+      expect(Quest.lootTextOf(rank: 'C', remedy: true), 'EXP 2 · ◈ 3');
+      expect(
+        Quest.lootTextOf(rank: 'S', crit: true, dbl: true),
+        'EXP 40 · ◈ 40', // 暴击×2 金币、双倍只吃经验：10×2×2 / 20×2
+      );
+    });
   });
 }

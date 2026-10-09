@@ -3,6 +3,10 @@
 /// 行为逻辑（存盘、发单、结算、连击规则）尚未由宿主约束，所以这里**只是数据**，
 /// 先放一份与原型「老宿主 · 第 23 天」逐字段一致的演示档，
 /// 好让界面能与原型做同状态比对。
+library;
+
+import '../data/rewards.dart';
+
 class HostState {
   const HostState({
     required this.name,
@@ -55,10 +59,16 @@ class HostState {
   /// 道具持有数（key → 数量）
   final Map<String, int> items;
 
-  /// 升到下一级要的经验（store.js L5：`need = lv => 60 + lv * 40`）
-  static int need(int lv) => 60 + lv * 40;
+  /// 升到下一级要的经验 —— **唯一真源是 `Rewards.needFor`**（`12 + lv × 6`）。
+  ///
+  /// ⚠️ t24 之前这里自己写了一条旧曲线 `60 + lv * 40`（store.js L5 遗留），
+  /// 与结算/升级用的 `rewards.dart:36` **双口径并存**：LV7 真实 need = 54，
+  /// 档案页经验环却按 /340 画（常年在用户眼里几乎空着），agent 查状态报的
+  /// 经验上限也是旧值（docs/20 §2.2-2 / TODO-15）。现在整条链只有一条曲线，
+  /// 这里只剩一个转发，改数值只改 `rewards.dart` 一处。
+  static int need(int lv) => Rewards.needFor(lv);
 
-  /// 经验环的进度（HUD 里 `clamp(exp / need(lv), 0, 1)`）
+  /// 经验环的进度（HUD 里 `clamp(exp / need(lv), 0, 1)`）—— 与升级判定同源
   double get expRatio => (exp / need(lv)).clamp(0.0, 1.0);
 
   /// 最弱的一维（`Store.weakest()`）—— 档案雷达里那一轴会变灰

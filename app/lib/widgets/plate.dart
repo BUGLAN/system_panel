@@ -7,7 +7,6 @@ import 'dart:ui' show PathMetric;
 import 'package:flutter/material.dart';
 
 import '../data/rarity.dart';
-import '../data/rewards.dart';
 import '../design/tokens.dart';
 import '../state/host_state.dart';
 import '../state/quest.dart';
@@ -113,7 +112,7 @@ class _PlateState extends State<Plate> with TickerProviderStateMixin {
     widget.quest.reason.length,
     '证明${widget.quest.proof}'.length,
     '时限${widget.quest.minutesText}'.length,
-    // t15：loot 面板已切结算经济口径（Rewards），刻字长度跟着同一句文案走
+    // t24：loot 面板只读 quest.lootText（结算经济口径），刻字长度跟着同一句文案走
     '报酬${widget.quest.lootText}'.length,
   ];
 
@@ -728,13 +727,6 @@ class _Glass extends StatelessWidget {
       color: C.dim,
     );
     final TextStyle dd = fs(family: F.cn, size: 13, wght: 400, color: C.ice);
-    final TextStyle num = fs(
-      family: F.num,
-      size: 13,
-      wght: 700,
-      ls: .39,
-      color: C.blue,
-    );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
@@ -746,31 +738,20 @@ class _Glass extends StatelessWidget {
           7,
           _specRow(
             '报酬',
-            Text.rich(
-              TextSpan(
-                // t15：loot 面板切结算经济口径（docs/18 §2.3 Rewards 表，
-                // QuestFlow.settle 同源）——派单板展示 = 结算出账，不再漂移
-                children: <InlineSpan>[
-                  TextSpan(
-                    text: 'EXP ${Rewards.expOf(quest.rank)}',
-                    style: num,
-                  ),
-                  TextSpan(
-                    text: ' · ◈ ${Rewards.coinOf(quest.rank)}',
-                    style: dd,
-                  ),
-                  TextSpan(
-                    text: quest.attrs.entries
-                        .map((MapEntry<String, int> e) => '${e.key}+${e.value}')
-                        .join(' '),
-                    style: fs(
-                      family: F.cn,
-                      size: 12,
-                      wght: 400,
-                      color: const Color(0xFFCFE9FF),
-                    ),
-                  ),
-                ],
+            Text(
+              // t24：报酬行**只能**读 quest.lootText 这一份真源（含补救 ×0.5）。
+              // t15 那版在这里自己拼 `Rewards.expOf/coinOf(rank)`，丢了
+              // `kind == 'remedy' ? .5 : 1` —— 同 E 级补救单两块板显示
+              // `EXP 1 · ◈ 5` / `EXP 0 · ◈ 3`，都与结算真源 `1/3` 不符。
+              // 现在整句文案由 Quest.lootTextOf → Rewards.payout 派生，
+              // 显示与结算同源，第三次复发无处可藏（plate_test 钉死）。
+              quest.lootText,
+              style: fs(
+                family: F.num,
+                size: 13,
+                wght: 700,
+                ls: .39,
+                color: C.blue,
               ),
             ),
             dt,
