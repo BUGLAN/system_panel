@@ -7,6 +7,7 @@ import 'package:shared_preferences_platform_interface/shared_preferences_async_p
 import 'package:system_panel/agent/vision.dart';
 import 'package:system_panel/data/rarity.dart';
 import 'package:system_panel/state/goal.dart';
+import 'package:system_panel/state/goal_gen.dart';
 import 'package:system_panel/state/host_state.dart';
 import 'package:system_panel/state/quest.dart';
 import 'package:system_panel/state/quest_flow.dart';
@@ -138,6 +139,32 @@ void main() {
       forceCrit: crit ?? false,
     );
   }
+
+  group('通用日常池扩充（TODO-03 模板半批：两处池子必须同源）', () {
+    test('QuestFlow.kDailyPool 与 goal_gen.kDailyCommon 逐条一致（批二 14 → 30）', () {
+      // quest_flow 不能 import goal_gen（goal_gen 反向依赖它，会成环），
+      // 所以「两处池子同源」这条约束只能在这里钉住 —— 它是唯一的防线。
+      expect(QuestFlow.kDailyPool.length, greaterThanOrEqualTo(30));
+      expect(QuestFlow.kDailyPool.length, kDailyCommon.length);
+      for (int i = 0; i < kDailyCommon.length; i++) {
+        final DailyTpl a = QuestFlow.kDailyPool[i];
+        final DailyTemplate b = kDailyCommon[i];
+        expect(a.t, b.title, reason: '第 $i 条题面不一致');
+        expect(a.p, b.proof, reason: '${b.title} 验证方式不一致');
+        expect(a.m, b.minutes, reason: '${b.title} 时限不一致');
+        expect(a.a, b.attrs, reason: '${b.title} 六维不一致');
+        expect(a.r, b.rank, reason: '${b.title} 档位不一致');
+      }
+    });
+
+    test('批二新题确实进了 QuestFlow 的池子（抽查）', () {
+      final List<String> titles =
+          QuestFlow.kDailyPool.map((DailyTpl d) => d.t).toList();
+      expect(titles, contains('靠墙静蹲 3 组，每组 45 秒'));
+      expect(titles, contains('睡前 10 分钟回顾今天，想清楚一件做对的事'));
+      expect(titles.toSet().length, titles.length, reason: '池子里有重题');
+    });
+  });
 
   group('数值表（docs/18 §2.3）', () {
     test('E~S 经验 / 金币，F 兼容档', () {
@@ -482,7 +509,70 @@ void main() {
       expect(r.empty, isFalse);
     });
 
-    test('收官：最后一环清掉 → finale，没有下一环补单', () {
+    test('收官：最后一环清掉 → finale，下一条主线自动接上（TODO-01）', () {
+      final Goal oneRing = Goal(
+        text: '测试目标',
+        short: '测试',
+        at: DateTime(2026, 1, 1),
+        rings: const <GoalRing>[
+          GoalRing(
+            short: '一环',
+            title: '唯一的一环',
+            proof: '截图',
+            minutes: 15,
+            rank: 'E',
+            state: RingState.cur,
+          ),
+        ],
+      );
+      final QuestFlow f = freshFlow(goal: oneRing);
+      f.nextGoalHook = (Goal prev, int cleared, int total, int level) =>
+          buildNextGoal(
+            prev: prev,
+            cleared: cleared,
+            total: total,
+            level: level,
+          );
+      f.accept(
+        const Quest(
+          serial: 905,
+          kind: 'main',
+          ring: 0,
+          ringTotal: 1,
+          name: '唯一的一环',
+          reason: '',
+          proof: '截图',
+          minutes: 15,
+          rank: 'E',
+          attrs: <String, int>{'体': 1},
+        ),
+      );
+      final QuestResult? r = f.settle(forceCrit: false);
+      expect(r!.ringClear, 0);
+      expect(r.finale, isTrue);
+      expect(r.titles, contains('finale'));
+
+      // 叙事没有终点：新主线已经落库、首环已经钉在队首
+      final FinaleOutcome? o = f.lastFinale;
+      expect(o, isNotNull);
+      expect(o!.goal, isNotNull);
+      expect(o.cleared, 1);
+      expect(o.total, 1);
+      expect(o.newGoalText, '测试目标'); // 沿用上一目标那句话
+      expect(o.goal!.rings.length, 6); // 默认时长词 6 环
+      expect(o.goal!.rings.first.state, RingState.cur);
+      expect(o.goal!.rings.last.finalRing, isTrue);
+
+      expect(f.goal, same(o.goal));
+      expect(f.queueEmpty, isFalse);
+      expect(f.head?.kind, 'main');
+      expect(f.head?.ring, 0);
+      expect(f.head?.ringTotal, 6);
+      expect(f.head?.name, o.goal!.rings.first.title);
+      expect(r.empty, isFalse); // 结算页不该弹【收工。】
+    });
+
+    test('收官但没接钩子：叙事停在终点（队列真的空，老行为）', () {
       final Goal oneRing = Goal(
         text: '测试目标',
         short: '测试',
@@ -501,7 +591,7 @@ void main() {
       final QuestFlow f = freshFlow(goal: oneRing);
       f.accept(
         const Quest(
-          serial: 905,
+          serial: 906,
           kind: 'main',
           ring: 0,
           ringTotal: 1,
@@ -514,11 +604,371 @@ void main() {
         ),
       );
       final QuestResult? r = f.settle(forceCrit: false);
-      expect(r!.ringClear, 0);
-      expect(r.finale, isTrue);
+      expect(r!.finale, isTrue);
       expect(f.queueEmpty, isTrue);
-      expect(f.goal.rings.single.state, RingState.done);
-      expect(r.titles, contains('finale'));
+      expect(r.empty, isTrue);
+      expect(f.lastFinale?.goal, isNull);
+    });
+
+    test('收官接钩子但钩子不给目标（她没答应）：同样停在终点', () {
+      final Goal oneRing = Goal(
+        text: '测试目标',
+        short: '测试',
+        at: DateTime(2026, 1, 1),
+        rings: const <GoalRing>[
+          GoalRing(
+            short: '一环',
+            title: '唯一的一环',
+            proof: '截图',
+            minutes: 15,
+            rank: 'E',
+            state: RingState.cur,
+          ),
+        ],
+      );
+      final QuestFlow f = freshFlow(goal: oneRing);
+      f.nextGoalHook = (Goal _, int _, int _, int _) => null;
+      f.accept(
+        const Quest(
+          serial: 907,
+          kind: 'main',
+          ring: 0,
+          ringTotal: 1,
+          name: '唯一的一环',
+          reason: '',
+          proof: '截图',
+          minutes: 15,
+          rank: 'E',
+          attrs: <String, int>{'体': 1},
+        ),
+      );
+      final QuestResult? r = f.settle(forceCrit: false);
+      expect(r!.finale, isTrue);
+      expect(f.queueEmpty, isTrue);
+      expect(f.lastFinale?.goal, isNull);
+      expect(f.lastFinale?.newGoalText, '');
+    });
+
+    test('收官不动日常单：队列里原来的日常还留着（只有 main 被撤）', () {
+      final Goal oneRing = Goal(
+        text: '测试目标',
+        short: '测试',
+        at: DateTime(2026, 1, 1),
+        rings: const <GoalRing>[
+          GoalRing(
+            short: '一环',
+            title: '唯一的一环',
+            proof: '截图',
+            minutes: 15,
+            rank: 'E',
+            state: RingState.cur,
+          ),
+        ],
+      );
+      final QuestFlow f = freshFlow(goal: oneRing);
+      f.nextGoalHook = (Goal prev, int cleared, int total, int level) =>
+          buildNextGoal(
+            prev: prev,
+            cleared: cleared,
+            total: total,
+            level: level,
+          );
+      final Quest daily = f.genDaily(1).single;
+      f.queue.add(daily);
+      f.accept(
+        const Quest(
+          serial: 908,
+          kind: 'main',
+          ring: 0,
+          ringTotal: 1,
+          name: '唯一的一环',
+          reason: '',
+          proof: '截图',
+          minutes: 15,
+          rank: 'E',
+          attrs: <String, int>{'体': 1},
+        ),
+      );
+      f.settle(forceCrit: false);
+      expect(f.queue.where((Quest q) => q.kind == 'main').length, 1);
+      expect(f.queue.where((Quest q) => q.kind == 'daily').length, 1);
+      expect(f.head?.kind, 'main'); // 首环钉队首，日常还在后面
+      expect(f.host.queue, f.queue.length); // 读数同步
+    });
+
+    test('applyFinaleOutcome 幂等：重复调用不重复钉环', () {
+      final Goal oneRing = Goal(
+        text: '测试目标',
+        short: '测试',
+        at: DateTime(2026, 1, 1),
+        rings: const <GoalRing>[
+          GoalRing(
+            short: '一环',
+            title: '唯一的一环',
+            proof: '截图',
+            minutes: 15,
+            rank: 'E',
+            state: RingState.cur,
+          ),
+        ],
+      );
+      final QuestFlow f = freshFlow(goal: oneRing);
+      f.nextGoalHook = (Goal prev, int cleared, int total, int level) =>
+          buildNextGoal(
+            prev: prev,
+            cleared: cleared,
+            total: total,
+            level: level,
+          );
+      f.accept(
+        const Quest(
+          serial: 909,
+          kind: 'main',
+          ring: 0,
+          ringTotal: 1,
+          name: '唯一的一环',
+          reason: '',
+          proof: '截图',
+          minutes: 15,
+          rank: 'E',
+          attrs: <String, int>{'体': 1},
+        ),
+      );
+      f.settle(forceCrit: false);
+      final int before = f.queue.length;
+      expect(f.applyFinaleOutcome(), isFalse); // 已经钉过了
+      expect(f.queue.length, before);
+      expect(f.queue.where((Quest q) => q.kind == 'main').length, 1);
+    });
+
+    test('applyFinaleOutcome：首环被清掉后能补回来（老档读回时首环不在队列）', () {
+      final Goal oneRing = Goal(
+        text: '测试目标',
+        short: '测试',
+        at: DateTime(2026, 1, 1),
+        rings: const <GoalRing>[
+          GoalRing(
+            short: '一环',
+            title: '唯一的一环',
+            proof: '截图',
+            minutes: 15,
+            rank: 'E',
+            state: RingState.cur,
+          ),
+        ],
+      );
+      final QuestFlow f = freshFlow(goal: oneRing);
+      f.nextGoalHook = (Goal prev, int cleared, int total, int level) =>
+          buildNextGoal(
+            prev: prev,
+            cleared: cleared,
+            total: total,
+            level: level,
+          );
+      f.accept(
+        const Quest(
+          serial: 910,
+          kind: 'main',
+          ring: 0,
+          ringTotal: 1,
+          name: '唯一的一环',
+          reason: '',
+          proof: '截图',
+          minutes: 15,
+          rank: 'E',
+          attrs: <String, int>{'体': 1},
+        ),
+      );
+      f.settle(forceCrit: false);
+      f.queue.removeWhere((Quest q) => q.kind == 'main'); // 模拟老档没存首环
+      expect(f.queueEmpty, isTrue);
+      expect(f.applyFinaleOutcome(), isTrue);
+      expect(f.head?.kind, 'main');
+      expect(f.head?.ring, 0);
+      expect(f.head?.ringTotal, 6);
+    });
+    test('applyFinaleOutcome：老档读回时「主线已走完」→ 补铸下一条并钉队首（TODO-01 兜底）', () {
+      // 收官发生在本功能之前的老存档：环全 done、队列里没有主线单
+      final Goal finished = Goal(
+        text: '一个月早睡早起',
+        short: '早起',
+        at: DateTime(2026, 1, 1),
+        cat: 'sleep',
+        days: 3,
+        rings: const <GoalRing>[
+          GoalRing(
+            short: '定闹钟',
+            title: '定好明早的闹钟',
+            proof: '闹钟截图',
+            minutes: 5,
+            rank: 'E',
+            state: RingState.done,
+          ),
+          GoalRing(
+            short: '23:30',
+            title: '今晚 23:30 前上床',
+            proof: '屏幕使用时间截图',
+            minutes: 20,
+            rank: 'D',
+            state: RingState.done,
+          ),
+          GoalRing(
+            short: '不赖床',
+            title: '闹钟响后 5 分钟内起床',
+            proof: '起床时间截图',
+            minutes: 10,
+            rank: 'C',
+            state: RingState.done,
+            finalRing: true,
+          ),
+        ],
+      );
+      final QuestFlow f = QuestFlow(
+        host: HostState.empty.copyWith(lv: 5),
+        goal: finished,
+        queue: const <Quest>[],
+        serial: 2000,
+        rnd: math.Random(3),
+      );
+      f.nextGoalHook = (Goal prev, int cleared, int total, int level) =>
+          buildNextGoal(
+            prev: prev,
+            cleared: cleared,
+            total: total,
+            level: level,
+          );
+      expect(f.goal.currentIndex, -1); // 没有「脚下那一环」
+      expect(f.queueEmpty, isTrue); // 老档队列里没有主线单
+
+      expect(f.applyFinaleOutcome(), isTrue);
+      expect(f.goal.text, '一个月早睡早起');
+      expect(f.goal.rings.length, 7); // 默认 6 + lv≥4 满环提档 1
+      expect(f.goal.rings.first.state, RingState.cur);
+      expect(f.head?.kind, 'main');
+      expect(f.head?.ring, 0);
+      expect(f.queue.where((Quest q) => q.kind == 'main').length, 1);
+      expect(f.lastFinale?.goal, isNotNull);
+      // 再调一次不动（幂等）
+      expect(f.applyFinaleOutcome(), isFalse);
+    });
+
+    test('applyFinaleOutcome：未绑定（空目标）不动手', () {
+      final QuestFlow f = freshFlow(goal: Goal.empty());
+      f.nextGoalHook = (Goal prev, int cleared, int total, int level) =>
+          buildNextGoal(
+            prev: prev,
+            cleared: cleared,
+            total: total,
+            level: level,
+          );
+      expect(f.applyFinaleOutcome(), isFalse);
+      expect(f.goal.isEmpty, isTrue);
+      expect(f.queueEmpty, isTrue);
+    });
+
+    test('applyFinaleOutcome：主线还没走完不动手', () {
+      final QuestFlow f = QuestFlow.demo();
+      f.nextGoalHook = (Goal prev, int cleared, int total, int level) =>
+          buildNextGoal(
+            prev: prev,
+            cleared: cleared,
+            total: total,
+            level: level,
+          );
+      expect(f.goal.currentIndex, 4);
+      expect(f.applyFinaleOutcome(), isFalse);
+      expect(f.goal.rings.length, 8);
+    });
+  });
+
+  group('换目标 newGoal（TODO-01：旧主线单移除、新主线钉队首）', () {
+    test('落库语义：main 全撤、新主线钉队首、日常保留、档案换成新目标', () {
+      final QuestFlow f = QuestFlow.demo(); // 队列 = 主线首环 + 3 日常
+      final int dailyBefore =
+          f.queue.where((Quest q) => q.kind == 'daily').length;
+      expect(f.queue.where((Quest q) => q.kind == 'main').length, 1);
+
+      final Goal next = buildNextGoal(
+        prev: f.goal,
+        cleared: f.goal.doneCount,
+        total: f.goal.rings.length,
+        level: f.host.lv,
+        text: '半年减重 10 斤',
+      );
+      final Quest? ring = f.newGoal(next);
+
+      expect(ring, isNotNull);
+      expect(f.goal, same(next));
+      expect(f.goal.text, '半年减重 10 斤');
+      expect(f.goal.cat, 'slim');
+      expect(f.goal.rings.length, 8);
+      expect(f.queue.first.serial, ring!.serial);
+      expect(f.queue.first.kind, 'main');
+      expect(f.queue.first.ring, 0);
+      expect(f.queue.first.ringTotal, 8);
+      expect(f.queue.where((Quest q) => q.kind == 'main').length, 1);
+      expect(
+        f.queue.where((Quest q) => q.kind == 'daily').length,
+        dailyBefore,
+      );
+      expect(f.host.queue, f.queue.length);
+      // 旧主线的单真的撤了（不是留在队尾）
+      expect(f.queue.any((Quest q) => q.name == '跑完 5 公里'), isFalse);
+    });
+
+    test('新主线可整链走完（换目标后还能一环一环清到 finale）', () {
+      final QuestFlow f = QuestFlow.demo();
+      f.nextGoalHook = (Goal prev, int cleared, int total, int level) =>
+          buildNextGoal(
+            prev: prev,
+            cleared: cleared,
+            total: total,
+            level: level,
+          );
+      final Goal next = buildNextGoal(
+        prev: f.goal,
+        cleared: 0,
+        total: f.goal.rings.length,
+        level: f.host.lv,
+        text: '半年减重 10 斤',
+      );
+      f.newGoal(next);
+      final int total = f.goal.rings.length;
+      expect(total, 8);
+      for (int i = 0; i < total; i++) {
+        final Quest? head = f.head;
+        expect(head, isNotNull, reason: '第 $i 环没有单可接');
+        expect(head!.kind, 'main', reason: '第 $i 环队首不是主线单');
+        expect(head.ring, i, reason: '第 $i 环的环号不对');
+        f.accept(head, now: DateTime(2026, 1, 1 + i, 10));
+        final QuestResult? r = f.settle(
+          now: DateTime(2026, 1, 1 + i, 10, 30),
+          forceCrit: false,
+        );
+        expect(r, isNotNull, reason: '第 $i 环结算失败');
+        expect(r!.ringClear, i);
+        if (i < total - 1) {
+          expect(r.finale, isFalse);
+          expect(f.goal.rings[i].state, RingState.done);
+          expect(f.goal.rings[i + 1].state, RingState.cur);
+        } else {
+          // 第二轮的收官：又自动接上一条（叙事没有终点）
+          expect(r.finale, isTrue);
+          expect(f.lastFinale?.goal, isNotNull);
+          expect(f.head?.kind, 'main');
+          expect(f.head?.ring, 0);
+          expect(f.queueEmpty, isFalse);
+        }
+      }
+    });
+
+    test('空目标不动任何状态（不给环就不换）', () {
+      final QuestFlow f = QuestFlow.demo();
+      final Goal before = f.goal;
+      final int qLen = f.queue.length;
+      expect(f.newGoal(Goal.empty()), isNull);
+      expect(f.goal, same(before));
+      expect(f.queue.length, qLen);
     });
   });
 

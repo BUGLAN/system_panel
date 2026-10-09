@@ -204,6 +204,34 @@ final GoalCategory _catRun = GoalCategory(
       attrs: <String, int>{'体': 1, '敏': 1},
       rank: 'D',
     ),
+    DailyTemplate(
+      title: '跑前热身 8 分钟，一个动作都别省',
+      proof: '拉伸照片',
+      minutes: 8,
+      attrs: <String, int>{'敏': 1, '体': 1},
+      rank: 'F',
+    ),
+    DailyTemplate(
+      title: '匀速跑 3 公里，配速别忽快忽慢',
+      proof: '跑步 App 截图',
+      minutes: 25,
+      attrs: <String, int>{'体': 2},
+      rank: 'D',
+    ),
+    DailyTemplate(
+      title: '深蹲 3 组 × 20，练腿不练腿跑不远',
+      proof: '计数截图',
+      minutes: 10,
+      attrs: <String, int>{'力': 1, '体': 1},
+      rank: 'F',
+    ),
+    DailyTemplate(
+      title: '走满 6000 步，就当放松跑',
+      proof: '步数截图',
+      minutes: 45,
+      attrs: <String, int>{'体': 1, '敏': 1},
+      rank: 'E',
+    ),
   ],
 );
 
@@ -282,6 +310,34 @@ final GoalCategory _catSlim = GoalCategory(
       attrs: <String, int>{'体': 1, '敏': 1},
       rank: 'D',
     ),
+    DailyTemplate(
+      title: '晚饭后站 15 分钟，别一吃完就坐下',
+      proof: '计时截图',
+      minutes: 15,
+      attrs: <String, int>{'体': 1},
+      rank: 'F',
+    ),
+    DailyTemplate(
+      title: '把今天吃的东西拍下来，一顿都别漏',
+      proof: '饭菜照片',
+      minutes: 10,
+      attrs: <String, int>{'知': 1},
+      rank: 'F',
+    ),
+    DailyTemplate(
+      title: '走满 8000 步',
+      proof: '步数截图',
+      minutes: 50,
+      attrs: <String, int>{'体': 2},
+      rank: 'D',
+    ),
+    DailyTemplate(
+      title: '睡前不吃东西，渴了只喝水',
+      proof: '计时截图',
+      minutes: 5,
+      attrs: <String, int>{'知': 1, '体': 1},
+      rank: 'F',
+    ),
   ],
 );
 
@@ -358,6 +414,34 @@ final GoalCategory _catFit = GoalCategory(
       proof: '计数截图',
       minutes: 15,
       attrs: <String, int>{'力': 2},
+      rank: 'D',
+    ),
+    DailyTemplate(
+      title: '深蹲 3 组 × 15，膝盖别内扣',
+      proof: '计数截图',
+      minutes: 10,
+      attrs: <String, int>{'力': 1, '体': 1},
+      rank: 'F',
+    ),
+    DailyTemplate(
+      title: '平板支撑 3 组 × 45 秒',
+      proof: '计时截图',
+      minutes: 8,
+      attrs: <String, int>{'力': 1, '体': 1},
+      rank: 'E',
+    ),
+    DailyTemplate(
+      title: '练完拉伸 10 分钟，明天才起得来',
+      proof: '拉伸照片',
+      minutes: 12,
+      attrs: <String, int>{'敏': 2},
+      rank: 'F',
+    ),
+    DailyTemplate(
+      title: '靠墙静蹲 3 组 × 60 秒',
+      proof: '计时截图',
+      minutes: 10,
+      attrs: <String, int>{'力': 1, '体': 1},
       rank: 'D',
     ),
   ],
@@ -438,6 +522,34 @@ final GoalCategory _catLang = GoalCategory(
       attrs: <String, int>{'智': 1, '魅': 1},
       rank: 'D',
     ),
+    DailyTemplate(
+      title: '背 15 个新词，晚上再过一遍',
+      proof: '背词 App 截图',
+      minutes: 20,
+      attrs: <String, int>{'智': 2},
+      rank: 'E',
+    ),
+    DailyTemplate(
+      title: '听一段 3 分钟音频，听不懂也听完',
+      proof: '音频 App 截图',
+      minutes: 10,
+      attrs: <String, int>{'智': 1, '知': 1},
+      rank: 'F',
+    ),
+    DailyTemplate(
+      title: '大声朗读一段短文，读顺为止',
+      proof: '录音截图',
+      minutes: 15,
+      attrs: <String, int>{'魅': 1, '智': 1},
+      rank: 'F',
+    ),
+    DailyTemplate(
+      title: '把昨天背的 20 个词默写一遍',
+      proof: '默写照片',
+      minutes: 20,
+      attrs: <String, int>{'智': 1, '知': 1},
+      rank: 'D',
+    ),
   ],
 );
 
@@ -515,6 +627,34 @@ final GoalCategory _catExam = GoalCategory(
       minutes: 12,
       attrs: <String, int>{'知': 2},
       rank: 'F',
+    ),
+    DailyTemplate(
+      title: '清空书桌，只留下今天要用的那本书',
+      proof: '书桌照片',
+      minutes: 10,
+      attrs: <String, int>{'知': 1},
+      rank: 'F',
+    ),
+    DailyTemplate(
+      title: '做完一套 10 题的小测，错题当场订正',
+      proof: '题目照片',
+      minutes: 35,
+      attrs: <String, int>{'智': 2},
+      rank: 'D',
+    ),
+    DailyTemplate(
+      title: '把最近 5 道错题重做一遍',
+      proof: '错题本照片',
+      minutes: 25,
+      attrs: <String, int>{'智': 1, '知': 1},
+      rank: 'E',
+    ),
+    DailyTemplate(
+      title: '限时 25 分钟专注，手机扣在桌上',
+      proof: '计时截图',
+      minutes: 30,
+      attrs: <String, int>{'智': 1, '知': 1},
+      rank: 'E',
     ),
   ],
 );
@@ -603,6 +743,34 @@ final GoalCategory _catSleep = GoalCategory(
       attrs: <String, int>{'体': 1, '知': 1},
       rank: 'D',
     ),
+    DailyTemplate(
+      title: '起床后 10 分钟内拉开窗帘，见一次光',
+      proof: '窗外照片',
+      minutes: 5,
+      attrs: <String, int>{'体': 1, '知': 1},
+      rank: 'F',
+    ),
+    DailyTemplate(
+      title: '手机放到够不着的地方充电，一晚上别碰',
+      proof: '手机位置照片',
+      minutes: 5,
+      attrs: <String, int>{'知': 1},
+      rank: 'F',
+    ),
+    DailyTemplate(
+      title: '午睡不超过 30 分钟',
+      proof: '计时截图',
+      minutes: 30,
+      attrs: <String, int>{'体': 1, '知': 1},
+      rank: 'E',
+    ),
+    DailyTemplate(
+      title: '今天不喝咖啡和浓茶，晚上才睡得着',
+      proof: '晚上拍一张今天喝过的东西',
+      minutes: 5,
+      attrs: <String, int>{'知': 1, '体': 1},
+      rank: 'F',
+    ),
   ],
 );
 
@@ -680,6 +848,34 @@ final GoalCategory _catMake = GoalCategory(
       minutes: 10,
       attrs: <String, int>{'智': 1, '魅': 1},
       rank: 'F',
+    ),
+    DailyTemplate(
+      title: '临摹一张你喜欢的图，10 分钟就够',
+      proof: '过程截图',
+      minutes: 15,
+      attrs: <String, int>{'智': 1, '敏': 1},
+      rank: 'F',
+    ),
+    DailyTemplate(
+      title: '写 200 字，写完不回头改',
+      proof: '文字截图',
+      minutes: 20,
+      attrs: <String, int>{'智': 1, '魅': 1},
+      rank: 'E',
+    ),
+    DailyTemplate(
+      title: '把一个旧作品翻出来，挑三个毛病',
+      proof: '笔记照片',
+      minutes: 15,
+      attrs: <String, int>{'知': 1, '智': 1},
+      rank: 'F',
+    ),
+    DailyTemplate(
+      title: '做一个 15 分钟内能做完的小练习',
+      proof: '成品照片',
+      minutes: 20,
+      attrs: <String, int>{'智': 1, '敏': 1},
+      rank: 'D',
     ),
   ],
 );
@@ -759,6 +955,34 @@ final GoalCategory _catCode = GoalCategory(
       attrs: <String, int>{'智': 1, '知': 1},
       rank: 'D',
     ),
+    DailyTemplate(
+      title: '读 20 分钟官方文档，读不懂也读完一节',
+      proof: '文档截图',
+      minutes: 25,
+      attrs: <String, int>{'智': 2},
+      rank: 'E',
+    ),
+    DailyTemplate(
+      title: '把今天踩的坑写进笔记，三行就够',
+      proof: '笔记照片',
+      minutes: 12,
+      attrs: <String, int>{'知': 1, '智': 1},
+      rank: 'F',
+    ),
+    DailyTemplate(
+      title: '重构一个函数，只改一处也行',
+      proof: 'diff 截图',
+      minutes: 30,
+      attrs: <String, int>{'智': 1, '知': 1},
+      rank: 'D',
+    ),
+    DailyTemplate(
+      title: '写下下一步要做的三件事，只写三件',
+      proof: '清单照片',
+      minutes: 10,
+      attrs: <String, int>{'知': 1},
+      rank: 'F',
+    ),
   ],
 );
 
@@ -837,6 +1061,34 @@ final GoalCategory _catBold = GoalCategory(
       attrs: <String, int>{'魅': 1, '知': 1},
       rank: 'E',
     ),
+    DailyTemplate(
+      title: '抬头挺胸走 10 分钟，别低头看手机',
+      proof: '计时截图',
+      minutes: 12,
+      attrs: <String, int>{'魅': 1, '体': 1},
+      rank: 'F',
+    ),
+    DailyTemplate(
+      title: '对着镜子练 3 分钟的开场白',
+      proof: '录音或录像截图',
+      minutes: 8,
+      attrs: <String, int>{'魅': 2},
+      rank: 'F',
+    ),
+    DailyTemplate(
+      title: '在群里发一次言，说点有用的',
+      proof: '对话截图（可打码）',
+      minutes: 10,
+      attrs: <String, int>{'魅': 1, '知': 1},
+      rank: 'E',
+    ),
+    DailyTemplate(
+      title: '把一件没做完的小事今天了结掉',
+      proof: '完成截图',
+      minutes: 20,
+      attrs: <String, int>{'知': 1, '魅': 1},
+      rank: 'D',
+    ),
   ],
 );
 
@@ -886,7 +1138,64 @@ final GoalCategory _catGen = GoalCategory(
       rank: 'C',
     ),
   ],
-  daily: const <DailyTemplate>[],
+  daily: const <DailyTemplate>[
+    DailyTemplate(
+      title: '为今天定一个 15 分钟的小目标，做完就算赢',
+      proof: '完成截图',
+      minutes: 20,
+      attrs: <String, int>{'知': 1, '智': 1},
+      rank: 'F',
+    ),
+    DailyTemplate(
+      title: '丢掉一件早该丢的东西',
+      proof: '前后对比照片',
+      minutes: 10,
+      attrs: <String, int>{'知': 1},
+      rank: 'F',
+    ),
+    DailyTemplate(
+      title: '学一个用得上的小技巧，今天就用一次',
+      proof: '截图',
+      minutes: 15,
+      attrs: <String, int>{'智': 1, '敏': 1},
+      rank: 'E',
+    ),
+    DailyTemplate(
+      title: '出门走 20 分钟，不带耳机',
+      proof: '步数截图',
+      minutes: 25,
+      attrs: <String, int>{'体': 1, '知': 1},
+      rank: 'E',
+    ),
+    DailyTemplate(
+      title: '把拖了三天的那件事先做 10 分钟',
+      proof: '完成截图',
+      minutes: 15,
+      attrs: <String, int>{'知': 1, '智': 1},
+      rank: 'F',
+    ),
+    DailyTemplate(
+      title: '早睡 30 分钟，就今晚',
+      proof: '屏幕使用时间截图',
+      minutes: 5,
+      attrs: <String, int>{'体': 1, '知': 1},
+      rank: 'F',
+    ),
+    DailyTemplate(
+      title: '做 20 个深蹲 + 20 个开合跳',
+      proof: '计数截图',
+      minutes: 8,
+      attrs: <String, int>{'力': 1, '体': 1},
+      rank: 'E',
+    ),
+    DailyTemplate(
+      title: '写下一件今天做得还行的事，一句就够',
+      proof: '文字截图',
+      minutes: 8,
+      attrs: <String, int>{'魅': 1, '知': 1},
+      rank: 'F',
+    ),
+  ],
 );
 
 /// 识别顺序即优先级（content.js L221）——`gen` 兜底必须排最后。
@@ -959,7 +1268,297 @@ const List<DailyTemplate> kDailyCommon = <DailyTemplate>[
     rank: 'F',
   ),
   DailyTemplate(title: '做一顿饭', proof: '饭菜照片', minutes: 40, attrs: <String, int>{'体': 1, '知': 1}, rank: 'D'),
+  // ── 批二扩充（TODO-03 模板半批）—— 通用池 14 → 30，把重样期往后推 ──
+  DailyTemplate(
+    title: '早起后喝一杯水，再做 10 个开合跳',
+    proof: '计时截图',
+    minutes: 5,
+    attrs: <String, int>{'体': 1, '力': 1},
+    rank: 'F',
+  ),
+  DailyTemplate(
+    title: '把手机放到够不着的地方，专注 25 分钟',
+    proof: '计时截图',
+    minutes: 30,
+    attrs: <String, int>{'智': 1, '知': 1},
+    rank: 'E',
+  ),
+  DailyTemplate(
+    title: '走楼梯不坐电梯，上下各两趟',
+    proof: '步数截图',
+    minutes: 10,
+    attrs: <String, int>{'体': 1, '敏': 1},
+    rank: 'F',
+  ),
+  DailyTemplate(
+    title: '写三行今天想说的话，写完就合上',
+    proof: '文字截图',
+    minutes: 10,
+    attrs: <String, int>{'魅': 1, '知': 1},
+    rank: 'F',
+  ),
+  DailyTemplate(
+    title: '洗一次碗，顺便把台面擦干净',
+    proof: '前后对比照片',
+    minutes: 15,
+    attrs: <String, int>{'知': 1, '体': 1},
+    rank: 'F',
+  ),
+  DailyTemplate(
+    title: '靠墙静蹲 3 组，每组 45 秒',
+    proof: '计时截图',
+    minutes: 8,
+    attrs: <String, int>{'力': 1, '体': 1},
+    rank: 'E',
+  ),
+  DailyTemplate(
+    title: '把明天的三件事写下来，只写三件',
+    proof: '清单照片',
+    minutes: 10,
+    attrs: <String, int>{'知': 1, '智': 1},
+    rank: 'F',
+  ),
+  DailyTemplate(
+    title: '念一段 3 分钟的文字，念出声',
+    proof: '录音截图',
+    minutes: 10,
+    attrs: <String, int>{'魅': 1, '智': 1},
+    rank: 'F',
+  ),
+  DailyTemplate(
+    title: '整理一次手机相册，删掉 30 张废片',
+    proof: '相册截图',
+    minutes: 15,
+    attrs: <String, int>{'知': 1},
+    rank: 'F',
+  ),
+  DailyTemplate(
+    title: '靠墙站直 10 分钟，别塌肩',
+    proof: '计时截图',
+    minutes: 10,
+    attrs: <String, int>{'魅': 1, '体': 1},
+    rank: 'F',
+  ),
+  DailyTemplate(
+    title: '喝水 6 杯，拿杯子凑数不算',
+    proof: '杯子照片',
+    minutes: 5,
+    attrs: <String, int>{'体': 1},
+    rank: 'F',
+  ),
+  DailyTemplate(
+    title: '把昨天没做完的那件事补完',
+    proof: '完成截图',
+    minutes: 30,
+    attrs: <String, int>{'知': 1, '智': 1},
+    rank: 'D',
+  ),
+  DailyTemplate(
+    title: '快走 20 分钟，不许边刷手机边走',
+    proof: '步数截图',
+    minutes: 25,
+    attrs: <String, int>{'体': 1, '敏': 1},
+    rank: 'E',
+  ),
+  DailyTemplate(
+    title: '手写一页字，慢一点，写整齐',
+    proof: '纸面照片',
+    minutes: 15,
+    attrs: <String, int>{'敏': 1, '知': 1},
+    rank: 'F',
+  ),
+  DailyTemplate(
+    title: '今天不喝含糖饮料，一杯都不',
+    proof: '晚上拍一张今天喝过的东西',
+    minutes: 5,
+    attrs: <String, int>{'知': 1, '体': 1},
+    rank: 'F',
+  ),
+  DailyTemplate(
+    title: '睡前 10 分钟回顾今天，想清楚一件做对的事',
+    proof: '笔记照片',
+    minutes: 12,
+    attrs: <String, int>{'知': 1, '魅': 1},
+    rank: 'F',
+  ),
 ];
+
+// ── 第二目标闭环 · 长链生成（TODO-01 + TODO-06 模板半）──────────
+//
+// 首次目标 3 天 3 环（[buildFirstGoal]）只是「3 天验证」；验证过了之后
+// 叙事不能停在终点 —— 第 3 环 CLEAR 之后由 [buildNextGoal] 按
+// 原型 `makeGoal` 的**时长词规则**（store.js L147-150）铸一条 5~8 环的新主线。
+// 日常池同时按「模板半批」扩充（[kDailyCommon] ≥30、各类专属池 ≥8），
+// 把内容重样期从 ~D9 后移（docs/20 §7.2 批次二）。
+
+/// 长链环数兜底区间（docs/19 P1-3 / TODO-06：5~8 环）
+const int kNextGoalMinRings = 5;
+const int kNextGoalMaxRings = 8;
+
+/// 长链档位阶梯 —— 原型 `RING_SEQ` 的并集，低开高走、收在 S。
+const List<String> kNextGoalRankSeq = <String>[
+  'E',
+  'D',
+  'C',
+  'B',
+  'A',
+  'S',
+];
+
+/// 长链末环的时限（原型 `makeGoal` 尾部那句 `m: 120`）
+const int kNextGoalFinalMinutes = 120;
+
+/// 时长词 → 环数（原型 `makeGoal` L147-150 逐条移植；默认 6）：
+///   一年/半年/三四五六七八九十个月/百天/100 天 → 8
+///   两二个月/60 天/八周                        → 7
+///   一周/7 天/七天/两周/14 天/十天              → 5
+///
+/// ⚠️ 「一个月」不在表里（原型默认 6）——所以「三个月」只能由 `[三-十]个月`
+/// 命中，绝不能让 `[两二]个月` 把「一个月」也吞掉（负向先行断言挡住）。
+int goalRingCountFor(String text) {
+  if (RegExp(r'一年|半年|[三四五六七八九十]个月|百天|100\s*天').hasMatch(text)) {
+    return 8;
+  }
+  if (RegExp(r'[两二]个月|60\s*天|八周').hasMatch(text)) return 7;
+  if (RegExp(r'一周|7\s*天|七天|两周|14\s*天|十天').hasMatch(text)) return 5;
+  return 6;
+}
+
+/// 上一目标的完成度提档：全部走完 **且等级到 4** 再多给一环。
+/// 只做**上限内的**提档，不给低等级用户硬塞长链（docs/19 P1-3 的「认真用户」）。
+int completionRingBoost({
+  required int cleared,
+  required int total,
+  required int level,
+}) {
+  if (total <= 0 || cleared < total) return 0;
+  return level >= 4 ? 1 : 0;
+}
+
+/// 新主线的一条环（[RingSpec] 的公共字段全保留，另带环号与收尾标记）
+class NextRingSpec {
+  const NextRingSpec({required this.spec, required this.index, required this.last});
+
+  final RingSpec spec;
+  final int index;
+  final bool last;
+}
+
+/// 长链环参数表：首目标 3 环原样接上，再按原型阶梯的**升档 + 加时**
+/// 逐环加码，末环永远钉成「兑现它」（原型 `makeGoal` 尾环）。
+///
+/// [n] 为总环数（5~8），[firstRings] 是类别自带的 3 条起步环。
+List<NextRingSpec> nextRingSpecs(
+  List<RingSpec> firstRings, {
+  required int n,
+  required String goalText,
+}) {
+  final int count = n.clamp(kNextGoalMinRings, kNextGoalMaxRings).toInt();
+  if (firstRings.isEmpty) return const <NextRingSpec>[];
+  final List<RingSpec> base = List<RingSpec>.of(firstRings);
+  final int mid = count - 1; // 末环是目标本身
+  final List<RingSpec> specs = <RingSpec>[];
+  for (int i = 0; i < mid; i++) {
+    if (i < base.length) {
+      specs.add(base[i]);
+      continue;
+    }
+    // 加码环：底样按序循环，档位走 [kNextGoalRankSeq]，时限每级 ×1.35
+    final RingSpec seed = base[i % base.length];
+    final String rank = kNextGoalRankSeq[
+        (i % kNextGoalRankSeq.length).clamp(0, kNextGoalRankSeq.length - 1)];
+    final int cap = switch (rank) {
+      'E' => 30,
+      'D' => 40,
+      'C' => 60,
+      'B' => 90,
+      'A' => 120,
+      _ => 180,
+    };
+    final int grew = (seed.minutes * 1.35).round();
+    specs.add(
+      RingSpec(
+        short: '加码 ${i - base.length + 1}',
+        title: '${seed.title}——加码到 ${grew.clamp(5, cap)} 分钟',
+        proof: seed.proof,
+        minutes: grew.clamp(5, cap).toInt(),
+        rank: rank,
+      ),
+    );
+  }
+  specs.add(
+    RingSpec(
+      short: '兑现',
+      title: '$goalText——兑现它',
+      proof: '能证明你做到了的截图',
+      minutes: kNextGoalFinalMinutes,
+      rank: 'S',
+    ),
+  );
+  return <NextRingSpec>[
+    for (int i = 0; i < specs.length; i++)
+      NextRingSpec(spec: specs[i], index: i, last: i == specs.length - 1),
+  ];
+}
+
+/// 第二目标：finale 之后自动续主线（TODO-01）——
+/// 环数 = 时长词规则（5~8）+ 上一目标完成度提档，档位低开高走收在 S。
+///
+/// [prev] 上一目标（文本/类型/访谈答案/立目标时刻全部沿用，保证
+/// 「换一条路，还是她」的连续性）；[cleared]/[total] 是上一目标走过的环数；
+/// [level] 用结算后的等级（提档只看满环完成）。
+/// [text]/[cat] 只在「换目标」（宿主另立一句话）时传，不传就沿上一目标。
+Goal buildNextGoal({
+  required Goal prev,
+  required int cleared,
+  required int total,
+  required int level,
+  String? text,
+  GoalCategory? cat,
+  DateTime? at,
+}) {
+  final String clean = (text == null || text.trim().isEmpty)
+      ? prev.text
+      : text.trim();
+  final GoalCategory category = cat ??
+      (clean == prev.text
+          ? (goalCats[prev.cat] ?? detectCategory(clean))
+          : detectCategory(clean));
+  final int base = goalRingCountFor(clean);
+  final int boost = completionRingBoost(
+    cleared: cleared,
+    total: total,
+    level: level,
+  );
+  final int n = (base + boost)
+      .clamp(kNextGoalMinRings, kNextGoalMaxRings)
+      .toInt();
+  final List<NextRingSpec> specs = nextRingSpecs(
+    category.firstRings,
+    n: n,
+    goalText: clean,
+  );
+  return Goal(
+    text: clean,
+    short: shortOfGoal(clean, category),
+    at: at ?? DateTime.now(),
+    cat: category.id,
+    days: n,
+    interview: Map<String, String>.of(prev.interview),
+    rings: <GoalRing>[
+      for (final NextRingSpec s in specs)
+        GoalRing(
+          short: s.spec.short,
+          title: s.spec.title,
+          proof: s.spec.proof,
+          minutes: s.spec.minutes,
+          rank: s.spec.rank,
+          state: s.index == 0 ? RingState.cur : RingState.lock,
+          finalRing: s.last,
+        ),
+    ],
+  );
+}
 
 /// 空泛目标黑名单（content.js L241 `VAGUE`）—— 她会追问到具体为止。
 final RegExp _kVague = RegExp(

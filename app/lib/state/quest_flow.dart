@@ -123,6 +123,48 @@ class DailyTpl {
   final String r;
 }
 
+/// 主线收官（finale）的产出 —— TODO-01「第二目标闭环」。
+///
+/// [cleared] = **已走过的环数**（收官时必然 = [total]，所以提档条件成立）；
+/// [total] = 刚走完的这条主线的总环数；[level] 是结算后的等级；
+/// [goal] 非空表示新主线**已经落库**（`flow.goal` 已换成它、旧主线单已撤下、
+/// 首环已钉队首）。
+class FinaleOutcome {
+  const FinaleOutcome({
+    required this.cleared,
+    required this.total,
+    required this.level,
+    required this.newGoalText,
+    this.goal,
+    this.insertedRing,
+  });
+
+  /// 已走过的环数（不是环号 —— 环号是 0 基的 `ringClear`）
+  final int cleared;
+
+  final int total;
+  final int level;
+
+  /// 新主线的一句话（沿用上一目标或宿主另立的那句）
+  final String newGoalText;
+
+  /// 新主线（null = 宿主没接续，叙事真的停在终点）
+  final Goal? goal;
+
+  /// 这次往队首钉进去的首环单（幂等：已经在队列里就是 null）
+  final Quest? insertedRing;
+}
+
+/// 收官时生成下一条主线的钩子。
+/// 参数 = `(上一目标, 已走过的环数, 上一目标总环数, 结算后等级)`；
+/// 返回 null = 这次不续（叙事停在终点）。
+typedef NextGoalHook = Goal? Function(
+  Goal prev,
+  int cleared,
+  int total,
+  int level,
+);
+
 class QuestFlow {
   QuestFlow({
     required this.host,
@@ -237,6 +279,15 @@ class QuestFlow {
   void Function()? onChanged;
   void _notify() => onChanged?.call();
 
+  /// 收官钩子（TODO-01）：最后一环 CLEAR 时铸下一条主线。
+  /// 不接 = 叙事停在终点（老行为，队列真的会空）；接上 = 自动续主线。
+  NextGoalHook? nextGoalHook;
+
+  /// 最近一次收官的结果（界面据此说「下一条主线已经钉好了」）。
+  /// 读一次不清空 —— 结算面板可能重建多次。
+  FinaleOutcome? get lastFinale => _finaleOutcome;
+  FinaleOutcome? _finaleOutcome;
+
   /// 队首（原型 `Store.head()`；T2 不做演示开关，直接给第一张）
   Quest? get head => queue.isEmpty ? null : queue.first;
 
@@ -280,6 +331,23 @@ class QuestFlow {
     DailyTpl('跳绳 500 下', '计数截图', 12, <String, int>{'敏': 1, '体': 1}, 'E'),
     DailyTpl('学一个新技巧，今天用三次', '截图', 15, <String, int>{'智': 1, '敏': 1}, 'F'),
     DailyTpl('做一顿饭', '饭菜照片', 40, <String, int>{'体': 1, '知': 1}, 'D'),
+    // ── 批二扩充（TODO-03 模板半批）—— 通用池 14 → 30（与 goal_gen.kDailyCommon 同源同序）──
+    DailyTpl('早起后喝一杯水，再做 10 个开合跳', '计时截图', 5, <String, int>{'体': 1, '力': 1}, 'F'),
+    DailyTpl('把手机放到够不着的地方，专注 25 分钟', '计时截图', 30, <String, int>{'智': 1, '知': 1}, 'E'),
+    DailyTpl('走楼梯不坐电梯，上下各两趟', '步数截图', 10, <String, int>{'体': 1, '敏': 1}, 'F'),
+    DailyTpl('写三行今天想说的话，写完就合上', '文字截图', 10, <String, int>{'魅': 1, '知': 1}, 'F'),
+    DailyTpl('洗一次碗，顺便把台面擦干净', '前后对比照片', 15, <String, int>{'知': 1, '体': 1}, 'F'),
+    DailyTpl('靠墙静蹲 3 组，每组 45 秒', '计时截图', 8, <String, int>{'力': 1, '体': 1}, 'E'),
+    DailyTpl('把明天的三件事写下来，只写三件', '清单照片', 10, <String, int>{'知': 1, '智': 1}, 'F'),
+    DailyTpl('念一段 3 分钟的文字，念出声', '录音截图', 10, <String, int>{'魅': 1, '智': 1}, 'F'),
+    DailyTpl('整理一次手机相册，删掉 30 张废片', '相册截图', 15, <String, int>{'知': 1}, 'F'),
+    DailyTpl('靠墙站直 10 分钟，别塌肩', '计时截图', 10, <String, int>{'魅': 1, '体': 1}, 'F'),
+    DailyTpl('喝水 6 杯，拿杯子凑数不算', '杯子照片', 5, <String, int>{'体': 1}, 'F'),
+    DailyTpl('把昨天没做完的那件事补完', '完成截图', 30, <String, int>{'知': 1, '智': 1}, 'D'),
+    DailyTpl('快走 20 分钟，不许边刷手机边走', '步数截图', 25, <String, int>{'体': 1, '敏': 1}, 'E'),
+    DailyTpl('手写一页字，慢一点，写整齐', '纸面照片', 15, <String, int>{'敏': 1, '知': 1}, 'F'),
+    DailyTpl('今天不喝含糖饮料，一杯都不', '晚上拍一张今天喝过的东西', 5, <String, int>{'知': 1, '体': 1}, 'F'),
+    DailyTpl('睡前 10 分钟回顾今天，想清楚一件做对的事', '笔记照片', 12, <String, int>{'知': 1, '魅': 1}, 'F'),
   ];
 
   // ── 构造 ──────────────────────────────────────────────────
@@ -701,6 +769,19 @@ class QuestFlow {
       ringClear = task.ring;
     }
 
+    // 收官 → 第二目标闭环（TODO-01）：铸下一条主线、撤旧主线单、首环钉队首。
+    // 结算**当场落库**（不是等界面点一下）——否则结算页读到的 `empty` 是错的，
+    // 宿主会看到【收工。】而其实新主线已经在手上。
+    if (finale) {
+      _applyFinale(
+        // ⚠️ 传的是**环数**不是环号：ringClear 是 0 基索引，收官时
+        //    已走过 = 全部 = 索引 + 1（提档条件读的就是这个数）
+        cleared: ringClear + 1,
+        total: goal.rings.length,
+        level: host.lv,
+      );
+    }
+
     // 补救单抵消失败（history 的 redeemed 标记随 T5 的 history 落库）
     final bool redeemed = task.kind == 'remedy';
 
@@ -772,6 +853,118 @@ class QuestFlow {
       afterNeed: needFor(lv),
       endExp: curExp,
     );
+  }
+
+  // ── 第二目标闭环（TODO-01：finale → 自动续主线 / 换目标落库）────────
+
+  /// 收官：铸下一条主线并**当场落库**。
+  ///
+  /// 语义 = 原型 `Store.newGoal(plan)`（store.js L170-176）：
+  ///   · 旧主线的单全部撤下（`queue.filter(t => t.kind !== 'main')`）
+  ///   · 新主线首环**钉在队首**（`queue.unshift(ringTask(0))`）
+  ///   · 档案里的 `goal` 换成新主线
+  ///
+  /// 与原型唯一的不同：**日常单保留**（原型 `newGoal` 也保留），
+  /// 且新主线是「按上一目标完成度 + 等级铸的 5~8 环长链」（TODO-06 模板半）。
+  /// 没接 [nextGoalHook] 时返回一个 `goal == null` 的结果 —— 叙事真的停在终点。
+  FinaleOutcome _applyFinale({
+    required int cleared,
+    required int total,
+    required int level,
+  }) {
+    final Goal prev = goal;
+    final Goal? next = nextGoalHook?.call(prev, cleared, total, level);
+    if (next == null || next.rings.isEmpty) {
+      final FinaleOutcome stop = FinaleOutcome(
+        cleared: cleared,
+        total: total,
+        level: level,
+        newGoalText: '',
+      );
+      _finaleOutcome = stop;
+      return stop;
+    }
+    queue.removeWhere((Quest q) => q.kind == 'main');
+    goal = next;
+    final Quest ring = ringTask(0);
+    queue.insert(0, ring);
+    _syncQueueCount();
+    final FinaleOutcome out = FinaleOutcome(
+      cleared: cleared,
+      total: total,
+      level: level,
+      newGoalText: next.text,
+      goal: next,
+      insertedRing: ring,
+    );
+    _finaleOutcome = out;
+    return out;
+  }
+
+  /// 幂等补投：把最近一次收官铸好的新主线首环**再确认一次**钉在队首。
+  ///
+  /// 结算时已经投过一次（[_applyFinale]），这里只兜两种边角：
+  ///   ① 老存档（收官发生在本功能之前）读档后首环不在队列里；
+  ///   ② 调用方重复调用（点了两次「下一条主线」）。
+  /// 返回这次是否真的动了队列。
+  bool applyFinaleOutcome() {
+    // ① 上一轮收官铸好的新主线，首环没钉上（老档读回 / 上次落盘发生在钉环之前）
+    final FinaleOutcome? o = _finaleOutcome;
+    final Goal? g = o?.goal;
+    if (o != null && g != null && g.rings.isNotEmpty) {
+      // 幂等口径：settle 里钉的那张首环单还在队列里 → 什么都不用做。
+      // ⚠️ 按 **serial** 认，不按题面 —— `ringTask` 每次都发新单号，
+      //    按名字判会以为「没有」然后钉进第二张重号单。
+      final int? pinned = o.insertedRing?.serial;
+      if (pinned != null &&
+          queue.any((Quest q) => q.serial == pinned && q.kind == 'main')) {
+        return false;
+      }
+      queue.removeWhere((Quest q) => q.kind == 'main');
+      final Quest ring = ringTask(0);
+      queue.insert(0, ring);
+      _syncQueueCount();
+      _finaleOutcome = FinaleOutcome(
+        cleared: o.cleared,
+        total: o.total,
+        level: o.level,
+        newGoalText: o.newGoalText,
+        goal: g,
+        insertedRing: ring,
+      );
+      return true;
+    }
+    // ② 读档时这条主线**已经走完了**（收官发生在本功能之前的老存档）——
+    //    叙事不该停在终点，补一次「铸下一条 + 钉队首」。
+    //    ⚠️ 空目标（未绑定）不在此列：`Goal.empty()` 没有环，不进这个分支。
+    if (nextGoalHook != null &&
+        goal.rings.isNotEmpty &&
+        goal.currentIndex < 0 &&
+        goal.doneCount == goal.rings.length) {
+      _applyFinale(
+        cleared: goal.doneCount,
+        total: goal.rings.length,
+        level: host.lv,
+      );
+      return _finaleOutcome?.goal != null;
+    }
+    return false;
+  }
+
+  /// 换目标（原型 `Store.newGoal` 的落库语义；TODO-01 的「换目标」入口）：
+  /// **旧主线单移除、新主线钉队首**。传进来的 [next] 由调用方铸
+  /// （`buildNextGoal` 或访谈流），这里只负责队列手术与档案替换。
+  ///
+  /// 返回被钉上队首的那张首环单；[next] 没有环 → null（不动任何状态）。
+  Quest? newGoal(Goal next) {
+    if (next.rings.isEmpty) return null;
+    queue.removeWhere((Quest q) => q.kind == 'main');
+    goal = next;
+    final Quest ring = ringTask(0);
+    queue.insert(0, ring);
+    _syncQueueCount();
+    _notify();
+    return ring;
   }
 
   List<String> _checkTitles({

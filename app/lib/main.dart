@@ -187,7 +187,15 @@ class _AppShellState extends State<AppShell>
   /// 业务唯一真源：队列 / 接单 / 道具 / 结算 / 认输（store.js 移植，quest_flow.dart）。
   /// 「提交卡死」根因①②的修复点：提交不再只是切页面，而是经 `_flow.settle()`
   /// 产出真实结算并落到档案 / 主线 / 队列。
-  QuestFlow _flow = QuestFlow.demo();
+  QuestFlow _flow = _demoFlow();
+
+  /// 演示档的 Flow —— 声明式字段初始化器里 `_wireFlow` 还不可用（实例未建好），
+  /// 所以包一层静态工厂：既拿 demo 队列，也把收官钩子接上。
+  static QuestFlow _demoFlow() {
+    final QuestFlow f = QuestFlow.demo();
+    _wireFlow(f);
+    return f;
+  }
 
   /// 最近一次结算（提交时由 QuestFlow.settle 产出；初值仅兜底显示）
   QuestResult _result = QuestResult.demo;
@@ -211,6 +219,19 @@ class _AppShellState extends State<AppShell>
   /// 主线（`Goal.demo()` 的起点是「今天」；启动时会被存档覆盖）
   Goal _goal = Goal.demo();
 
+  /// 接上「收官 → 下一条主线」的钩子（TODO-01）。
+  /// **每一个** QuestFlow 实例都要过这一道 —— 读档/重置/重新绑定都会换实例，
+  /// 漏一个就会出现「这条主线走完就没单了」。
+  static void _wireFlow(QuestFlow f) {
+    f.nextGoalHook = (Goal prev, int cleared, int total, int level) =>
+        buildNextGoal(
+          prev: prev,
+          cleared: cleared,
+          total: total,
+          level: level,
+        );
+  }
+
   /// 存档（store.js L34-52）
   final SaveFile _save = SaveFile();
 
@@ -233,6 +254,14 @@ class _AppShellState extends State<AppShell>
 
   /// 访谈要定的那句话（第 0 幕收进来的目标原文）
   String _pendingGoalText = '';
+
+  /// ── 换目标（TODO-01 · 主线页入口）──────────────────────────────
+  ///
+  /// 主线页「换目标」→ 这一层问一句新目标 → `QuestFlow.newGoal` 落库
+  /// （旧主线单移除、新主线钉队首）。换目标**不动等级/金币/六维**，
+  /// 只换那条路 —— 她认账，但不重开。
+  bool _goalChangeOn = false;
+  final TextEditingController _goalAsk = TextEditingController();
 
   /// 换日游标：上次补发日常的那一天（原型 `S.day`；清晨首次进入补发）
   DateTime? _lastRollDay;
@@ -488,10 +517,77 @@ class _AppShellState extends State<AppShell>
   }
 
   /// 「换目标」的场合上下文（docs/18 §2.7：旧主线环清空、队列主线单撤下
-  /// 的确认语义由换目标流程负责，这里先让对话带着这个话题开起来）
-  static const String _newGoalScenario =
-      '换目标：宿主在主线页按了「换目标」。先追问为什么换、新目标是什么、'
-      '打算给几天；提醒他：旧主线环会清空、队列里的主线单会撤下，想清楚再动。';
+  /// 的确认语义由换目标流程负责，这里先让对话带着这个话题开起来）。
+  /// 带上当前主线与进度 —— 她追问「为什么换」时要引用真实数据。
+  String get _newGoalScenario =>
+      '换目标：宿主在主线页按了「换目标」。他现在的目标是「${_goal.text}」'
+      '（${_goal.doneCount}/${_goal.rings.length} 环）。先追问为什么换、'
+      '新目标是什么；提醒他：旧主线环会清空、队列里的主线单会撤下，想清楚再动。';
+
+  /// ── 换目标（TODO-01 · 主线页入口）──────────────────────────────
+
+  /// 点「换目标」→ 先问一句新目标（旧主线单先不动，说清楚再动）。
+  void _beginGoalChange() {
+    if (_busy) return;
+    setState(() {
+      _goalChangeOn = true;
+      _goalAsk.clear();
+    });
+    _sayAside('要换？那就说清楚换成什么。[[旧的那条]]，说换就换。', holdMs: 2600);
+  }
+
+  /// 换目标输入框里那颗「先问小祥」的暗号（她接管追问，落库仍走 [newGoal]）
+  static const String _kAskXiangPreset = '先问小祥';
+
+  /// 新目标提交（第 0 幕的空泛判定复用 `isVagueGoal`）：
+  /// 具体 → `buildNextGoal`（按新那句话的时长词重铸 5~8 环）→ `flow.newGoal`
+  /// 落库（旧主线单移除、新主线钉队首）→ 存盘 → 回主线页。
+  void _onGoalChangeSubmitted() {
+    final String typed = _goalAsk.text.trim();
+    // 「先问小祥」不是目标，是入口：带场合上下文开对话（D5 的入口保留）
+    if (typed == _kAskXiangPreset) {
+      setState(() => _goalChangeOn = false);
+      _openChat(scenario: _newGoalScenario);
+      return;
+    }
+    if (isVagueGoal(typed)) {
+      _sayAside('太空了。说点具体的——[[一句话]]。', holdMs: 2000);
+      return;
+    }
+    final Goal prev = _flow.goal;
+    final Goal next = buildNextGoal(
+      prev: prev,
+      // 换目标是宿主**主动**换（不是走完的）——按已走过的环数算完成度
+      cleared: prev.doneCount,
+      total: prev.rings.length,
+      level: _host.lv,
+      text: typed,
+    );
+    final Quest? ring = _flow.newGoal(next);
+    if (ring == null) return; // 新目标没铸出环（不该发生）：不动任何状态
+    setState(() {
+      _host = _flow.host;
+      _goal = _flow.goal;
+      _goalChangeOn = false;
+      _pickedRing = null;
+      _moment = Moment.main;
+    });
+    _persist();
+    _sayAside(
+      '行。旧的撤了，新的 [[${_goal.rings.length} 环]] 钉在队首。'
+      '「$typed」——别又三天热度。',
+      holdMs: 3000,
+    );
+  }
+
+  /// 换目标中途算了：什么都不动。
+  void _cancelGoalChange() {
+    setState(() {
+      _goalChangeOn = false;
+      _goalAsk.clear();
+    });
+    _sayAside('没换。……明智。', holdMs: 1600);
+  }
 
   /// 上一次宿主操作（原型 `App.lastAct`）
   DateTime _lastAct = DateTime.now();
@@ -1138,6 +1234,54 @@ class _AppShellState extends State<AppShell>
                   onPreset: (String v) => _ask.text = v,
                   onSubmit: _onGoalSubmitted,
                 ),
+                // 换目标 · 问新目标（TODO-01）：主线页「换目标」→ 这一层
+                // （旧主线单先不动；确定才走 `flow.newGoal` 落库）
+                AskField(
+                  prompt: '新目标 ›',
+                  placeholder: '比如：半年减重 10 斤',
+                  presets: const <String>[
+                    '半年减重 10 斤',
+                    '三个月跑完半马',
+                    '一个月早睡早起',
+                    '考研上岸',
+                    _kAskXiangPreset,
+                  ],
+                  controller: _goalAsk,
+                  visible: _goalChangeOn,
+                  onPreset: (String v) => _goalAsk.text = v,
+                  onSubmit: _onGoalChangeSubmitted,
+                ),
+                // 「算了」——换目标不强制：什么都可以不动
+                if (_goalChangeOn)
+                  Positioned(
+                    left: 20,
+                    top: 96,
+                    child: GestureDetector(
+                      key: const Key('goalChange.cancel'),
+                      onTap: _cancelGoalChange,
+                      behavior: HitTestBehavior.opaque,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 9,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0xD1040C1C),
+                          borderRadius: BorderRadius.circular(18),
+                          border: Border.all(color: C.line),
+                        ),
+                        child: Text(
+                          '算了，不换',
+                          style: fs(
+                            family: F.cn,
+                            size: 12.5,
+                            wght: 700,
+                            color: C.ice,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
                 // 绑定仪式 · 第 1 幕：卡片式访谈（docs/18 §2.1，t4 组件 + t8 装配）
                 // 答完 → buildFirstGoal 落 3 天 3 环 → 见面礼 → 大厅
                 if (onboard && _interviewCat != null)
@@ -1204,8 +1348,9 @@ class _AppShellState extends State<AppShell>
                   visible: main,
                   onClose: () => setState(() => _moment = Moment.lobby),
                   onDispatch: _enterDispatchOrRest,
-                  // D5：换目标 → 带场合上下文唤起小祥对话（docs/18 §2.7）
-                  onNewGoal: () => _openChat(scenario: _newGoalScenario),
+                  // D5：换目标 → 问一句新目标 → `newGoal` 落库（TODO-01；
+                  // 「先问小祥」那颗暗号仍带场合上下文开对话）
+                  onNewGoal: _beginGoalChange,
                 ),
                 // 「执行中」药丸（`ui.js` L60）：**执行页自己不显示它**，
                 // 只在 大厅/主线/面板 上挂；点它回执行页。收起执行面板后就靠它回去。
@@ -1280,6 +1425,7 @@ class _AppShellState extends State<AppShell>
         answers: answers,
       );
       _flow = QuestFlow(host: _host, goal: _goal);
+      _wireFlow(_flow);
       // 绑定即建队列：首环 + 当日日常（store.js bind() 的 L165-167；
       // 每日 1~2 个走 §2.2 新政，不再用 seedForCurrentGoal 的固定 3 张）
       _flow.queue.add(_flow.ringTask(0));
@@ -1394,6 +1540,7 @@ class _AppShellState extends State<AppShell>
     if (!mounted) return;
     setState(() {
       _flow = QuestFlow.fromSave(host: d.host, goal: d.goal, queue: d.queue);
+      _wireFlow(_flow);
       _host = _flow.host;
       _goal = d.goal;
       _moment = Moment.onboard;
@@ -1689,7 +1836,36 @@ class _AppShellState extends State<AppShell>
       };
     }
     _sayAside(line, holdMs: 2600);
+    if (r.finale) _onFinale(r); // 收官：下一条主线已经钉好，得说一句
     _takeSettleLine(r); // 结算文案接管：LLM 回了顶掉上面这句兜底
+  }
+
+  /// 收官出口（TODO-01）：第 N 环 CLEAR 时下一条主线**已经在 settle 里落库**
+  /// （`QuestFlow._applyFinale`），这里只负责把这件事说出来 + 落盘。
+  ///
+  /// 她不会说「你完成了，再见」—— 叙事没有终点：
+  /// 环数变了、题目变了，路还长。
+  void _onFinale(QuestResult r) {
+    final FinaleOutcome? o = _flow.lastFinale;
+    if (o == null || o.goal == null) {
+      _sayAside('这条主线，你走完了。……接下来看你自己的。', holdMs: 2800);
+      return;
+    }
+    // 结算已经改过 host / goal（升级、六维、新主线），这里同步界面副本
+    setState(() {
+      _host = _flow.host;
+      _goal = _flow.goal;
+      _pickedRing = null;
+    });
+    _persist();
+    final int n = o.goal!.rings.length;
+    _sayAside(
+      '${o.total} 环走完了。下一条主线 [[$n 环]]，已经钉在你手上——'
+      '「${o.newGoalText}」。别以为能歇。',
+      holdMs: 3200,
+    );
+    // 收官不占用 _resultChoicesOn：选项还是【再来一单。/先歇会儿。】，
+    // 队首就是新主线的首环单（settle 里钉的），点「再来一单」直接接得上。
   }
 
   /// 「保存战报」（D1 最小可用版）：结算数据 → 文本 → 剪贴板 + 插话确认
@@ -1780,6 +1956,7 @@ class _AppShellState extends State<AppShell>
     final bool seeded = d.queue.isEmpty;
     setState(() {
       _flow = QuestFlow.fromSave(host: d.host, goal: d.goal, queue: d.queue);
+      _wireFlow(_flow);
       // t16/B3：执行中单据随档恢复（任务/计时起点/道具标记/证据）——
       // 杀进程重启后回到执行页，计时按 startAt 推导不归零
       _flow.restoreActiveFromJson(d.activeJson);
@@ -1795,6 +1972,15 @@ class _AppShellState extends State<AppShell>
     });
     // 补出来的种子要落一次盘，重启后队列还在
     if (seeded && _flow.queue.isNotEmpty) _persist();
+    // TODO-01 兜底：存档里这条主线**已经走完**（收官发生在「自动续主线」之前
+    // 的老档）→ 补铸下一条并钉队首，别让认真用户重启后停在叙事终点。
+    if (_flow.applyFinaleOutcome()) {
+      setState(() {
+        _host = _flow.host;
+        _goal = _flow.goal;
+      });
+      _persist();
+    }
     // 换日（store.js rollDay）：隔夜日常作废、主线单重钉、补发当日日常。
     // 「清晨首次进入」= 存档 lastSeen 的日子不是今天（同日重进不重发）
     _rollDayIfNeeded(fromSeen: d.lastSeen);
