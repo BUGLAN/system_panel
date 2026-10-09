@@ -15,14 +15,17 @@ library;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences_platform_interface/in_memory_shared_preferences_async.dart';
 import 'package:shared_preferences_platform_interface/shared_preferences_async_platform_interface.dart';
+import 'package:system_panel/agent/context_adapter.dart';
 import 'package:system_panel/agent/copy.dart';
 import 'package:system_panel/agent/memory.dart';
 import 'package:system_panel/agent/persona.dart';
 import 'package:system_panel/agent/tools.dart';
 import 'package:system_panel/data/content.dart';
+import 'package:system_panel/data/rarity.dart';
 import 'package:system_panel/state/goal.dart';
 import 'package:system_panel/state/host_state.dart';
 import 'package:system_panel/state/quest.dart';
+import 'package:system_panel/state/quest_flow.dart';
 
 /// 每个用例一块干净的内存存储（SharedPreferencesAsync 走新平台接口）
 void resetStore([Map<String, Object> seed = const <String, Object>{}]) {
@@ -625,6 +628,142 @@ void main() {
       expect(swap.ok, isTrue);
       expect(ctx.queue.first.name, '拉伸 15 分钟');
       expect((await reg.execute('get_status')).ok, isTrue);
+    });
+  });
+
+  // ═══════════ ⑤ QuestFlowAdapter（docs/19 §A3 真实适配器）═══════════
+
+  group('QuestFlowAdapter：QuestFlow 数据源的真实 AgentContext', () {
+    QuestFlowAdapter adapterOf(
+      QuestFlow flow, {
+      void Function()? onChanged,
+    }) => QuestFlowAdapter(flowOf: () => flow, onChanged: onChanged);
+
+    test('statusSummary：读的是 QuestFlow 真实档案/队列/主线进度', () {
+      final QuestFlow f = QuestFlow.demo();
+      final Map<String, dynamic> s = adapterOf(f).statusSummary();
+      expect(s['lv'], 7);
+      expect(s['coins'], 340);
+      expect(s['expNeed'], QuestFlow.needFor(7));
+      expect(s['queue'], 4); // Quest.demo 主线 + 3 日常
+      expect(s['goal'], '三个月跑完半马');
+      expect(s['ringCurrent'], 5);
+      expect(s['ringTotal'], 8);
+      expect(s['weakest'], '魅');
+    });
+
+    test('flowOf 闭包：_flow 被换实例（绑定/读档）后适配器读到新流', () {
+      QuestFlow f = QuestFlow.demo();
+      final QuestFlowAdapter a = QuestFlowAdapter(flowOf: () => f);
+      expect(a.statusSummary()['queue'], 4);
+      f = QuestFlow(
+        host: HostState.empty,
+        goal: Goal.empty(),
+        queue: <Quest>[_q()],
+      );
+      expect(a.statusSummary()['queue'], 1);
+      expect(a.statusSummary()['lv'], 1);
+    });
+
+    test('swap_quest：主线当前环直接拒绝（docs/18 §2.7 钳制在真实流上保持）', () {
+      final QuestFlow f = QuestFlow.demo(); // 队首 = Quest.demo（C 级主线）
+      final ToolOutcome out = adapterOf(f).swapQuest();
+      expect(out.ok, isFalse);
+      expect(out.message, contains('主线'));
+      expect(f.head!.serial, 41); // 原单没动
+      expect(f.retreatTotal, 0); // 拒绝不计退缩
+    });
+
+    test('swap_quest：非 F 日常降一档重刻（D4 换一个语义），单号不变', () {
+      final QuestFlow f = QuestFlow(
+        host: HostState.demo,
+        goal: Goal.demo(),
+        queue: <Quest>[_q(rank: 'D', minutes: 30)],
+      );
+      int notified = 0;
+      final ToolOutcome out = adapterOf(f, onChanged: () => notified++).swapQuest(
+        note: '腿疼',
+      );
+      expect(out.ok, isTrue);
+      expect(out.message, contains('换好了'));
+      expect(out.message, contains('腿疼'));
+      expect(f.queue.first.rank, 'E'); // D → E 降一档
+      expect(f.queue.first.serial, 77); // 单号不变（同一张单刻薄了一点）
+      expect(f.retreatToday, 1);
+      expect(f.host.queue, 1); // 读数对齐
+      expect(notified, 1);
+    });
+
+    test('swap_quest：F 级还退 = 换一张别的 F（池子里来）', () {
+      final QuestFlow f = QuestFlow(
+        host: HostState.demo,
+        goal: Goal.demo(),
+        queue: <Quest>[_q(rank: 'F', name: '原 F 单')],
+      );
+      final ToolOutcome out = adapterOf(f).swapQuest();
+      expect(out.ok, isTrue);
+      expect(f.queue.first.rank, 'F');
+      expect(f.queue.first.serial, isNot(77)); // 换成了新单号
+    });
+
+    test('adjust_plan：时限钳制 5~180、顺延、降档（六维按新档点数重分）', () {
+      final QuestFlow f = QuestFlow(
+        host: HostState.demo,
+        goal: Goal.demo(),
+        queue: <Quest>[_q(rank: 'D', minutes: 30)],
+      );
+      final QuestFlowAdapter a = adapterOf(f);
+
+      expect(a.adjustQuestPlan(minutes: 300).ok, isTrue);
+      expect(f.queue.first.minutes, 180); // 上限钳制
+
+      a.adjustQuestPlan(minutes: 1);
+      expect(f.queue.first.minutes, 5); // 下限钳制
+
+      a.adjustQuestPlan(postponeMinutes: 15);
+      expect(f.queue.first.minutes, 20); // 顺延 5+15
+
+      a.adjustQuestPlan(rank: 'b');
+      expect(f.queue.first.rank, 'B');
+      // 六维点数随档位重分：总和 == 新档 pt
+      final int sum = f.queue.first.attrs.values.fold(0, (int a, int b) => a + b);
+      expect(sum, Rarity.of('B').pt);
+
+      a.adjustQuestPlan(rank: '不认识的档');
+      expect(f.queue.first.rank, 'B'); // 非法档位保持原样
+
+      expect(f.host.queue, 1); // 每次手术后读数都对齐
+    });
+
+    test('adjust_plan：主线环拒调；空队列拒绝', () {
+      final QuestFlow withMain = QuestFlow.demo();
+      final ToolOutcome main = adapterOf(withMain).adjustQuestPlan(minutes: 10);
+      expect(main.ok, isFalse);
+      expect(main.message, contains('主线'));
+
+      final QuestFlow empty = QuestFlow(host: HostState.demo, goal: Goal.demo());
+      expect(adapterOf(empty).adjustQuestPlan(minutes: 10).ok, isFalse);
+      expect(adapterOf(empty).swapQuest().ok, isFalse);
+    });
+
+    test('★ 安全钳制（真实流）：换任务/调整计划跑完，经验/金币/等级/道具一个不动', () {
+      final QuestFlow f = QuestFlow(
+        host: HostState.demo,
+        goal: Goal.demo(),
+        queue: <Quest>[_q()],
+      );
+      final QuestFlowAdapter a = adapterOf(f);
+      a.swapQuest();
+      a.adjustQuestPlan(minutes: 99, rank: 'E');
+      expect(f.host.lv, HostState.demo.lv);
+      expect(f.host.exp, HostState.demo.exp);
+      expect(f.host.coins, HostState.demo.coins);
+      expect(f.host.items, HostState.demo.items);
+    });
+
+    test('recentHistory：执行史未落库，如实给空表（不拿终身计数冒充）', () {
+      final QuestFlow f = QuestFlow.demo();
+      expect(adapterOf(f).recentHistory(), isEmpty);
     });
   });
 }

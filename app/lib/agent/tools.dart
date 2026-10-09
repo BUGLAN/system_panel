@@ -77,6 +77,11 @@ class AgentToolRegistry {
   AgentTool? tool(String name) => _tools[name];
   bool contains(String name) => _tools.containsKey(name);
   List<String> get names => _tools.keys.toList();
+
+  /// 全部工具（聊天服务装配 LLM function calling 的 tools 数组用）
+  List<AgentTool> get all => _tools.values.toList();
+  bool get isEmpty => _tools.isEmpty;
+  bool get isNotEmpty => _tools.isNotEmpty;
   int get length => _tools.length;
 
   /// 给 LLM 请求用的 tools 数组

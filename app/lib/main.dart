@@ -7,10 +7,12 @@ import 'dart:math' as math;
 import 'package:flutter/services.dart';
 
 import 'agent/copy.dart';
+import 'agent/context_adapter.dart';
 import 'agent/llm_client.dart';
 import 'agent/llm_gateway.dart';
 import 'agent/memory.dart';
 import 'agent/settings_store.dart';
+import 'agent/tools.dart';
 import 'agent/vision.dart';
 import 'chat/chat_history.dart';
 import 'chat/chat_panel.dart';
@@ -308,6 +310,10 @@ class _AppShellState extends State<AppShell>
   SystemCopyProvider? _copy;
   ChatService? _chatService;
 
+  /// agent 工具（docs/19 §A3）：真实适配器 + 注册表——聊天 function calling
+  /// 与快捷 chip 共用这一份；配了 Key 走 LLM 工具循环，没配 Key 只走 chip。
+  AgentToolRegistry? _agentTools;
+
   /// 小祥的长期记忆（访谈答案写这里 —— 访谈即第一批记忆，docs/18 §2.1③）
   MemoryStore? _memory;
 
@@ -315,21 +321,37 @@ class _AppShellState extends State<AppShell>
     final AgentSettings s = await SettingsStore().load();
     await _chat.load();
     if (!mounted) return;
-    final LlmGateway gw = LlmGateway(
-      LlmClient(
-        config: LlmConfig(
-          baseUrl: s.baseUrl,
-          apiKey: s.apiKey,
-          model: s.model,
-        ),
+    final LlmClient llmClient = LlmClient(
+      config: LlmConfig(
+        baseUrl: s.baseUrl,
+        apiKey: s.apiKey,
+        model: s.model,
       ),
     );
+    final LlmGateway gw = LlmGateway(llmClient);
     final MemoryStore mem = MemoryStore();
+    // 工具读的是「当前那份」QuestFlow——绑定/读档会换实例，必须传取流回调
+    final QuestFlowAdapter agentCtx = QuestFlowAdapter(
+      flowOf: () => _flow,
+      onChanged: _onAgentMutated,
+    );
+    final AgentToolRegistry reg = defaultAgentTools(context: agentCtx, memory: mem);
     setState(() {
       _memory = mem;
       _copy = SystemCopyProvider(llm: gw, memory: mem);
-      _chatService = ChatService(gateway: gw, memory: mem);
+      _agentTools = reg;
+      _chatService = ChatService(gateway: gw, memory: mem, client: llmClient, tools: reg);
     });
+  }
+
+  /// 工具改了队列/计划之后：同步档案副本 + 存档（QuestFlowAdapter.onChanged）
+  void _onAgentMutated() {
+    if (!mounted) return;
+    setState(() {
+      _host = _flow.host;
+      _goal = _flow.goal;
+    });
+    _persist();
   }
 
   /// 打开对话层。[scenario] 传场合上下文（结算复盘 / 换目标），只影响她接下来的回复
@@ -340,13 +362,14 @@ class _AppShellState extends State<AppShell>
     });
   }
 
-  /// 发送一条：宿主气泡立刻上屏 → 思考中 → 她的回复（LLM/兜底）→ mood 联动
+  /// 发送一条：宿主气泡立刻上屏 → 思考中 → 她的回复（LLM/兜底；配了 Key
+  /// 且接了工具时走 function calling，〔工具〕系统条目逐条上屏）→ mood 联动
   Future<void> _sendChat(String text) async {
     final ChatService? svc = _chatService;
     if (svc == null || _chatThinking) return;
     await _chat.append(ChatMessage.host(_chatId(), text));
     setState(() => _chatThinking = true);
-    final ChatMessage reply = await svc.reply(
+    final List<ChatMessage> entries = await svc.respond(
       text,
       history: _chat.messages,
       scenario: _chatScenario,
@@ -360,11 +383,28 @@ class _AppShellState extends State<AppShell>
     );
     if (!mounted) return;
     setState(() => _chatThinking = false);
-    await _chat.append(reply);
+    for (final ChatMessage m in entries) {
+      await _chat.append(m);
+    }
     if (!mounted) return;
     setState(() {});
     // emotion 标签 → 舞台 mood（docs/18 §2.6 演出联动）
-    _stagePort?.mood(reply.emotion);
+    _stagePort?.mood(entries.last.emotion);
+  }
+
+  /// 快捷 chip 直调工具（docs/19 §A3）：不经 LLM、全部本地可用；
+  /// 结果以〔工具〕系统条目写入聊天历史（UI 可见），改动随 onChanged 落档。
+  Future<void> _onQuickTool(String tool) async {
+    final AgentToolRegistry? reg = _agentTools;
+    if (reg == null || _chatThinking) return;
+    setState(() => _chatThinking = true);
+    final ToolOutcome oc = await reg.execute(tool);
+    await _chat.append(
+      ChatMessage.sys(_chatId(), '${ChatService.toolTag}${oc.message}'),
+    );
+    if (!mounted) return;
+    setState(() => _chatThinking = false);
+    setState(() {});
   }
 
   /// 语音入口（预留态）：点了不假装可用，她用气泡说明
@@ -1189,6 +1229,7 @@ class _AppShellState extends State<AppShell>
                   onSend: _sendChat,
                   onClose: () => setState(() => _chatOpen = false),
                   onVoiceTap: _onVoiceTap,
+                  onQuickTool: _onQuickTool,
                 ),
                 // 横幅（z 5，压在所有东西上面）—— 绑定见面礼（数值语义在 goal_gen 的 kBindGift*）
                 SysBanner(

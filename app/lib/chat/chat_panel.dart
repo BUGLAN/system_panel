@@ -2,20 +2,43 @@ import 'package:flutter/material.dart';
 
 import '../design/tokens.dart';
 import '../widgets/chat_bar.dart';
+import '../widgets/press_scale.dart';
 import '../widgets/type_text.dart';
 import 'chat_history.dart';
+import 'chat_service.dart';
 
 /// ═══════════════════════════════════════════════════════════
-///  对话层（docs/18 §2.6）
+///  对话层（docs/18 §2.6 + docs/19 §A3 快捷工具行）
 ///
 ///  从底部滑入、占屏高 72%；背景半透明压暗，她在后面仍可见
 ///  ——层序在 Live2D 之上、亮帧之下（main.dart 挂载点保证）。
 ///  结构：名牌（小祥 · 系统娘 · 在线）→ 可滚动历史（时间分组头
-///  今天/昨天/M月D日）→ 思考中… → 输入栏（文本 + 🎤语音·预留）。
+///  今天/昨天/M月D日）→ 思考中… → 快捷工具 chip 行 → 输入栏。
 ///
 ///  她的气泡用 [TypeText] 打字机（每条只打一次）；情绪标签已由
-///  ChatService 剥掉，正文直接可念。
+///  ChatService 剥掉，正文直接可念。〔工具〕前缀的消息渲染成
+///  系统条目（等宽读数风，不打字机）。
+///
+///  快捷 chip = 无 LLM 也能直调工具（docs/19 §A3）：查状态/换任务/
+///  调整计划。样式沿用 interview_deck 选项 chip 惯例（42px 圆角盒 +
+///  PressBuilder 按下反馈），配色/字体走 design/tokens.dart。
 /// ═══════════════════════════════════════════════════════════
+
+/// 一个快捷工具 chip：[label] 给人看，[tool] 是注册表里的工具名。
+class ChatQuickChip {
+  const ChatQuickChip(this.label, this.tool);
+
+  final String label;
+  final String tool;
+}
+
+/// 首发三枚（无 LLM 也可直调，docs/19 §A3）
+const List<ChatQuickChip> kChatQuickChips = <ChatQuickChip>[
+  ChatQuickChip('查状态', 'get_status'),
+  ChatQuickChip('换任务', 'swap_quest'),
+  ChatQuickChip('调整计划', 'adjust_plan'),
+];
+
 class ChatPanel extends StatefulWidget {
   const ChatPanel({
     super.key,
@@ -26,7 +49,9 @@ class ChatPanel extends StatefulWidget {
     this.onSend,
     this.onClose,
     this.onVoiceTap,
+    this.onQuickTool,
     this.enabled = true,
+    this.quickChips = kChatQuickChips,
   });
 
   /// 旧 → 新
@@ -39,6 +64,12 @@ class ChatPanel extends StatefulWidget {
   final ValueChanged<String>? onSend;
   final VoidCallback? onClose;
   final VoidCallback? onVoiceTap;
+
+  /// 快捷 chip 直调工具（docs/19 §A3）；null = chips 置灰不可点
+  final ValueChanged<String>? onQuickTool;
+
+  /// chip 数据（测试可注入）
+  final List<ChatQuickChip> quickChips;
   final bool enabled;
 
   @override
@@ -145,6 +176,7 @@ class _ChatPanelState extends State<ChatPanel> {
                         Container(height: 1, color: C.line2),
                         Expanded(child: _history()),
                         if (widget.thinking) _thinking(),
+                        _quickTools(),
                         SafeArea(
                           top: false,
                           child: ChatBar(
@@ -273,6 +305,28 @@ class _ChatPanelState extends State<ChatPanel> {
 
   Widget _bubble(ChatMessage m, int i) {
     final bool host = m.fromHost;
+    // 〔工具〕系统条目：等宽读数风、不打字机、左侧细框
+    if (!host && m.text.startsWith(ChatService.toolTag)) {
+      return Align(
+        key: Key('chat.msg.$i'),
+        alignment: Alignment.centerLeft,
+        child: Container(
+          margin: const EdgeInsets.only(top: 7),
+          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
+          constraints: const BoxConstraints(maxWidth: 320),
+          decoration: BoxDecoration(
+            color: const Color(0x8C050E20),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: C.line2, width: 1),
+          ),
+          child: Text(
+            m.text,
+            key: Key('chat.toolentry.$i'),
+            style: fs(family: F.mono, size: 11, wght: 500, height: 1.5, color: C.mist),
+          ),
+        ),
+      );
+    }
     // 她的最新一条 + 还没打过字 → 打字机；点一下立刻铺完
     final bool fresh =
         !host && !_typed.contains(m.id) && i == widget.messages.length - 1;
@@ -332,6 +386,64 @@ class _ChatPanelState extends State<ChatPanel> {
           child: Text(
             '思考中…',
             style: fs(family: F.cn, size: 12.5, wght: 400, height: 1.4, color: C.mist),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 快捷工具 chip 行（docs/19 §A3）：无 LLM 也能直调工具。
+  /// 样式=interview_deck 选项 chip 同款语言（42px 圆角盒 + PressBuilder
+  /// 按下换底 `rgba(56,225,255,.2)`），thinking/未接线时置灰不可点。
+  Widget _quickTools() {
+    final bool live = widget.enabled && !widget.thinking && widget.onQuickTool != null;
+    return Container(
+      key: const Key('chat.tools'),
+      height: 54,
+      decoration: const BoxDecoration(
+        border: Border(top: BorderSide(color: C.line2, width: 1)),
+      ),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+        child: Row(
+          children: <Widget>[
+            for (int i = 0; i < widget.quickChips.length; i++) ...<Widget>[
+              if (i > 0) const SizedBox(width: 7),
+              _toolChip(widget.quickChips[i], live: live),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// interview_deck `_chip` 的同款盒模型（42px 圆角 + 按下反馈）
+  Widget _toolChip(ChatQuickChip chip, {required bool live}) {
+    return KeyedSubtree(
+      key: Key('chat.tool.${chip.tool}'),
+      child: PressBuilder(
+        onTap: live ? () => widget.onQuickTool!(chip.tool) : null,
+        builder: (BuildContext _, bool down) => Container(
+          height: 42,
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: live
+                ? (down ? const Color(0x3338E1FF) : const Color(0xD1040C1C))
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: C.line2),
+          ),
+          child: Text(
+            chip.label,
+            key: Key('chat.tool.label.${chip.tool}'),
+            style: fs(
+              family: F.cn,
+              size: 12.5,
+              wght: 700,
+              color: live ? C.ice : C.dim,
+            ),
           ),
         ),
       ),
