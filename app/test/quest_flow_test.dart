@@ -185,6 +185,35 @@ void main() {
       expect(f.head?.serial, eQuest.serial);
     });
 
+    test('⚠️ 回归 t19/A1：空目标（未绑定）fromSave 不种演示主线也不种日常', () {
+      // 真新档：Goal.empty（无环）→ 队列必须保持空白——
+      // 未绑定的用户不该背主线单或"别人的"日常，绑定/访谈完成后再播种
+      final QuestFlow f = QuestFlow.fromSave(
+        host: HostState.empty,
+        goal: Goal.empty(),
+      );
+      expect(() => f.seedForCurrentGoal(), returnsNormally);
+      expect(f.queue, isEmpty, reason: '空目标不种任何单（A1）');
+      expect(f.host.queue, 0);
+      // 直接调种子也一样
+      f.seedForCurrentGoal();
+      expect(f.queue, isEmpty);
+    });
+
+    test('⚠️ 回归 t19/A1：SaveData.fresh() 空白档走 fromSave 全程不抛', () {
+      // main._restore/_wipe 的 fallback 就是它——真新档可达的根基
+      final SaveData fresh = SaveData.fresh();
+      expect(fresh.host.lv, 1);
+      expect(fresh.goal.isEmpty, isTrue);
+      final QuestFlow f = QuestFlow.fromSave(
+        host: fresh.host,
+        goal: fresh.goal,
+        queue: fresh.queue,
+      );
+      expect(() => f.seedForCurrentGoal(), returnsNormally);
+      expect(f.queue, isEmpty);
+    });
+
     test('⚠️ 回归 t16/B1：无档 fallback 的 queue 是 const []，种子化不得抛且队列可变', () {
       // 复刻真机崩溃链：SaveData 默认 queue = const []（**不可变**）→
       // 首装/无档时 load() 原样返回 fallback → fromSave(queue: fallback.queue)

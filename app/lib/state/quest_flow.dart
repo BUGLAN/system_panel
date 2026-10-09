@@ -315,8 +315,15 @@ class QuestFlow {
     return f;
   }
 
-  /// 当前主线脚下那一环补回队首 + 三张日常
+  /// 当前主线脚下那一环补回队首 + 三张日常。
+  /// ⚠️ t19/A1：**空目标（无环 = 未绑定）什么都不种**——真新档在绑定仪式
+  /// 之前不该有主线单也不该有日常（绑定/访谈完成后再由 main 侧播种），
+  /// 否则真新用户一进大厅就背三张"别人的"日常。
   void seedForCurrentGoal() {
+    if (goal.rings.isEmpty) {
+      _syncQueueCount();
+      return;
+    }
     final int ci = goal.currentIndex;
     if (ci >= 0) queue.add(ringTask(ci));
     _seedDailies(3);

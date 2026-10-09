@@ -1347,10 +1347,9 @@ class _AppShellState extends State<AppShell>
   }
 
   /// 重置存档（`Store.wipe()`）：删档 + 冻结 + 回绑定仪式
+  /// （t19/A1：wipe 落**空白档**——重置后是真·新宿主，不是 demo 老宿主还魂）
   Future<void> _wipe() async {
-    final SaveData d = await _save.wipe(
-      fallback: SaveData(host: HostState.demo, goal: Goal.demo()),
-    );
+    final SaveData d = await _save.wipe(fallback: SaveData.fresh());
     if (!mounted) return;
     setState(() {
       _flow = QuestFlow.fromSave(host: d.host, goal: d.goal, queue: d.queue);
@@ -1712,7 +1711,12 @@ class _AppShellState extends State<AppShell>
   /// 开机屏之后进大厅 —— 原型在这里跑 `App.greet(true)`：
   /// **冷启动一定会说一句**（`if (fromBoot || away > 6e4)`，默认档就是 back10m）
   /// ⚠️ t16/B3：若存档恢复了执行中单据，唤醒后直接回执行页（不落大厅）
+  /// ⚠️ t19/A1：未绑定（空白档/无环）→ 唤醒后进**绑定仪式**，真实新用户由此可达
   void _wake() {
+    if (_goal.isEmpty && !_resumedExec) {
+      setState(() => _moment = Moment.onboard);
+      return; // 绑定仪式的问话走 LineLayer（askGoal），不叠离开问候
+    }
     setState(() => _moment = _resumedExec ? Moment.exec : Moment.lobby);
     final DateTime? seen = _prevSeen;
     final Duration away = seen == null
@@ -1723,12 +1727,10 @@ class _AppShellState extends State<AppShell>
     _sayAside(AwayGreeting.text(k, away), holdMs: 3200, busy: true);
   }
 
-  /// 读档（store.js L34）—— 没有档就用演示档
-  /// 顺带跑一次存储自检：实机曾经静默不落盘，这里让它出声
+  /// 读档（store.js L34）—— 没有档就用**空白档**（t19/A1：真新档直达绑定仪式，
+  /// 不再被 demo 老宿主冒名）；顺带跑一次存储自检：实机曾经静默不落盘，这里让它出声
   Future<void> _restore() async {
-    final SaveData d = await _save.load(
-      fallback: SaveData(host: HostState.demo, goal: Goal.demo()),
-    );
+    final SaveData d = await _save.load(fallback: SaveData.fresh());
     // 存储自检 —— 通过就不吭声，不通过就把原因喊出来（别静默失败）
     final String? err = await _save.selfTest();
     if (err != null) debugPrint('[save] ⚠️ 存储不可用：$err');
