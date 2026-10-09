@@ -189,6 +189,12 @@ class LlmClient {
   Future<LlmReply> ping() =>
       chat(messages: <LlmMessage>[LlmMessage.user('ping')], maxTokens: 8, temperature: 0);
 
+  /// 释放底层 http.Client（TODO-07 网关热更：设置变更重建客户端时**必须**
+  /// 关掉旧的，别让连接池一直挂着）。关闭瞬间还在途的请求会收
+  /// ClientException → [chat] 把它折叠成 [LlmFailure.network]，
+  /// 调用方按断网兜底——永远不抛。
+  void close() => _http.close();
+
   /// 对话 / 多模态 / function calling 统一入口。**任何失败都不抛异常**。
   Future<LlmReply> chat({
     required List<LlmMessage> messages,

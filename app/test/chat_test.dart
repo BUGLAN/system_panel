@@ -8,7 +8,9 @@ import 'package:shared_preferences_platform_interface/in_memory_shared_preferenc
 import 'package:shared_preferences_platform_interface/shared_preferences_async_platform_interface.dart';
 import 'package:system_panel/agent/copy.dart';
 import 'package:system_panel/agent/llm_client.dart';
+import 'package:system_panel/agent/llm_gateway.dart';
 import 'package:system_panel/agent/memory.dart';
+import 'package:system_panel/agent/settings_store.dart';
 import 'package:system_panel/agent/tools.dart';
 import 'package:system_panel/chat/chat_history.dart';
 import 'package:system_panel/chat/chat_panel.dart';
@@ -689,6 +691,126 @@ void main() {
       expect(find.byType(TypeText), findsNothing);
     });
   });
+
+  // ═══════════ TODO-07 · 聊天网关热更（docs/20 遗留观察①）═══════════
+  //
+  // 验收口径：设置页改 Key/BaseURL/模型名后，**不重启**直接对话即用新值。
+  // 手段：SettingsStore 增类级广播（listener/版本号），聊天装配按变更
+  // 重建 LlmClient / LlmGateway / ChatService。这里用同一套装配逻辑
+  // （守卫、关旧、重建三步照抄 main._applyAgentSettings）+ 假传输层做
+  // 机制化测试，防「又改回一次性装配」复发。
+
+  group('TODO-07 · 设置变更 → 网关/客户端重建（免重启）', () {
+    /// main._applyAgentSettings 的最小复刻：装配 + 广播订阅 +
+    /// 「LLM 三要素没变就不折腾」守卫 + 重建时关旧客户端。
+    /// ⚠️ svc/client 必须挂在 [._AgentWiring] **字段**上读——record 解构
+    /// 会把重建前的引用拷进局部量，之后就看不见重建了（生产代码读的是
+    /// State 字段，没有这个坑）。
+    _AgentWiring wire() {
+      final _AgentWiring w = _AgentWiring();
+
+      void apply(AgentSettings s) {
+        final _RecordingClient t = _RecordingClient(w.reqs.add);
+        w.transports.add(t);
+        w.client = LlmClient(
+          config: LlmConfig(baseUrl: s.baseUrl, apiKey: s.apiKey, model: s.model),
+          httpClient: t,
+        );
+        w.svc = ChatService(
+          gateway: LlmGateway(w.client),
+          client: w.client,
+          memory: MemoryStore(),
+        );
+      }
+
+      void onSettings(AgentSettings s) {
+        final LlmClient old = w.client;
+        if (old.config.baseUrl == s.baseUrl &&
+            old.config.apiKey == s.apiKey &&
+            old.config.model == s.model) {
+          return;
+        }
+        old.close();
+        apply(s);
+      }
+
+      SettingsStore.addListener(onSettings);
+      addTearDown(() => SettingsStore.removeListener(onSettings));
+      apply(const AgentSettings(apiKey: 'sk-old'));
+      return w;
+    }
+
+    test('改 Key/BaseURL/模型名 → 广播 → 客户端/服务重建，旧客户端被关，新对话逐字用新值', () async {
+      final _AgentWiring w = wire();
+      final ChatService svcBefore = w.svc;
+      final LlmClient clientBefore = w.client;
+
+      // 旧配置下的对话：旧 Key、默认端点、默认模型（别名归一）
+      await w.svc.reply('在吗');
+
+      // 设置页 save() → SettingsStore 类级广播 → 装配层重建
+      final int v0 = SettingsStore.version;
+      await SettingsStore().save(const AgentSettings(
+        apiKey: 'sk-new',
+        baseUrl: 'https://api.example.org/v1',
+        model: 'm2',
+      ));
+      expect(SettingsStore.version, v0 + 1); // 广播确实发出去了
+      expect(w.svc, isNot(same(svcBefore))); // 聊天服务重建
+      expect(w.client, isNot(same(clientBefore))); // 客户端重建
+      expect(w.transports.first.closed, isTrue); // 旧客户端被关（连接池不泄漏）
+
+      // 不重启直接再聊：真回了话（不是兜底），新 Key / 新端点 / 新模型逐字上线
+      final ChatMessage r2 = await w.svc.reply('还在吗');
+      expect(r2.text, '嗯。');
+      expect(w.reqs, hasLength(2));
+      expect(w.reqs[0].headers['Authorization'], 'Bearer sk-old');
+      expect(w.reqs[0].url.toString(), 'https://api.deepseek.com/chat/completions');
+      expect((jsonDecode(w.reqs[0].body) as Map<String, dynamic>)['model'], 'deepseek-flash');
+      expect(w.reqs[1].headers['Authorization'], 'Bearer sk-new');
+      expect(w.reqs[1].url.toString(), 'https://api.example.org/v1/chat/completions');
+      expect((jsonDecode(w.reqs[1].body) as Map<String, dynamic>)['model'], 'm2');
+    });
+
+    test('非 LLM 字段变更（音效开关）→ 守卫拦下：客户端与服务原地不动', () async {
+      final _AgentWiring w = wire();
+      final ChatService svcBefore = w.svc;
+      final LlmClient clientBefore = w.client;
+
+      await SettingsStore().save(const AgentSettings(apiKey: 'sk-old', sound: false));
+
+      expect(w.svc, same(svcBefore)); // 没重建
+      expect(w.client, same(clientBefore));
+      expect(w.transports.single.closed, isFalse);
+      expect(w.reqs, isEmpty); // 也没发任何请求
+    });
+
+    test('广播机制本体：版本号随 save 自增；监听者抛异常只吞自己；退订后不再收', () async {
+      final List<String> got = <String>[];
+      void boom(AgentSettings s) => throw StateError('监听者自己炸了');
+      void ok(AgentSettings s) => got.add(s.apiKey);
+      SettingsStore.addListener(boom);
+      SettingsStore.addListener(ok);
+      addTearDown(() {
+        SettingsStore.removeListener(boom);
+        SettingsStore.removeListener(ok);
+      });
+
+      final int v0 = SettingsStore.version;
+      await SettingsStore().save(const AgentSettings(apiKey: 'sk-x'));
+      expect(got, <String>['sk-x']); // ok 照收
+      expect(SettingsStore.version, v0 + 1); // 版本照涨
+
+      SettingsStore.removeListener(ok);
+      await SettingsStore().save(const AgentSettings(apiKey: 'sk-y'));
+      expect(got, <String>['sk-x']); // 退订后不再收
+    });
+
+    test('热更与落盘一致：save 后另一个实例 load 得到新值', () async {
+      await SettingsStore().save(const AgentSettings(apiKey: 'sk-disk'));
+      expect((await SettingsStore().load()).apiKey, 'sk-disk');
+    });
+  });
 }
 
 /// 假网关：回固定文案（含标签）
@@ -745,4 +867,49 @@ class _RecordingGateway implements CopyLlmGateway {
     onMessages?.call(messages.toString());
     return reply;
   }
+}
+
+/// 假传输层（TODO-07 网关热更测试用）：录下每个请求（Auth 头/URL/body 供
+/// 「新值上线」断言），并标记 [closed]——重建时旧客户端必须被关。
+/// ⚠️ 响应必须带 utf-8 charset：http 包对无 charset 的响应按 latin1 解码，
+/// 中文响应体会炸「Contains invalid characters」（真端点都带 utf-8 头）。
+class _RecordingClient extends http.BaseClient {
+  _RecordingClient(this.onRequest);
+
+  final void Function(http.Request request) onRequest;
+  bool closed = false;
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest base) async {
+    final http.Request request = base as http.Request;
+    onRequest(request);
+    final List<int> bytes = utf8.encode(jsonEncode(<String, dynamic>{
+      'choices': <Map<String, dynamic>>[
+        <String, dynamic>{
+          'message': <String, dynamic>{'content': '[neutral]嗯。'},
+        },
+      ],
+    }));
+    return http.StreamedResponse(
+      Stream<List<int>>.value(bytes),
+      200,
+      contentLength: bytes.length,
+      headers: <String, String>{
+        'content-type': 'application/json; charset=utf-8',
+      },
+    );
+  }
+
+  @override
+  void close() => closed = true;
+}
+
+/// TODO-07 热更测试的装配 holder：`svc`/`client` 是**字段**——广播触发的
+/// 重建会当场换指向，测试从同一个 holder 上读到的永远是「当前那份」；
+/// `reqs`/`transports` 跨重建累计（证明旧值在线上、新值接棒）。
+class _AgentWiring {
+  late ChatService svc;
+  late LlmClient client;
+  final List<http.Request> reqs = <http.Request>[];
+  final List<_RecordingClient> transports = <_RecordingClient>[];
 }

@@ -120,6 +120,44 @@ class SettingsStore {
   /// docs/18 §2.8 的设置 key（LLM/视觉 + 四开关同表）
   static const String key = 'opus-v2/settings/v1';
 
+  // ── 变更通知（TODO-07 聊天网关热更，docs/20 遗留观察①）──────────
+  //
+  // 设置页（sheet）、视觉校验（vision）、聊天装配（main._initAgent）各自
+  // `new SettingsStore()`，实例之间互不相识——所以通知必须是**类级广播**：
+  // 任何实例 save() 落盘后，全部监听者都拿到新设置。聊天/文案装配据此
+  // 重建 LlmClient / LlmGateway / ChatService，改 Key/BaseURL/模型名
+  // 即时生效免重启。
+  static final List<void Function(AgentSettings)> _listeners =
+      <void Function(AgentSettings)>[];
+
+  /// 广播版本号：每 save 一次 +1（从未存过 = 0）。
+  /// 测试/诊断可断言「这次 save 确实通知出去了」。
+  static int _version = 0;
+  static int get version => _version;
+
+  /// 订阅设置变更（聊天装配在 init 时挂、dispose 时摘）。
+  static void addListener(void Function(AgentSettings s) onSettings) {
+    _listeners.add(onSettings);
+  }
+
+  /// 退订（State 卸载后不再收回调）。
+  static void removeListener(void Function(AgentSettings s) onSettings) {
+    _listeners.remove(onSettings);
+  }
+
+  /// 类级广播：版本号先自增，再逐个通知。监听者列表走**快照**遍历
+  /// （监听者在回调里退订也不炸迭代），单个监听者抛异常只吞掉自己，
+  /// 不拖垮保存方——存设置的（设置页）永远不能被收听的（网关装配）连累。
+  static void _broadcast(AgentSettings s) {
+    _version++;
+    for (final void Function(AgentSettings) fn
+        in List<void Function(AgentSettings)>.of(_listeners)) {
+      try {
+        fn(s);
+      } catch (_) {}
+    }
+  }
+
   final SharedPreferencesAsync? _injected;
   SharedPreferencesAsync? _prefs;
 
@@ -139,10 +177,12 @@ class SettingsStore {
     }
   }
 
-  /// 存设置；失败静默（下次改设置再写）
+  /// 存设置；磁盘写失败静默（下次改设置再写），但**照样广播**——
+  /// 存储层坏了也不能让宿主这次改的 Key 在内存里失效（网关热更靠它）。
   Future<void> save(AgentSettings s) async {
     try {
       await _p().setString(key, jsonEncode(s.toJson()));
     } catch (_) {}
+    _broadcast(s);
   }
 }

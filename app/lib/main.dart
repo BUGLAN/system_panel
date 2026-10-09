@@ -339,6 +339,9 @@ class _AppShellState extends State<AppShell>
   SystemCopyProvider? _copy;
   ChatService? _chatService;
 
+  /// 当前 LLM 客户端（TODO-07 网关热更：设置变更时关旧建新，连接池不泄漏）
+  LlmClient? _llmClient;
+
   /// agent 工具（docs/19 §A3）：真实适配器 + 注册表——聊天 function calling
   /// 与快捷 chip 共用这一份；配了 Key 走 LLM 工具循环，没配 Key 只走 chip。
   AgentToolRegistry? _agentTools;
@@ -346,30 +349,63 @@ class _AppShellState extends State<AppShell>
   /// 小祥的长期记忆（访谈答案写这里 —— 访谈即第一批记忆，docs/18 §2.1③）
   MemoryStore? _memory;
 
+  /// 小祥装配：设置 → LLM 网关 → 文案/聊天服务 + 聊天历史读档。
+  /// 装配本身只跑一次，但网关不装死（TODO-07，docs/20 遗留观察①）：
+  /// [_onSettingsChanged] 订阅 SettingsStore 类级广播，设置页改
+  /// Key/BaseURL/模型名后**当场重建**客户端与两个服务，免重启。
   Future<void> _initAgent() async {
     final AgentSettings s = await SettingsStore().load();
     await _chat.load();
     if (!mounted) return;
-    final LlmClient llmClient = LlmClient(
+    _applyAgentSettings(s);
+    // 热更订阅：设置页 save()（文本防抖 400ms、开关即时、关面板兜底写
+    // 最后一笔）→ 广播到这里 → [_applyAgentSettings] 按需重建。退订在 dispose。
+    SettingsStore.addListener(_onSettingsChanged);
+  }
+
+  /// 设置变更入口（SettingsStore 广播）→ 重建网关/客户端/聊天与文案服务。
+  /// 记忆与工具注册表跟 LLM 配置无关，原样沿用——改 Key 不让访谈记忆蒸发。
+  void _onSettingsChanged(AgentSettings s) {
+    if (!mounted) return;
+    _applyAgentSettings(s);
+  }
+
+  /// 用一份 [AgentSettings] 装（或重装）LLM 三件套。LLM 三要素
+  /// （BaseURL/Key/模型名）全都没变就不动——四开关、视觉开关这类变更
+  /// 不折腾网关；真的变了才关旧客户端、建新网关、整体换服务。
+  void _applyAgentSettings(AgentSettings s) {
+    final LlmClient? old = _llmClient;
+    if (old != null &&
+        old.config.baseUrl == s.baseUrl &&
+        old.config.apiKey == s.apiKey &&
+        old.config.model == s.model) {
+      return;
+    }
+    final LlmClient client = LlmClient(
       config: LlmConfig(
         baseUrl: s.baseUrl,
         apiKey: s.apiKey,
         model: s.model,
       ),
     );
-    final LlmGateway gw = LlmGateway(llmClient);
-    final MemoryStore mem = MemoryStore();
+    final LlmGateway gw = LlmGateway(client);
+    final MemoryStore mem = _memory ?? MemoryStore();
     // 工具读的是「当前那份」QuestFlow——绑定/读档会换实例，必须传取流回调
-    final QuestFlowAdapter agentCtx = QuestFlowAdapter(
-      flowOf: () => _flow,
-      onChanged: _onAgentMutated,
-    );
-    final AgentToolRegistry reg = defaultAgentTools(context: agentCtx, memory: mem);
+    final AgentToolRegistry reg = _agentTools ??
+        defaultAgentTools(
+          context: QuestFlowAdapter(
+            flowOf: () => _flow,
+            onChanged: _onAgentMutated,
+          ),
+          memory: mem,
+        );
+    old?.close(); // 在途请求被中断 → LlmClient 折叠成 failure → 调用方兜底
     setState(() {
+      _llmClient = client;
       _memory = mem;
       _copy = SystemCopyProvider(llm: gw, memory: mem);
       _agentTools = reg;
-      _chatService = ChatService(gateway: gw, memory: mem, client: llmClient, tools: reg);
+      _chatService = ChatService(gateway: gw, memory: mem, client: client, tools: reg);
     });
   }
 
@@ -2014,6 +2050,8 @@ class _AppShellState extends State<AppShell>
 
   @override
   void dispose() {
+    // TODO-07 网关热更：退订设置广播，State 卸载后不再收回调
+    SettingsStore.removeListener(_onSettingsChanged);
     WidgetsBinding.instance.removeObserver(this);
     _clock.dispose();
     _camTicker.dispose();
