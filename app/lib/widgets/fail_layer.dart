@@ -13,6 +13,9 @@ import '../design/tokens.dart';
 ///    failv [0,0,390,844] · rec [0,84,390,10]
 ///    remedy [24,602,342,64]（kick 16 + 正文两行 20.8）
 ///    line [20,397,350,98] · choices [20,701,350,109]
+///
+///  t26/TODO-14：记录行与补救单收进一张「失败卡」背板（left/right 20 ·
+///  bottom 182 · ≤62% 屏高），裸文本压在角色上的旧排版废止。
 /// ═══════════════════════════════════════════════════════════
 class FailLayer extends StatefulWidget {
   const FailLayer({
@@ -93,110 +96,144 @@ class _FailLayerState extends State<FailLayer>
     final bool timeout = widget.timeout;
     final Remedy? remedy = widget.remedy;
     if (!widget.visible) return const SizedBox.shrink();
+    final double h = MediaQuery.sizeOf(context).height;
     return Positioned.fill(
       child: Opacity(
         opacity: _fade.value,
         child: Stack(
           children: <Widget>[
-            // .fv-rec
+            // t26/TODO-14 ——「失败卡」：记录行 + 补救单收进同一张带背板的卡
+            //（rgba(2,6,14,.78) · 圆角 12 · 1px line2 描边，与结算卡同款语言），
+            // 高度钳在屏高 62% 内。原先两段裸文本压在她的头发与裙子上几不可读
+            //（MOTION-ANALYSIS P1-5：veil 只压暗不隔离，信息对比度让位给了舞台）。
+            // 锚在 bottom 182 —— 回应按钮（bottom 34 + 高 109）上方留 39px。
             Positioned(
-              left: 0,
-              right: 0,
-              top: 84,
-              child: Text.rich(
-                key: const Key('fail.rec'),
-                textAlign: TextAlign.center,
-                TextSpan(
-                  children: <InlineSpan>[
-                    TextSpan(
-                      text: '${timeout ? '超时' : '认输'} · 已记录 ',
-                      style: fs(
-                        family: F.mono,
-                        size: 10,
-                        wght: 500,
-                        ls: 2.4,
-                        color: const Color(0xFF5D6B82),
-                      ),
-                    ),
-                    TextSpan(
-                      text: recordedAt,
-                      style: fs(
-                        family: F.mono,
-                        size: 10,
-                        wght: 600,
-                        ls: 2.4,
-                        color: const Color(0xFF8794AA),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            // .fv-remedy
-            if (remedy != null)
-              Positioned(
-                left: 24,
-                right: 24,
-                bottom: 178,
-                child: AnimatedSlide(
-                  offset: _remedyOn ? Offset.zero : const Offset(0, .06),
-                  duration: const Duration(milliseconds: 600),
-                  curve: const Cubic(.16, 1, .3, 1), // --out
-                  child: AnimatedOpacity(
-                    opacity: _remedyOn ? 1 : 0,
-                    duration: const Duration(milliseconds: 600),
+              left: 20,
+              right: 20,
+              bottom: 182,
+              child: ConstrainedBox(
+                constraints: BoxConstraints(maxHeight: h * .62),
+                child: DecoratedBox(
+                  key: const Key('fail.card'),
+                  decoration: BoxDecoration(
+                    color: const Color(0xC702060E), // rgba(2,6,14,.78)
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: C.line2, width: 1),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(18, 13, 18, 15),
                     child: Column(
-                      key: const Key('fail.remedy'),
+                      mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: <Widget>[
-                        Text(
-                          '补救 · REMEDY',
-                          style: fs(
-                            family: F.mono,
-                            size: 10,
-                            wght: 400,
-                            ls: 1.6,
-                            height: 1.6, // 继承 .fv-remedy 的 line-height
-                            color: C.blue.withAlpha(204), // opacity .8
+                        // .fv-rec —— 抬头行改 mono 小字 + 青色，置于背板上
+                        _recRow(recordedAt, timeout),
+                        // .fv-remedy —— 她说完那几句才 .on（时长属于业务，固定 1.4s）
+                        if (remedy != null) ...<Widget>[
+                          const SizedBox(height: 10),
+                          AnimatedSlide(
+                            offset: _remedyOn
+                                ? Offset.zero
+                                : const Offset(0, .06),
+                            duration: const Duration(milliseconds: 600),
+                            curve: const Cubic(.16, 1, .3, 1), // --out
+                            child: AnimatedOpacity(
+                              opacity: _remedyOn ? 1 : 0,
+                              duration: const Duration(milliseconds: 600),
+                              child: _remedyCard(remedy),
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 6),
-                        Text.rich(
-                          TextSpan(
-                            children: <InlineSpan>[
-                              TextSpan(
-                                text: remedy.name,
-                                style: fs(
-                                  family: F.cn,
-                                  size: 13,
-                                  wght: 600,
-                                  height: 1.6,
-                                  color: C.blue,
-                                ),
-                              ),
-                              TextSpan(
-                                text:
-                                    '（做一半）· ${remedy.minutesText}\n截止 ${remedy.deadline} · '
-                                    '${remedy.rank} 级 · 做到了，这一笔划掉',
-                                style: fs(
-                                  family: F.cn,
-                                  size: 13,
-                                  wght: 400,
-                                  height: 1.6,
-                                  color: const Color(0xFF9FB3CC),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
+                        ],
                       ],
                     ),
                   ),
                 ),
               ),
+            ),
           ],
         ),
       ),
+    );
+  }
+
+  /// `认输 / 超时 · 已记录 hh:mm`（mono 小字 + 青色，key 留 `fail.rec`）
+  Widget _recRow(String recordedAt, bool timeout) {
+    return Text.rich(
+      key: const Key('fail.rec'),
+      TextSpan(
+        children: <InlineSpan>[
+          TextSpan(
+            text: '${timeout ? '超时' : '认输'} · 已记录 ',
+            style: fs(
+              family: F.mono,
+              size: 10,
+              wght: 500,
+              ls: 2.4,
+              color: C.blue.withAlpha(204), // 抬头改青（原来压在头发里的灰）
+            ),
+          ),
+          TextSpan(
+            text: recordedAt,
+            style: fs(
+              family: F.mono,
+              size: 10,
+              wght: 600,
+              ls: 2.4,
+              color: C.ice,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 补救单正文（key 留 `fail.remedy`）
+  Widget _remedyCard(Remedy remedy) {
+    return Column(
+      key: const Key('fail.remedy'),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Text(
+          '补救 · REMEDY',
+          style: fs(
+            family: F.mono,
+            size: 10,
+            wght: 400,
+            ls: 1.6,
+            height: 1.6, // 继承 .fv-remedy 的 line-height
+            color: C.blue.withAlpha(204), // opacity .8
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text.rich(
+          TextSpan(
+            children: <InlineSpan>[
+              TextSpan(
+                text: remedy.name,
+                style: fs(
+                  family: F.cn,
+                  size: 13,
+                  wght: 600,
+                  height: 1.6,
+                  color: C.blue,
+                ),
+              ),
+              TextSpan(
+                text:
+                    '（做一半）· ${remedy.minutesText}\n截止 ${remedy.deadline} · '
+                    '${remedy.rank} 级 · 做到了，这一笔划掉',
+                style: fs(
+                  family: F.cn,
+                  size: 13,
+                  wght: 400,
+                  height: 1.6,
+                  color: const Color(0xFF9FB3CC),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

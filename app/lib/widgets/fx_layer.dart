@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
@@ -61,6 +62,55 @@ class FlashPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant FlashPainter old) => old.color != color;
+}
+
+/// 「就地」的亮帧 —— 不盖整屏，只在自己那一块发一帧白。
+///
+/// 参数与 `#flash` 同源（白 16% · 180ms ease-out 衰减）；HUD 等级环的
+/// 跨级白闪（t26/P2）用它：涨满 360ms 的那拍，环上炸开一朵 16% 的白晕，
+/// 180ms 收没 —— 编排见 `hud.dart` 的 `hudLevelFx`。
+class FlashBloom extends StatelessWidget {
+  const FlashBloom({super.key, this.alpha = 0, this.color = Colors.white});
+
+  /// 当前这一帧的不透明度（0 = 没在闪）
+  final double alpha;
+
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    if (alpha <= 0) return const SizedBox.shrink();
+    return IgnorePointer(
+      child: CustomPaint(
+        painter: FlashBloomPainter(color: color.withAlpha((alpha * 255).round())),
+      ),
+    );
+  }
+}
+
+class FlashBloomPainter extends CustomPainter {
+  const FlashBloomPainter({required this.color});
+
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final Offset c = Offset(size.width / 2, size.height / 2);
+    final double r = size.width * .72;
+    canvas.drawCircle(
+      c,
+      r,
+      Paint()
+        ..shader = ui.Gradient.radial(
+          c,
+          r,
+          <Color>[color, color.withAlpha(0)],
+        ),
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant FlashBloomPainter old) => old.color != color;
 }
 
 /// `#shake` —— 整屏抖，幅度随时间线性衰减到 0。

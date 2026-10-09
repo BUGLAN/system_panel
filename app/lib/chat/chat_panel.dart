@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../design/tokens.dart';
@@ -369,7 +371,9 @@ class _ChatPanelState extends State<ChatPanel> {
     );
   }
 
-  /// 「思考中…」占位（她=左侧小气泡样式）
+  /// 「思考中」+ 三点呼吸（t26/P2-3 · MOTION-ANALYSIS §3）：
+  /// 三个点各 600ms 循环 opacity .35→1、相位差 200ms ——
+  /// 原先是一行静态文本，等 LLM 的那几秒毫无生命感。
   Widget _thinking() {
     return Padding(
       key: const Key('chat.thinking'),
@@ -383,9 +387,23 @@ class _ChatPanelState extends State<ChatPanel> {
             borderRadius: BorderRadius.circular(14),
             border: Border.all(color: C.line2, width: 1),
           ),
-          child: Text(
-            '思考中…',
-            style: fs(family: F.cn, size: 12.5, wght: 400, height: 1.4, color: C.mist),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Text(
+                '思考中',
+                style: fs(
+                  family: F.cn,
+                  size: 12.5,
+                  wght: 400,
+                  height: 1.4,
+                  color: C.mist,
+                ),
+              ),
+              const SizedBox(width: 5),
+              for (int i = 0; i < 3; i++)
+                _ThinkingDot(index: i, phase: i / 3), // 200ms / 600ms
+            ],
           ),
         ),
       ),
@@ -447,6 +465,72 @@ class _ChatPanelState extends State<ChatPanel> {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// 思考态的一颗呼吸点：600ms 一循环，opacity .35→1→.35（余弦呼吸），
+/// [phase]（0~1）是循环内的起始相位 —— 三颗各差 1/3（≙ 相位差 200ms）。
+///
+/// ⚠️ 呼吸窗是**有限的 12s**（ChatService 对思考等待本就有 12s 上限），
+/// 不是无限 repeat —— 无限动画会让 `pumpAndSettle` 永远不收敛
+/// （实测踩过：chat_test 两个 thinking 用例直接超时），12s 后停在场
+/// 某个相位上，等待上限内宿主看不出差别。
+class _ThinkingDot extends StatefulWidget {
+  const _ThinkingDot({required this.index, required this.phase});
+
+  /// 第几颗（Key 用，0 基）
+  final int index;
+
+  final double phase;
+
+  @override
+  State<_ThinkingDot> createState() => _ThinkingDotState();
+}
+
+class _ThinkingDotState extends State<_ThinkingDot>
+    with SingleTickerProviderStateMixin {
+  /// 呼吸循环（ms）
+  static const double _cycleMs = 600;
+
+  /// 呼吸窗（ms）= ChatService 的思考等待上限
+  static const double _windowMs = 12000;
+
+  late final AnimationController _c = AnimationController(
+    vsync: this,
+    duration: Duration(milliseconds: _windowMs.round()),
+  )
+    ..value = widget.phase * _cycleMs / _windowMs // 循环内的起始相位
+    ..forward();
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _c,
+      builder: (BuildContext _, Widget? _) {
+        // 循环内的相位（0~1）→ k：0 → 1 → 0 的余弦呼吸
+        final double u = (_c.value * _windowMs / _cycleMs) % 1;
+        final double k = (1 - math.cos(2 * math.pi * u)) / 2;
+        return Opacity(
+          key: Key('chat.thinking.dot.${widget.index}'),
+          opacity: .35 + .65 * k,
+          child: Container(
+            width: 4.5,
+            height: 4.5,
+            margin: const EdgeInsets.symmetric(horizontal: 1.5),
+            decoration: const BoxDecoration(
+              shape: BoxShape.circle,
+              color: C.blue,
+            ),
+          ),
+        );
+      },
     );
   }
 }

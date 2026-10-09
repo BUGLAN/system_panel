@@ -53,9 +53,7 @@ class ExecPanel extends StatelessWidget {
     this.onQuitProgress,
     this.onItem,
     this.onCollapse,
-  });
-
-  final Quest quest;
+  });  final Quest quest;
 
   /// 已经executed了多久
   final Duration elapsed;
@@ -112,16 +110,18 @@ class ExecPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (!visible) return const SizedBox.shrink();
-    final Color rk = quest.rarity.color;
-    final Duration limit = Duration(minutes: quest.minutes);
-    final double progress = (elapsed.inMilliseconds / limit.inMilliseconds)
-        .clamp(0.0, 1.0);
-    final bool warn = elapsed.inMilliseconds > limit.inMilliseconds * .85;
-
-    return Positioned.fill(
-      child: LayoutBuilder(
-        builder: (BuildContext _, BoxConstraints c) => Stack(
+    // t26/TODO-13：进出不再是硬切 —— 入场/退场交给 [_ExecTransition]。
+    // 面板本体（LayoutBuilder + Stack）原样作为它的 child，坐标一字未动。
+    return _ExecTransition(
+      visible: visible,
+      builder: (BuildContext context) => LayoutBuilder(
+        builder: (BuildContext _, BoxConstraints c) {
+          final Color rk = quest.rarity.color;
+          final Duration limit = Duration(minutes: quest.minutes);
+          final double progress = (elapsed.inMilliseconds / limit.inMilliseconds)
+              .clamp(0.0, 1.0);
+          final bool warn = elapsed.inMilliseconds > limit.inMilliseconds * .85;
+          return Stack(
           children: <Widget>[
             // .ex-col
             Positioned(
@@ -197,7 +197,8 @@ class ExecPanel extends StatelessWidget {
               ),
             ),
           ],
-        ),
+        );
+        },
       ),
     );
   }
@@ -638,7 +639,12 @@ class _EvidenceBlockState extends State<_EvidenceBlock> {
                     : null,
               ),
               child: filled
-                  ? _thumb(shots[i])
+                  ? _SlotIn(
+                      // 换证据（id 变）就重播一次入槽；同一张照旧不动
+                      key: ValueKey<String>('slotin.${shots[i].id}'),
+                      slot: i,
+                      child: _thumb(shots[i]),
+                    )
                   : (isAdd ? const Center(child: _Plus()) : null),
             ),
           ),
@@ -778,7 +784,15 @@ class _EvidenceBlockState extends State<_EvidenceBlock> {
             child: photo,
           ),
         ),
-        Positioned(right: 2, bottom: 2, child: _badge(s.status)),
+        // 「先照片后判定」：角标延迟 120ms 再淡入（_BadgeIn）
+        Positioned(
+          right: 2,
+          bottom: 2,
+          child: _BadgeIn(
+            fadeKey: Key('exec.evi.badge.fade.${s.status.name}'),
+            child: _badge(s.status),
+          ),
+        ),
       ],
     );
   }
@@ -923,5 +937,196 @@ class _EvidenceBlockState extends State<_EvidenceBlock> {
       ]);
     });
     widget.onEvidenceChanged?.call(_internal);
+  }
+}
+
+/// ═══════════════════════════════════════════════════════════
+///  t26/TODO-13 · 执行面板的进出过渡
+///
+///  这曾是全 App 唯一的整页硬切：`build` 首行 `if (!visible) shrink`，
+///  接单钤印（280ms 亮帧）的势能被「啪一下换页」泄掉
+///  （MOTION-ANALYSIS P1-4）。现在：
+///   · 入场 280ms：scale .97→1 + fade 0→1，kOut —— 与钤印 280ms 亮帧同拍收尾；
+///   · 退场 200ms：反向播完才真正摘树；
+///   · 演出播完后**零包裹**（不套 Opacity/Transform），静态比对逐字节一致；
+///   · 平台视图纪律：这里包的只有 Flutter 面板子树（Live2D 舞台不在这棵
+///     子树里），Opacity/Transform 不碰平台视图（HANDOFF 第 4 条）。
+/// ═══════════════════════════════════════════════════════════
+class _ExecTransition extends StatefulWidget {
+  const _ExecTransition({required this.visible, required this.builder});
+
+  final bool visible;
+  final WidgetBuilder builder;
+
+  @override
+  State<_ExecTransition> createState() => _ExecTransitionState();
+}
+
+class _ExecTransitionState extends State<_ExecTransition>
+    with SingleTickerProviderStateMixin {
+  static const int _inMs = 280; // 与钤印亮帧同拍（main.dart 提交时 a=.24/280ms）
+  static const int _outMs = 200;
+
+  late final AnimationController _c = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: _inMs),
+    value: 1, // 首挂即终态（实机是常驻挂载、靠 visible 翻转触发演出）
+  );
+
+  late final CurvedAnimation _curve = CurvedAnimation(
+    parent: _c,
+    curve: kOut,
+    reverseCurve: FlippedCurve(kOut),
+  );
+
+  /// 子树是否还挂载（退场播完才摘）
+  bool _shown = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _shown = widget.visible;
+  }
+
+  @override
+  void didUpdateWidget(covariant _ExecTransition old) {
+    super.didUpdateWidget(old);
+    if (widget.visible && !old.visible) {
+      setState(() => _shown = true);
+      _c.duration = const Duration(milliseconds: _inMs);
+      _c.forward(from: 0);
+    } else if (!widget.visible && old.visible) {
+      _c.duration = const Duration(milliseconds: _outMs);
+      _c.reverse().then((void _) {
+        if (mounted && !widget.visible) setState(() => _shown = false);
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _curve.dispose();
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!widget.visible && !_shown) return const SizedBox.shrink();
+    return Positioned.fill(
+      child: IgnorePointer(
+        // 退场的那 200ms 不再挨点（原实现瞬间摘树，无此窗口）
+        ignoring: !widget.visible,
+        child: AnimatedBuilder(
+          animation: _c,
+          builder: (BuildContext _, Widget? child) {
+            final double t = _c.value;
+            if (t >= 1) return child!; // 终态零包裹
+            return Opacity(
+              key: const Key('exec.enter'),
+              opacity: _curve.value,
+              child: Transform.scale(
+                key: const Key('exec.enter.scale'),
+                scale: .97 + .03 * _curve.value,
+                child: child,
+              ),
+            );
+          },
+          child: widget.builder(context),
+        ),
+      ),
+    );
+  }
+}
+
+/// t26/P2-4 · 证据入槽过渡：加照 160ms —— 照片 scale .82→1（easeOutBack）
+/// + fade，替代原来的「缩略图瞬现」。同一张证据（id 不变）不重播。
+class _SlotIn extends StatefulWidget {
+  const _SlotIn({super.key, required this.slot, required this.child});
+
+  /// 槽位号（动画中间态的 Key 要按槽区分，两槽同播不会撞 key）
+  final int slot;
+  final Widget child;
+
+  @override
+  State<_SlotIn> createState() => _SlotInState();
+}
+
+class _SlotInState extends State<_SlotIn> with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 160),
+  )..forward();
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _c,
+      builder: (BuildContext _, Widget? child) {
+        final double t = _c.value;
+        // ⚠️ 落定后**包裹不摘**（opacity 1 / scale 1 都是渲染上的无操作），
+        // 但结构保持稳定 —— 若在 t≥1 时换成裸 child，子树在树里挪了深度，
+        // 缩略图里的状态角标（_BadgeIn）会被连带重挂、节拍重头数
+        //（实测踩过：角标延迟永远走不完）。整层面板（_ExecTransition）落定
+        // 是真零包裹，那里没有需要保拍子的东西。
+        return Opacity(
+          key: Key('exec.evi.reveal.${widget.slot}'),
+          opacity: t,
+          child: Transform.scale(
+            scale: .82 + .18 * Curves.easeOutBack.transform(t),
+            child: child,
+          ),
+        );
+      },
+      child: widget.child,
+    );
+  }
+}
+
+/// t26/P2-4 · 「先照片后判定」的节拍：状态角标延迟 120ms、
+/// 再用 160ms 淡入（入槽 160ms 演出里照片先说话，判定后到）。
+class _BadgeIn extends StatefulWidget {
+  const _BadgeIn({required this.child, this.fadeKey});
+
+  /// 淡入中间态的 Key（`exec.evi.badge.fade.<status>`，测试钉节拍用；
+  /// 落定后零包裹，这个 Key 从树上消失）
+  final Key? fadeKey;
+
+  final Widget child;
+
+  @override
+  State<_BadgeIn> createState() => _BadgeInState();
+}
+
+class _BadgeInState extends State<_BadgeIn> with SingleTickerProviderStateMixin {
+  /// 280ms 总窗：前 120ms 全透明，后 160ms 淡入
+  late final AnimationController _c = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 280),
+  )..forward();
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _c,
+      builder: (BuildContext _, Widget? child) {
+        final double k = ((_c.value * 280 - 120) / 160).clamp(0.0, 1.0);
+        if (k >= 1) return child!; // 落定零包裹
+        return Opacity(opacity: k, key: widget.fadeKey, child: child);
+      },
+      child: widget.child,
+    );
   }
 }

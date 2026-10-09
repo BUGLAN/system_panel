@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:system_panel/agent/vision.dart' show EvidenceShot, EvidenceStatus;
 import 'package:system_panel/data/format.dart';
 import 'package:system_panel/state/quest.dart';
 import 'package:system_panel/widgets/exec_panel.dart';
@@ -166,6 +167,165 @@ void main() {
         ),
       );
       expect(find.byKey(const Key('exec.col')), findsNothing);
+    });
+  });
+
+  // ── 入退场过渡（t26/TODO-13）──────────────────────────────
+  //
+  // 全 App 唯一的整页硬切（`if (!visible) shrink`）换成：
+  // 入场 280ms scale .97→1 + fade（与钤印 280ms 亮帧同拍收尾）、退场 200ms。
+  // 终态零包裹 —— 演出播完，渲染树与旧版逐字节一致。
+  group('入退场过渡（t26/TODO-13）', () {
+    Widget host(bool vis) => MaterialApp(
+      home: Scaffold(
+        body: Stack(
+          children: <Widget>[
+            ExecPanel(
+              quest: Quest.demo,
+              elapsed: const Duration(minutes: 7),
+              critChance: .12,
+              itemCount: 0,
+              evidenceCount: 0,
+              visible: vis,
+            ),
+          ],
+        ),
+      ),
+    );
+
+    testWidgets('visible 翻真：280ms scale+fade 入场，终态零包裹', (
+      WidgetTester tester,
+    ) async {
+      await _mount(tester, host(false));
+      expect(find.byKey(const Key('exec.col')), findsNothing);
+      await _mount(tester, host(true));
+      // kOut（.16,1,.3,1）前段极陡：~1/3 处曲线就饱和了，
+      // 取 20ms 的采样点才能读到中间值
+      await tester.pump(const Duration(milliseconds: 20));
+      expect(find.byKey(const Key('exec.col')), findsOneWidget);
+      final Opacity op = tester.widget<Opacity>(
+        find
+            .descendant(
+              of: find.byType(ExecPanel),
+              matching: find.byKey(const Key('exec.enter')),
+            )
+            .first,
+      );
+      expect(op.opacity, greaterThan(0));
+      expect(op.opacity, lessThan(1));
+      final Transform tr = tester.widget<Transform>(
+        find
+            .descendant(
+              of: find.byType(ExecPanel),
+              matching: find.byKey(const Key('exec.enter.scale')),
+            )
+            .first,
+      );
+      // X/Y 缩放（getMaxScaleOnAxis 会把 z=1 那条轴也算进来，恒为 1）
+      final double sx = tr.transform[0];
+      expect(sx, greaterThan(.97));
+      expect(sx, lessThan(1));
+      await tester.pump(const Duration(milliseconds: 260)); // 280ms 播完
+      // 零包裹：找不到演出层，坐标回到原型实测值
+      expect(find.byKey(const Key('exec.enter')), findsNothing);
+      expect(
+        tester.getRect(find.byKey(const Key('exec.rk'))),
+        const Rect.fromLTWH(22, 92, 22, 22),
+      );
+    });
+
+    testWidgets('visible 翻假：200ms 退场（期间不挨点），播完摘树', (
+      WidgetTester tester,
+    ) async {
+      await _mount(tester, host(true));
+      await tester.pump(); // 首挂即终态
+      await _mount(tester, host(false));
+      await tester.pump(const Duration(milliseconds: 100)); // 退场半程
+      expect(find.byKey(const Key('exec.col')), findsOneWidget); // 还挂着
+      final IgnorePointer ip = tester.widget<IgnorePointer>(
+        find
+            .descendant(
+              of: find.byType(ExecPanel),
+              matching: find.byType(IgnorePointer),
+            )
+            .first,
+      );
+      expect(ip.ignoring, isTrue); // 退场中不再挨点
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(find.byKey(const Key('exec.col')), findsNothing); // 摘干净
+    });
+
+    testWidgets('首挂即终态（静态比对不受演出影响）', (WidgetTester tester) async {
+      await _mount(tester, host(true));
+      await tester.pump();
+      expect(find.byKey(const Key('exec.enter')), findsNothing);
+      expect(
+        tester.getRect(find.byKey(const Key('exec.rk'))),
+        const Rect.fromLTWH(22, 92, 22, 22),
+      );
+    });
+  });
+
+  // ── 证据槽入槽过渡（t26/P2-4）─────────────────────────────
+  //
+  // 拍照回填从「缩略图瞬现」改成：照片 160ms scale .82→1（easeOutBack）+ fade；
+  // 状态角标延迟 120ms 再 160ms 淡入 —— 「先照片后判定」的节拍。
+  group('证据槽入槽过渡（t26/P2-4）', () {
+    Widget host(List<EvidenceShot> shots) => MaterialApp(
+      home: Scaffold(
+        body: Stack(
+          children: <Widget>[
+            ExecPanel(
+              quest: Quest.demo,
+              elapsed: Duration.zero,
+              critChance: .12,
+              itemCount: 0,
+              evidenceCount: 0,
+              evidence: shots,
+            ),
+          ],
+        ),
+      ),
+    );
+
+    testWidgets('加照 160ms 入槽，角标延迟 120ms 淡入', (WidgetTester tester) async {
+      final List<EvidenceShot> shots = <EvidenceShot>[];
+      await _mount(tester, host(shots));
+      expect(find.text('已丢失'), findsNothing); // 空槽
+      shots.add(
+        EvidenceShot(
+          id: 'e1',
+          path: 'evidence/x.jpg',
+          status: EvidenceStatus.verified,
+          takenAt: DateTime(2026),
+        ),
+      );
+      await _mount(tester, host(shots));
+      await tester.pump(const Duration(milliseconds: 80)); // 入槽半程
+      final Opacity reveal = tester.widget<Opacity>(
+        find.byKey(const Key('exec.evi.reveal.0')),
+      );
+      expect(reveal.opacity, greaterThan(0));
+      expect(reveal.opacity, lessThan(1));
+      expect(find.text('已丢失'), findsOneWidget); // 槽已填（照片读不到 → 降级字）
+      // 角标还没到拍（120ms 延迟未到）
+      final Opacity badge = tester.widget<Opacity>(
+        find.byKey(const Key('exec.evi.badge.fade.verified')),
+      );
+      expect(badge.opacity, 0);
+      await tester.pump(const Duration(milliseconds: 80)); // t=160 照片落定
+      // 落定：包裹还在但已是无操作（opacity 1）—— 结构稳定，角标节拍不被重挂打断
+      final Opacity revealDone = tester.widget<Opacity>(
+        find.byKey(const Key('exec.evi.reveal.0')),
+      );
+      expect(revealDone.opacity, 1);
+      final Opacity badgeHalf = tester.widget<Opacity>(
+        find.byKey(const Key('exec.evi.badge.fade.verified')),
+      );
+      expect(badgeHalf.opacity, closeTo(.25, .02)); // (160-120)/160
+      await tester.pump(const Duration(milliseconds: 120)); // t=280 角标落定
+      expect(find.byKey(const Key('exec.evi.badge.fade.verified')), findsNothing);
+      expect(find.byKey(const Key('exec.evi.badge.verified')), findsOneWidget);
     });
   });
 }

@@ -76,7 +76,18 @@ class _PlateState extends State<Plate> with TickerProviderStateMixin {
   /// 激光逐段刻字（`Plate.engrave` 的那个 for 循环）
   late final AnimationController _eng = AnimationController(vsync: this);
 
-  RankRollTimeline? _rollTl;
+  /// 正在滚的时间线（上行 `RankRollTimeline` / 下行 `_ReRankRoll` 共用驱动，
+  /// 这里只存「给 t 算档位」的纯函数，界面不关心它往哪边滚）
+  int Function(double)? _rollIndexAt;
+  double _rollTotal = 0;
+
+  /// 仪式的代际号：换单 / reRank 各 +1，作废还在飞的那一场
+  /// （板下「换一个」在开局仪式没播完时就能点，不防会两头一起驱动控制器）
+  int _gen = 0;
+
+  /// rankLock / 报酬白闪的重播令牌（`TweenAnimationBuilder` 换 key 才会重播）
+  int _lockToken = 0;
+  int _rewardToken = 0;
   EngraveTimeline? _engTl;
 
   /// 此刻显示到第几档
@@ -131,12 +142,22 @@ class _PlateState extends State<Plate> with TickerProviderStateMixin {
     super.didUpdateWidget(old);
     if (!old.visible && widget.visible) {
       _start();
-    } else if (widget.visible && old.quest.serial != widget.quest.serial) {
-      _start(); // 换单 = 重新刻一块
+    } else if (widget.visible) {
+      if (old.quest.serial != widget.quest.serial) {
+        _start(); // 换单 = 重新刻一块
+      } else if (old.quest.rarity.i != widget.quest.rarity.i) {
+        // t26/TODO-12：「换一个」的降档重刻 —— 同一张单（serial 不变）只动了
+        // 稀有度。播原型 `Plate.reRank` 的下行滚档 + 报酬重刻，
+        // 替代原来的静态跳变（判定从「serial 变了」扩成「serial 或档位变了」）。
+        _rerank(from: old.quest.rarity.i);
+      }
     }
   }
 
   void _start() {
+    _gen++;
+    _roll.removeListener(_onRollTick);
+    _eng.removeListener(_onEngTick);
     _shownIndex = 0;
     _lock = false;
     _engK = List<double>.filled(8, 0);
@@ -144,6 +165,7 @@ class _PlateState extends State<Plate> with TickerProviderStateMixin {
     _roll.value = 0;
     _eng.value = 0;
     _laser = null;
+    _hotIndex = -1;
     if (widget.animateLand) {
       _land
         ..value = 0
@@ -159,43 +181,154 @@ class _PlateState extends State<Plate> with TickerProviderStateMixin {
 
   /// 落板 → 揭稀有度 → 逐字刻 → 指纹可用（`flows.js` L279 的调用顺序）
   Future<void> _ceremony() async {
+    final int g = _gen;
     if (!mounted) return;
     // ⚠️ 原型的 `land()` 在动画后再等 440 + 150ms 才 resolve
     await Future<void>.delayed(const Duration(milliseconds: 590));
-    if (!mounted) return;
+    if (!mounted || g != _gen) return;
     await _rankRoll();
-    if (!mounted) return;
+    if (!mounted || g != _gen) return;
     await _engrave();
   }
 
   Future<void> _rankRoll() async {
     final RankRollTimeline tl = RankRollTimeline(target: widget.quest.rarity.i);
-    _rollTl = tl;
-    if (tl.total <= 0) {
-      setState(() => _shownIndex = tl.target);
+    await _playRoll(
+      total: tl.total,
+      indexAt: tl.indexAt,
+      onFinish: () {
+        if (!mounted) return;
+        setState(() => _lock = true); // 末级砸下来那一下
+        // 原型 `rankRoll` 收尾：flash（稀有度色）· ≥S 抖一下 · 骰子位置爆一圈
+        widget.onRankFx?.call(tl.target);
+      },
+    );
+  }
+
+  /// t26/TODO-12 —— 「换一个」的降档重刻（原型 `ui.js Plate.reRank(T, from)`）：
+  ///
+  /// ```js
+  /// async reRank(T, fromR) { // 退缩：字母往下掉一档，报酬重刻
+  ///   await this.rankRoll(T.r, RARITY[fromR].i, true);
+  ///   const rw = $('#plReward'); rw.classList.remove('done'); … rw.classList.add('done');
+  ///   rw.animate([{ filter: 'brightness(2.5)' }, { filter: 'none' }], { duration: 600 });
+  /// }
+  /// ```
+  ///
+  /// 下行滚档的每档停留按 MOTION-ANALYSIS P1-3 的规格收敛为 90ms
+  /// （三档下行 = 270ms，见 [_ReRankRoll]）；滚完复用同一个 rankLock
+  /// （600ms easeOutBack，换 token 重挂重播）+ `onRankFx` 收尾，
+  /// 最后报酬行单独重刻一遍（激光照走 + 600ms 白闪收敛）。
+  Future<void> _rerank({required int from}) async {
+    final int target = widget.quest.rarity.i;
+    _gen++; // 作废还在飞的开局仪式
+    if (!widget.animateLand || from <= target) {
+      // 静态比对（或异常防御）：直接落终态，渲染结果与旧版逐字节一致
+      if (!mounted) return;
+      setState(() {
+        _shownIndex = target;
+        _lock = true;
+        _lockToken++;
+        _engK = List<double>.filled(8, 1);
+        _printOpacity = 1;
+        _laser = null;
+        _hotIndex = -1;
+      });
       return;
     }
+    final _ReRankRoll tl = _ReRankRoll(from: from, target: target);
+    await _playRoll(
+      total: tl.total,
+      indexAt: tl.indexAt,
+      onFinish: () {
+        if (!mounted) return;
+        setState(() {
+          _lock = true;
+          _lockToken++; // rankLock 换 key 重挂 → 每次降档都砸那一下
+        });
+        // 原型 rankRoll 的收尾对 down 分支同样生效（flash/burst，≥S 抖）
+        widget.onRankFx?.call(target);
+      },
+    );
+    if (!mounted) return;
+    await _reengraveReward();
+  }
+
+  /// 报酬行重刻（原型 `reRank` 后半段：`#plReward` 摘掉 `.done` 重新划入，
+  /// 收一个 600ms `brightness(2.5)→none` 的白闪）。只重刻第 7 段，激光照走一遍；
+  /// 指纹不动（原型也没把它按回去）。
+  Future<void> _reengraveReward() async {
+    final int g = _gen;
+    final double dur =
+        ((_engLengths[7] * 17).clamp(110.0, 460.0)).toDouble();
+    // 新 loot 文案刚换上，等一帧布局才量得到激光要走的路
+    await Future<void>.delayed(const Duration(milliseconds: 16));
+    if (!mounted || g != _gen) return;
+    setState(() {
+      _engK = List<double>.from(_engK)..[7] = 0;
+      _rewardToken++;
+    });
+    _eng
+      ..duration = Duration(milliseconds: dur.round())
+      ..addListener(_onRewardTick);
+    final Completer<void> done = Completer<void>();
+    _eng.forward(from: 0).then((void _) => done.complete());
+    await done.future;
+    if (!mounted || g != _gen) return;
+    _eng.removeListener(_onRewardTick);
+    setState(() {
+      _laser = null;
+      _hotIndex = -1;
+      _engK = List<double>.from(_engK)..[7] = 1;
+    });
+  }
+
+  void _onRewardTick() {
+    final double k = _eng.value;
+    setState(() {
+      _engK = List<double>.from(_engK)..[7] = k;
+      _hotIndex = k < 1 ? 7 : -1;
+      final Rect? r = _localRect(7);
+      _laser = r == null ? null : Offset(r.left + r.width * k, r.center.dy);
+    });
+  }
+
+  /// 上行/下行滚档共用的驱动：给一条「t → 档位」的纯函数，控制器从头播到尾。
+  /// 播完落定终档再触发 [onFinish]（锁 + 特效收尾）；中途 `_gen` 变了就地退出。
+  Future<void> _playRoll({
+    required double total,
+    required int Function(double) indexAt,
+    VoidCallback? onFinish,
+  }) async {
+    final int g = _gen;
+    if (total <= 0) {
+      if (mounted) setState(() => _shownIndex = indexAt(0));
+      onFinish?.call();
+      return;
+    }
+    _rollIndexAt = indexAt;
+    _rollTotal = total;
     _roll
-      ..duration = Duration(milliseconds: tl.total.round())
+      ..duration = Duration(milliseconds: total.round())
       ..addListener(_onRollTick);
     final Completer<void> done = Completer<void>();
-    _roll.forward().then((void _) => done.complete());
+    _roll.forward(from: 0).then((void _) => done.complete());
     await done.future;
+    if (!mounted || g != _gen) return; // 被换单/重刻打断
     _roll.removeListener(_onRollTick);
-    if (!mounted) return;
-    setState(() => _lock = true); // 末级砸下来那一下
-    // 原型 `rankRoll` 收尾：flash（稀有度色）· ≥S 抖一下 · 骰子位置爆一圈
-    widget.onRankFx?.call(tl.target);
+    setState(() => _shownIndex = indexAt(total));
+    onFinish?.call();
   }
 
   void _onRollTick() {
-    final RankRollTimeline? tl = _rollTl;
-    if (tl == null) return;
-    final int i = tl.indexAt(_roll.value * tl.total);
+    final int Function(double)? at = _rollIndexAt;
+    if (at == null) return;
+    final int i = at(_roll.value * _rollTotal);
     if (i != _shownIndex) setState(() => _shownIndex = i);
   }
 
   Future<void> _engrave() async {
+    final int g = _gen;
     final EngraveTimeline tl = EngraveTimeline(_engLengths);
     _engTl = tl;
     if (tl.total <= 0) return;
@@ -205,7 +338,7 @@ class _PlateState extends State<Plate> with TickerProviderStateMixin {
     });
     // 位置要等一帧布局完才量得到
     await Future<void>.delayed(const Duration(milliseconds: 16));
-    if (!mounted) return;
+    if (!mounted || g != _gen) return;
     _eng
       ..duration = Duration(milliseconds: tl.total.round())
       ..addListener(_onEngTick);
@@ -213,7 +346,7 @@ class _PlateState extends State<Plate> with TickerProviderStateMixin {
     _eng.forward().then((void _) => done.complete());
     await done.future;
     _eng.removeListener(_onEngTick);
-    if (!mounted) return;
+    if (!mounted || g != _gen) return;
     setState(() {
       _laser = null;
       _printOpacity = 1; // 刻完指纹才能按（原型 `.4s` 过渡）
@@ -319,6 +452,8 @@ class _PlateState extends State<Plate> with TickerProviderStateMixin {
           reveal: PlateReveal(
             shownIndex: _shownIndex,
             lock: _lock,
+            lockToken: _lockToken,
+            rewardToken: _rewardToken,
             engK: _engK,
             printOpacity: _printOpacity,
             laser: _laser,
@@ -338,6 +473,8 @@ class PlateReveal {
   const PlateReveal({
     required this.shownIndex,
     this.lock = false,
+    this.lockToken = 0,
+    this.rewardToken = 0,
     this.engK = const <double>[1, 1, 1, 1, 1, 1, 1, 1],
     this.printOpacity = 1,
     this.laser,
@@ -349,6 +486,13 @@ class PlateReveal {
 
   /// `rankLock` 那一下
   final bool lock;
+
+  /// rankLock 的重播令牌 —— reRank 每次降档都换新值，
+  /// `TweenAnimationBuilder` 换 key 重挂才会再砸一下（原型是摘类再贴回）
+  final int lockToken;
+
+  /// 报酬白闪的重播令牌（原型 `reRank` 的 `brightness(2.5)→none` 600ms）
+  final int rewardToken;
 
   /// 八段刻字各自的进度
   final List<double> engK;
@@ -544,49 +688,65 @@ class _Glass extends StatelessWidget {
               children: <Widget>[
                 _head(),
                 const SizedBox(height: 18),
-                _eng(
-                  2,
-                  Text(
-                    quest.kindLabel,
-                    style: fs(
-                      family: F.mono,
-                      size: 10,
-                      wght: 600,
-                      ls: 2,
-                      height: 1,
-                      color: C.blue,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 10),
-                ConstrainedBox(
-                  constraints: const BoxConstraints(minHeight: 64),
-                  child: Padding(
-                    padding: const EdgeInsets.only(right: 92),
-                    child: _eng(
-                      3,
-                      Text(
-                        quest.name,
-                        style: fs(
-                          family: F.hd,
-                          size: 26,
-                          wght: 400,
-                          ls: .52,
-                          height: 1.22,
-                          color: const Color(0xFFF4FDFF),
-                          shadows: <Shadow>[
-                            Shadow(color: C.blue.withAlpha(89), blurRadius: 18),
-                          ],
+                // t26 视觉目检补的防线：三行标题（+两行附言）的长单会把
+                // 中段撑到 384 盒子外（实测 BOTTOM OVERFLOWED BY 19 PIXELS，
+                // 指纹被顶下板）。中段改为「吃掉余量、不够则可滚」——
+                // 常规单渲染与旧版逐字节一致（滚动量为 0），长单不再破版。
+                Expanded(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        _eng(
+                          2,
+                          Text(
+                            quest.kindLabel,
+                            style: fs(
+                              family: F.mono,
+                              size: 10,
+                              wght: 600,
+                              ls: 2,
+                              height: 1,
+                              color: C.blue,
+                            ),
+                          ),
                         ),
-                      ),
+                        const SizedBox(height: 10),
+                        ConstrainedBox(
+                          constraints: const BoxConstraints(minHeight: 64),
+                          child: Padding(
+                            padding: const EdgeInsets.only(right: 92),
+                            child: _eng(
+                              3,
+                              Text(
+                                quest.name,
+                                style: fs(
+                                  family: F.hd,
+                                  size: 26,
+                                  wght: 400,
+                                  ls: .52,
+                                  height: 1.22,
+                                  color: const Color(0xFFF4FDFF),
+                                  shadows: <Shadow>[
+                                    Shadow(
+                                      color: C.blue.withAlpha(89),
+                                      blurRadius: 18,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        _why(),
+                        const SizedBox(height: 14),
+                        _spec(),
+                      ],
                     ),
                   ),
                 ),
-                const SizedBox(height: 12),
-                _why(),
-                const SizedBox(height: 14),
-                _spec(),
-                const Spacer(), // .pl-print 的 margin-top: auto
                 // `#plPrint` 要刻完字才可点（原型 `opacity = .25` → `1`）
                 Opacity(opacity: reveal.printOpacity, child: _print(rk)),
               ],
@@ -626,6 +786,7 @@ class _Glass extends StatelessWidget {
             quest: quest,
             shownIndex: reveal.shownIndex,
             lock: reveal.lock,
+            lockToken: reveal.lockToken,
           ),
         ),
       ],
@@ -736,25 +897,27 @@ class _Glass extends StatelessWidget {
         const SizedBox(height: 7),
         _eng(
           7,
-          _specRow(
-            '报酬',
-            Text(
-              // t24：报酬行**只能**读 quest.lootText 这一份真源（含补救 ×0.5）。
-              // t15 那版在这里自己拼 `Rewards.expOf/coinOf(rank)`，丢了
-              // `kind == 'remedy' ? .5 : 1` —— 同 E 级补救单两块板显示
-              // `EXP 1 · ◈ 5` / `EXP 0 · ◈ 3`，都与结算真源 `1/3` 不符。
-              // 现在整句文案由 Quest.lootTextOf → Rewards.payout 派生，
-              // 显示与结算同源，第三次复发无处可藏（plate_test 钉死）。
-              quest.lootText,
-              style: fs(
-                family: F.num,
-                size: 13,
-                wght: 700,
-                ls: .39,
-                color: C.blue,
+          _rewardFlash(
+            _specRow(
+              '报酬',
+              Text(
+                // t24：报酬行**只能**读 quest.lootText 这一份真源（含补救 ×0.5）。
+                // t15 那版在这里自己拼 `Rewards.expOf/coinOf(rank)`，丢了
+                // `kind == 'remedy' ? .5 : 1` —— 同 E 级补救单两块板显示
+                // `EXP 1 · ◈ 5` / `EXP 0 · ◈ 3`，都与结算真源 `1/3` 不符。
+                // 现在整句文案由 Quest.lootTextOf → Rewards.payout 派生，
+                // 显示与结算同源，第三次复发无处可藏（plate_test 钉死）。
+                quest.lootText,
+                style: fs(
+                  family: F.num,
+                  size: 13,
+                  wght: 700,
+                  ls: .39,
+                  color: C.blue,
+                ),
               ),
+              dt,
             ),
-            dt,
           ),
         ),
       ],
@@ -769,6 +932,34 @@ class _Glass extends StatelessWidget {
         SizedBox(width: 34, child: Text(label, style: dtStyle)),
         const SizedBox(width: 12),
         value,
+      ],
+    );
+  }
+
+  /// 报酬行的重刻白闪（原型 `reRank` 的
+  /// `rw.animate([{filter:'brightness(2.5)'},{filter:'none'}], 600)`，
+  /// 近似成一帧 55% 白罩 600ms ease-out 收没）。`rewardToken == 0` 时
+  /// （开局仪式 / 静态比对）零包裹，渲染树与旧版逐字节一致。
+  Widget _rewardFlash(Widget child) {
+    if (reveal.rewardToken == 0) return child;
+    return Stack(
+      children: <Widget>[
+        child,
+        Positioned.fill(
+          child: IgnorePointer(
+            child: TweenAnimationBuilder<double>(
+              key: ValueKey<int>(reveal.rewardToken),
+              tween: Tween<double>(begin: .55, end: 0),
+              duration: const Duration(milliseconds: 600),
+              curve: Curves.easeOut,
+              builder: (BuildContext _, double k, Widget? grandChild) =>
+                  k <= 0 ? const SizedBox.shrink() : ColoredBox(
+                    color: Colors.white.withAlpha((k * 255).round()),
+                    child: grandChild,
+                  ),
+            ),
+          ),
+        ),
       ],
     );
   }
@@ -896,6 +1087,7 @@ class _Rank extends StatelessWidget {
     required this.quest,
     required this.shownIndex,
     this.lock = false,
+    this.lockToken = 0,
   });
 
   final Quest quest;
@@ -905,6 +1097,9 @@ class _Rank extends StatelessWidget {
 
   /// `rankLock` 那一下（末档砸下来）
   final bool lock;
+
+  /// 重播令牌（reRank 每次降档 +1）
+  final int lockToken;
 
   @override
   Widget build(BuildContext context) {
@@ -945,7 +1140,9 @@ class _Rank extends StatelessWidget {
       children: <Widget>[
         if (lock)
           TweenAnimationBuilder<double>(
-            key: const Key('plate.lock'),
+            // 换 token 重挂 → reRank 的每次降档都重播「1.9 砸回 1」
+            // （原型 `L.classList.remove('lock'); void L.offsetWidth; L.classList.add('lock')`）
+            key: Key('plate.lock.$lockToken'),
             tween: Tween<double>(begin: 1.9, end: 1),
             duration: const Duration(milliseconds: 600),
             curve: Curves.easeOutBack,
@@ -1147,6 +1344,34 @@ class _FingerprintPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant _FingerprintPainter old) =>
       old.progress != progress;
+}
+
+/// 下行滚档时间线 —— 原型 `rankRoll` 的 `down` 分支：
+///
+/// ```js
+/// for (let i = from; i >= target; i--) { set(i); if (i > target) await sleep(140); }
+/// ```
+///
+/// 每档停留按 MOTION-ANALYSIS P1-3 的规格收敛为 **90ms**
+/// （三档下行 ≈270ms，即验收口径「换单 270ms 下行滚档」；真实业务一次降一档）。
+/// 与 [RankRollTimeline] 同约定：给时刻 t，算该显示第几档。
+class _ReRankRoll {
+  _ReRankRoll({required this.from, required this.target});
+
+  /// 下行每档停留（ms）
+  static const double stepMs = 90;
+
+  /// 起始档（旧档）
+  final int from;
+
+  /// 目标档（新档，必须 ≤ from）
+  final int target;
+
+  /// 整段滚完要多久（末档落地不再等）
+  double get total => from > target ? stepMs * (from - target) : 0;
+
+  /// `t` 时刻应该显示第几档（0 基）
+  int indexAt(double t) => math.max(target, from - (t / stepMs).floor());
 }
 
 /// #plateAlt —— 板子下面那两个「宿主 · …」按钮（app.css L299-303）

@@ -6,6 +6,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import '../data/titles.dart';
 import '../design/tokens.dart';
 import '../state/host_state.dart';
+import 'fx_layer.dart';
 import 'sys_icons.dart';
 
 /// ═══════════════════════════════════════════════════════════
@@ -13,8 +14,13 @@ import 'sys_icons.dart';
 ///  等级环 + 名字/称号/连击 + 金币 + 菜单。
 ///  实测盒模型（390×844）：hud [0,0,390,74] · lv [16,23,46,46]
 ///  · name [72,22,179,17] · coin [261,31,69,30] · menu [340,29,34,34]
+///
+///  t26/P2 · 跨级白闪：结算出账升级的那拍 HUD 被结算页压住（visible=false），
+///  回大厅（visible 翻真）时等级环播一遍 AGENTS.md「经验条上涨」的跨级编排——
+///  涨满 360ms → 白闪 16%/180ms + 换级数 → 归零 → 再涨到余额 420ms。
+///  相位函数 [hudLevelFx] 是纯函数，fx_test 钉死。
 /// ═══════════════════════════════════════════════════════════
-class Hud extends StatelessWidget {
+class Hud extends StatefulWidget {
   const Hud({super.key, required this.state, this.visible = true, this.onMenu});
 
   /// 点右上角那三根横杠（原型没有承载物，这里接「系统」面板）
@@ -26,6 +32,106 @@ class Hud extends StatelessWidget {
   final bool visible;
 
   @override
+  State<Hud> createState() => _HudState();
+}
+
+/// 跨级编排的分段时长（ms）—— AGENTS.md「动效参数 · 经验条上涨」逐条对齐
+const double kLvRiseMs = 360; // 涨满
+const double kLvFlashMs = 180; // 白闪（亮帧同源：16% / 180ms）
+const double kLvSecondMs = 420; // 归零后再涨到余额
+const double kLvTotalMs = kLvRiseMs + kLvSecondMs;
+
+/// 跨级编排的相位函数（纯函数，可单测）：给时刻 `t`（0~`kLvTotalMs`），
+/// 算等级环此刻该显示成什么样。
+///
+///  · `t < 360`：旧环比往满环涨（easeOutCubic），级数还是旧级；
+///  · `t = 360`：白闪起（峰值 16%，180ms ease-out 衰减）+ 级数切到新级
+///    （数字 1.3→1 弹一下）+ 环归零；
+///  · `t ∈ (360, 780]`：从 0 涨到新档余额（easeOutCubic，420ms）。
+({int lv, double ratio, double flash, double pop}) hudLevelFx({
+  required double t,
+  required int fromLv,
+  required int toLv,
+  required double fromRatio,
+  required double toRatio,
+}) {
+  if (t <= 0) {
+    return (lv: fromLv, ratio: fromRatio, flash: 0, pop: 1);
+  }
+  if (t < kLvRiseMs) {
+    final double k = Curves.easeOutCubic.transform((t / kLvRiseMs).clamp(0.0, 1.0));
+    return (lv: fromLv, ratio: fromRatio + (1 - fromRatio) * k, flash: 0, pop: 1);
+  }
+  final double ft = ((t - kLvRiseMs) / kLvFlashMs).clamp(0.0, 1.0);
+  final double flash = .16 * (1 - Curves.easeOut.transform(ft));
+  final double pop = 1 + .3 * (1 - Curves.easeOut.transform(ft));
+  final double k = Curves.easeOutCubic.transform(
+    ((t - kLvRiseMs) / kLvSecondMs).clamp(0.0, 1.0),
+  );
+  return (lv: toLv, ratio: toRatio * k, flash: flash, pop: pop);
+}
+
+class _HudState extends State<Hud> with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+    vsync: this,
+    duration: Duration(milliseconds: kLvTotalMs.round()),
+  );
+
+  /// 已经"见过"的等级 / 环比（跨级编排的起点）
+  int _seenLv = 0;
+  double _lastRatio = 0;
+
+  /// 升级发生在后台（结算页压着 HUD）时攒一拍，回到大厅再播
+  bool _pending = false;
+
+  /// 编排参数（开播时定格）
+  int _fromLv = 0;
+  double _fromRatio = 0;
+  double _toRatio = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _seenLv = widget.state.lv;
+    _lastRatio = widget.state.expRatio;
+  }
+
+  @override
+  void didUpdateWidget(covariant Hud old) {
+    super.didUpdateWidget(old);
+    final int lv = widget.state.lv;
+    final double ratio = widget.state.expRatio;
+    if (lv > _seenLv && _seenLv > 0) {
+      // 跨级：记下旧环比 → 新环比；HUD 在前台就当场播，被压住就攒着
+      _fromLv = _seenLv;
+      _fromRatio = _lastRatio;
+      _toRatio = ratio;
+      _pending = true;
+      if (widget.visible) _play();
+    } else if (lv < _seenLv) {
+      // 回档 / 清档：直接吸附，不播
+      _pending = false;
+      if (_c.isAnimating) _c.stop();
+      _lastRatio = ratio;
+    } else if (!_c.isAnimating) {
+      _lastRatio = ratio;
+    }
+    _seenLv = lv;
+    if (!old.visible && widget.visible && _pending) _play();
+  }
+
+  void _play() {
+    _pending = false;
+    _c.forward(from: 0);
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Positioned(
       left: 0,
@@ -34,25 +140,50 @@ class Hud extends StatelessWidget {
       height: 74,
       // 收起来时同时断掉命中，别替下面的东西挨点
       child: IgnorePointer(
-        ignoring: !visible,
+        ignoring: !widget.visible,
         child: AnimatedSlide(
-          offset: visible ? Offset.zero : const Offset(0, -1.10),
+          offset: widget.visible ? Offset.zero : const Offset(0, -1.10),
           duration: const Duration(milliseconds: 500),
           curve: kOut,
           child: AnimatedOpacity(
-            opacity: visible ? 1 : 0,
+            opacity: widget.visible ? 1 : 0,
             duration: const Duration(milliseconds: 400),
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 18, 16, 0),
               child: Row(
                 children: <Widget>[
-                  _LvRing(lv: state.lv, ratio: state.expRatio),
+                  AnimatedBuilder(
+                    animation: _c,
+                    builder: (BuildContext _, Widget? _) {
+                      if (!_c.isAnimating) {
+                        // 静态（含首挂）：与旧版逐字节一致
+                        return _LvRing(
+                          lv: widget.state.lv,
+                          ratio: widget.state.expRatio,
+                        );
+                      }
+                      final ({int lv, double ratio, double flash, double pop})
+                      s = hudLevelFx(
+                        t: _c.value * kLvTotalMs,
+                        fromLv: _fromLv,
+                        toLv: widget.state.lv,
+                        fromRatio: _fromRatio,
+                        toRatio: _toRatio,
+                      );
+                      return _LvRing(
+                        lv: s.lv,
+                        ratio: s.ratio,
+                        flash: s.flash,
+                        pop: s.pop,
+                      );
+                    },
+                  ),
                   const SizedBox(width: 10), // #hud gap
-                  Expanded(child: _Who(state: state)),
+                  Expanded(child: _Who(state: widget.state)),
                   const SizedBox(width: 10),
-                  _Coin(coins: state.coins),
+                  _Coin(coins: widget.state.coins),
                   const SizedBox(width: 10),
-                  _Menu(onTap: onMenu),
+                  _Menu(onTap: widget.onMenu),
                 ],
               ),
             ),
@@ -64,11 +195,20 @@ class Hud extends StatelessWidget {
 }
 
 /// .hud-lv —— 六边等级牌上的经验环（app.css L98-104）
+///
+/// `flash`/`pop` 是跨级白闪那 780ms 里的临时参数（见 [hudLevelFx]）；
+/// 缺省（静态）时渲染与旧版逐字节一致。
 class _LvRing extends StatelessWidget {
-  const _LvRing({required this.lv, required this.ratio});
+  const _LvRing({required this.lv, required this.ratio, this.flash = 0, this.pop = 1});
 
   final int lv;
   final double ratio;
+
+  /// 白闪强度（0~1；1 ≙ 峰值 16% 白）
+  final double flash;
+
+  /// LV 数字的弹跳（1 = 原大）
+  final double pop;
 
   @override
   Widget build(BuildContext context) {
@@ -102,21 +242,33 @@ class _LvRing extends StatelessWidget {
             left: 0,
             right: 0,
             top: 17,
-            child: Text(
-              '$lv',
-              textAlign: TextAlign.center,
-              style: fs(
-                family: F.num,
-                size: 19,
-                wght: 800,
-                height: 1,
-                color: C.ice,
-                shadows: <Shadow>[
-                  Shadow(color: C.blue.withAlpha(153), blurRadius: 10),
-                ],
-              ),
-            ),
+            child: pop == 1
+                ? _lvText()
+                : Transform.scale(scale: pop, child: _lvText()),
           ),
+          // 跨级白闪：环上炸开一朵 16% 白（FlashBloom 与 #flash 同源）
+          if (flash > 0)
+            Positioned.fill(
+              key: const Key('hud.flash'),
+              child: FlashBloom(alpha: flash),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _lvText() {
+    return Text(
+      '$lv',
+      textAlign: TextAlign.center,
+      style: fs(
+        family: F.num,
+        size: 19,
+        wght: 800,
+        height: 1,
+        color: C.ice,
+        shadows: <Shadow>[
+          Shadow(color: C.blue.withAlpha(153), blurRadius: 10),
         ],
       ),
     );

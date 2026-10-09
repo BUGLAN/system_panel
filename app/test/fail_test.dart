@@ -78,7 +78,9 @@ void main() {
       expect(find.textContaining('认输'), findsNothing);
     });
 
-    testWidgets('记录行与补救单落在实测坐标上', (WidgetTester tester) async {
+    testWidgets('记录行与补救单收进「失败卡」背板（t26/TODO-14）', (
+      WidgetTester tester,
+    ) async {
       await _mount(
         tester,
         const FailLayer(
@@ -87,14 +89,45 @@ void main() {
           animate: false,
         ),
       );
+      // 失败卡：left/right 20 · bottom 182（回应按钮上方）· ≤62% 屏高钳制
+      final Rect card = tester.getRect(find.byKey(const Key('fail.card')));
+      expect(card.left, 20);
+      expect(card.right, 370);
+      expect(card.bottom, closeTo(662, .5)); // 844 - 182
+      final ConstrainedBox cb = tester.widget<ConstrainedBox>(
+        find
+            .ancestor(
+              of: find.byKey(const Key('fail.card')),
+              matching: find.byType(ConstrainedBox),
+            )
+            .first,
+      );
+      // 62% 屏高钳制（h 与实现同源：测试里 setSurfaceSize 不改 view 尺寸，
+      // MediaQuery 还是 800×600，所以不能写死 844×.62）
+      final double h =
+          MediaQuery.sizeOf(tester.element(find.byKey(const Key('fail.card'))))
+              .height;
+      expect(cb.constraints.maxHeight, closeTo(h * .62, .5));
+      // 背板 = rgba(2,6,14,.78) 圆角 12 + 1px line2 描边（与结算卡同款语言）
+      // —— 背板装饰就挂在 fail.card 这个 DecoratedBox 上
+      final DecoratedBox board = tester.widget<DecoratedBox>(
+        find.byKey(const Key('fail.card')),
+      );
+      final BoxDecoration d = board.decoration as BoxDecoration;
+      expect(d.color, const Color(0xC702060E));
+      expect(d.border!.top.width, 1);
+      expect(d.borderRadius, BorderRadius.circular(12));
+      // 记录行在背板上（不再悬在 top:84 压头发），青色抬头
       final Rect rec = tester.getRect(find.byKey(const Key('fail.rec')));
-      expect(rec.left, 0);
-      expect(rec.right, 390);
-      expect(rec.top, 84);
+      expect(rec.top, greaterThan(card.top));
+      expect(rec.left, greaterThan(card.left));
+      // 补救单也在卡内，不越过背板
       final Rect remedy = tester.getRect(find.byKey(const Key('fail.remedy')));
-      expect(remedy.left, 24);
-      expect(remedy.right, 366);
-      expect(remedy.bottom, closeTo(666, .5)); // bottom 178
+      expect(remedy.left, greaterThan(card.left));
+      expect(remedy.right, lessThan(card.right));
+      expect(remedy.bottom, lessThanOrEqualTo(card.bottom + .5));
+      // 「不被角色遮挡」的最后保障：背板 78% 不透明（α≈199/255）
+      expect(d.color!.a, greaterThan(.75));
     });
 
     testWidgets('没有补救单时只有记录行', (WidgetTester tester) async {

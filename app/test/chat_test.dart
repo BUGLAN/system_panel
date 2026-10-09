@@ -259,7 +259,10 @@ void main() {
         thinking: true,
       );
       expect(find.byKey(const Key('chat.thinking')), findsOneWidget);
-      expect(find.text('思考中…'), findsOneWidget);
+      // t26/P2-3：静态「思考中…」换成「思考中」+ 三点呼吸（600ms 循环、
+      // 相位差 200ms，参数钉在 fx_test）。chat_test 不在本卡 inScope，
+      // 这里只随文案口径改这一个字（越界但必要，照 t24 惯例申报）。
+      expect(find.text('思考中'), findsOneWidget);
     });
 
     testWidgets('收起时断命中（IgnorePointer）', (WidgetTester tester) async {

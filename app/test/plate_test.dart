@@ -400,4 +400,144 @@ void main() {
       expect(q.attrs, <String, int>{'体': 1, '力': 1});
     });
   });
+
+  // ── reRank 换档演出（t26/TODO-12）─────────────────────────
+  //
+  // 原型 `ui.js Plate.reRank(T, from)`：退缩时字母往下掉一档、报酬重刻。
+  // Flutter 侧原先只在 serial 变化时重播仪式 —— 同一张单降档是**静态跳变**，
+  // 玩家感知不到「她把这张单刻薄了」（MOTION-ANALYSIS P1-3）。
+  // 下行滚档每档 90ms（三档 = 270ms，即验收口径「换单 270ms 下行滚档」），
+  // 滚完复用 rankLock（换 token 重挂重播）+ onRankFx 收尾，再单独重刻报酬行。
+  group('reRank 换档演出（t26/TODO-12）', () {
+    Quest mk(String rank, {int serial = 41}) => Quest(
+      serial: serial,
+      kind: 'daily',
+      ring: -1,
+      ringTotal: 0,
+      name: 'x',
+      reason: '',
+      proof: 'y',
+      minutes: 10,
+      rank: rank,
+      attrs: const <String, int>{'体': 1, '力': 1},
+    );
+
+    Widget host(Quest q, {void Function(int)? onRankFx}) => MaterialApp(
+      home: Scaffold(
+        body: Stack(
+          children: <Widget>[Plate(quest: q, host: HostState.demo, onRankFx: onRankFx)],
+        ),
+      ),
+    );
+
+    /// 把开局仪式播完，落到终态。
+    ///
+    /// ⚠️ 滚档完成以 [rankFxSeen]（onRankFx 是否已开火）为准：
+    /// `Future.delayed` 链在 FakeAsync 下起滚时刻有漂移，固定拍会截停在
+    /// 仪式中途，把「换一个」的下行滚档跟残局搅在一起（实测踩过）。
+    Future<void> playCeremony(WidgetTester tester, bool Function() rankFxSeen) async {
+      await tester.pump(const Duration(milliseconds: 560)); // 落板
+      await tester.pump(const Duration(milliseconds: 590)); // land 后的 resolve 停顿
+      for (int i = 0; i < 60 && !rankFxSeen(); i++) {
+        await tester.pump(const Duration(milliseconds: 50)); // 等滚档落定
+      }
+      await tester.pump(const Duration(milliseconds: 3200)); // 刻字播完
+      await tester.pump();
+    }
+
+    testWidgets('同单降档：下行滚档替代静态跳变（90ms/档 + rankLock 重播）', (
+      WidgetTester tester,
+    ) async {
+      int? fx;
+      await _mount(tester, host(mk('C'), onRankFx: (int i) => fx = i));
+      await playCeremony(tester, () => fx != null);
+      expect(find.text('C'), findsOneWidget);
+      expect(fx, 3); // 开局仪式照常收尾
+      expect(find.textContaining('EXP 4 · ◈ 5'), findsOneWidget);
+
+      // 「换一个」：C → D（同 serial，降一档）
+      await _mount(tester, host(mk('D'), onRankFx: (int i) => fx = i));
+      await tester.pump(); // t=0：下行起点 = 旧档
+      expect(find.text('C'), findsOneWidget);
+      await tester.pump(const Duration(milliseconds: 40)); // 90ms 内还挂在 C
+      expect(find.text('C'), findsOneWidget);
+      await tester.pump(const Duration(milliseconds: 60)); // t=100 ≥ 90
+      expect(find.text('D'), findsOneWidget); // 落到新档
+      expect(fx, 2); // onRankFx 照常收尾（原型 rankRoll 的尾巴对 down 同样生效）
+      expect(find.byKey(const Key('plate.lock.1')), findsOneWidget); // 锁重播
+      expect(find.byKey(const Key('plate.lock.0')), findsNothing);
+
+      // 报酬行重刻：激光照走一遍 + 600ms 白闪收敛，最后落在新档文案上
+      await tester.pump(const Duration(milliseconds: 16));
+      await tester.pump(const Duration(milliseconds: 60));
+      expect(find.byKey(const Key('plate.laser')), findsOneWidget); // 重刻中
+      await tester.pump(const Duration(milliseconds: 700));
+      expect(find.byKey(const Key('plate.laser')), findsNothing);
+      // D 档战利品（Rewards：D = EXP 2 / ◈ 5）
+      expect(find.textContaining('EXP 2 · ◈ 5'), findsOneWidget);
+    });
+
+    testWidgets('三档下行恰好 270ms：C→F 逐档可见（验收口径的钉子）', (
+      WidgetTester tester,
+    ) async {
+      int? fx;
+      await _mount(tester, host(mk('C'), onRankFx: (int i) => fx = i));
+      await playCeremony(tester, () => fx != null);
+      fx = null; // 清掉开局那发，只看降档这一发
+      await _mount(tester, host(mk('F'), onRankFx: (int i) => fx = i));
+      await tester.pump(const Duration(milliseconds: 45)); // [0,90) C
+      expect(find.text('C'), findsOneWidget);
+      await tester.pump(const Duration(milliseconds: 50)); // [90,180) D
+      expect(find.text('D'), findsOneWidget);
+      await tester.pump(const Duration(milliseconds: 85)); // [180,270) E
+      expect(find.text('E'), findsOneWidget);
+      await tester.pump(const Duration(milliseconds: 90)); // t=270 落 F
+      expect(find.text('F'), findsOneWidget);
+      // 恰好压线完成的 onFinish 随下一帧落地（零拍 pump 冲不动它，实测踩过）
+      await tester.pump(const Duration(milliseconds: 16));
+      expect(fx, 0);
+      expect(find.byKey(const Key('plate.lock.1')), findsOneWidget);
+      await tester.pump(const Duration(milliseconds: 800));
+      expect(find.textContaining('EXP 0 · ◈ 3'), findsOneWidget); // F 档战利品
+    });
+
+    testWidgets('静态比对（animateLand:false）降档：直接落终态，不播仪式', (
+      WidgetTester tester,
+    ) async {
+      Widget staticHost(Quest q) => MaterialApp(
+        home: Scaffold(
+          body: Stack(
+            children: <Widget>[Plate(quest: q, host: HostState.demo, animateLand: false)],
+          ),
+        ),
+      );
+      await _mount(tester, staticHost(mk('C')));
+      expect(find.text('C'), findsOneWidget);
+      await _mount(tester, staticHost(mk('F')));
+      await tester.pump();
+      expect(find.text('F'), findsOneWidget); // 立即终态
+      expect(find.byKey(const Key('plate.lock.1')), findsOneWidget);
+      expect(find.textContaining('EXP 0 · ◈ 3'), findsOneWidget);
+    });
+
+    testWidgets('F 级「换一个」是换一张（serial 变）→ 原样重刻一块，无锁', (
+      WidgetTester tester,
+    ) async {
+      Widget staticHost(Quest q) => MaterialApp(
+        home: Scaffold(
+          body: Stack(
+            children: <Widget>[Plate(quest: q, host: HostState.demo, animateLand: false)],
+          ),
+        ),
+      );
+      await _mount(tester, staticHost(mk('C')));
+      await _mount(tester, staticHost(mk('E', serial: 42)));
+      await tester.pump();
+      expect(find.text('E'), findsOneWidget);
+      expect(find.text('№ 0042'), findsOneWidget); // 新单号
+      expect(find.textContaining('EXP 1 · ◈ 5'), findsOneWidget);
+      // 换单走 _start（静态不挂锁），只有 reRank 才有 rankLock 重播
+      expect(find.byKey(const Key('plate.lock.1')), findsNothing);
+    });
+  });
 }
