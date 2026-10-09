@@ -8,6 +8,7 @@ import 'package:system_panel/agent/settings_store.dart';
 import 'package:system_panel/data/items.dart';
 import 'package:system_panel/data/titles.dart';
 import 'package:system_panel/state/host_state.dart';
+import 'package:system_panel/state/quest_flow.dart';
 import 'package:system_panel/widgets/radar.dart';
 import 'package:system_panel/widgets/sheet.dart';
 
@@ -484,6 +485,102 @@ void main() {
       );
       expect(find.text('金币 ◈ 310 · 只能花在这'), findsOneWidget); // 340 - 30
       expect(find.textContaining('持有 ×3'), findsOneWidget); // swap 2 → 3
+    });
+  });
+
+  group('回顾（A6 · t21）', () {
+    HistoryEntry entry(
+      DateTime at, {
+      String rank = 'E',
+      String result = 'clear',
+      int exp = 1,
+      int coin = 5,
+      Map<String, int> attrs = const <String, int>{'体': 1},
+    }) => HistoryEntry(
+          at: at,
+          name: '测试单 $rank',
+          rank: rank,
+          kind: 'daily',
+          exp: exp,
+          coin: coin,
+          streak: 1,
+          result: result,
+          attrs: attrs,
+        );
+
+    testWidgets('档案页有「本周回顾」入口，点开回顾 pane（空态不裸奔）', (
+      WidgetTester tester,
+    ) async {
+      _mockPrefs();
+      await _mount(tester, const Sheet(host: HostState.demo));
+      expect(find.byKey(const Key('sheet.reviewEntry')), findsOneWidget);
+      // 入口在档案内容最底部（道具段之后），先滚到可见再点
+      // （sheet.body 是页面里唯一的滚动容器，取它内部的 Scrollable）
+      await tester.scrollUntilVisible(
+        find.byKey(const Key('sheet.reviewEntry')),
+        160.0,
+        scrollable: find
+            .descendant(
+              of: find.byKey(const Key('sheet.body')),
+              matching: find.byType(Scrollable),
+            )
+            .first,
+      );
+      await tester.tap(find.byKey(const Key('sheet.reviewEntry')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('sheet.review')), findsOneWidget);
+      expect(find.byKey(const Key('stats.pane')), findsOneWidget);
+      // 空态：概览照显 + 一句开场，不裸奔
+      expect(find.byKey(const Key('stats.overview')), findsOneWidget);
+      expect(find.text('还没战绩。第一单就从今天开始。'), findsOneWidget);
+      // 返回档案
+      await tester.tap(find.byKey(const Key('sheet.reviewBack')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('sheet.reviewEntry')), findsOneWidget);
+    });
+
+    testWidgets('有数据态：概览读数 + 六维行 + 战绩列表（稀有度色标）', (
+      WidgetTester tester,
+    ) async {
+      final DateTime now = DateTime.now();
+      _mockPrefs(<String, Object>{
+        HistoryLog.key: jsonEncode(<Map<String, dynamic>>[
+          entry(now.subtract(const Duration(hours: 2))).toJson(),
+          entry(
+            now.subtract(const Duration(hours: 5)),
+            rank: 'C',
+            result: 'quit',
+            exp: 0,
+            coin: 0,
+            attrs: const <String, int>{}, // 认输不出账
+          ).toJson(),
+        ]),
+      });
+      await _mount(tester, const Sheet(host: HostState.demo));
+      // 先证 seed 本身可读（排除平台 mock 层问题）
+      expect((await HistoryLog().entries()).length, 2);
+      await tester.scrollUntilVisible(
+        find.byKey(const Key('sheet.reviewEntry')),
+        160.0,
+        scrollable: find
+            .descendant(
+              of: find.byKey(const Key('sheet.body')),
+              matching: find.byType(Scrollable),
+            )
+            .first,
+      );
+      await tester.tap(find.byKey(const Key('sheet.reviewEntry')));
+      await tester.pumpAndSettle();
+      // 概览：本周 1 完成 / EXP 1 / 金币 5 / 连击 1
+      expect(find.text('1'), findsWidgets);
+      expect(find.text('5'), findsWidgets);
+      // 六维 6 行都在
+      expect(find.byKey(const Key('stats.attrs')), findsOneWidget);
+      // 战绩：两条 + 认输结果标记 + 稀有度色标
+      expect(find.byKey(const Key('stats.recent')), findsOneWidget);
+      expect(find.textContaining('CLEAR'), findsOneWidget);
+      expect(find.textContaining('认输'), findsOneWidget);
+      expect(find.textContaining('测试单 C'), findsOneWidget);
     });
   });
 }

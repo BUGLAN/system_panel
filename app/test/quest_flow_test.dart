@@ -2,6 +2,8 @@ import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences_platform_interface/in_memory_shared_preferences_async.dart';
+import 'package:shared_preferences_platform_interface/shared_preferences_async_platform_interface.dart';
 import 'package:system_panel/agent/vision.dart';
 import 'package:system_panel/data/rarity.dart';
 import 'package:system_panel/state/goal.dart';
@@ -101,7 +103,12 @@ void main() {
       q.attrs.values.fold<int>(0, (int s, int v) => s + v);
 
   /// 干净宿主（lv1 exp0、三件执行道具各 1），时间钉死，随机源钉死
-  QuestFlow freshFlow({HostState? host, Goal? goal, List<Quest>? queue}) {
+  QuestFlow freshFlow({
+    HostState? host,
+    Goal? goal,
+    List<Quest>? queue,
+    HistoryLog? historyLog,
+  }) {
     final QuestFlow f = QuestFlow(
       host:
           host ??
@@ -112,6 +119,7 @@ void main() {
       queue: queue,
       serial: 1000,
       rnd: math.Random(7),
+      historyLog: historyLog,
     );
     return f;
   }
@@ -966,6 +974,63 @@ void main() {
         f.critChance(),
         closeTo(f.critBase() + evidenceCritBonus(verified: 3, unverified: 0), 1e-9),
       );
+    });
+  });
+
+  group('A6 执行历史（opus-v2/history/v1）', () {
+    setUp(() {
+      SharedPreferencesAsyncPlatform.instance =
+          InMemorySharedPreferencesAsync.withData(<String, Object>{});
+    });
+
+    // settle/fail 的 append 是 fire-and-forget（不阻塞结算演出）——
+    // 测试里给它一拍把 microtask/写盘跑完再读
+    Future<void> flush() => Future<void>.delayed(const Duration(milliseconds: 20));
+
+    test('settle 追加一条 clear：出账/档位/连击/六维入档', () async {
+      final HistoryLog log = HistoryLog();
+      final QuestFlow f = freshFlow(queue: <Quest>[eQuest], historyLog: log);
+      settleOf(f, eQuest, start: DateTime(2026, 3, 1, 10));
+      await flush();
+      final List<HistoryEntry> all = await log.entries();
+      expect(all, hasLength(1));
+      final HistoryEntry e = all.single;
+      expect(e.result, 'clear');
+      expect(e.name, '出门走 3000 步');
+      expect(e.rank, 'E');
+      expect(e.kind, 'daily');
+      expect(e.exp, 1); // E 级非暴击 = +1
+      expect(e.coin, 5);
+      expect(e.streak, 1); // 首单连击记 1
+      expect(e.attrs, <String, int>{'体': 1});
+    });
+
+    test('认输 → quit（exp/coin 0）；超时 → timeout', () async {
+      final HistoryLog log = HistoryLog();
+      final QuestFlow f = freshFlow(queue: <Quest>[eQuest], historyLog: log);
+      f.accept(eQuest, now: DateTime(2026, 3, 1, 10));
+      f.fail(now: DateTime(2026, 3, 1, 11), how: 'quit');
+      final QuestFlow f2 = freshFlow(queue: <Quest>[dQuest], historyLog: log);
+      f2.accept(dQuest, now: DateTime(2026, 3, 2, 10));
+      f2.fail(now: DateTime(2026, 3, 2, 11), how: 'timeout');
+      await flush();
+      final List<HistoryEntry> all = await log.entries();
+      expect(all, hasLength(2));
+      expect(all[0].result, 'quit');
+      expect(all[0].exp, 0);
+      expect(all[0].coin, 0);
+      expect(all[1].result, 'timeout');
+    });
+
+    test('补救单也入档（redeemed 单 kind=remedy 原样记录）', () async {
+      final HistoryLog log = HistoryLog();
+      final QuestFlow f = freshFlow(queue: <Quest>[dRemedy], historyLog: log);
+      settleOf(f, dRemedy, start: DateTime(2026, 3, 1, 10));
+      await flush();
+      final List<HistoryEntry> all = await log.entries();
+      expect(all.single.kind, 'remedy');
+      expect(all.single.exp, 1); // D 级补救半价 = 1
+      expect(all.single.coin, 3);
     });
   });
 }

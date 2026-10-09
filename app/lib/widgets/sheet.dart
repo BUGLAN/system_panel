@@ -16,6 +16,7 @@ import '../design/tokens.dart';
 import '../state/host_state.dart';
 import '../state/settings.dart';
 import 'radar.dart';
+import 'stats_pane.dart';
 import 'sys_icons.dart';
 
 /// ═══════════════════════════════════════════════════════════
@@ -225,22 +226,61 @@ class Sheet extends StatelessWidget {
 
   /// ── 档案 ──────────────────────────────────────────────
   Widget _archive() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: <Widget>[
-        _arTop(),
-        _section(
-          '六维 · 平方根刻度',
-          // `.radar { width:100%; max-width:300px; margin:4px auto 0 }` —— 要居中，
-          // 不能让它被 Column 的 stretch 拉满
-          Center(
-            child: Radar(attrs: host.attrs, weakKey: host.weakest.key),
+    return _ArchiveSwitch(
+      host: host,
+      profileBuilder: (VoidCallback openReview) => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          _arTop(),
+          _section(
+            '六维 · 平方根刻度',
+            // `.radar { width:100%; max-width:300px; margin:4px auto 0 }` —— 要居中，
+            // 不能让它被 Column 的 stretch 拉满
+            Center(
+              child: Radar(attrs: host.attrs, weakKey: host.weakest.key),
+            ),
           ),
+          _section('战绩', _stats()),
+          _section('称号 · 点一下挂上', _titlesGrid()),
+          _section('道具', _inv()),
+          _section('数据 · 本周回顾', _reviewEntry(openReview)),
+        ],
+      ),
+    );
+  }
+
+  /// 回顾入口（A6）：档案 loot 格语言的一行，点进 StatsPane
+  Widget _reviewEntry(VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        key: const Key('sheet.reviewEntry'),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+        decoration: BoxDecoration(
+          color: C.blue.withAlpha(10), // rgba(56,225,255,.04)（道具格同款）
+          borderRadius: BorderRadius.circular(10),
         ),
-        _section('战绩', _stats()),
-        _section('称号 · 点一下挂上', _titlesGrid()),
-        _section('道具', _inv()),
-      ],
+        child: Row(
+          children: <Widget>[
+            Text(
+              '本周战绩与六维走势',
+              style: fs(
+                family: F.cn,
+                size: 12.5,
+                wght: 400,
+                height: 1,
+                color: C.ice,
+              ),
+            ),
+            const Spacer(),
+            Text(
+              '›',
+              style: fs(family: F.mono, size: 14, wght: 500, height: 1, color: C.mist),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -1273,7 +1313,110 @@ class _SystemPaneState extends State<_SystemPane> {
   }
 }
 
-enum SheetKind { archive, supply, system }/// `#beam` —— 从她胸口打到面板上沿的两条边 + 一个渐变三角
+/// 档案页内部的「档案 ↔ 回顾」切换（A6 · t21）：
+/// 入口在档案段尾（_reviewEntry），回顾由 [StatsPane] 呈现。
+/// 用内部状态而非 SheetKind，main.dart 的装配零改动。
+class _ArchiveSwitch extends StatefulWidget {
+  const _ArchiveSwitch({required this.host, required this.profileBuilder});
+
+  final HostState host;
+
+  /// 档案内容（openReview 由本组件提供：点入口切到回顾）
+  final Widget Function(VoidCallback openReview) profileBuilder;
+
+  @override
+  State<_ArchiveSwitch> createState() => _ArchiveSwitchState();
+}
+
+class _ArchiveSwitchState extends State<_ArchiveSwitch> {
+  bool _review = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 260),
+      switchInCurve: kOut,
+      switchOutCurve: kOut.flipped,
+      transitionBuilder: (Widget child, Animation<double> a) {
+        final Animation<double> ease = CurvedAnimation(
+          parent: a,
+          curve: Curves.easeOut,
+        );
+        return FadeTransition(
+          opacity: ease,
+          child: SlideTransition(
+            position: Tween<Offset>(
+              begin: const Offset(0, .08),
+              end: Offset.zero,
+            ).animate(ease),
+            child: child,
+          ),
+        );
+      },
+      child: _review
+          ? Column(
+              key: const Key('sheet.review'),
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: <Widget>[
+                // 返回条（与入口同一行语言）
+                GestureDetector(
+                  key: const Key('sheet.reviewBack'),
+                  onTap: () => setState(() => _review = false),
+                  behavior: HitTestBehavior.opaque,
+                  child: Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: Row(
+                      children: <Widget>[
+                        Text(
+                          '‹',
+                          style: fs(
+                            family: F.mono,
+                            size: 14,
+                            wght: 500,
+                            height: 1,
+                            color: C.blue,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          '数据回顾',
+                          style: fs(
+                            family: F.hd,
+                            size: 16,
+                            wght: 400,
+                            ls: .64,
+                            height: 1,
+                            color: C.ice,
+                          ),
+                        ),
+                        const Spacer(),
+                        Text(
+                          '回档案',
+                          style: fs(
+                            family: F.cn,
+                            size: 11,
+                            wght: 400,
+                            height: 1,
+                            color: C.mist,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                StatsPane(attrs: widget.host.attrs),
+              ],
+            )
+          : widget.profileBuilder(
+              () => setState(() => _review = true),
+            ),
+    );
+  }
+}
+
+enum SheetKind { archive, supply, system }
+
+/// `#beam` —— 从她胸口打到面板上沿的两条边 + 一个渐变三角
 class SheetBeam extends StatelessWidget {
   const SheetBeam({super.key, this.visible = true});
 

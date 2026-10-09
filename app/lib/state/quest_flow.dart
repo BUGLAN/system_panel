@@ -1,4 +1,7 @@
+import 'dart:convert';
 import 'dart:math' as math;
+
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../agent/vision.dart' as vision;
 import '../data/attrs.dart';
@@ -127,11 +130,16 @@ class QuestFlow {
     List<Quest>? queue,
     int? serial,
     math.Random? rnd,
+    HistoryLog? historyLog,
   }) : queue = List<Quest>.of(
          queue ?? const <Quest>[],
        ),
        _serial = serial ?? kFirstSerial,
-       _rnd = rnd ?? math.Random();
+       _rnd = rnd ?? math.Random(),
+       historyLog = historyLog ?? HistoryLog();
+
+  /// A6：执行历史（settle/认输追加；独立 key，main.dart 的存档流不用动）
+  final HistoryLog historyLog;
 
   /// 单号从 41 起算 —— 与演示档 Quest.demo 的 № 0041 接上
   static const int kFirstSerial = 41;
@@ -722,6 +730,21 @@ class QuestFlow {
 
     _active = null;
 
+    // A6：写入执行历史（fire-and-forget——写盘失败不阻塞结算演出）
+    historyLog.append(
+      HistoryEntry(
+        at: t0,
+        name: task.name,
+        rank: task.rank,
+        kind: task.kind,
+        exp: exp,
+        coin: coin,
+        streak: host.streak,
+        result: 'clear',
+        attrs: Map<String, int>.of(task.attrs),
+      ),
+    );
+
     return QuestResult(
       quest: task,
       beforeLv: beforeLv,
@@ -809,6 +832,19 @@ class QuestFlow {
     }
     _active = null;
     _syncQueueCount();
+    // A6：认输/超时也入档（exp/coin 记 0——判负不出账），result 区分两者
+    historyLog.append(
+      HistoryEntry(
+        at: t0,
+        name: task.name,
+        rank: task.rank,
+        kind: task.kind,
+        exp: 0,
+        coin: 0,
+        streak: host.streak,
+        result: how == 'timeout' ? 'timeout' : 'quit',
+      ),
+    );
     return FailOutcome(
       task: task,
       held: held,
@@ -954,4 +990,216 @@ class QuestFlow {
 
   static bool _isSameDay(DateTime a, DateTime b) =>
       a.year == b.year && a.month == b.month && a.day == b.day;
+}
+
+/// ═══════════════════════════════════════════════════════════
+///  A6 数据回顾（t21）：事件级执行历史
+///
+///  key = `opus-v2/history/v1` —— **独立 key**（与 memory/chat/settings
+///  同一惯例）：settle/认输由 [QuestFlow] 追加，回顾面板（stats_pane）读，
+///  不经 SaveData（主存档结构不动；新 key 缺省 = 空表，合并迁移天然成立）。
+///  滚动上限 400 条；坏档/读失败 → 空表，永不崩。
+/// ═══════════════════════════════════════════════════════════
+
+/// 一条战绩。result：clear（结算通过）/ quit（认输）/ timeout（超时判负）。
+class HistoryEntry {
+  const HistoryEntry({
+    required this.at,
+    required this.name,
+    required this.rank,
+    required this.kind,
+    required this.exp,
+    required this.coin,
+    required this.streak,
+    required this.result,
+    this.attrs = const <String, int>{},
+  });
+
+  final DateTime at;
+  final String name;
+  final String rank;
+  final String kind;
+
+  /// 结算出账（认输/超时为 0）
+  final int exp;
+  final int coin;
+
+  /// 记账后的连击值
+  final int streak;
+  final String result;
+  final Map<String, int> attrs;
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+    'at': at.toIso8601String(),
+    'name': name,
+    'rank': rank,
+    'kind': kind,
+    'exp': exp,
+    'coin': coin,
+    'streak': streak,
+    'result': result,
+    if (attrs.isNotEmpty) 'attrs': attrs,
+  };
+
+  factory HistoryEntry.fromJson(Map<String, dynamic> j) => HistoryEntry(
+    at: DateTime.tryParse('${j['at'] ?? ''}') ?? DateTime.now(),
+    name: '${j['name'] ?? ''}',
+    rank: '${j['rank'] ?? 'F'}',
+    kind: '${j['kind'] ?? 'daily'}',
+    exp: (j['exp'] as num?)?.toInt() ?? 0,
+    coin: (j['coin'] as num?)?.toInt() ?? 0,
+    streak: (j['streak'] as num?)?.toInt() ?? 0,
+    result: '${j['result'] ?? 'clear'}',
+    attrs: j['attrs'] is Map
+        ? <String, int>{
+            for (final MapEntry<Object?, Object?> e
+                in (j['attrs'] as Map).entries)
+              if (e.value is int) '${e.key}': e.value! as int,
+          }
+        : const <String, int>{},
+  );
+}
+
+class HistoryLog {
+  HistoryLog({SharedPreferencesAsync? prefs}) : _injected = prefs;
+
+  /// 独立 key（docs/18 §2.8 惯例）
+  static const String key = 'opus-v2/history/v1';
+
+  /// 滚动上限（满了删最旧）
+  static const int maxEntries = 400;
+
+  final SharedPreferencesAsync? _injected;
+  SharedPreferencesAsync? _prefs;
+
+  SharedPreferencesAsync get _p =>
+      _prefs ??= _injected ?? SharedPreferencesAsync();
+
+  /// 旧 → 新；坏档回空表
+  Future<List<HistoryEntry>> entries() async {
+    try {
+      final String? raw = await _p.getString(key);
+      if (raw == null || raw.isEmpty) return <HistoryEntry>[];
+      final Object? decoded = jsonDecode(raw);
+      if (decoded is! List) return <HistoryEntry>[];
+      final List<HistoryEntry> out = <HistoryEntry>[
+        for (final Object? e in decoded)
+          if (e is Map) HistoryEntry.fromJson(Map<String, dynamic>.from(e)),
+      ];
+      out.sort((HistoryEntry a, HistoryEntry b) => a.at.compareTo(b.at));
+      return out;
+    } catch (_) {
+      return <HistoryEntry>[];
+    }
+  }
+
+  /// 追加一条 + 滚动 + 落盘。失败不抛（下次写再试）。
+  ///
+  /// 内部**串行队列**：read-modify-write 竞态会让并发 append 互相覆盖
+  /// （连做两单时第二条吞掉第一条），所以同实例的追加排一条 Future 链。
+  Future<void> _tail = Future<void>.value();
+
+  Future<void> append(HistoryEntry e) {
+    final Future<void> next = _tail.then(
+      (_) async {
+        final List<HistoryEntry> all = await entries();
+        all.add(e);
+        if (all.length > maxEntries) {
+          all.removeRange(0, all.length - maxEntries);
+        }
+        try {
+          await _p.setString(
+            key,
+            jsonEncode(<Map<String, dynamic>>[
+              for (final HistoryEntry h in all) h.toJson(),
+            ]),
+          );
+        } catch (_) {}
+      },
+    );
+    _tail = next.catchError((Object _) {});
+    return next;
+  }
+
+  /// 概览聚合（纯函数，UI 与测试共用）。[now] 决定「最近 7 天」窗口。
+  static WeekSummary summarize(List<HistoryEntry> all, DateTime now) {
+    final DateTime today = DateTime(now.year, now.month, now.day);
+    final List<HistoryEntry> week = all
+        .where(
+          (HistoryEntry e) => !DateTime(e.at.year, e.at.month, e.at.day)
+              .isBefore(today.subtract(const Duration(days: 6))),
+        )
+        .toList();
+    final Map<String, int> dayAttrs = <String, int>{
+      for (final String k in Attr.names.keys) k: 0,
+    };
+    final List<Map<String, int>> dayAttrsByDay = List<Map<String, int>>.generate(
+      7,
+      (_) => <String, int>{},
+    );
+    final List<int> dayDone = List<int>.filled(7, 0);
+    int totalExp = 0, totalCoin = 0, bestStreak = 0;
+    for (final HistoryEntry e in week) {
+      totalExp += e.exp;
+      totalCoin += e.coin;
+      bestStreak = math.max(bestStreak, e.streak);
+      final int idx = 6 -
+          today
+              .difference(DateTime(e.at.year, e.at.month, e.at.day))
+              .inDays;
+      if (idx >= 0 && idx < 7) {
+        if (e.result == 'clear') dayDone[idx] += 1;
+        for (final MapEntry<String, int> a in e.attrs.entries) {
+          dayAttrs[a.key] = (dayAttrs[a.key] ?? 0) + a.value;
+          dayAttrsByDay[idx][a.key] =
+              (dayAttrsByDay[idx][a.key] ?? 0) + a.value;
+        }
+      }
+    }
+    final List<HistoryEntry> recent = all.length <= 8
+        ? all.reversed.toList()
+        : all.sublist(all.length - 8).reversed.toList();
+    return WeekSummary(
+      doneCount: week.where((HistoryEntry e) => e.result == 'clear').length,
+      totalExp: totalExp,
+      totalCoin: totalCoin,
+      bestStreak: bestStreak,
+      dayDone: dayDone,
+      dayAttrs: dayAttrs,
+      dayAttrsByDay: dayAttrsByDay,
+      recent: recent,
+    );
+  }
+}
+
+/// 回顾面板的聚合结果（最近 7 天窗口）
+class WeekSummary {
+  const WeekSummary({
+    required this.doneCount,
+    required this.totalExp,
+    required this.totalCoin,
+    required this.bestStreak,
+    required this.dayDone,
+    required this.dayAttrs,
+    required this.dayAttrsByDay,
+    required this.recent,
+  });
+
+  final int doneCount;
+  final int totalExp;
+  final int totalCoin;
+  final int bestStreak;
+
+  /// 7 列完成数（0=6 天前 … 6=今天）
+  final List<int> dayDone;
+
+  /// 7 天窗口内各维增量（总量）
+  final Map<String, int> dayAttrs;
+
+  /// **逐日**各维增量（0=6 天前 … 6=今天；列内 维→增量）——
+  /// 回顾面板的 7 根条每根读自己那一列，别再共用总量
+  final List<Map<String, int>> dayAttrsByDay;
+
+  /// 最近 ≤8 条（新 → 旧）
+  final List<HistoryEntry> recent;
 }
