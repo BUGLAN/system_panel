@@ -1,7 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+
+import 'llm_telemetry.dart';
 
 /// ═══════════════════════════════════════════════════════════
 ///  OpenAI 兼容统一 LLM 客户端（docs/18 §2.4 / §3.1-T4）
@@ -39,6 +42,8 @@ class LlmConfig {
     String? baseUrl,
     this.apiKey = '',
     String? model,
+    this.reasoningEffort = kDefaultReasoningEffort,
+    this.strict = false,
   })  : baseUrl = baseUrl ?? kDefaultBase,
         model = model ?? kDefaultModel;
 
@@ -47,9 +52,21 @@ class LlmConfig {
   /// 宿主钦定的首发模型名（设置页默认值；请求前经 [normalizedModel] 归一）
   static const String kDefaultModel = 'deepseek-v4.1flash';
 
+  /// 推理档位（端点 `/models` 自报支持 low/high/max）。
+  /// **默认 low**：端点是推理模型，`max_tokens` 同时算思考与正文——
+  /// 档位越高、正文越容易被思考吃光（docs/22 §2.0 / R1）。空串 = 不带该参数。
+  static const String kDefaultReasoningEffort = 'low';
+
   final String baseUrl;
   final String apiKey;
   final String model;
+
+  /// 请求带的 `reasoning_effort`（空串＝不传，交端点默认）
+  final String reasoningEffort;
+
+  /// 严格模式（docs/22 §2.0）：开发构建下失败**不伪装成正常回复**。
+  /// 客户端本身只把它带在配置上（诊断/上层决策用），不改变失败折叠行为。
+  final bool strict;
 
   /// 别名归一化表 —— 全小写键。ENV.md 实测 v4.1flash 不存在 → deepseek-flash。
   /// 新端点换名只改这张表，设置页文案不动。
@@ -166,6 +183,11 @@ class LlmReply {
   final String? model;
   final LlmFailure? failure;
   final String? detail;
+
+  /// 「真的拿到了一句话」。验收 F-2：只看 [ok] 会被「HTTP 200 + 正文为空」
+  /// 骗过去——推理模型把 `max_tokens` 花在思考上就是这个表现，
+  /// 设置页「测试连接」据此判定才不会给假绿灯。
+  bool get hasText => ok && text.trim().isNotEmpty;
 }
 
 class LlmClient {
@@ -185,9 +207,19 @@ class LlmClient {
   /// 传输层失败的重试次数（docs/18：1 次）
   final int retries;
 
-  /// 最小连通性探测：设置页「测试连接」用
-  Future<LlmReply> ping() =>
-      chat(messages: <LlmMessage>[LlmMessage.user('ping')], maxTokens: 8, temperature: 0);
+  /// 连通性探测：设置页「测试连接」用。
+  ///
+  /// **必须是真实形状**（docs/22 R1）：低思考档 + 足够 `max_tokens` + 一句系统提示。
+  /// 旧版 `maxTokens: 8` 会永远返回空正文/截断，却因为只看「HTTP 200」而显示成功——
+  /// 宿主看到的「测试连接通了、聊天却兜底」就是它造成的错觉。
+  Future<LlmReply> ping() => chat(
+        messages: <LlmMessage>[
+          LlmMessage.system('你是系统娘小祥，只用一句话回答，不要解释。'),
+          LlmMessage.user('ping'),
+        ],
+        maxTokens: 512,
+        temperature: 0,
+      );
 
   /// 释放底层 http.Client（TODO-07 网关热更：设置变更重建客户端时**必须**
   /// 关掉旧的，别让连接池一直挂着）。关闭瞬间还在途的请求会收
@@ -196,7 +228,42 @@ class LlmClient {
   void close() => _http.close();
 
   /// 对话 / 多模态 / function calling 统一入口。**任何失败都不抛异常**。
+  ///
+  /// 每次应答都记一笔 [LlmTelemetry]（docs/22 §2.0：兜底不能再「默默发生」）。
   Future<LlmReply> chat({
+    required List<LlmMessage> messages,
+    List<LlmTool>? tools,
+    double? temperature,
+    int? maxTokens,
+  }) async {
+    final Stopwatch sw = Stopwatch()..start();
+    final LlmReply r = await _chat(
+      messages: messages,
+      tools: tools,
+      temperature: temperature,
+      maxTokens: maxTokens,
+    );
+    sw.stop();
+    LlmTelemetry.record(r);
+    // docs/22 F-1：聊天路径直连本客户端、**不走网关**，所以日志必须在这里打，
+    // 否则「logcat 能看到请求与回执」这条验收永远拿不到证据。
+    // 只打诊断元信息：不打 Key、不打完整 prompt、不打回复全文。
+    if (r.ok) {
+      // tools=N：工具循环第一轮就是「200 + content 空 + 有 tool_calls」，
+      // 不打出调用数会被误读成"空正文的成功"（task-4 验收建议）
+      debugPrint('[llm] ok model=${config.normalizedModel} '
+          'effort=${config.reasoningEffort} max_tokens=$maxTokens '
+          'chars=${r.text.length} tools=${r.toolCalls.length} '
+          '${sw.elapsedMilliseconds}ms');
+    } else {
+      debugPrint('[llm] 失败 kind=${r.failure?.name} model=${config.normalizedModel} '
+          'effort=${config.reasoningEffort} ${sw.elapsedMilliseconds}ms '
+          'detail=${r.detail}');
+    }
+    return r;
+  }
+
+  Future<LlmReply> _chat({
     required List<LlmMessage> messages,
     List<LlmTool>? tools,
     double? temperature,
@@ -217,13 +284,20 @@ class LlmClient {
       ],
       if (tools != null && tools.isNotEmpty)
         'tools': <Map<String, dynamic>>[for (final LlmTool t in tools) t.toJson()],
+      // 推理档位：端点是推理模型，档位越高正文越容易空（docs/22 R1）
+      if (config.reasoningEffort.trim().isNotEmpty)
+        'reasoning_effort': config.reasoningEffort.trim(),
       'temperature': ?temperature,
       'max_tokens': ?maxTokens,
     });
 
+    // 严格模式（docs/22 §2.0 / 验收 F-5）：**开发期不重试** —— 一次就把真因报出来，
+    // 别让「重试一次」把偶发失败藏过去（这正是宿主说的"出问题直接报错"）。
+    // release（strict=false）保持原样：传输层失败重试 1 次。
+    final int attempts = config.strict ? 0 : retries;
     LlmFailure lastKind = LlmFailure.network;
     String lastDetail = '网络错误';
-    for (int attempt = 0; attempt <= retries; attempt++) {
+    for (int attempt = 0; attempt <= attempts; attempt++) {
       try {
         final http.Response resp = await _http
             .post(uri, headers: headers, body: payload)
@@ -247,7 +321,7 @@ class LlmClient {
     }
     return LlmReply.failure(
       lastKind,
-      retries > 0 ? '$lastDetail（已重试 $retries 次）' : lastDetail,
+      attempts > 0 ? '$lastDetail（已重试 $attempts 次）' : lastDetail,
     );
   }
 

@@ -159,6 +159,26 @@ void main() {
       expect(c.text, '先把手头那单做完。');
     });
 
+    test('情绪标签在第二段也要剥掉并取到情绪（docs/22 F-8）', () {
+      // ① 真实观察到的形状：第一段没有标签，标签在第二段开头（旧实现直接漏进正文）
+      final TaggedReply t = Persona.splitTag(
+        '先把它做完。\n[focus] 下一步只做一件：上床。',
+      );
+      expect(t.text, '先把它做完。\n下一步只做一件：上床。');
+      expect(t.text, isNot(contains('[')));
+      expect(t.emotion, 'focus'); // 旧实现只认整条行首 → 这里会退化成 neutral
+      // ② 两段都带标签：按人设契约「句首用 [情绪] 标注」，取**第一个**为准，
+      //    两个标签都从正文剥掉（不允许念给宿主听）
+      final TaggedReply both = Persona.splitTag(
+        '[neutral] 先把它做完。\n[focus] 下一步。',
+      );
+      expect(both.text, '先把它做完。\n下一步。');
+      expect(both.emotion, 'neutral');
+      // ③ 整行只有标签：不留空行；纯标签消息交给上层按「她没说话」处理
+      expect(Persona.splitTag('[focus]\n说点正经的。').text, '说点正经的。');
+      expect(Persona.splitTag('[focus]').text, '');
+    });
+
     test('★ 记忆持久化：写一条 → 「杀进程重启」（全新 MemoryStore 实例）→ 还在，且注入对话', () async {
       final MemoryStore before = MemoryStore();
       await before.add('宿主说想夜跑减肥', source: MemorySource.chat, weight: 2);
@@ -567,7 +587,8 @@ void main() {
       expect(line.emotion, 'smug');
       expect(line.text, '行吧，这单算你过关。明天继续。');
       expect(llm.lastTemperature, 0.8);
-      expect(llm.lastMaxTokens, 120);
+      // 120 → 512：端点是推理模型，120 会被思考吃光、正文永远为空（docs/22 R1）
+      expect(llm.lastMaxTokens, 512);
       expect(llm.lastTimeout, p.llmTimeout);
       expect(llm.lastMessages!.first['role'], 'system');
     });

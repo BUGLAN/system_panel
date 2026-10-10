@@ -9,6 +9,7 @@ import 'hold_button.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../agent/llm_client.dart';
+import '../agent/llm_telemetry.dart';
 import '../agent/settings_store.dart';
 import '../data/items.dart';
 import '../data/rewards.dart';
@@ -834,6 +835,8 @@ class _SystemPaneState extends State<_SystemPane> {
       haptic: seed.haptic,
       holo: seed.holo,
       voice: seed.voice,
+      reasoningEffort: seed.reasoningEffort,
+      strictMode: seed.strictMode,
     );
     _baseC = TextEditingController(text: _s.baseUrl);
     _keyC = TextEditingController(text: _s.apiKey);
@@ -883,14 +886,20 @@ class _SystemPaneState extends State<_SystemPane> {
     }
   }
 
-  /// 「测试连接」：按当前输入（含未落盘的）发一条最小请求，回显成败与原因。
+  /// 「测试连接」：按当前输入（含未落盘的）发一条**与聊天同形状**的请求
+  /// （同一思考档位、同一 max_tokens），回显成败与原因。
   /// LlmClient 不抛异常，这里永远能落到一行结论。
+  ///
+  /// 验收 F-2 修的两点：① 判成功不能只看 `ok` —— 端点是推理模型，
+  /// 「HTTP 200 + 正文为空」曾被显示成「连接成功」，正是宿主抱怨的
+  /// 「测连接通了、聊天却兜底」的来源；② 思考档位要跟着设置走，别用默认值探。
   Future<void> _testConn() async {
     if (_testing) return;
     final LlmConfig config = LlmConfig(
       baseUrl: _s.baseUrl,
       apiKey: _s.apiKey,
       model: _s.model,
+      reasoningEffort: _s.reasoningEffort,
     );
     setState(() {
       _testing = true;
@@ -901,12 +910,18 @@ class _SystemPaneState extends State<_SystemPane> {
     if (!mounted) return;
     setState(() {
       _testing = false;
-      _testOk = r.ok;
-      _testStatus = r.ok
-          ? (config.modelWasNormalized
-                ? '连接成功 · ${config.model}→${config.normalizedModel}'
-                : '连接成功 · ${config.normalizedModel}')
-          : '失败 · ${_failureText(r.failure, r.detail)}';
+      _testOk = r.hasText;
+      if (r.hasText) {
+        _testStatus = config.modelWasNormalized
+            ? '连接成功 · ${config.model}→${config.normalizedModel}'
+            : '连接成功 · ${config.normalizedModel}';
+      } else if (r.ok) {
+        // 连上了但没吐字 = 隐性失败，必须说清楚，不许打勾
+        _testStatus = '连上了但没吐字（HTTP 200、正文为空——多半是思考把 '
+            'max_tokens 用尽：把「思考档位」调低，或别把上限设太小）';
+      } else {
+        _testStatus = '失败 · ${_failureText(r.failure, r.detail)}';
+      }
     });
   }
 
@@ -1009,6 +1024,24 @@ class _SystemPaneState extends State<_SystemPane> {
               _update((AgentSettings s) => s.copyWith(visionEnabled: v == '1'));
             }),
           ),
+          // docs/22 §R1-2：思考档位（请求体 reasoning_effort，默认 low）
+          _setRow(
+            '思考档位',
+            '低（默认）；档位越高想得越久、拆得越细',
+            _seg('effort', AppSettings.reasoningOptions, _s.reasoningEffort, (
+              String v,
+            ) {
+              _update((AgentSettings s) => s.copyWith(reasoningEffort: v));
+            }),
+          ),
+          // docs/22 §2.0：严格模式（自动＝按构建切，可手动覆盖）
+          _setRow(
+            '严格模式',
+            '自动＝debug/profile 构建下失败直接报错、不产兜底台词；release 仍兜底但标注原因',
+            _seg('strict', AppSettings.strictOptions, _s.strictMode, (String v) {
+              _update((AgentSettings s) => s.copyWith(strictMode: v));
+            }),
+          ),
           _llmField(
             '接口地址',
             'OpenAI 兼容端点，默认官方 DeepSeek',
@@ -1062,6 +1095,32 @@ class _SystemPaneState extends State<_SystemPane> {
               wght: 400,
               height: 1.6,
               color: const Color(0xFF5F7190),
+            ),
+          ),
+          const SizedBox(height: 12),
+          // 组底部只读回显（docs/22 §2.0「兜底要可观测」）：
+          // 读 LlmTelemetry 内存态仪表，不落盘、不可点；每次 build 现读，
+          // 切档/测连接/重挂都会跟着刷新。
+          _setRow(
+            '最近一次 LLM 失败',
+            '${LlmTelemetry.summary} · ${LlmTelemetry.kindSummary}',
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 150),
+              child: Text(
+                LlmTelemetry.lastDetail ?? '—',
+                key: const Key('sheet.llm.lastFail'),
+                maxLines: 2,
+                textAlign: TextAlign.right,
+                overflow: TextOverflow.ellipsis,
+                style: fs(
+                  family: F.mono,
+                  size: 10.5,
+                  wght: 500,
+                  color: LlmTelemetry.failures > 0
+                      ? const Color(0xFFFF8F99)
+                      : C.mist,
+                ),
+              ),
             ),
           ),
         ],

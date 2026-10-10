@@ -1,7 +1,10 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
+
 import 'copy.dart';
 import 'llm_client.dart';
+import 'llm_telemetry.dart';
 
 /// ═══════════════════════════════════════════════════════════
 ///  CopyLlmGateway 的真实现（docs/18 §3.1-T5 集成件）
@@ -20,6 +23,10 @@ class LlmGateway implements CopyLlmGateway {
 
   final LlmClient _client;
 
+  /// 最近一次应答（诊断用）。docs/22 §2.0：严格模式要把失败原因摆到宿主面前，
+  /// 而 [complete] 的契约是「失败返回 null」——原因只能从这里读。
+  LlmReply? lastReply;
+
   @override
   bool get configured => _client.config.apiKey.trim().isNotEmpty;
 
@@ -30,7 +37,13 @@ class LlmGateway implements CopyLlmGateway {
     int? maxTokens,
     Duration? timeout,
   }) async {
-    if (!configured) return null;
+    if (!configured) {
+      // 短路也要记账：无 Key 是最常见的一类「她哑了」，不能从遥测里消失
+      final LlmReply r = const LlmReply.failure(LlmFailure.noKey, '未配置 API Key');
+      lastReply = r;
+      LlmTelemetry.record(r);
+      return null;
+    }
     try {
       final Future<LlmReply> call = _client.chat(
         messages: <LlmMessage>[
@@ -42,10 +55,25 @@ class LlmGateway implements CopyLlmGateway {
       // 客户端内部有自己的 12s 超时；调用方（copy 用 8s）给得更短就听调用方的
       final LlmReply r =
           await (timeout == null ? call : call.timeout(timeout));
-      if (!r.ok) return null;
+      lastReply = r;
+      if (!r.ok) {
+        // 失败日志由 [LlmClient.chat] 统一打（它是所有路径的唯一咽喉）——
+        // 这里再打一条会变成同一失败两条日志（task-4 验收建议）。
+        return null;
+      }
       final String text = r.text.trim();
-      return text.isEmpty ? null : text;
-    } catch (_) {
+      if (text.isEmpty) {
+        // HTTP 200 但正文为空：推论模型把 max_tokens 花在思考上的典型症状。
+        // 客户端那行只显示 `chars=0 tools=0`，这一行给出**为什么**。
+        debugPrint('[llm] 空正文（HTTP 200）model=${_client.config.normalizedModel} '
+            'maxTokens=$maxTokens reasoning_effort=${_client.config.reasoningEffort} '
+            '— 多半是 max_tokens 被思考用尽');
+        return null;
+      }
+      return text;
+    } catch (e) {
+      // 调用方给的 timeout 短于客户端内部超时 → Future.timeout 抛 TimeoutException
+      debugPrint('[llm] 调用侧超时/异常：$e');
       return null;
     }
   }

@@ -16,6 +16,11 @@ import 'llm_client.dart';
 ///  load/save 全部吞异常 —— 存储层坏了也不能让 App 崩。
 /// ═══════════════════════════════════════════════════════════
 class AgentSettings {
+  /// 严格模式的默认值（**真源在这里**）：`state/settings.dart` 的 AppSettings
+  /// 只借它做首帧 seed 与选项表，别再各写一份字面量——验收 F-4 指出的
+  /// 「两套默认值将来会漂」就是这个问题。
+  static const String kDefaultStrictMode = 'auto';
+
   const AgentSettings({
     this.visionEnabled = true,
     this.baseUrl = LlmConfig.kDefaultBase,
@@ -25,6 +30,8 @@ class AgentSettings {
     this.haptic = true,
     this.holo = true,
     this.voice = 'blip',
+    this.reasoningEffort = LlmConfig.kDefaultReasoningEffort,
+    this.strictMode = kDefaultStrictMode,
   });
 
   /// 视觉校验开关（关 = 纯信任模式，证据全按「未校验」计）
@@ -47,6 +54,16 @@ class AgentSettings {
   /// 她的声音：blip 电子音 / tts 人声 / mute 静音
   final String voice;
 
+  // ── docs/22 §2.0 / §R1-2：思考档位 + 严格模式 ──
+  // 合并语义同其余字段：老档缺 key → 用 fallback（= 下面的默认值）补齐，
+  // 永不因为缺字段清档或抛异常。
+
+  /// 思考档位（请求体 reasoning_effort）：low / high / max，默认 low
+  final String reasoningEffort;
+
+  /// 严格模式：auto（debug/profile 报错不兜底、release 兜底但标注）/ on / off
+  final String strictMode;
+
   factory AgentSettings.fromJson(
     Map<String, dynamic>? json, {
     required AgentSettings fallback,
@@ -62,6 +79,11 @@ class AgentSettings {
       haptic: pick<bool>('haptic', fallback.haptic),
       holo: pick<bool>('holo', fallback.holo),
       voice: pick<String>('voice', fallback.voice),
+      reasoningEffort: pick<String>(
+        'reasoningEffort',
+        fallback.reasoningEffort,
+      ),
+      strictMode: pick<String>('strictMode', fallback.strictMode),
     );
   }
 
@@ -74,6 +96,8 @@ class AgentSettings {
     'haptic': haptic,
     'holo': holo,
     'voice': voice,
+    'reasoningEffort': reasoningEffort,
+    'strictMode': strictMode,
   };
 
   AgentSettings copyWith({
@@ -85,6 +109,8 @@ class AgentSettings {
     bool? haptic,
     bool? holo,
     String? voice,
+    String? reasoningEffort,
+    String? strictMode,
   }) => AgentSettings(
     visionEnabled: visionEnabled ?? this.visionEnabled,
     baseUrl: baseUrl ?? this.baseUrl,
@@ -94,6 +120,8 @@ class AgentSettings {
     haptic: haptic ?? this.haptic,
     holo: holo ?? this.holo,
     voice: voice ?? this.voice,
+    reasoningEffort: reasoningEffort ?? this.reasoningEffort,
+    strictMode: strictMode ?? this.strictMode,
   );
 
   @override
@@ -106,11 +134,22 @@ class AgentSettings {
       other.sound == sound &&
       other.haptic == haptic &&
       other.holo == holo &&
-      other.voice == voice;
+      other.voice == voice &&
+      other.reasoningEffort == reasoningEffort &&
+      other.strictMode == strictMode;
 
   @override
   int get hashCode => Object.hash(
-    visionEnabled, baseUrl, apiKey, model, sound, haptic, holo, voice,
+    visionEnabled,
+    baseUrl,
+    apiKey,
+    model,
+    sound,
+    haptic,
+    holo,
+    voice,
+    reasoningEffort,
+    strictMode,
   );
 }
 

@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences_platform_interface/in_memory_shared_preferences_async.dart';
 import 'package:shared_preferences_platform_interface/shared_preferences_async_platform_interface.dart';
+import 'package:system_panel/agent/llm_client.dart';
+import 'package:system_panel/agent/llm_telemetry.dart';
 import 'package:system_panel/agent/settings_store.dart';
 import 'package:system_panel/data/items.dart';
 import 'package:system_panel/data/rewards.dart';
@@ -153,8 +155,9 @@ void main() {
       expect(find.text('人声用浏览器自带中文语音，效果看设备'), findsOneWidget);
       expect(find.text('按住 2 秒'), findsOneWidget);
       expect(find.textContaining('SYSTEM · opus-v2-dir'), findsOneWidget);
-      // 「开」四个分段开关默认都停在开上（音效/震动/全息描边/视觉校验）
-      expect(find.text('开'), findsNWidgets(4));
+      // 「开」五个分段开关默认都停在开上
+      // （音效/震动/全息描边/视觉校验 + 严格模式的「开」档）
+      expect(find.text('开'), findsNWidgets(5));
       expect(find.text('电子音'), findsOneWidget);
       expect(find.text('人声'), findsOneWidget);
       expect(find.text('静音'), findsOneWidget);
@@ -241,6 +244,8 @@ void main() {
       expect(s.model, 'deepseek-v4.1flash');
       expect(s.sound, isTrue);
       expect(s.voice, 'blip');
+      expect(s.reasoningEffort, 'low'); // docs/22 §R1-2 默认低档
+      expect(s.strictMode, 'auto'); // docs/22 §2.0 默认自动
       // 写入
       await store.save(
         s.copyWith(
@@ -249,6 +254,8 @@ void main() {
           sound: false,
           voice: 'tts',
           model: 'deepseek-v4-pro',
+          reasoningEffort: 'max',
+          strictMode: 'on',
         ),
       );
       // 新实例（= 重启后）读回
@@ -258,6 +265,8 @@ void main() {
       expect(s2.sound, isFalse);
       expect(s2.voice, 'tts');
       expect(s2.model, 'deepseek-v4-pro');
+      expect(s2.reasoningEffort, 'max');
+      expect(s2.strictMode, 'on');
     });
 
     test('老档/坏档迁移：缺字段补默认，坏 JSON 不炸', () async {
@@ -274,6 +283,106 @@ void main() {
       _mockPrefs(<String, Object>{SettingsStore.key: '{broken json'});
       final AgentSettings s2 = await SettingsStore().load();
       expect(s2.model, 'deepseek-v4.1flash'); // 回到默认，不抛异常
+    });
+
+    test('老档缺 reasoningEffort/strictMode：补默认、不清档、不炸（docs/22 §2.0）', () async {
+      // 只有旧字段的老档（本轮两个新字段一个都没有）
+      _mockPrefs(<String, Object>{
+        SettingsStore.key: jsonEncode(<String, dynamic>{
+          'apiKey': 'sk-old',
+          'visionEnabled': false,
+          'voice': 'tts',
+        }),
+      });
+      final AgentSettings s = await SettingsStore().load();
+      // 旧字段照旧读回来（合并=在默认值上盖，不是整档重来）
+      expect(s.apiKey, 'sk-old');
+      expect(s.visionEnabled, isFalse);
+      expect(s.voice, 'tts');
+      // 缺的两个新字段补默认
+      expect(s.reasoningEffort, 'low');
+      expect(s.strictMode, 'auto');
+      // 补默认后回写一轮：老字段一个不少，新字段落进 JSON
+      await SettingsStore().save(s);
+      final AgentSettings s2 = await SettingsStore().load();
+      expect(s2.apiKey, 'sk-old');
+      expect(s2.visionEnabled, isFalse);
+      expect(s2.reasoningEffort, 'low');
+      expect(s2.strictMode, 'auto');
+    });
+
+    testWidgets('思考档位/严格模式：两行三档都在、可点、点后落盘', (WidgetTester tester) async {
+      _mockPrefs();
+      await _mount(
+        tester,
+        const Sheet(host: HostState.demo, kind: SheetKind.system),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('思考档位'), findsOneWidget);
+      expect(find.text('严格模式'), findsOneWidget);
+      for (final String k in <String>['low', 'high', 'max']) {
+        expect(find.byKey(Key('sheet.seg.effort.$k')), findsOneWidget);
+      }
+      for (final String k in <String>['auto', 'on', 'off']) {
+        expect(find.byKey(Key('sheet.seg.strict.$k')), findsOneWidget);
+      }
+      // 默认停在 low / auto（表里读出来的，不是硬编码）
+      final AgentSettings before = await SettingsStore().load();
+      expect(before.reasoningEffort, 'low');
+      expect(before.strictMode, 'auto');
+
+      // 两行在面板下半截，先滚进视口再点
+      await tester.ensureVisible(find.byKey(const Key('sheet.seg.effort.max')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('sheet.seg.effort.max')));
+      await tester.ensureVisible(find.byKey(const Key('sheet.seg.strict.on')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('sheet.seg.strict.on')));
+      await tester.pump(const Duration(milliseconds: 500)); // 过 400ms 防抖
+
+      final AgentSettings s = await SettingsStore().load();
+      expect(s.reasoningEffort, 'max'); // 落盘了
+      expect(s.strictMode, 'on');
+      expect(s.haptic, isTrue); // 没动过的保持原样
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('最近一次 LLM 失败：只读回显 detail ?? —，副行给失败计数', (
+      WidgetTester tester,
+    ) async {
+      _mockPrefs();
+      LlmTelemetry.reset();
+      addTearDown(LlmTelemetry.reset);
+      await _mount(
+        tester,
+        const Sheet(host: HostState.demo, kind: SheetKind.system),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('最近一次 LLM 失败'), findsOneWidget);
+      // 从未失败：占位符，不裸奔
+      expect(
+        tester.widget<Text>(find.byKey(const Key('sheet.llm.lastFail'))).data,
+        '—',
+      );
+      expect(find.text('— · —'), findsOneWidget); // summary · kindSummary
+
+      // 遥测是内存态仪表：测试里直接摆一次失败（不写工厂、不落盘）
+      LlmTelemetry.calls = 3;
+      LlmTelemetry.ok = 2;
+      LlmTelemetry.failures = 1;
+      LlmTelemetry.lastDetail = 'HTTP 401 · 回执片段';
+      LlmTelemetry.byKind[LlmFailure.httpError] = 1;
+      await _mount(
+        tester,
+        const Sheet(host: HostState.demo, kind: SheetKind.system),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<Text>(find.byKey(const Key('sheet.llm.lastFail'))).data,
+        'HTTP 401 · 回执片段',
+      );
+      final Text hint = tester.widget<Text>(find.textContaining('httpError=1'));
+      expect(hint.data, '2/3 成功 · 1 失败 · httpError=1');
     });
 
     testWidgets('D8：四开关可切且落盘（点「关」→ store 里 sound=false）', (

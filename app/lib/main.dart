@@ -1,8 +1,9 @@
-import 'package:flutter/material.dart';
-import 'package:flutter/scheduler.dart';
-
 import 'dart:async';
 import 'dart:math' as math;
+
+import 'package:flutter/foundation.dart' show kDebugMode, kProfileMode;
+import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 
 import 'package:flutter/services.dart';
 
@@ -33,6 +34,8 @@ import 'stage/live2d_web.dart';
 import 'stage/stage_port.dart';
 import 'state/app_clock.dart';
 import 'state/away.dart';
+import 'state/haptics.dart';
+import 'state/sfx.dart';
 import 'state/voice.dart';
 import 'state/save_file.dart';
 import 'state/quest.dart';
@@ -229,6 +232,10 @@ class _AppShellState extends State<AppShell>
           cleared: cleared,
           total: total,
           level: level,
+          // O-2 裁决（宿主 2026-10-10）：「立目标时刻」**沿用**上一目标 ——
+          // goal.at 代表「这条主线是什么时候立的」，走完一条再续一条时
+          // 把它改成"现在"会让「主线已立 N 天」这类读数跳变。
+          at: prev.at,
         );
   }
 
@@ -370,15 +377,27 @@ class _AppShellState extends State<AppShell>
     _applyAgentSettings(s);
   }
 
-  /// 用一份 [AgentSettings] 装（或重装）LLM 三件套。LLM 三要素
-  /// （BaseURL/Key/模型名）全都没变就不动——四开关、视觉开关这类变更
-  /// 不折腾网关；真的变了才关旧客户端、建新网关、整体换服务。
+  /// 用一份 [AgentSettings] 装（或重装）LLM 三件套，**并落地非 LLM 设置**。
+  ///
+  /// ⚠️ 早退守卫只对 LLM 三要素 + 严格模式生效（那些变更才需要重建网关）。
+  /// 音效/震动/思考档位这类**非 LLM 设置必须每次都落地**——docs/22 R3 记着
+  /// 这个坑：以前 `sound/haptic` 能存能显但没人消费，就是被这个早退吞掉的。
   void _applyAgentSettings(AgentSettings s) {
+    // ① 非 LLM 设置：先落地（幂等，重复调用无害）
+    Sfx.enabled = s.sound;
+    Haptics.enabled = s.haptic;
+    // 底噪跟随「音效」总开关（docs/22 R3 的化简：原型按时刻 duck，本批只做在/不在）
+    unawaited(Sfx.ambient(s.sound));
+    // ② LLM 设置：没变就不重建（避免打断在途请求）
+    final bool strict = _strictOf(s);
     final LlmClient? old = _llmClient;
     if (old != null &&
         old.config.baseUrl == s.baseUrl &&
         old.config.apiKey == s.apiKey &&
-        old.config.model == s.model) {
+        old.config.model == s.model &&
+        old.config.reasoningEffort == s.reasoningEffort &&
+        old.config.strict == strict &&
+        _chatService?.strict == strict) {
       return;
     }
     final LlmClient client = LlmClient(
@@ -386,6 +405,8 @@ class _AppShellState extends State<AppShell>
         baseUrl: s.baseUrl,
         apiKey: s.apiKey,
         model: s.model,
+        reasoningEffort: s.reasoningEffort,
+        strict: strict,
       ),
     );
     final LlmGateway gw = LlmGateway(client);
@@ -405,9 +426,25 @@ class _AppShellState extends State<AppShell>
       _memory = mem;
       _copy = SystemCopyProvider(llm: gw, memory: mem);
       _agentTools = reg;
-      _chatService = ChatService(gateway: gw, memory: mem, client: client, tools: reg);
+      _chatService = ChatService(
+        gateway: gw,
+        memory: mem,
+        client: client,
+        tools: reg,
+        strict: strict,
+      );
     });
   }
+
+  /// 严格模式（docs/22 §2.0，宿主 2026-10-10 拍板）：
+  /// - `auto`（默认）：**debug / profile 构建**下失败直接报错、不产假台词；
+  ///   release 仍走兜底（无 Key / 断网不得阻塞使用），但会标注原因。
+  /// - `on` / `off`：设置页手动覆盖（便于在 release 上验证严格模式）。
+  static bool _strictOf(AgentSettings s) => switch (s.strictMode) {
+        'on' => true,
+        'off' => false,
+        _ => kDebugMode || kProfileMode,
+      };
 
   /// 工具改了队列/计划之后：同步档案副本 + 存档（QuestFlowAdapter.onChanged）
   void _onAgentMutated() {
@@ -444,6 +481,9 @@ class _AppShellState extends State<AppShell>
         streak: _host.streak,
         queue: _host.queue,
         goalShort: _goal.short,
+        // 环进度喂给她（验收 F-3）：不喂她会从旧工具回执里捡过期数字
+        ringDone: _goal.doneCount,
+        ringTotal: _goal.rings.length,
       ),
     );
     if (!mounted) return;
@@ -598,6 +638,8 @@ class _AppShellState extends State<AppShell>
       total: prev.rings.length,
       level: _host.lv,
       text: typed,
+      // 同上 O-2：主动换目标也沿用原「立目标时刻」
+      at: prev.at,
     );
     final Quest? ring = _flow.newGoal(next);
     if (ring == null) return; // 新目标没铸出环（不该发生）：不动任何状态
@@ -1222,7 +1264,10 @@ class _AppShellState extends State<AppShell>
                               '[[${_host.queue}]]',
                             )),
                   mood: onboard
-                      ? '专注'
+                      // ⚠️ 只能用原型 MOOD_LABEL 的 12 个词（content.js:421）：
+                      // 原来这里写的是自造的「专注」——既不在词表里（界面读数与原型不一致），
+                      // 又让逐字音节的情绪反查退化成 neutral。focus 的原型词是「监视」。
+                      ? '监视'
                       : dispatch
                       ? '监视'
                       : (fail ? '待机' : '尚可'),
@@ -1929,6 +1974,10 @@ class _AppShellState extends State<AppShell>
       return;
     }
     setState(() => _moment = Moment.dispatch);
+    // 发布这一拍：原型 flows.js:237 `Sound.play('ding'); buzz(12)`
+    // （和稍后单子落板的 `land` 是**两拍**：先"钉单"再"落板"，别合成一次）
+    unawaited(Sfx.play('publish'));
+    unawaited(Haptics.buzz('publish'));
     _takeDispatchLine(); // 发布文案接管：LLM 回了顶掉「接不接？」
   }
 

@@ -254,7 +254,14 @@ class VisionService {
       return const VisionVerdict.unverified('未配置 Key');
     }
     final LlmClient client = _clientFactory(
-      LlmConfig(baseUrl: s.baseUrl, apiKey: s.apiKey, model: s.model),
+      LlmConfig(
+        baseUrl: s.baseUrl,
+        apiKey: s.apiKey,
+        model: s.model,
+        // 思考档位跟着设置走（与聊天/文案同一档）：端点是推理模型，
+        // 档位越高，判词越容易被思考挤掉（docs/22 R1 同根）
+        reasoningEffort: s.reasoningEffort,
+      ),
     );
     final LlmReply reply = await client.chat(
       messages: <LlmMessage>[
@@ -267,7 +274,10 @@ class VisionService {
         ),
       ],
       temperature: 0,
-      maxTokens: 200,
+      // 200 → 512（docs/22 §10-O-1）：`max_tokens` 同时算 reasoning_content 与正文，
+      // 200 会被思考吃光 → 坏 JSON/空正文 → 永远判「未校验」——它比聊天隐蔽，
+      // 界面上显示的是「未校验」，看起来像"没配 Key"。四情形兜底（不阻塞提交）不变。
+      maxTokens: 512,
     );
     if (!reply.ok) {
       return VisionVerdict.unverified('校验失败：${reply.detail ?? '未知原因'}');

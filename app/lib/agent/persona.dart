@@ -86,19 +86,34 @@ class Persona {
     <String, dynamic>{'role': 'user', 'content': userText},
   ];
 
-  /// 解析回复句首的 `[情绪]` 标签（如 `[smug]哼。` → 文本 `哼。`、情绪 `smug`）。
-  /// 没有标签、标签拼写不在 [emotions] 表内，都回 `neutral`；已知标签会被剥掉，
-  /// 未知标签也剥掉（不能把它念给宿主听）。
+  /// 解析回复里的 `[情绪]` 标签（如 `[smug]哼。` → 文本 `哼。`、情绪 `smug`）。
+  ///
+  /// ⚠️ 标签**不一定在整条开头**（docs/22 F-8）：模型常写成
+  /// 「第一句。\n[focus] 下一步只做一件：…」——旧实现只匹配整条的行首，
+  /// 于是第二段的标签原样漏进气泡正文，情绪还被定成 neutral（舞台 mood 跟着错）。
+  /// 现在：遍历每一行，取**第一个已知标签**当情绪（未知标签也剥掉，不能念给宿主听），
+  /// 并把所有行首标签从正文里去掉。
   static TaggedReply splitTag(String raw) {
     final String text = raw.trim();
-    final RegExpMatch? m =
-        RegExp(r'^\[([A-Za-z]+)\]\s*').firstMatch(text);
-    if (m == null) return TaggedReply(text: text, emotion: 'neutral');
-    final String tag = m.group(1)!.toLowerCase();
-    final String rest = text.substring(m.end).trim();
+    if (text.isEmpty) return const TaggedReply(text: '', emotion: 'neutral');
+    final RegExp lineTag = RegExp(r'^\[([A-Za-z]+)\][ \t]*');
+    String? emotion;
+    final List<String> kept = <String>[];
+    for (final String line in text.split('\n')) {
+      final RegExpMatch? m = lineTag.firstMatch(line);
+      if (m == null) {
+        kept.add(line);
+        continue;
+      }
+      final String tag = m.group(1)!.toLowerCase();
+      if (emotion == null && emotions.contains(tag)) emotion = tag;
+      final String rest = line.substring(m.end);
+      // 整行只有标签 → 这一行没有正文，丢掉（别留空行污染气泡）
+      if (rest.trim().isNotEmpty) kept.add(rest);
+    }
     return TaggedReply(
-      text: rest,
-      emotion: emotions.contains(tag) ? tag : 'neutral',
+      text: kept.join('\n').trim(),
+      emotion: emotion ?? 'neutral',
     );
   }
 }

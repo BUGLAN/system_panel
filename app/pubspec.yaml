@@ -20,6 +20,8 @@ dependencies:
   image_picker: ^1.1.0
   # path_provider：证据照片落 App 文档目录 evidence/
   path_provider: ^2.1.0
+  audioplayers: ^6.8.1
+  vibration: ^3.2.1
 
 dev_dependencies:
   flutter_test:
@@ -33,6 +35,10 @@ flutter:
   # 天幕背景（宿主用 ComfyUI 生成的 Qwen-Image 底图，垫在 #bg .sky 最底层）
   assets:
     - assets/img/bg-void.jpg
+    # 音效素材包（docs/22 R3）—— 由 tools/audio/gen_sfx.mjs 离线烘焙，
+    # 参数照 prototype/opus-v2-dir/js/audio.js，可 `--seed` 重烤。
+    # 「事件 → 文件」的查表在 lib/state/sfx.dart；改名要两边一起改。
+    - assets/audio/
     # 她的模型（标准 Live2D，本机转换）—— 见 assets/live2d/README
     #
     # ⚠️ 这个目录里除了 README 之外都不入库（版权红线，见 assets/live2d/.gitignore）。

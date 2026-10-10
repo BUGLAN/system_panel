@@ -2,10 +2,16 @@
 ///
 /// 发布 `dispatchLine` / 结算 `settleLine` / 毒舌 `roastLine` / 追问 `probeLine`。
 /// 每个入口：先试 LLM（人设 prompt + 语气场合 + 真实上下文，temperature 0.8、
-/// max_tokens 120、**300 字符钳制**），任何失败（未配 Key/无网/超时/异常/空话）
+/// max_tokens 512、**300 字符钳制**），任何失败（未配 Key/无网/超时/异常/空话）
 /// → **逐字回退内置文案**——能对上现有 LINES 的场合直接用 LINES 原句
 /// （content.dart 原样保留，它就是兜底真源），结算档位等 LINES 没有的用本文件的
 /// 内置池补齐。文案链路永不抛、永不阻塞 UI。
+///
+/// ⚠️ 为什么是 512 而不是 120：端点是**推理模型**，`max_tokens` 同时算
+/// `reasoning_content` 与正文——120 会被思考整段吃光、正文永远为空，于是
+/// 发布/结算/毒舌的 AI 文案从来没生效过（docs/22 R1 实锤）。
+/// 文案在严格模式下**也不中断**（演出不能因为模型出错而崩），它的失败可见性
+/// 走「日志 + 遥测 + 设置页回显」（docs/22 §2.0 例外条款）。
 ///
 /// LLM 客户端本体归 t9（`lib/agent/llm_client.dart`，OpenAI 兼容 chat +
 /// function calling，docs/18 §2.4 契约）。本文件只依赖 [CopyLlmGateway] 这个
@@ -333,7 +339,9 @@ class SystemCopyProvider {
           scenario: '${Persona.tones[toneKey] ?? ''} 只输出一句她的台词本身，不要任何解释。',
         ),
         temperature: 0.8,
-        maxTokens: 120,
+        // 端点是推理模型：max_tokens 同时算思考与正文，120 必然被思考吃光
+        // → 正文空 → 永远回退模板（docs/22 R1）。抬到 512。
+        maxTokens: 512,
         timeout: llmTimeout,
       );
       final String text = (raw ?? '').trim();

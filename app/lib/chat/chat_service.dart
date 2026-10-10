@@ -21,7 +21,14 @@ import 'chat_history.dart';
 ///  快捷 chip 不经 LLM、直接 `registry.execute`，全部本地可用。
 /// ═══════════════════════════════════════════════════════════
 class ChatService {
-  ChatService({this.gateway, this.client, this.tools, this.memory, this.persona = const Persona()});
+  ChatService({
+    this.gateway,
+    this.client,
+    this.tools,
+    this.memory,
+    this.persona = const Persona(),
+    this.strict = false,
+  });
 
   /// t9 的 OpenAI 兼容客户端经 [LlmGateway] 适配进来；null = 全走兜底。
   /// 只依赖 [CopyLlmGateway] 最小面（测试可注入假网关）
@@ -39,9 +46,19 @@ class ChatService {
   final MemoryStore? memory;
   final Persona persona;
 
+  /// 严格模式（docs/22 §2.0）：开发构建默认开——失败**不产假台词**，
+  /// 直接给一条诊断条目（HTTP 状态/超时/正文为空 + 原文）。release 关。
+  final bool strict;
+
   /// 工具系统条目的正文前缀——chat_panel 据此换成系统条目样式
   /// （等宽读数风），历史持久化照常。
   static const String toolTag = '〔工具〕';
+
+  /// 诊断条目前缀（严格模式下的失败出口）
+  static const String diagTag = '〔诊断〕';
+
+  /// 兜底标注前缀（非严格模式：兜底照样发生，但必须看得见）
+  static const String fallbackTag = '〔兜底〕';
 
   /// function calling 的最大轮数（防模型无限要工具）
   static const int maxToolRounds = 3;
@@ -68,16 +85,23 @@ class ChatService {
     return h % pool.length;
   }
 
-  /// 宿主档案一行（system prompt 的【宿主档案】段）
+  /// 宿主档案一行（system prompt 的【宿主档案】段）。
+  ///
+  /// [ringDone]/[ringTotal] 是主线环进度——**必须喂**（验收 F-3）：
+  /// 不喂，模型就会从聊天历史里那条旧 `〔工具〕get_status` 回执里捡数字，
+  /// 于是出现「主线还挂着 6 环没动」这种过期读数，直接违背「引用真实数据」。
   static String statusLineOf({
     required String name,
     required int lv,
     required int streak,
     required int queue,
     required String goalShort,
+    int? ringDone,
+    int? ringTotal,
   }) =>
       '$name · LV$lv · 连击 $streak · 手里 $queue 单'
-      '${goalShort.isEmpty ? '' : ' · 主线「$goalShort」'}';
+      '${goalShort.isEmpty ? '' : ' · 主线「$goalShort」'}'
+      '${ringTotal == null || ringTotal == 0 ? '' : ' · 主线进度 ${ringDone ?? 0}/$ringTotal 环'}';
 
   /// 回一句。失败/无 LLM → 兜底毒舌（emotion=annoyed）。
   /// [scenario] 传「找小祥说说 / 换目标」等场合上下文（docs/18 §2.7）。
@@ -89,7 +113,9 @@ class ChatService {
     String? statusLine,
   }) async {
     final CopyLlmGateway? gw = gateway;
-    if (gw == null || !gw.configured) return _fallback(userText);
+    if (gw == null || !gw.configured) {
+      return _failure(userText, detail: '未配置 API Key');
+    }
     try {
       // 近 12 轮做上下文（旧→新）；更早的交给长期记忆
       final List<Map<String, dynamic>> wire = <Map<String, dynamic>>[
@@ -110,20 +136,25 @@ class ChatService {
           scenario: scenario,
         ),
         temperature: 0.8,
-        maxTokens: 200,
+        // 端点是推理模型：max_tokens 同时算思考与正文，给太紧正文必空（docs/22 R1）
+        maxTokens: 1024,
         timeout: const Duration(seconds: 12),
       );
-      if (raw == null) return _fallback(userText);
+      if (raw == null) {
+        return _failure(userText, detail: _detailOf(gw));
+      }
       final TaggedReply t = Persona.splitTag(raw);
-      // 纯标签没有正文 = 当她没说话，走兜底
-      if (t.text.isEmpty) return _fallback(userText);
+      // 纯标签没有正文 = 当她没说话，走失败出口
+      if (t.text.isEmpty) {
+        return _failure(userText, detail: '正文只有情绪标签，没有台词');
+      }
       return ChatMessage.sys(
         _id(),
         _clamp(t.text),
         emotion: t.emotion,
       );
-    } catch (_) {
-      return _fallback(userText);
+    } catch (e) {
+      return _failure(userText, detail: '异常：$e');
     }
   }
 
@@ -173,16 +204,24 @@ class ChatService {
           ],
           tools: defs,
           temperature: 0.8,
-          maxTokens: 200,
+          // 端点是推理模型：思考与正文共用这个预算（docs/22 R1）
+          maxTokens: 1024,
         );
         if (!r.ok) {
-          out.add(_fallback(userText));
+          out.add(_failure(
+            userText,
+            detail: '${r.failure?.name ?? 'unknown'} · ${r.detail ?? '无 detail'}',
+          ));
           return out;
         }
         if (r.toolCalls.isEmpty) {
           final TaggedReply t = Persona.splitTag(r.text);
           if (t.text.isEmpty) {
-            out.add(_fallback(userText));
+            out.add(_failure(
+              userText,
+              detail: '正文为空（HTTP 200；推理模型可能把 max_tokens 用尽，'
+                  'finish_reason 多半是 length）',
+            ));
             return out;
           }
           out.add(ChatMessage.sys(_id(), _clamp(t.text), emotion: t.emotion));
@@ -206,18 +245,51 @@ class ChatService {
           'content': '〔系统回执 · 刚才的工具调用结果，供你作答〕\n${receipts.toString().trim()}',
         });
       }
-      out.add(_fallback(userText)); // 轮次用尽还没终答——兜底收口，不吊着用户
+      out.add(_failure(userText, detail: '工具循环 $maxToolRounds 轮用尽仍没有终答'));
       return out;
-    } catch (_) {
-      return <ChatMessage>[_fallback(userText)];
+    } catch (e) {
+      return <ChatMessage>[_failure(userText, detail: '异常：$e')];
     }
   }
 
-  ChatMessage _fallback(String seed) => ChatMessage.sys(
+  /// 失败出口（docs/22 §2.0）——**兜底不许再默默发生**：
+  ///
+  /// - **严格模式**（开发构建）：不产假台词，给一条 `〔诊断〕` 条目，
+  ///   把失败类别与原文（截断）直接摆到宿主面前，问题一眼可见。
+  /// - **非严格模式**（release）：仍给兜底毒舌（无 Key/断网不得阻塞使用），
+  ///   但句首 `〔兜底〕` 标注 + 括注原因——看得见降级，不会误以为她真这么说了。
+  ChatMessage _failure(String seed, {String? detail}) {
+    final String why =
+        (detail == null || detail.trim().isEmpty) ? '未知原因' : detail.trim();
+    if (strict) {
+      return ChatMessage.sys(
         _id(),
-        fallbackLines[_pick(fallbackLines, '$seed|${fallbackLines.length}')],
+        '$diagTag LLM 失败 · ${_clamp(why)}',
         emotion: 'annoyed',
       );
+    }
+    final String line =
+        fallbackLines[_pick(fallbackLines, '$seed|${fallbackLines.length}')];
+    final String short = why.length > 60 ? '${why.substring(0, 60)}…' : why;
+    return ChatMessage.sys(
+      _id(),
+      '$fallbackTag$line（$short）',
+      emotion: 'annoyed',
+    );
+  }
+
+  /// 从网关捞最近一次失败原因（[CopyLlmGateway] 契约只有「失败返回 null」，
+  /// 真实现 [LlmGateway] 才带得动 detail；测试替身捞不到就回 null）。
+  static String? _detailOf(CopyLlmGateway gw) {
+    if (gw is LlmGateway) {
+      final LlmReply? r = gw.lastReply;
+      if (r == null) return null;
+      final String kind = r.failure?.name ?? 'unknown';
+      final String detail = r.detail ?? '';
+      return detail.isEmpty ? kind : '$kind · $detail';
+    }
+    return null;
+  }
 
   int _seq = 0;
   String _id() =>

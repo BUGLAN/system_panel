@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../design/tokens.dart';
+import '../state/sfx.dart';
 import '../widgets/chat_bar.dart';
 import '../widgets/press_scale.dart';
 import '../widgets/type_text.dart';
@@ -307,6 +308,51 @@ class _ChatPanelState extends State<ChatPanel> {
 
   Widget _bubble(ChatMessage m, int i) {
     final bool host = m.fromHost;
+    // 〔诊断〕严格模式的失败条目（docs/22 §2.0）：开发构建下失败不伪装成台词，
+    // 红框等宽直接摆出来——问题必须一眼可见。
+    if (!host && m.text.startsWith(ChatService.diagTag)) {
+      return Align(
+        key: Key('chat.msg.$i'),
+        alignment: Alignment.centerLeft,
+        child: Container(
+          margin: const EdgeInsets.only(top: 7),
+          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
+          constraints: const BoxConstraints(maxWidth: 320),
+          decoration: BoxDecoration(
+            color: C.rS.withAlpha(38),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: C.rS, width: 1),
+          ),
+          child: Text(
+            m.text,
+            key: Key('chat.diagentry.$i'),
+            style: fs(family: F.mono, size: 11, wght: 500, height: 1.5, color: C.rS),
+          ),
+        ),
+      );
+    }
+    // 〔兜底〕release 模式的降级条目：金框标明「这是兜底，不是她的原话」
+    if (!host && m.text.startsWith(ChatService.fallbackTag)) {
+      return Align(
+        key: Key('chat.msg.$i'),
+        alignment: Alignment.centerLeft,
+        child: Container(
+          margin: const EdgeInsets.only(top: 7),
+          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
+          constraints: const BoxConstraints(maxWidth: 320),
+          decoration: BoxDecoration(
+            color: C.rB.withAlpha(26),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: C.rB.withAlpha(140), width: 1),
+          ),
+          child: Text(
+            m.text,
+            key: Key('chat.fbentry.$i'),
+            style: fs(family: F.mono, size: 11, wght: 500, height: 1.5, color: C.rB),
+          ),
+        ),
+      );
+    }
     // 〔工具〕系统条目：等宽读数风、不打字机、左侧细框
     if (!host && m.text.startsWith(ChatService.toolTag)) {
       return Align(
@@ -338,6 +384,11 @@ class _ChatPanelState extends State<ChatPanel> {
             text: m.text,
             speed: 30,
             style: fs(family: F.cn, size: 13.5, wght: 400, height: 1.5, color: C.ice),
+            // 打字机逐字音节（`ui.js:96`）：气泡用**该条消息自己的情绪**
+            // （`ChatMessage.emotion`，由 persona 的 `[[emo]]` 标签给出；
+            //  聊天不是旁白，`soft` 保持 false）。
+            // 点一下整句铺完时 `TypeText` 不逐字回调 → 不逐字发音（原型同）。
+            onChar: (String _) => Sfx.syllable(m.emotion),
             onDone: () {
               if (mounted) setState(() => _typed.add(m.id));
             },

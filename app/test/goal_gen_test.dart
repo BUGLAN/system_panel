@@ -517,6 +517,8 @@ void main() {
           total: total ?? prev.rings.length,
           level: level,
           text: text,
+          // 镜像生产调用（main.dart 两处都传 `at: prev.at`，O-2 裁决）
+          at: prev.at,
         );
 
     test('时长词 → 环数（原型 makeGoal L147-150 逐条）', () {
@@ -585,12 +587,17 @@ void main() {
       expect(next(prev, level: 5, text: '半年减重 10 斤').rings.length, 8);
     });
 
-    test('沿用上一目标的文本/类型/访谈答案/立目标时刻', () {
+    test('沿用上一目标的文本/类型/访谈答案/立目标时刻（O-2 裁决：沿用）', () {
       final Goal prev = finishedFirst();
       final Goal g = next(prev);
       expect(g.text, prev.text);
       expect(g.cat, 'sleep');
       expect(g.short, prev.short);
+      // O-2（宿主 2026-10-10 裁决）：立目标时刻**沿用**上一目标。
+      // 生产 `main.dart` 两处调用（_wireFlow 收官钩子 / _onGoalChangeSubmitted
+      // 主动换目标）都传 `at: prev.at`；本测试的 next() 镜像同一调用。
+      // 历史：2026-10-10 之前两处都没传 at，这条断言于是只在两次
+      // `DateTime.now()` 落在同一毫秒时才绿（验收人实测 ≈99% 绿 / ≈1% 红）。
       expect(g.at, prev.at);
       expect(g.interview['sleep.schedule'], '0 点前睡 7 点前起');
     });

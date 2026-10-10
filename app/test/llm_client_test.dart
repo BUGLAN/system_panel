@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:system_panel/agent/llm_client.dart';
+import 'package:system_panel/agent/llm_telemetry.dart';
 
 /// LlmClient 单测（docs/18 §2.4 / §3.1-T4）。
 /// 全部走 MockClient，不打真网。
@@ -318,7 +319,7 @@ void main() {
       test('缺 message', () async => expect(await kindOf('{"choices":[{"x":1}]}'), LlmFailure.badResponse));
     });
 
-    test('ping() 发最小探测请求', () async {
+    test('ping() 发**真实形状**探测请求（docs/22 R1：不再是 maxTokens 8 的假绿灯）', () async {
       Map<String, dynamic>? body;
       final LlmClient client = LlmClient(
         config: const LlmConfig(apiKey: 'k'),
@@ -329,8 +330,103 @@ void main() {
       );
       final LlmReply r = await client.ping();
       expect(r.ok, isTrue);
-      expect((body!['messages'] as List<dynamic>).length, 1);
-      expect(body!['max_tokens'], 8);
+      // 一句系统提示 + 一句用户话（旧版只有 user('ping') 且 max_tokens=8）
+      expect((body!['messages'] as List<dynamic>).length, 2);
+      expect(body!['max_tokens'], 512);
+      expect(body!['reasoning_effort'], LlmConfig.kDefaultReasoningEffort);
+    });
+
+    test('reasoning_effort：默认 low 透传；可调 max；空串 = 不带该参数', () async {
+      Future<Map<String, dynamic>> bodyOf(LlmConfig cfg) async {
+        Map<String, dynamic>? body;
+        final LlmClient c = LlmClient(
+          config: cfg,
+          httpClient: MockClient((http.Request r) async {
+            body = jsonDecode(r.body) as Map<String, dynamic>;
+            return okBody('x');
+          }),
+        );
+        await c.chat(messages: <LlmMessage>[LlmMessage.user('hi')]);
+        return body!;
+      }
+
+      expect((await bodyOf(const LlmConfig(apiKey: 'k')))['reasoning_effort'], 'low');
+      expect(
+        (await bodyOf(const LlmConfig(apiKey: 'k', reasoningEffort: 'max')))[
+            'reasoning_effort'],
+        'max',
+      );
+      expect(
+        (await bodyOf(const LlmConfig(apiKey: 'k', reasoningEffort: '')))
+            .containsKey('reasoning_effort'),
+        isFalse,
+      );
+    });
+
+    test('遥测（docs/22 §2.0）：每次应答计数 + 失败留类别与 detail', () async {
+      LlmTelemetry.reset();
+      // ① 成功
+      final LlmClient ok = LlmClient(
+        config: const LlmConfig(apiKey: 'k'),
+        httpClient: MockClient((http.Request r) async => okBody('hi')),
+      );
+      await ok.chat(messages: <LlmMessage>[LlmMessage.user('x')]);
+      expect(LlmTelemetry.calls, 1);
+      expect(LlmTelemetry.ok, 1);
+      expect(LlmTelemetry.failures, 0);
+      // ② HTTP 500：类别 + detail 都要留住
+      final LlmClient bad = LlmClient(
+        config: const LlmConfig(apiKey: 'k'),
+        httpClient: MockClient(
+          (http.Request r) async => http.Response('{"error":"boom"}', 500),
+        ),
+      );
+      final LlmReply r = await bad.chat(messages: <LlmMessage>[LlmMessage.user('x')]);
+      expect(r.failure, LlmFailure.httpError);
+      expect(LlmTelemetry.calls, 2);
+      expect(LlmTelemetry.failures, 1);
+      expect(LlmTelemetry.byKind[LlmFailure.httpError], 1);
+      expect(LlmTelemetry.lastDetail, contains('500'));
+      expect(LlmTelemetry.lastDetail, contains('boom'));
+      // ③ 无 Key 短路也算一次失败（最容易被漏记的一类「她哑了」）
+      final LlmClient none = LlmClient(
+        config: const LlmConfig(),
+        httpClient: MockClient((http.Request r) async => okBody('x')),
+      );
+      await none.chat(messages: <LlmMessage>[LlmMessage.user('x')]);
+      expect(LlmTelemetry.byKind[LlmFailure.noKey], 1);
+      expect(LlmTelemetry.calls, 3);
+      LlmTelemetry.reset();
+      expect(LlmTelemetry.calls, 0);
+      expect(LlmTelemetry.lastDetail, isNull);
+    });
+
+    test('严格模式不重试（开发期一次就报真因，验收 F-5）；release 语义重试 1 次', () async {
+      Future<int> attemptsOf(bool strict) async {
+        int n = 0;
+        final LlmClient c = LlmClient(
+          config: LlmConfig(apiKey: 'k', strict: strict),
+          httpClient: MockClient((http.Request r) async {
+            n++;
+            throw http.ClientException('boom');
+          }),
+        );
+        final LlmReply r =
+            await c.chat(messages: <LlmMessage>[LlmMessage.user('x')]);
+        expect(r.failure, LlmFailure.network);
+        return n;
+      }
+
+      expect(await attemptsOf(true), 1, reason: '严格模式：一次就报，不重试');
+      expect(await attemptsOf(false), 2, reason: 'release：传输层失败重试 1 次');
+    });
+
+    test('LlmReply.hasText：HTTP 200 但正文为空不算「拿到话」（验收 F-2）', () {
+      expect(const LlmReply.success(text: '嗯。').hasText, isTrue);
+      expect(const LlmReply.success(text: '   ').hasText, isFalse);
+      expect(const LlmReply.success(text: '').hasText, isFalse);
+      expect(const LlmReply.failure(LlmFailure.noKey, '未配置 API Key').hasText,
+          isFalse);
     });
   });
 }

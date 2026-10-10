@@ -23,6 +23,27 @@ import 'package:system_panel/widgets/chat_bar.dart';
 import 'package:system_panel/widgets/result_panel.dart';
 import 'package:system_panel/widgets/type_text.dart';
 
+/// 失败出口断言（docs/22 §2.0「严格模式」）：
+/// - 非严格模式（release 语义）：`〔兜底〕<原句>（原因）` —— 兜底照样发生但看得见
+/// - 严格模式（debug/profile 语义）：`〔诊断〕LLM 失败 · <原因>` —— **不产假台词**
+void expectFallbackText(String text) {
+  expect(text, startsWith(ChatService.fallbackTag));
+  expect(
+    ChatService.fallbackLines.any((String l) => text.contains(l)),
+    isTrue,
+    reason: '兜底出口必须带原句：$text',
+  );
+}
+
+void expectDiagText(String text) {
+  expect(text, startsWith(ChatService.diagTag));
+  expect(
+    ChatService.fallbackLines.any((String l) => text.contains(l)),
+    isFalse,
+    reason: '严格模式不许产假台词：$text',
+  );
+}
+
 /// 对话层三件（docs/18 §2.6）：历史持久化 / 回复服务兜底 / 面板 UI。
 /// 全离线：存储用内存实现，LLM 用假网关。
 void main() {
@@ -95,11 +116,51 @@ void main() {
   });
 
   group('ChatService（人设 + 记忆 + LLM，兜底铁律）', () {
-    test('无网关（未配 Key 等价态）→ 固定 5 句兜底之一，情绪 annoyed', () async {
+    test('无网关（未配 Key 等价态）→ 固定 5 句兜底之一 + 〔兜底〕标注，情绪 annoyed', () async {
       final ChatMessage r = await ChatService().reply('在吗');
-      expect(ChatService.fallbackLines, contains(r.text));
+      expectFallbackText(r.text);
+      expect(r.text, contains('未配置 API Key'));
       expect(r.emotion, 'annoyed');
       expect(r.fromHost, isFalse);
+    });
+
+    test('严格模式（docs/22 §2.0）：失败直接报错，不产假台词', () async {
+      // ① 没配 Key
+      final ChatMessage a = await ChatService(strict: true).reply('在吗');
+      expectDiagText(a.text);
+      expect(a.text, contains('未配置 API Key'));
+      expect(a.emotion, 'annoyed');
+      // ② 网关失败（含「正文为空」这类 HTTP 200 的隐性失败）
+      final ChatMessage b = await ChatService(
+        gateway: const _NullGateway(),
+        strict: true,
+      ).reply('在吗');
+      expectDiagText(b.text);
+      expect(b.text, contains('LLM 失败'));
+    });
+
+    test('statusLineOf 带主线环进度（验收 F-3：不喂她会从旧工具回执里捡过期数字）', () {
+      final String withRings = ChatService.statusLineOf(
+        name: '宿主',
+        lv: 3,
+        streak: 2,
+        queue: 1,
+        goalShort: '早起',
+        ringDone: 1,
+        ringTotal: 3,
+      );
+      expect(withRings, contains('主线「早起」'));
+      expect(withRings, contains('主线进度 1/3 环'));
+
+      final String noRings = ChatService.statusLineOf(
+        name: '宿主',
+        lv: 1,
+        streak: 0,
+        queue: 2,
+        goalShort: '',
+      );
+      expect(noRings, isNot(contains('主线进度')));
+      expect(noRings, isNot(contains('主线「')));
     });
 
     test('LLM 回复：剥 [情绪] 标签，正文进气泡', () async {
@@ -111,14 +172,13 @@ void main() {
       expect(r.emotion, 'smug');
     });
 
-    test('LLM 空话/失败 → 兜底', () async {
+    test('LLM 空话/失败 → 兜底（带标注）', () async {
       expect(
         (await ChatService(gateway: _FakeGateway('   ')).reply('x')).text,
         isNot('   '),
       );
-      expect(
+      expectFallbackText(
         (await ChatService(gateway: const _NullGateway()).reply('x')).text,
-        isIn(ChatService.fallbackLines),
       );
     });
 
@@ -544,8 +604,9 @@ void main() {
         ),
       );
       final List<ChatMessage> out = await svc.respond('在吗');
-      expect(out, hasLength(ChatService.maxToolRounds + 1)); // 3 回执 + 兜底
-      expect(ChatService.fallbackLines, contains(out.last.text));
+      expect(out, hasLength(ChatService.maxToolRounds + 1)); // 3 回执 + 失败出口
+      expectFallbackText(out.last.text);
+      expect(out.last.text, contains('工具循环 3 轮用尽'));
     });
 
     test('第二跳 LLM 失败（HTTP 500）→ 已执行的工具回执保留 + 兜底收口', () async {
@@ -566,7 +627,59 @@ void main() {
       );
       final List<ChatMessage> out = await svc.respond('查一下');
       expect(out[0].text, startsWith(ChatService.toolTag)); // 工具真执行了
-      expect(ChatService.fallbackLines, contains(out.last.text));
+      expectFallbackText(out.last.text);
+      // 失败原因必须被带到宿主面前（旧版这里是静默 null）
+      expect(out.last.text, contains('HTTP 500'));
+      expect(out.last.text, contains('boom'));
+    });
+
+    test('宿主那个 bug 的回归：HTTP 200 但正文为空（推理模型吃光 max_tokens）', () async {
+      // docs/22 R1：端点是推理模型，max_tokens 同时算思考与正文——
+      // 200 会被思考吃光 → content 空 → 旧版静默兜底、宿主永远不知道原因。
+      Map<String, dynamic>? sent;
+      ChatService svc({required bool strict}) => ChatService(
+            client: LlmClient(
+              config: const LlmConfig(apiKey: 'sk-test'),
+              httpClient: MockClient((http.Request r) async {
+                sent = jsonDecode(r.body) as Map<String, dynamic>;
+                return http.Response(
+                  jsonEncode(<String, dynamic>{
+                    'choices': <dynamic>[
+                      <String, dynamic>{
+                        'message': <String, dynamic>{
+                          'content': '', // 可见正文为空
+                          'reasoning_content': '思考把预算用完了',
+                        },
+                        'finish_reason': 'length',
+                      },
+                    ],
+                  }),
+                  200,
+                  headers: <String, String>{
+                    'content-type': 'application/json; charset=utf-8',
+                  },
+                );
+              }),
+            ),
+            tools: defaultAgentTools(
+              context: MockAgentContext(queue: <Quest>[daily()]),
+              memory: MemoryStore(),
+            ),
+            strict: strict,
+          );
+
+      // 上限必须真的抬上去了（200 → 1024），推理档位默认 low
+      final List<ChatMessage> strictOut = await svc(strict: true).respond('你好');
+      expect(sent!['max_tokens'], 1024);
+      expect(sent!['reasoning_effort'], 'low');
+      // 严格模式：直接报错，不产假台词
+      expectDiagText(strictOut.last.text);
+      expect(strictOut.last.text, contains('正文为空'));
+
+      // 非严格模式：兜底照旧，但必须标明是兜底 + 原因
+      final List<ChatMessage> relaxed = await svc(strict: false).respond('你好');
+      expectFallbackText(relaxed.last.text);
+      expect(relaxed.last.text, contains('正文为空'));
     });
 
     test('无 Key / 没接客户端 → respond 退化为单条兜底（快捷 chip 场景的本地可用性）', () async {
@@ -577,7 +690,7 @@ void main() {
       // 没接 client
       final List<ChatMessage> a = await ChatService(tools: reg).respond('在吗');
       expect(a, hasLength(1));
-      expect(ChatService.fallbackLines, contains(a.first.text));
+      expectFallbackText(a.first.text);
       // client 没配 Key
       final ChatService b = ChatService(
         client: LlmClient(config: const LlmConfig(apiKey: '')),
@@ -585,7 +698,37 @@ void main() {
       );
       final List<ChatMessage> out = await b.respond('在吗');
       expect(out, hasLength(1));
-      expect(ChatService.fallbackLines, contains(out.first.text));
+      expectFallbackText(out.first.text);
+    });
+
+    test('严格模式：respond 的三条失败出口全部给诊断条目（不产假台词）', () async {
+      final AgentToolRegistry reg = defaultAgentTools(
+        context: MockAgentContext(queue: <Quest>[daily()]),
+        memory: MemoryStore(),
+      );
+      // ① 没接 client（降级到 reply）
+      final List<ChatMessage> a =
+          await ChatService(tools: reg, strict: true).respond('在吗');
+      expect(a, hasLength(1));
+      expectDiagText(a.first.text);
+      // ② 第二轮 HTTP 500（工具已执行 → 回执保留，最后一条是诊断）
+      final List<String> bodies = <String>[];
+      final LlmClient client = LlmClient(
+        config: const LlmConfig(apiKey: 'sk-test'),
+        httpClient: scripted(bodies, <(String, int)>[
+          (toolCall('get_status'), 200),
+          ('{"error":"boom"}', 500),
+        ]),
+      );
+      final List<ChatMessage> out = await ChatService(
+        client: client,
+        tools: reg,
+        strict: true,
+      ).respond('查一下');
+      expect(out.first.text, startsWith(ChatService.toolTag)); // 工具回执还在
+      expectDiagText(out.last.text);
+      expect(out.last.text, contains('httpError'));
+      expect(out.last.text, contains('HTTP 500'));
     });
   });
 
