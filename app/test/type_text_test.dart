@@ -196,6 +196,38 @@ void main() {
       expect(_alphas(tester).every((double a) => a == 1), isTrue);
     });
 
+    testWidgets('⚠️ 中途跳过：不能把剩下的字一次性喂给 onChar', (WidgetTester tester) async {
+      // docs/22 批次②：这条钉的是根因 —— `AnimationController.value` 的 setter
+      // 无条件 notifyListeners，`_c!.value = 1` 会立刻打一次 `_tick`，而 `_tick`
+      // 里的 while 会把**所有还没回调过的字**一次性喂给 `onChar`。
+      // 实机症状：跳过整句时逐字音节/口型被喂一整串（A/B 实测：不修 = 同一帧 8 个字，
+      // 修了 = 停在已显形的那些字）。上面那条只覆盖 mount-skip，这条覆盖 mid-flight。
+      final List<String> seen = <String>[];
+      Widget build(int skip) => MaterialApp(
+            home: Scaffold(
+              body: TypeText(text: '一二三四五六七八', skipToken: skip, onChar: seen.add),
+            ),
+          );
+      await tester.pumpWidget(build(0));
+      await tester.pump();
+      for (int i = 0; i < 5; i++) {
+        await tester.pump(const Duration(milliseconds: 16)); // 34ms/字 → 先显形一两个字
+      }
+      final int before = seen.length;
+      expect(before, greaterThan(0), reason: '先得真的开始显形，否则这条测不到东西');
+
+      await tester.pumpWidget(build(1)); // 中途点一下 = 整句跳过
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 200));
+
+      expect(
+        seen.length,
+        before,
+        reason: '跳过后不该再喂任何字（更不该把剩余 8 个一次喂光）',
+      );
+      expect(_alphas(tester).every((double a) => a == 1), isTrue);
+    });
+
     testWidgets('高亮片段里的字也回调', (WidgetTester tester) async {
       final List<String> seen = <String>[];
       await tester.pumpWidget(

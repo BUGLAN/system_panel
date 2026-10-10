@@ -13,6 +13,7 @@ import '../data/format.dart';
 import '../data/items.dart';
 import '../design/tokens.dart';
 import '../state/quest.dart';
+import '../state/sfx.dart';
 
 /// ═══════════════════════════════════════════════════════════
 ///  执行面板（app.css L305-356 `#exec` · ui.js `Exec.show`）
@@ -327,7 +328,11 @@ class ExecPanel extends StatelessWidget {
   /// .btn.ghost —— 道具（点它开合抽屉，原型 `#exItem` → `Exec.drawer()`）
   Widget _itemButton() {
     return GestureDetector(
-      onTap: onItem,
+      // 普通点按（`ui.js:396`）：`$('#exItem').onclick = () => { Sound.play('tap'); this.drawer() }`
+      onTap: () {
+        Sfx.play('tap');
+        onItem?.call();
+      },
       child: Container(
         key: const Key('exec.item'),
         height: 54,
@@ -374,7 +379,15 @@ class ExecPanel extends StatelessWidget {
   Widget _submitButton() {
     return Expanded(
       child: PressScale(
-        onTap: onSubmit,
+        // 提交键（`ui.js:398` 真源，逐字照抄）：
+        // `$('#exGo').onclick = () => { Sound.play('tap'); App.submit(); }`
+        // —— 这里**只有** Sound.play('tap')，没有 buzz（震动）；结算的「钤印」感是
+        // `impact`（`flows.js:387`，在 result_panel），提交这一拍只是普通点按。
+        // `PressScale` 一次抬手只回调一次 `onTap`，不会连发。
+        onTap: () {
+          Sfx.play('tap');
+          onSubmit?.call();
+        },
         child: Container(
           key: const Key('exec.go'),
           height: 54,
@@ -477,7 +490,11 @@ class ExecPanel extends StatelessWidget {
   /// .mini —— 收起 ▾（原型 `#exMin` → `App.lobby()`：回大厅，**计时不停**）
   Widget _miniButton() {
     return GestureDetector(
-      onTap: onCollapse,
+      // 普通点按（`ui.js:398`）：`$('#exMin').onclick = () => { Sound.play('tap'); App.lobby() }`
+      onTap: () {
+        Sfx.play('tap');
+        onCollapse?.call();
+      },
       behavior: HitTestBehavior.opaque,
       child: Container(
         key: const Key('exec.min'),

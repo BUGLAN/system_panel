@@ -9,7 +9,9 @@ import 'package:flutter_svg/flutter_svg.dart';
 
 import '../data/attrs.dart';
 import '../design/tokens.dart';
+import '../state/haptics.dart';
 import '../state/result.dart';
+import '../state/sfx.dart';
 import 'sys_icons.dart';
 
 /// ═══════════════════════════════════════════════════════════
@@ -78,6 +80,18 @@ class _ResultPanelState extends State<ResultPanel>
   /// 当前时刻（ms）
   double _t = 0;
 
+  /// 演出代际号：`_start()` 每开一场 +1，作废还在飞的那颗「砸印」定时器
+  /// （`visible` 反复翻转时不许把上一场的音效补发出来）
+  int _gen = 0;
+
+  // ── 结算音效的相位闩（`docs/22 R3` · `flows.js`）────────────────
+  /// 已经发过章的档位：0 = 没发 / 1 = CRIT / 2 = 双倍卡
+  int _sndStamp = 0;
+
+  /// 上一次「滚数」音的 t；每段 `count()` 起手强制发一发
+  double _sndCountAt = double.negativeInfinity;
+  bool _sndCounting = false;
+
   @override
   void initState() {
     super.initState();
@@ -112,7 +126,11 @@ class _ResultPanelState extends State<ResultPanel>
       _notifyDone();
       return;
     }
+    final int g = ++_gen;
     _t = 0;
+    _sndStamp = 0;
+    _sndCountAt = double.negativeInfinity;
+    _sndCounting = false;
     _c
       ..duration = Duration(milliseconds: _tl.total.round())
       ..addListener(_onTick);
@@ -120,7 +138,12 @@ class _ResultPanelState extends State<ResultPanel>
     _c.forward(from: 0).whenComplete(_notifyDone);
     // 印章砸下那一下的 FX（原型在 `w(820)` 之后）
     Future<void>.delayed(Duration(milliseconds: _tl.impactAt.round()), () {
-      if (mounted) widget.onImpact?.call(widget.result.rarity.i);
+      if (!mounted || g != _gen) return;
+      // 结算砸印（`flows.js:387`）：`Sound.play('impact'); FX.flash(...); FX.shake(...);`
+      // `buzz(ri >= 4 ? [40,30,60] : 30)` —— 稀有度 ≥4 才是那记重震
+      Sfx.play('impact');
+      Haptics.buzz(widget.result.rarity.i >= 4 ? 'impact' : 'impactLight');
+      widget.onImpact?.call(widget.result.rarity.i);
     });
   }
 
@@ -136,8 +159,42 @@ class _ResultPanelState extends State<ResultPanel>
 
   void _onTick() {
     final double t = _c.value * _tl.total;
+    _soundAt(t);
     // 刚跨过某个门时通知一次（原型是加 `.on` 类）
     setState(() => _t = t);
+  }
+
+  /// 结算演出里的两处高频音效（相位全部取自 [SettleTimeline] 的纯函数，
+  /// 不新造拍子）：
+  ///
+  ///  · **滚数**（`flows.js:404`）：`count(from,to,ms)` 的 tween 里
+  ///    `if (n - lastTick > 55) Sound.play('count')` —— 数字真的在滚时才发，
+  ///    每段 `count()` 起手必发一发（原型 `lastTick` 是每段重置的局部量）。
+  ///  · **暴击 / 双倍**（`flows.js:412` / `flows.js:422`）：两处原型都放 `'crit'`；
+  ///    只有 CRIT 那记带震动 `buzz([20,20,40])`。
+  void _soundAt(double t) {
+    final bool counting = _counting(t);
+    if (counting && !_sndCounting) _sndCountAt = double.negativeInfinity;
+    _sndCounting = counting;
+    if (counting && t - _sndCountAt >= 55) {
+      _sndCountAt = t;
+      Sfx.play('count');
+    }
+    final int stamp = _tl.stampAt(t);
+    if (stamp >= 2 && _sndStamp < 2) Sfx.play('crit'); // 双倍卡
+    if (stamp >= 1 && _sndStamp < 1) {
+      Sfx.play('crit'); // CRIT ×2
+      Haptics.buzz('crit');
+    }
+    _sndStamp = stamp;
+  }
+
+  /// 此刻数字是不是真的在往上滚（三段 `count()` 的时间窗）
+  bool _counting(double t) {
+    if (t >= _tl.countAt && t < _tl.countEnd) return true;
+    if (_tl.crit && t >= _tl.critAt && t < _tl.critEnd) return true;
+    if (_tl.dbl && t >= _tl.dblAt && t < _tl.dblEnd) return true;
+    return false;
   }
 
   @override

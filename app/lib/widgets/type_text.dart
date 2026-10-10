@@ -173,6 +173,14 @@ class _TypeTextState extends State<TypeText>
     }
     if (old.skipToken != widget.skipToken) {
       // 点一下：整句立刻铺完（原型 `skip = true` → 后面的字不再等）
+      //
+      // ⚠️ 必须**先把 `_shown` 推到句尾**再动控制器：`AnimationController.value`
+      //    的 setter 是无条件 `notifyListeners()`，`_c!.value = 1` 会立刻打一次
+      //    `_tick`，而 `_tick` 里那个 while 会把**剩下所有没回调过的字一次性**
+      //    回调给 `onChar`（实机症状：跳过时逐字音节/口型被喂一整串）。
+      //    原型 `ui.js:96` 的 skip 分支是 `continue` —— 字照样显形，逐字回调
+      //    不再发（语音那边同时 `Voice.hush()`）。所以跳过这条路本来就不该回调。
+      _shown = _chars.length;
       _c!.value = 1;
       if (!_done) {
         _done = true;

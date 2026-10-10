@@ -8,8 +8,10 @@ import 'package:flutter/material.dart';
 
 import '../data/rarity.dart';
 import '../design/tokens.dart';
+import '../state/haptics.dart';
 import '../state/host_state.dart';
 import '../state/quest.dart';
+import '../state/sfx.dart';
 import 'hold_button.dart';
 import 'press_scale.dart';
 import 'plate_timeline.dart';
@@ -170,6 +172,15 @@ class _PlateState extends State<Plate> with TickerProviderStateMixin {
       _land
         ..value = 0
         ..forward().then((void _) => _ceremony());
+      // 委托单落板（`ui.js:238`）：落板动画 560ms 跑到 **440ms** 的那一下
+      // —— 原型是 `await sleep(440)` 之后 `Sound.play('land'); FX.shake(3,200); buzz(18)`。
+      // `_gen` 保证被换单/重刻作废的那一场不再发声（一次事件只发一次）。
+      final int g = _gen;
+      Future<void>.delayed(const Duration(milliseconds: 440), () {
+        if (!mounted || g != _gen) return;
+        Sfx.play('land');
+        Haptics.buzz('land');
+      });
     } else {
       // 静态比对：直接落在终态，渲染结果与以前逐字节一致
       _land.value = 1;
@@ -301,8 +312,12 @@ class _PlateState extends State<Plate> with TickerProviderStateMixin {
     VoidCallback? onFinish,
   }) async {
     final int g = _gen;
+    // 起手那一档（`ui.js:251` 的 `set(from); Sound.play('rung', from)`）——
+    // 首帧 `_onRollTick` 里 `i == _shownIndex` 不会换档，所以这一发在这里补。
+    Sfx.play('rung');
     if (total <= 0) {
       if (mounted) setState(() => _shownIndex = indexAt(0));
+      _rankSettled(indexAt(0));
       onFinish?.call();
       return;
     }
@@ -316,15 +331,31 @@ class _PlateState extends State<Plate> with TickerProviderStateMixin {
     await done.future;
     if (!mounted || g != _gen) return; // 被换单/重刻打断
     _roll.removeListener(_onRollTick);
-    setState(() => _shownIndex = indexAt(total));
+    final int settled = indexAt(total);
+    setState(() => _shownIndex = settled);
+    _rankSettled(settled);
     onFinish?.call();
+  }
+
+  /// 稀有度落定（`ui.js:263`）：原型就是**带档位**的一发 —— `Sound.play('rank', target)`
+  /// （`target = RARITY[r].i`，F~S = 0..6），所以总线上对到 `rank_<i>.wav`。
+  /// [target] 与震动的门限同源：它一直是**稀有度档位索引**（上行 = `RankRollTimeline.target`
+  /// = `quest.rarity.i`；下行 = `_ReRankRoll` 的目标档），不是我另造的数。
+  /// 震动只在 **target ≥ 5** 那两档（原型 `if (target >= 5) { … buzz([20,30,50]) }`）。
+  void _rankSettled(int target) {
+    Sfx.play('rank', variant: target);
+    if (target >= 5) Haptics.buzz('rank');
   }
 
   void _onRollTick() {
     final int Function(double)? at = _rollIndexAt;
     if (at == null) return;
     final int i = at(_roll.value * _rollTotal);
-    if (i != _shownIndex) setState(() => _shownIndex = i);
+    if (i != _shownIndex) {
+      // 每滚一档一发（`ui.js:251` / `ui.js:254` 两次 `Sound.play('rung', i)`）
+      Sfx.play('rung');
+      setState(() => _shownIndex = i);
+    }
   }
 
   Future<void> _engrave() async {
@@ -973,7 +1004,17 @@ class _Glass extends StatelessWidget {
       duration: const Duration(milliseconds: 900),
       decay: const Duration(milliseconds: 350),
       steps: 8, // 每推进 1/8 打一下（原型在此处放音效 + 5ms 震）
-      onComplete: () => onAccept?.call(),
+      // 按住每 1/8 步（`ui.js:313`）：原型 `buzz(5)`。音效本批没烘，只上震动。
+      onStep: (double _) => Haptics.buzz('hold'),
+      onComplete: () {
+        // 按满接单（`ui.js:346` `Plate.seal()` 的起手）：
+        // `Sound.play('seal'); FX.flash('#bff6ff',.24,280); FX.shake(4,220); buzz([30,40,60])`
+        // —— 视觉那半在 main.dart 的 `onAccept` 链路，声音/震动这两发在这里。
+        // `HoldButton` 内部 `_fired` 闩住，一整轮按住只会走到这里一次。
+        Sfx.play('seal');
+        Haptics.buzz('seal');
+        onAccept?.call();
+      },
       // 没按满就松手 → 上层判 `p > .25` 说那句 `waver`（原型 `Plate.hold()` 的 `up()`）
       onRelease: onWaver,
       builder: (BuildContext context, double p) => Container(
@@ -1420,7 +1461,14 @@ class PlateAlt extends StatelessWidget {
                 PressBuilder(
                   // D4：原型每颗按钮都有 onclick（ui.js L339），这里原先没接——
                   // 「换一个 / 等会儿」点下去毫无反应的死按钮就是它
-                  onTap: onPick == null ? null : () => onPick!(i),
+                  onTap: onPick == null
+                      ? null
+                      : () {
+                          // 普通点按（`ui.js:339`）：
+                          // `b.onclick = () => { Sound.play('tap'); onPick(o.v) }`
+                          Sfx.play('tap');
+                          onPick!(i);
+                        },
                   builder: (BuildContext _, bool down) => Container(
                     key: Key('plate.alt.$i'),
                     height: 36,

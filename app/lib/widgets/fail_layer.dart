@@ -3,6 +3,8 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 
 import '../design/tokens.dart';
+import '../state/haptics.dart';
+import '../state/sfx.dart';
 
 /// ═══════════════════════════════════════════════════════════
 ///  失败 / 补救（app.css L403-412 `#failv` + L71/88 的降调）
@@ -77,6 +79,11 @@ class _FailLayerState extends State<FailLayer>
       _remedyOn = true;
       return;
     }
+    // 失败页（`flows.js:527`）：`Sound.play('fail'); buzz(60)` —— 原型是压暗那一下
+    // 同时发的（`Sound.muffle` 那一串里）。`_run()` 只在"这一层真的变可见"时跑，
+    // 所以一声失败只发一次；静态比对（`animate:false`）保持无声。
+    Sfx.play('fail');
+    Haptics.buzz('fail');
     _fade.forward(from: 0);
     _remedyOn = false;
     Future<void>.delayed(const Duration(milliseconds: 1400), () {

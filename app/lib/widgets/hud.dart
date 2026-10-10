@@ -5,7 +5,9 @@ import 'package:flutter_svg/flutter_svg.dart';
 
 import '../data/titles.dart';
 import '../design/tokens.dart';
+import '../state/haptics.dart';
 import '../state/host_state.dart';
+import '../state/sfx.dart';
 import 'fx_layer.dart';
 import 'sys_icons.dart';
 
@@ -122,6 +124,13 @@ class _HudState extends State<Hud> with SingleTickerProviderStateMixin {
 
   void _play() {
     _pending = false;
+    // 升级（`flows.js:485` `levelUp(lv)`）：
+    // `Sound.play('levelup'); FX.flash('#e9fbff', .2, 260); buzz([30, 50, 30, 50])`
+    // —— 这一拍就是本工程里"升级"的唯一相位（结算的 `res.ups` 在 result_panel 里
+    // 不建模）：HUD 在前台就是升级那一帧、被结算页压住就攒到回大厅补播的那一帧。
+    // `_play()` 只在 `_pending` 翻假时被调一次（跨级、且只跨一级攒一拍），不会连发。
+    Sfx.play('levelup');
+    Haptics.buzz('levelup');
     _c.forward(from: 0);
   }
 

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../design/tokens.dart';
+import '../state/haptics.dart';
+import '../state/sfx.dart';
 
 /// 一个可选回答（原型 `choose([{t, v, main}])`）
 class Choice {
@@ -81,16 +83,39 @@ class _ChState extends State<_Ch> {
   /// —— 按下时那层渐变**从左扫过来**（`.35s var(--out)`），松手扫回去
   bool _down = false;
 
+  /// 原型 `choose()` 里的 `let locked = false`：第一颗点下去就锁死，
+  /// 后面再点谁都不算（`if (locked) return`）。这里借它保证
+  /// 「选一下 = 一声 choose + 一下 8ms 震」不会因为连点发两次。
+  bool _locked = false;
+
   void _set(bool v) {
     if (_down == v) return;
     setState(() => _down = v);
   }
 
   @override
+  void didUpdateWidget(covariant _Ch old) {
+    super.didUpdateWidget(old);
+    // 收起来再张开 = 新一问（原型 `choose()` 每次重建都是新的 `locked`）
+    if (!old.visible && widget.visible) _locked = false;
+    if (old.choice.label != widget.choice.label) _locked = false;
+  }
+
+  void _pick() {
+    final VoidCallback? onTap = widget.onTap;
+    if (onTap == null || _locked) return;
+    _locked = true;
+    // 选项点击（`ui.js:126`）：`Sound.play('choose'); buzz(8);`
+    Sfx.play('choose');
+    Haptics.buzz('choose');
+    onTap();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final Choice choice = widget.choice;
     final bool visible = widget.visible;
-    final VoidCallback? onTap = widget.onTap;
+    final bool canPick = widget.onTap != null;
     final bool main = choice.main;
     return AnimatedOpacity(
       opacity: visible ? 1 : 0,
@@ -102,10 +127,10 @@ class _ChState extends State<_Ch> {
         duration: const Duration(milliseconds: 500),
         curve: kOut,
         child: GestureDetector(
-          onTap: onTap,
-          onTapDown: onTap == null ? null : (_) => _set(true),
-          onTapUp: onTap == null ? null : (_) => _set(false),
-          onTapCancel: onTap == null ? null : () => _set(false),
+          onTap: canPick ? _pick : null,
+          onTapDown: canPick ? (_) => _set(true) : null,
+          onTapUp: canPick ? (_) => _set(false) : null,
+          onTapCancel: canPick ? () => _set(false) : null,
           behavior: HitTestBehavior.opaque,
           child: Stack(
             children: <Widget>[

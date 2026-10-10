@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../data/items.dart';
 import '../design/tokens.dart';
+import '../state/haptics.dart';
+import '../state/sfx.dart';
 
 /// ═══════════════════════════════════════════════════════════
 ///  道具抽屉（`ui.js` L430-448 `Exec.drawer()`）
@@ -128,7 +130,20 @@ class ItemDrawer extends StatelessWidget {
       sub: on ? '已生效' : '持有 ×$n',
       disabled: disabled,
       used: on,
-      onTap: disabled ? null : () => onUse?.call(id),
+      // 使用道具（`ui.js:444`）：原型只有"真的用上了"那一拍才响
+      // —— `if (A[k]) return; if (Store.useItem(k)) { Sound.play('seal'); FX.flash(…); }`
+      // 所以这里两个前置条件对齐原型：**本单没生效过**（`!A[k]`）且**手上有货**
+      // （原型那颗 button 就是在 `!n && !used` 时 disabled）。「已生效」的格子点了
+      // 依旧走原回调（行为一字不动），只是不再补响那一声。
+      onTap: disabled
+          ? null
+          : () {
+              if (!on && n > 0) {
+                Sfx.play('seal');
+                Haptics.buzz('seal');
+              }
+              onUse?.call(id);
+            },
     );
   }
 

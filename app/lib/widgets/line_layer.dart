@@ -2,6 +2,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
+import '../state/sfx.dart';
 import '../state/voice.dart';
 import 'voice_bars.dart';
 
@@ -31,6 +32,7 @@ class LineLayer extends StatelessWidget {
     this.skipToken = 0,
     this.voice,
     this.onChar,
+    this.emotion,
   });
 
   final String text;
@@ -62,9 +64,34 @@ class LineLayer extends StatelessWidget {
   /// 逐字回调（调用方转给 `VoiceEnvelope.syllable`）
   final ValueChanged<String>? onChar;
 
+  /// 这句台词的**情绪**（`persona.dart` 的 12 情绪表之一）—— 逐字电子音节按它变调。
+  /// 没给就按 [mood] 反查 `MOOD_LABEL`（`content.js:421`）；反查不到的（例如
+  /// main.dart 自造的「专注」）退回 `neutral`，宁可平一点也不瞎猜。
+  final String? emotion;
+
+  /// `MOOD_LABEL` 的逆映射：中文标签 → 情绪（`content.js` L421-424）
+  static String _emotionOfMood(String mood) => const <String, String>{
+    '待机': 'neutral',
+    '嫌弃': 'smug',
+    '冷淡': 'cold',
+    '不爽': 'annoyed',
+    '尚可': 'pleased',
+    '别扭': 'tsun',
+    '……开心': 'joy',
+    '意外': 'surprised',
+    '失望': 'sad',
+    '监视': 'focus',
+    '休眠': 'sleep',
+    '认可': 'proud',
+  }[mood] ?? 'neutral';
+
   @override
   Widget build(BuildContext context) {
     final Color ink = soft ? const Color(0xFFB8C7DC) : const Color(0xFFEEFCFF);
+    // 打字机逐字音节（`ui.js:96`）：原型在**同一个逐字回调**里发
+    // `Voice.syllable(ch, emo, o.soft)`，这里接在既有的口型钩子后面。
+    // 跳过整句时 `TypeText` 不逐字回调 → 也就不会逐字发音（原型同）。
+    final String sylEmotion = emotion ?? _emotionOfMood(mood);
     final Color bar = fail
         ? const Color(0xFF6C7A92)
         : soft
@@ -156,7 +183,14 @@ class LineLayer extends StatelessWidget {
                         text: text,
                         soft: soft,
                         skipToken: skipToken,
-                        onChar: onChar,
+                        // 口型包络照旧先走（`VoiceEnvelope.syllable`），后面这一发
+                        // 才是**电子音节**（`soft` = 旁白降调、音量减半）。
+                        // 跳过整句时这里一次都不会被回调 —— `type_text.dart` 的 skip
+                        // 分支先把 `_shown` 推到句尾，不会再逐字回调（原型同）。
+                        onChar: (String ch) {
+                          onChar?.call(ch);
+                          Sfx.syllable(sylEmotion, soft: soft);
+                        },
                         style: fs(
                           family: F.cn,
                           size: 17,
