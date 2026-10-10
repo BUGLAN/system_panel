@@ -525,3 +525,75 @@ else       _model->GetModelMatrix()->SetWidth(2.0f);   // 方形/竖视图走这
 - 取证手法留档（下次直接用）：`xcrun devicectl device capture screenshot` 截屏；
   `devicectl device copy from --domain-type appDataContainer` 取 App 沙箱文件
   （用它抓出插件缓存里的旧 model3.json，是"她一点没变"的定案证据）。
+
+## iOS 真机轮 · 「她像一个死人」的根因（2026-10-11 凌晨）—— 全部动作都没加载
+
+> 宿主验收：「主界面它像一个死人一样，原型上戳它都有反应的，现在这些反应都没了」。
+> 查到底了：**从第一天起，她的 64 个动作文件全部加载失败** —— 她从来没播过任何
+> 一个动作，屏幕上只有眨眼（Cubism 眨眼层）与物理余晖。**两个转换器 bug**：
+
+### 一、Segments 布局：类型标记的位置写错了
+
+`CubismMotion::Parse` 与 `CubismMotionJson::HasConsistency` 的约定是
+**「初始点 + 每段一个类型标记」**：
+
+```
+[x0, y0,  类型, 数据…,  类型, 数据…, …]
+```
+
+而旧转换器写的是 `[类型, x0, y0, 数据…]`（类型只写一次、且放在最前面）。
+官方样例 `Hiyori_m01.motion3.json` 用同一套算法算得 135/374 = 它声明的
+Meta ✅ —— **拿官方文件当尺子**才定位到（我自算的 1+段数 是错的）。
+
+### 二、Cubism 私有 JSON 解析器的脾气：数字后面只能是 `,` 或换行
+
+`CubismJson::ParseNumeric`（`Utils/CubismJson.cpp` L210-283）：
+
+```cpp
+case '\n': case ',':  { *outEndPos = i; ...  return CSM_NEW Float(ret); }
+default:              { _error = "non-numeric charactor found"; return NULL; }
+```
+
+**它不吃 `]` / `}` / `e`**。旧转换器用 `separators=(",",":")` 压成单行 →
+每个 `Segments` 数组的**最后一个数字紧跟 `]`** → `IsValid=0` → `Parse` 提前
+返回 → `CubismMotion::Create` 回 null → `LoadMotion` 报
+`[CSM][E]Failed to create motion from buffer`，**所有动作静默不播**。
+（`1e-06` 这类科学计数法同理，physics3 也中招 → 头发物理一直是坏的。）
+
+表情为什么没事：exp3.json 最后一个值恰好是字符串（`"Blend"`），数字后面
+都有逗号 —— 所以「闭眼/睁眼/欢迎表情」这些**看起来正常**，掩盖了动作全废。
+
+**修法**：转换器自写序列化（`_json_lines`）—— 与官方同款多行排版、`%.6f`
+固定小数位（不吃科学计数法），加 `cubism_json_safe` 自检（数字后必须是
+`,`/换行，否则直接 `SystemExit`，不允许再回归）。
+
+### 三、取证链（这次能挖到底靠它，下轮照用）
+
+1. `xcrun devicectl device copy from --domain-type appDataContainer
+   --domain-identifier com.systempanel.app --source …` —— 把设备上插件
+   解压缓存/产物拉下来逐字节对比（查出过「旧 model3.json 被无限复用」）。
+2. **给插件打临时诊断补丁**（改本机 pub 缓存，`fprintf(stderr, …)`）：
+   wrapper 的 `StartMotion` 打印**哪个动作**加载失败；框架的
+   `CubismMotion::Parse` 打印 `IsValid`、`HasConsistency` 打印
+   「算得值/声明值」。日志直接给出答案，比猜快一个数量级。
+   ⚠️ 两个缓存目录（`pub.dev` / `pub.flutter-io.cn`）**必须都改**，
+   构建用哪个由 `ios/.symlinks/plugins/flutter_live2d` 指向决定；
+   改完还要清 `DerivedData/…/Pods.build` 强制重编（否则增量构建不重编）。
+   用完从**重新下载的 pub 包**逐字节还原（别手改回去）。
+3. `xcrun devicectl device capture screenshot` + 逐带像素差分：
+   量化「她到底动没动」——修复前 发/脸 ~1,000 px/2s（眨眼级），
+   修复后 **9,143~43,721**、躯干 **71,607~284,904**。
+
+### 四、顺带修好的（宿主另一条验收：「戳它有反应」）
+
+- **戳她**（`main.dart _poke`）：点在她身上 → 越戳越恼（第 1~3 戳 tsun +
+  `poke` 动作 → 第 4 戳 annoyed → 第 5 戳起 cold + `fluster`），台词是
+  content.js L319 那五句；音效 `poke`（新增烘焙，audio.js L130 原参数）+
+  震动 `[8]`；20 秒不戳连戳计数归零。命中判定照抄原型 `Stage.hit` 的
+  宽度曲线（头窄→肩宽→裙摆再宽，**故意宽松**，别收紧）。
+- **她的头/眼睛跟着手指**（原型 `Stage.pointer` + `look('pointer')`）：
+  `Live2DStage` 的 `IgnorePointer` 改成**放行触摸**（插件平台视图自带
+  drag 跟随），「戳她」那层改成 **translucent 的 `Listener`** —— `Listener`
+  不参与手势竞技场，所以两边都能收到事件；UI（底栏/按钮）在她之上，不受影响。
+  ⚠️ 坐标必须用 `e.position`（全局）—— 用 `localPosition` 命中判定永远失败
+  （踩过一次：戳她毫无反应）。

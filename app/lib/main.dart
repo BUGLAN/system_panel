@@ -732,13 +732,83 @@ class _AppShellState extends State<AppShell>
   /// [holdMs] 不给就按原型的默认算（`clamp(420 + 字数*42, 900, 2400)`，见 `LINES.defaultHold`）。
   /// ⚠️ 原型每个调用点几乎都显式给了 hold，而且都很短（200~900ms）；
   ///    只有"回来的那几句"不给 —— 那几句就必须走这个默认。
-  void _sayAside(String text, {int? holdMs, bool busy = false}) {
+  ///
+  /// [emotion] 只给「戳她」这类需要逐字音节情绪的行用（原型
+  /// `Line.say(text, {emo})`：情绪同时喂表情与电子音节）。
+  void _sayAside(
+    String text, {
+    int? holdMs,
+    bool busy = false,
+    String? emotion,
+    VoidCallback? onDone,
+  }) {
     final int hold = holdMs ?? LINES.defaultHold(text);
     setState(() {
       _aside = text;
+      _asideEmotion = emotion;
       _asideUntil = DateTime.now().add(Duration(milliseconds: hold));
       if (busy) _busy = true;
     });
+    if (onDone != null) {
+      _asideDone?.cancel();
+      _asideDone = Timer(Duration(milliseconds: hold), onDone);
+    }
+  }
+
+  /// 当前临时台词的情绪（喂 [LineLayer.emotion] 的逐字音节）
+  String? _asideEmotion;
+
+  /// 临时台词结束后的回调（原型 `Line.say(...).then(...)`）
+  Timer? _asideDone;
+
+  /// ═══ 戳她（原型 flows.js L646-654 `poke()`）═══════════════════════
+  ///
+  /// 点在她身上（[Live2DStage.hitHer] 命中）→ 越戳越恼：
+  /// 第 1~3 戳 tsun + 动作 `poke`（check 组 + exp_shy01）→ 第 4 戳 annoyed →
+  /// 第 5 戳起 cold 且动作换 `fluster`；台词是 content.js L319 那五句。
+  /// 20 秒不戳，连戳计数归零（原型的 `_pokeReset`）。
+  /// ⚠️ 只留「连戳」计数（决定台词/动作档位）；原型另存过一个累计数
+  /// `S.pokes`，但界面从未展示 —— 不留死数据。
+  int _pokeN = 0;
+  Timer? _pokeReset;
+
+  void _poke() {
+    final int i = math.min(LINES.poke.length - 1, ++_pokeN - 1);
+    unawaited(Sfx.play('poke'));
+    unawaited(Haptics.buzz('poke'));
+    _stagePort?.act(i >= 3 ? 'fluster' : 'poke');
+    final String emo = i >= 4
+        ? 'cold'
+        : i >= 2
+        ? 'annoyed'
+        : 'tsun';
+    _stagePort?.mood(emo);
+    // 说完把那句情绪收回去（原型 `.then`: 大厅里回 mood 或 neutral）
+    _sayAside(
+      LINES.poke[i],
+      holdMs: 1500,
+      emotion: emo,
+      onDone: () {
+        if (!mounted || _moment != Moment.lobby) return;
+        _stagePort?.mood('neutral');
+      },
+    );
+    _pokeReset?.cancel();
+    _pokeReset = Timer(const Duration(seconds: 20), () => _pokeN = 0);
+  }
+
+  /// 舞台上的按下：**先走背景那一套**（记"宿主还在"、跳过打字机 —— 原型
+  /// `app.addEventListener('pointerdown', …, true)` 捕获阶段就干了），
+  /// 再看有没有戳在她身上（原型 `#stage` 的 pointerdown + `Stage.hit`）。
+  /// 两者**可以同时发生** —— 原型就是两层监听，别做成互斥。
+  void _onStageDown(Offset global, Rect rect) {
+    _tap++;
+    _voice.hush();
+    _lastAct = DateTime.now();
+    final bool hit = Live2DStage.hitHer(global, rect);
+    debugPrint('[stage] 舞台按下 (${global.dx.toStringAsFixed(0)},'
+        '${global.dy.toStringAsFixed(0)}) 命中她=$hit');
+    if (hit) _poke();
   }
 
   /// 原型 `App.second()`：换日之外的那几件事
@@ -981,6 +1051,39 @@ class _AppShellState extends State<AppShell>
                           onFailed: (String why) =>
                               debugPrint('[stage-web] 失败：$why'),
                         ),
+                ),
+                // 「戳她」的命中层（原型 `main.js` L42-44：`#stage` 的 pointerdown
+                // → `Stage.hit(x,y)` → `App.poke()`）。放在她**之上**、环场/UI **之下**：
+                //   · 在她矩形外的点不受影响，照常落到背景那层（跳过打字机）
+                //   · 在矩形内但没戳中她的点，[AppShellState._onStageDown] 会
+                //     把背景那一套行为补齐（记"宿主还在" + 跳过打字机）
+                //   · 按钮/底栏/选项都在更上层 → 它们先命中，不受影响
+                ValueListenableBuilder<Cam>(
+                  valueListenable: _cam,
+                  builder: (BuildContext _, Cam camNow, Widget? _) {
+                    final Rect r = Live2DStage.stageRect(
+                      camNow,
+                      MediaQuery.sizeOf(context),
+                    );
+                    return Positioned.fromRect(
+                      rect: r,
+                      // ⚠️ 必须是 **translucent 的 Listener**（不是 GestureDetector）：
+                      //  · `Listener` 不参与手势竞技场 → 它和下层平台视图**都能收到**
+                      //    这串 pointer 事件（平台视图那份驱动"眼睛/头跟着手指"）
+                      //  · translucent → 事件继续往她下面的层走，不挡任何东西
+                      //  · 原型是 pointerdown 就触发（按下即算，不等抬手）——
+                      //    所以这里也只在 down 判命中，拖拽时头照样跟手
+                      child: Listener(
+                        behavior: HitTestBehavior.translucent,
+                        // ⚠️ 必须用 `e.position`（**全局**坐标）—— `hitHer` 内部
+                        // 拿它和 `rect.top`/`rect.center.dx` 比；用 localPosition
+                        // 会永远判定不中（2026-10-11 踩过：戳她毫无反应）。
+                        onPointerDown: (PointerDownEvent e) =>
+                            _onStageDown(e.position, r),
+                        child: const SizedBox.expand(),
+                      ),
+                    );
+                  },
                 ),
                 // 环场：她脚下到头顶那 8 个环。**画在独立画布上，与 Live2D 无关**
                 // （`stage.js` L127 `cv.id='ringCv'`），启动时 `App.boot()` 会把
@@ -1291,6 +1394,8 @@ class _AppShellState extends State<AppShell>
                   y: lineY,
                   soft: fail,
                   fail: fail,
+                  // 临时台词的情绪（戳她那几句要带 tsun/annoyed/cold 的音节）
+                  emotion: _asideEmotion,
                   skipToken: _tap, // 点背景跳过打字机
                   paceMs: _paceMs, // docs/22 §R4：对白节奏三档（设置页「对白节奏」）
                   // 口型包络：打字机每显形一个字就把目标开口度设一下，
@@ -2234,6 +2339,8 @@ class _AppShellState extends State<AppShell>
     _flashC.dispose();
     _fx.dispose();
     _ask.dispose();
+    _asideDone?.cancel();
+    _pokeReset?.cancel();
     super.dispose();
   }
 }

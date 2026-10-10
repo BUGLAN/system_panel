@@ -46,6 +46,8 @@ class Sfx {
   static const Map<String, List<String>> table = <String, List<String>>{
     // ── 高频 12 件（docs/22 R3-A）──
     'tap': <String>['audio/tap.wav'],
+    // 戳她（原型 audio.js L130 `poke` 620→990Hz triangle；flows.js L649 播它）
+    'poke': <String>['audio/poke.wav'],
     'choose': <String>['audio/choose.wav'],
     'land': <String>['audio/land.wav'], // 委托单落板
     'rung': <String>[ // 稀有度逐级滚（原型按步进变调 → 烘成 5 档）

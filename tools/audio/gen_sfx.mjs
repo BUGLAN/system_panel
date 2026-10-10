@@ -301,6 +301,8 @@ function buildManifest() {
 
   // ── A 高频 12 件 ──
   add('tap', 44100, () => [T({ f: 1320, f2: 1080, dur: 0.05, vol: 0.04 })]);
+  // 戳她（audio.js L130：`poke` 620→990Hz triangle 0.1s vol .05）
+  add('poke', 44100, () => [T({ f: 620, f2: 990, dur: 0.1, vol: 0.05, type: 'triangle' })]);
   add('choose', 44100, () => [
     T({ f: 740, f2: 1110, dur: 0.12, vol: 0.045, type: 'triangle' }),
     N({ f: 2400, f2: 5200, dur: 0.18, vol: 0.02 }),

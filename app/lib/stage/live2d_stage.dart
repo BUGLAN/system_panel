@@ -271,7 +271,13 @@ class Live2DStage extends StatefulWidget {
   ///        高频能量只 +3%（插件 mipmap 链会把有效细节归一化），宿主主观
   ///        验收「更糊」，GPU 显存还 4 倍 ⇒ 回到 v5 = 原版 2048² 贴图
   /// · v5 = 2026-10-11 几何修正（画布比例 2:3 的舞台矩形）+ 贴图回 2048²
-  static const int modelDataVersion = 5;
+  /// · v6 = **动作 Segments 布局修正**（转换器把类型标记写在了错误位置，
+  ///        导致全部 64 个动作都过不了 Cubism 一致性校验、`LoadMotion` 全失败
+  ///        → 她从来没播过任何动作，宿主验收「像死人一样」）
+  /// · v7 = **JSON 格式修正**（Cubism 私有解析器只认 `\n`/`,` 作数字终止符、
+  ///        且不吃科学计数法；转换器原来压单行 → 每个数组的最后一个数字紧跟
+  ///        `]` → `IsValid=0` → 动作与物理全部加载失败）
+  static const int modelDataVersion = 7;
 
   /// 把声明的模型资产解压到版本化目录，返回**绝对路径**（带尾斜杠）。
   /// 版本一致就复用；不一致先把整棵树删掉（连旧版本目录）再重解。
@@ -343,6 +349,36 @@ class Live2DStage extends StatefulWidget {
   /// `model.canvas = {width: 6000, height: 9000}`。舞台矩形必须与它一致，
   /// 否则插件按宽度适配时会把她的头/脚裁掉（见 [stageRect] 注释）。
   static const double kCanvasAspect = 6000 / 9000;
+
+  /// 「戳到她了吗」——原型 `Stage.hit(x, y)`（stage.js）的**宽度曲线**近似：
+  /// 头窄 → 肩最宽 → 裙摆再宽一点。
+  ///
+  /// ```js
+  /// const h = b.y - a.y, f = clamp((y - a.y) / h, 0, 1);   // 0 头顶 → 1 脚底
+  /// const w = h * G.half * lerp(.42, 1, min(1, f/.24)) * (f > .5 ? lerp(1, 1.15, (f-.5)/.5) : 1);
+  /// return Math.abs(x - a.x) < w;
+  /// ```
+  /// ⚠️ 原型的 `G.half`（0.30）在这里是**相对她身高**的比例，不是她的真实半宽
+  /// （真实半宽约 0.15×身高）—— 即原型的命中框本来就**明显放大**，
+  /// 为的是"随手一戳就中"。这里照抄同样的宽松度，**别"顺手修正"收紧**。
+  ///
+  /// [rect] 传 [stageRect]（= 整张画布 = 她的包围盒，顶≈头发、底≈脚）。
+  static bool hitHer(Offset p, Rect rect) {
+    if (rect.height <= 0) return false;
+    final double f = (p.dy - rect.top) / rect.height;
+    if (f < 0 || f > 1) return false;
+    final double widen = f <= .24
+        ? _lerp(.42, 1, f / .24)
+        : (f > .5 ? _lerp(1, 1.15, (f - .5) / .5) : 1);
+    final double halfW = rect.height * _kHitHalfRatio * widen;
+    return (p.dx - rect.center.dx).abs() < halfW;
+  }
+
+  /// 原型的 `G.half` 原值（0.30；语义见 [hitHer] 注释）
+  static const double _kHitHalfRatio = .30;
+
+  static double _lerp(double a, double b, double t) =>
+      a + (b - a) * t.clamp(0, 1);
 
   @override
   State<Live2DStage> createState() => _Live2DStageState();
@@ -526,8 +562,22 @@ class _Live2DStageState extends State<Live2DStage> {
     //    是安全路径。矩形每帧由 `Cam`（弹簧推镜头）给出，随 build 刷新。
     return Positioned.fill(
       child: IgnorePointer(
-        // 平台视图是 opaque 的，会吃掉触摸；这里不吃，交给上面那层 Flutter UI
-        ignoring: true,
+        // ⚠️ 2026-10-11 改：**不吃触摸了**（原来是 true）。
+        //
+        // 原因：插件的平台视图自带"眼睛/头跟着手指"（`Live2DGLView.touches*`
+        // → `wrapper.touchBegan/Moved` → DragManager → 每帧给头/身角度加偏移），
+        // 这正是原型 `Stage.pointer(x,y)` + `look('pointer')` 那一拍。原来的
+        // `ignoring: true` 把这条路整个掐断了 —— 宿主验收："主界面像死人一样，
+        // 原型上戳它有反应的"。
+        //
+        // 为什么现在是安全的：
+        //  · 所有可交互 UI（底栏/按钮/选项/输入框）都在她**之上**，它们的
+        //    GestureDetector 先命中并吃下事件，不受影响；
+        //  · 「戳她」的命中层用的是 translucent 的 `Listener`（main.dart）——
+        //    `Listener` 不参与手势竞技场，所以它和平台视图**两边都能收到**事件：
+        //    平台视图驱动跟随，Listener 负责 `Stage.hit` 命中判定 + 背景那套
+        //    （记"宿主还在"、跳过打字机）。
+        ignoring: false,
         child: LayoutBuilder(
           builder: (BuildContext context, BoxConstraints c) {
             final Size size = Size(c.maxWidth, c.maxHeight);

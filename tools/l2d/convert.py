@@ -140,11 +140,33 @@ def collect(nodes):
 
 
 def hermite_to_bezier_segments(curve, slope_scale):
-    """Unity 的关键帧 → Live2D 的 Segments（全贝塞尔，类型 1 只写一次）"""
+    """Unity 的关键帧 → Live2D motion3.json 的 `Segments`。
+
+    ⚠️⚠️ **布局是「初始点 + 每段一个类型标记」**，不是「开头一个类型 + 纯数据」：
+
+        [x0, y0,  类型, 数据…,  类型, 数据…, …]
+
+    Cubism 的读取器（`CubismMotion::Parse`）与一致性计数器
+    （`CubismMotionJson::HasConsistency`）**都按这个走**：
+      · 先读 `(Segments[0], Segments[1])` 当初始点（**没有类型**）
+      · 之后每个段从当前位置读一个 int 类型：`0` 线性(+3)、`1` 贝塞尔(+7)、
+        `2`/`3` 阶梯(+3)；贝塞尔段算 **3 个点**、线性/阶梯算 1 个点
+      · `Meta.TotalSegmentCount` / `TotalPointCount` 必须与这套算法**逐项相等**，
+        否则 `CubismMotion::Create` 返回 null → **动作静默不播**
+
+    🩸 2026-10-11 血案：本函数原来写成 `[类型, x0, y0, 数据…]`（类型只写一次、
+    放在最前面）—— 于是**全部 64 个动作**都过不了校验、`LoadMotion` 全部失败
+    （真机诊断日志：`Idle_0` 失败 3452 次/每帧重试，池子动作每次也失败）。
+    症状就是宿主验收的那句「主界面她像一个死人一样，动作一僵这些都没有」——
+    她从来没有播过任何一个动作，只有眨眼/物理在动。
+    判定方法：拿官方样例当尺子 ——
+    `app/assets/live2d/hiyori/motions/Hiyori_m01.motion3.json` 用
+    [cubism_counts] 算得 135/374，与文件声明的 Meta 完全一致 ✅。
+    """
     ks = curve
     if not ks:
         return []
-    seg = [1, ks[0]["time"], ks[0]["value"]]
+    seg = [ks[0]["time"], ks[0]["value"]]  # 初始点（无类型标记）
     for i in range(len(ks) - 1):
         a, b = ks[i], ks[i + 1]
         dt = b["time"] - a["time"]
@@ -154,8 +176,108 @@ def hermite_to_bezier_segments(curve, slope_scale):
         c1v = a["value"] + a.get("outSlope", 0.0) * dt * slope_scale
         c2t = b["time"] - dt / 3
         c2v = b["value"] - b.get("inSlope", 0.0) * dt * slope_scale
-        seg += [c1t, c1v, c2t, c2v, b["time"], b["value"]]
+        # 类型 1（贝塞尔）+ 控制点1 + 控制点2 + 终点
+        seg += [1, c1t, c1v, c2t, c2v, b["time"], b["value"]]
     return seg
+
+
+def cubism_counts(segments):
+    """按 `CubismMotionJson::HasConsistency` 逐字复刻的计数 → (段数, 点数)。
+
+    写出去的 Meta 必须等于这个函数的结果 —— 不然动作加载会静默失败。
+    """
+    pts = 0
+    segs = 0
+    pos = 0
+    n = len(segments)
+    while pos < n:
+        if pos == 0:
+            pts += 1  # 初始点
+            pos += 2
+            if pos >= n:
+                break
+        t = int(segments[pos])
+        if t == 1:  # 贝塞尔：7 个数、3 个点
+            pts += 3
+            pos += 7
+        elif t in (0, 2, 3):  # 线性/阶梯：3 个数、1 个点
+            pts += 1
+            pos += 3
+        else:
+            raise SystemExit(
+                f"Segments 布局非法：位置 {pos} 的类型标记是 {t}（只允许 0/1/2/3）"
+            )
+        segs += 1
+    return segs, pts
+
+
+def _json_lines(o, ind=0):
+    """把 doc 序列化成**官方同款**多行 JSON（自己写，不用 json.dumps）。
+
+    两个必须自己来的理由（都是 Cubism 解析器的脾气）：
+      1. **每个数字后面必须是 `,` 或换行** —— `json.dumps(indent=…)` 能给，
+         但见下条；
+      2. **不能用科学计数法**：Python 的 repr 对 `1e-06` 这种会写成 `1e-06`，
+         而 Cubism 的数字解析器只吃 `0-9 . -`，遇到 `e` 直接报
+         `non-numeric charactor found` → 整个 JSON 判非法。
+         这里统一 `%.6f` 固定小数位（Live2D 数值本来也不需要 17 位精度，
+         官方导出也是三五位），顺带把文件缩小一大截。
+    """
+    pad = '  ' * ind
+    pad2 = '  ' * (ind + 1)
+    if isinstance(o, dict):
+        if not o:
+            return '{}'
+        body = ',\n'.join(
+            f'{pad2}{json.dumps(k, ensure_ascii=False)}: {_json_lines(v, ind + 1)}'
+            for k, v in o.items()
+        )
+        return '{\n' + body + f'\n{pad}}}'
+    if isinstance(o, list):
+        if not o:
+            return '[]'
+        body = ',\n'.join(f'{pad2}{_json_lines(v, ind + 1)}' for v in o)
+        return '[\n' + body + f'\n{pad}]'
+    if isinstance(o, bool):
+        return 'true' if o else 'false'
+    if isinstance(o, float):
+        t = format(o, '.6f').rstrip('0').rstrip('.')
+        return t if t not in ('', '-', '-0') else '0'
+    if isinstance(o, int):
+        return str(o)
+    if o is None:
+        return 'null'
+    return json.dumps(o, ensure_ascii=False)
+
+
+def cubism_json_safe(doc) -> str:
+    """序列化成 **Cubism 的私有 JSON 解析器**能吃的格式，并自检。
+
+    ⚠️⚠️ `CubismJson::ParseNumeric`（Utils/CubismJson.cpp L210-283）只承认
+    `\n` / `,` 作为数字的终止符，遇到别的字符（**包括 `]`、`}`、`e`**）直接
+    `_error = "non-numeric charactor found"` 并把整个 JSON 判为非法：
+
+        case '\n': case ',': { ... return CSM_NEW Float(ret); }
+        default:              { _error = "non-numeric charactor found"; return NULL; }
+
+    🩸 2026-10-11 血案：本转换器原来用 `separators=(",", ":")` **压成单行** ——
+    每个 `Segments` 数组的**最后一个数字紧跟着 `]`** → **全部 64 个动作与
+    physics3 解析失败**（真机诊断 `IsValid=0` → `CubismMotion::Create` 回 null
+    → 动作静默不播、物理也不生效）。她因此从来没播过任何动作，宿主验收：
+    「主界面她像一个死人一样」。表情没事是因为 exp3.json 最后一个值恰好是
+    字符串（"Blend"），数字后面都有逗号。
+    """
+    text = _json_lines(doc) + '\n'
+    # 自检：去掉字符串字面量后，数字后面只允许 , 或换行（与解析器同规则）
+    stripped = re.sub(r'"(?:[^"\\]|\\.)*"', '""', text)
+    for m in re.finditer(r'-?\d+(?:\.\d+)?(.)', stripped, re.S):
+        nxt = m.group(1)
+        if nxt not in (',', '\n', '\r'):
+            raise SystemExit(
+                f"生成的 JSON 会被 Cubism 解析器拒绝：数字后紧跟 {nxt!r}"
+                f"（只能是 , 或换行）—— 见 cubism_json_safe 的注释"
+            )
+    return text
 
 
 def asset_name(raw: str) -> str:
@@ -198,8 +320,10 @@ def write_motions(motions, slope_scale, fps):
             if i < len(fout):
                 c["FadeOutTime"] = fout[i]
             out_curves.append(c)
-            total_seg += (len(seg) - 3) // 6
-            total_pt += 1 + (len(seg) - 3) // 6
+            # ⚠️ 计数必须与 Cubism 的 HasConsistency 算法逐项一致（见 cubism_counts）
+            c_seg, c_pt = cubism_counts(seg)
+            total_seg += c_seg
+            total_pt += c_pt
         doc = {
             "Version": 3,
             "Meta": {
@@ -218,7 +342,7 @@ def write_motions(motions, slope_scale, fps):
             "Curves": out_curves,
         }
         (d / f"{name}.motion3.json").write_text(
-            json.dumps(doc, ensure_ascii=False, separators=(",", ":")), "utf-8"
+            cubism_json_safe(doc), "utf-8"
         )
         names.append(name)
     return names
@@ -251,7 +375,7 @@ def write_expressions(exprs):
             "Parameters": ps,
         }
         (d / f"{name}.exp3.json").write_text(
-            json.dumps(doc, ensure_ascii=False, separators=(",", ":")), "utf-8"
+            cubism_json_safe(doc), "utf-8"
         )
         names.append(name)
     return names
@@ -327,7 +451,7 @@ def write_sys_expressions():
             "Parameters": spec["Parameters"],
         }
         (d / f"{name}.exp3.json").write_text(
-            json.dumps(doc, ensure_ascii=False, separators=(",", ":")), "utf-8"
+            cubism_json_safe(doc), "utf-8"
         )
     return list(SYS_EXPRESSIONS)
 
@@ -426,7 +550,7 @@ def write_physics(rig):
         "PhysicsSettings": settings,
     }
     (OUT / "sakiko.physics3.json").write_text(
-        json.dumps(doc, ensure_ascii=False, separators=(",", ":")), "utf-8"
+        cubism_json_safe(doc), "utf-8"
     )
     return True
 
@@ -514,7 +638,7 @@ def write_model3(manifest, motions, exprs, has_phys, eyeblink, lipsync):
     }
     doc["Groups"] = [g for g in doc["Groups"] if any(g["Ids"])]
     (OUT / "sakiko.model3.json").write_text(
-        json.dumps(doc, ensure_ascii=False, separators=(",", ":")), "utf-8"
+        cubism_json_safe(doc), "utf-8"
     )
     return doc
 

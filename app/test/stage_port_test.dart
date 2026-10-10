@@ -165,6 +165,27 @@ void main() {
       }
     });
 
+    // 「戳她」命中判定（原型 stage.js `hit()` 的宽度曲线）
+    test('hitHer：头顶窄、裙摆宽（原型曲线照抄，宽松是为了随手一戳就中）', () {
+      const Size screen = Size(430, 932);
+      final Rect r = Live2DStage.stageRect(Cam.byName('lobby'), screen);
+      final double cx = r.center.dx;
+      Offset at(double f, double dx) =>
+          Offset(cx + dx, r.top + r.height * f);
+
+      // 头顶（f≈.05）：宽度因子小 → 偏 150px 就出界
+      expect(Live2DStage.hitHer(at(.05, 0), r), isTrue, reason: '正中间没命中');
+      expect(Live2DStage.hitHer(at(.05, 200), r), isFalse, reason: '头顶不该那么宽');
+      // 胸/肩（f≈.4）：满宽
+      expect(Live2DStage.hitHer(at(.40, 160), r), isTrue);
+      // 裙摆（f≈.75）：再宽 15%
+      expect(Live2DStage.hitHer(at(.75, 200), r), isTrue);
+      // 头顶以上 / 脚底以下 / 屏幕另一侧 → 都不算戳到她
+      expect(Live2DStage.hitHer(Offset(cx, r.top - 4), r), isFalse);
+      expect(Live2DStage.hitHer(Offset(cx, r.bottom + 4), r), isFalse);
+      expect(Live2DStage.hitHer(at(.5, -400), r), isFalse);
+    });
+
     test('相机变了矩形跟着变（推镜头是布局矩形在动）', () {
       final Rect lobby = Live2DStage.stageRect(
         Cam.byName('lobby'),

@@ -71,6 +71,18 @@ class LINES {
   /// 按指纹按到一半松手（content.js L304）—— 原型 `line('waver')` 是三选一随机
   static const List<String> waver = <String>['……犹豫了？', '手抖什么。', '按住。别松。'];
 
+  /// 戳她（content.js L319 `poke`，原值照抄）—— 越戳越恼。
+  /// 编排在 `main.dart _poke()`（原型 flows.js L646-654）：
+  /// 第 1~3 戳 tsun（动作 `poke`）→ 第 4 戳改 annoyed → 第 5 戳起 cold +
+  /// 动作换 `fluster`；20 秒不戳，连戳计数归零。
+  static const List<String> poke = <String>[
+    '……手拿开。',
+    '戳系统不会掉经验。',
+    '再戳，我就派一单俯卧撑。',
+    '宿主，你是不是很闲？',
+    '……（她决定无视你）',
+  ];
+
   /// ── 页面字幕（原型 `App.lineAt(mode)` 那几句）────────────────────────
   ///
   /// ⚠️ `[[…]]` 是**高亮**（`util.js` `richChars()` → `<em>`：青色 + 字重 650 + 辉光）。
