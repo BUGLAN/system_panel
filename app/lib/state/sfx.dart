@@ -82,10 +82,13 @@ class Sfx {
   static Future<AudioPlayer> _take() async {
     if (_pool.length < _poolSize) {
       final AudioPlayer p = AudioPlayer();
-      // 短音效用低延迟模式（Android 走 SoundPool），逐字音节才跟得上
+      // ⚠️ **先占位再 await**（独立验收 N7）：实机测到冷启那波打字机在 22ms 内
+      // 建了 30 个 AudioPlayer——`_pool.length < 6` 的判断与 `_pool.add` 之间夹着
+      // 两个 await，并发请求全落在窗口里。先 add 再配置，并发调用看到的就是 ≤6。
+      // （配置失败的实例留在池里无害：每次 play 都在 try/catch 里。）
+      _pool.add(p);
       await p.setPlayerMode(PlayerMode.lowLatency);
       await p.setReleaseMode(ReleaseMode.stop);
-      _pool.add(p);
       return p;
     }
     final AudioPlayer p = _pool[_next % _pool.length];

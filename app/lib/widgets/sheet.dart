@@ -944,7 +944,9 @@ class _SystemPaneState extends State<_SystemPane> {
     final List<Widget> rows = <Widget>[
       _setRow(
         '音效',
-        '全部现场合成，没有音频文件',
+        // 文案更正（独立验收 N5）：批次② 起是**离线烘好的音效包**（76 件 WAV，
+        // tools/audio/ 生成），不再是"现场合成、没有音频文件"
+        '离线音效包（76 件）· 打字机逐字有电子音',
         _seg('sound', const <List<String>>[
           <String>['1', '开'],
           <String>['0', '关'],
@@ -961,7 +963,9 @@ class _SystemPaneState extends State<_SystemPane> {
       ),
       _setRow(
         '震动',
-        '仅安卓浏览器有效',
+        // 文案更正（N5）：现在是 vibration 插件的**真波形震动**（原型 15 处节奏），
+        // 不再是浏览器 API；但模拟器没有振动器，手感只有真机有
+        '真波形震动（15 处节奏）· 模拟器不震，真机才有手感',
         _seg('haptic', const <List<String>>[
           <String>['1', '开'],
           <String>['0', '关'],

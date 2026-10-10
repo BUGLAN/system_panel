@@ -151,8 +151,11 @@ void main() {
       for (final String s in <String>['音效', '她的声音', '震动', '全息描边', '重置存档']) {
         expect(find.text(s), findsOneWidget);
       }
-      expect(find.text('全部现场合成，没有音频文件'), findsOneWidget);
+      // 文案更正（独立验收 N5）：批次② 起音效是离线音效包、震动是真波形插件，
+      // 旧文案「全部现场合成，没有音频文件」/「仅安卓浏览器有效」与实现不符。
+      expect(find.text('离线音效包（76 件）· 打字机逐字有电子音'), findsOneWidget);
       expect(find.text('人声用浏览器自带中文语音，效果看设备'), findsOneWidget);
+      expect(find.text('真波形震动（15 处节奏）· 模拟器不震，真机才有手感'), findsOneWidget);
       expect(find.text('按住 2 秒'), findsOneWidget);
       expect(find.textContaining('SYSTEM · opus-v2-dir'), findsOneWidget);
       // 「开」五个分段开关默认都停在开上
