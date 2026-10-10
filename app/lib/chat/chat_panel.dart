@@ -55,6 +55,7 @@ class ChatPanel extends StatefulWidget {
     this.onQuickTool,
     this.enabled = true,
     this.quickChips = kChatQuickChips,
+    this.paceMs,
   });
 
   /// 旧 → 新
@@ -74,6 +75,12 @@ class ChatPanel extends StatefulWidget {
   /// chip 数据（测试可注入）
   final List<ChatQuickChip> quickChips;
   final bool enabled;
+
+  /// 对白节奏（docs/22 §R4）：气泡打字机每字显形毫秒数，三档见
+  /// `settings_store.dart` 的 `kPace*Ms`。没给 = 保持 [TypeText] 的默认
+  /// （非 soft = 34）——这里**不留第二份字面量**：原先那个自己写死的值已删，
+  /// 全仓每字毫秒数只剩 `type_text.dart` 的默认 + `settings_store.dart` 的三档常量。
+  final int? paceMs;
 
   @override
   State<ChatPanel> createState() => _ChatPanelState();
@@ -382,7 +389,9 @@ class _ChatPanelState extends State<ChatPanel> {
         ? TypeText(
             key: ValueKey<String>('chat.bubble.type.${m.id}'),
             text: m.text,
-            speed: 30,
+            // 对白节奏三档（docs/22 §R4）：原来这里写死过一个与字幕真源
+            // 不同的数（同一件事两个值）。现在统一走设置值；null → TypeText 默认 34。
+            speed: widget.paceMs,
             style: fs(family: F.cn, size: 13.5, wght: 400, height: 1.5, color: C.ice),
             // 打字机逐字音节（`ui.js:96`）：气泡用**该条消息自己的情绪**
             // （`ChatMessage.emotion`，由 persona 的 `[[emo]]` 标签给出；

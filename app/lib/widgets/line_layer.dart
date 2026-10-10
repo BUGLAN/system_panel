@@ -33,6 +33,7 @@ class LineLayer extends StatelessWidget {
     this.voice,
     this.onChar,
     this.emotion,
+    this.paceMs,
   });
 
   final String text;
@@ -68,6 +69,10 @@ class LineLayer extends StatelessWidget {
   /// 没给就按 [mood] 反查 `MOOD_LABEL`（`content.js:421`）；反查不到的（例如
   /// main.dart 自造的「专注」）退回 `neutral`，宁可平一点也不瞎猜。
   final String? emotion;
+
+  /// 对白节奏（docs/22 §R4）：每字显形毫秒数，透传给 [TypeText] 的 `speed`。
+  /// 没给 = 保持 [TypeText] 的既有默认（soft 42 / 普通 34）；给了就以档位为准。
+  final int? paceMs;
 
   /// `MOOD_LABEL` 的逆映射：中文标签 → 情绪（`content.js` L421-424）
   static String _emotionOfMood(String mood) => const <String, String>{
@@ -183,6 +188,9 @@ class LineLayer extends StatelessWidget {
                         text: text,
                         soft: soft,
                         skipToken: skipToken,
+                        // 对白节奏三档（docs/22 §R4）：设置页选的值从这里下来；
+                        // 没接线时传 null，退回 type_text.dart 的默认（34）。
+                        speed: paceMs,
                         // 口型包络照旧先走（`VoiceEnvelope.syllable`），后面这一发
                         // 才是**电子音节**（`soft` = 旁白降调、音量减半）。
                         // 跳过整句时这里一次都不会被回调 —— `type_text.dart` 的 skip

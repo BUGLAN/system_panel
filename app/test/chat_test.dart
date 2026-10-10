@@ -255,11 +255,11 @@ void main() {
     testWidgets('名牌 + 双向气泡 + 分组头都在，层序压在最上（不遮挡命中）', (
       WidgetTester tester,
     ) async {
-      Widget panel(List<ChatMessage> messages) => MaterialApp(
+      Widget panel(List<ChatMessage> messages, {int? paceMs}) => MaterialApp(
             home: Scaffold(
               body: Stack(
                 children: <Widget>[
-                  ChatPanel(visible: true, messages: messages),
+                  ChatPanel(visible: true, messages: messages, paceMs: paceMs),
                 ],
               ),
             ),
@@ -293,6 +293,28 @@ void main() {
       expect(find.byKey(const Key('chat.send')), findsOneWidget);
       // 关闭钮
       expect(find.byKey(const Key('chat.close')), findsOneWidget);
+
+      // ── docs/22 §R4 对白节奏三档：ChatPanel.paceMs 透传到气泡打字机 ──
+      // （原来这里硬编码 30，与字幕真源 34 是两个数；现在只有一个来源）
+      // 同一句话、同一段假时钟，两档跑出不同结果 = 档位真的在生效：
+      List<ChatMessage> withLine(String id) => <ChatMessage>[
+            ChatMessage.host('a', '今天不想跑'),
+            ChatMessage.sys(id, '一二三四五六七八九十'), // 10 字，标点不参与
+          ];
+      await tester.pumpWidget(panel(withLine('c'), paceMs: 24)); // 快档
+      await tester.pump();
+      expect(tester.widget<TypeText>(find.byType(TypeText)).speed, 24);
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.pump();
+      expect(find.byType(TypeText), findsNothing); // 10×24=240ms → 已打完
+
+      await tester.pumpWidget(panel(withLine('d'))); // 没给 = TypeText 默认 34
+      await tester.pump();
+      expect(tester.widget<TypeText>(find.byType(TypeText)).speed, isNull);
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.pump();
+      expect(find.byType(TypeText), findsOneWidget); // 10×34=340ms → 还在打
+      await tester.pumpAndSettle(); // 收尾，别把半截动画留给下一个用例
     });
 
     testWidgets('发送：输入 + 回车/发送都回调', (WidgetTester tester) async {

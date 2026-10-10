@@ -5,6 +5,7 @@
  *   prototype/opus-v2-dir/js/audio.js
  *     Sound.play(name,x) [L70-135] · Sound.tone() [L32-52] · Sound.noise() [L53-66]
  *     Sound.ambient() [L157-171] · Voice.syllable() [L194-200] · Voice.PITCH [L183]
+ *   批次③ 补件（task-18）：Sound.play('ignite',i) [L88-91] → ignite_0..ignite_7
  *   app/lib/agent/persona.dart → emotions（12 情绪，顺序即命名顺序）
  *
  * Node 里没有 Web Audio，全部手写 PCM 合成：
@@ -292,6 +293,7 @@ const EMOTIONS = ['neutral', 'smug', 'cold', 'annoyed', 'pleased', 'tsun', 'joy'
 const PITCH = { neutral: 560, smug: 520, cold: 470, annoyed: 610, pleased: 610, tsun: 660, joy: 700, surprised: 720, sad: 360, focus: 540, sleep: 300, proud: 600 };
 const RANK_BASE = [392, 440, 494, 523.3, 587.3, 659.3, 784];
 const RANK_I = 2; // 总线只查 rank.wav → 取中档（原型按稀有度 i 变调变重，见 README 差异表）
+const IGNITE_F = [523.3, 587.3, 659.3, 784, 880, 1046.5, 1174.7, 1318.5]; // audio.js:89（clamp(x|0,0,7)）
 
 function buildManifest() {
   const M = [];
@@ -359,6 +361,18 @@ function buildManifest() {
     T({ f: 1760, dur: 1.8, vol: 0.02, at: 0.95 }),
   ]);
   add('hold', 44100, () => [T({ f: 600, dur: 0.04, vol: 0.02, type: 'square', lp: 3000 })]); // 原型 f=600+x*500
+
+  // ── 批次③ 补件：点环音 ignite（flows.js:90 Sound.play('ignite', i)，逐个点亮主线环）──
+  // 原型 audio.js:88-91：f = IGNITE_F[clamp(i,0,7)]；双 tone，无 noise/无随机 → 与 --seed 无关。
+  for (let i = 0; i < 8; i++) {
+    add(`ignite_${i}`, 22050, () => {
+      const f = IGNITE_F[i];
+      return [
+        T({ f, dur: 1.1, vol: 0.07, a: 0.004 }),
+        T({ f: f * 2.76, dur: 0.4, vol: 0.02, a: 0.003 }),
+      ];
+    });
+  }
 
   // ── B 打字机逐字音节：12 情绪 × 4 变体 ──
   for (const emo of EMOTIONS) {

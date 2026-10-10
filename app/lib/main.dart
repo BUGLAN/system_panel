@@ -353,6 +353,10 @@ class _AppShellState extends State<AppShell>
   /// 与快捷 chip 共用这一份；配了 Key 走 LLM 工具循环，没配 Key 只走 chip。
   AgentToolRegistry? _agentTools;
 
+  /// 对白节奏（docs/22 §R4）：设置页三档（慢 42 / 标准 34 / 快 24）→
+  /// [LineLayer] 字幕与 [ChatPanel] 气泡的打字机共用这一个值。
+  int _paceMs = AgentSettings.kDefaultPaceMs;
+
   /// 小祥的长期记忆（访谈答案写这里 —— 访谈即第一批记忆，docs/18 §2.1③）
   MemoryStore? _memory;
 
@@ -386,6 +390,9 @@ class _AppShellState extends State<AppShell>
     // ① 非 LLM 设置：先落地（幂等，重复调用无害）
     Sfx.enabled = s.sound;
     Haptics.enabled = s.haptic;
+    // 对白节奏（docs/22 §R4）与 sound/haptic 同理：**必须在下面的 LLM 早退守卫之前落地**，
+    // 否则"只改节奏"会被整段吞掉（正是 R3 记的「能存能显没人消费」那个坑）
+    if (_paceMs != s.paceMs) setState(() => _paceMs = s.paceMs);
     // 底噪跟随「音效」总开关（docs/22 R3 的化简：原型按时刻 duck，本批只做在/不在）
     unawaited(Sfx.ambient(s.sound));
     // ② LLM 设置：没变就不重建（避免打断在途请求）
@@ -975,7 +982,7 @@ class _AppShellState extends State<AppShell>
                     cam: camOf,
                     camObj: camNow, // 弹簧推出来的那一帧（切页是"推镜头"不是瞬移）
                     t: 0,
-                    ringMul: fail ? _ringMul : null,
+                    ringMul: _ringsMulNow(),
                     dim: boot
                         ? .34 // 开机态的全息参数
                         : fail
@@ -1275,6 +1282,7 @@ class _AppShellState extends State<AppShell>
                   soft: fail,
                   fail: fail,
                   skipToken: _tap, // 点背景跳过打字机
+                  paceMs: _paceMs, // docs/22 §R4：对白节奏三档（设置页「对白节奏」）
                   // 口型包络：打字机每显形一个字就把目标开口度设一下，
                   // SYSTEM 后面那排波形条跟着动（原型 ui.js L70-73 / L96）
                   voice: _voice,
@@ -1456,6 +1464,7 @@ class _AppShellState extends State<AppShell>
                   onClose: () => setState(() => _chatOpen = false),
                   onVoiceTap: _onVoiceTap,
                   onQuickTool: _onQuickTool,
+                  paceMs: _paceMs, // docs/22 §R4：同一档位喂聊天气泡的打字机
                 ),
                 // 横幅（z 5，压在所有东西上面）—— 绑定见面礼（数值语义在 goal_gen 的 kBindGift*）
                 SysBanner(
@@ -1721,6 +1730,9 @@ class _AppShellState extends State<AppShell>
 
   /// 失败时把当前那一环掐暗（原型 `Stage.dimRing(ci, …)` 三下：0 / 90 / 200ms）
   List<double>? _ringMul;
+
+  /// 唤醒时"逐个点亮"用的逐环亮度系数（见 [_igniteRings]）；null = 这一路不参与
+  List<double>? _litMul;
 
   /// 道具抽屉开着没（原型 `#exDrawer.on`）；再点一次「道具」收起
   bool _drawerOn = false;
@@ -2015,18 +2027,108 @@ class _AppShellState extends State<AppShell>
   /// ⚠️ t16/B3：若存档恢复了执行中单据，唤醒后直接回执行页（不落大厅）
   /// ⚠️ t19/A1：未绑定（空白档/无环）→ 唤醒后进**绑定仪式**，真实新用户由此可达
   void _wake() {
+    _wakeSequence();
+  }
+
+  /// 唤醒这一拍（原型 `flows.js:71-99` 的 `wake()`）——**只做不靠她身体的那一半**：
+  /// `Sound.play('boot')` → `buzz([10,60,20])` → `FX.flash('#9ff0ff',.26,520)`
+  /// → 相机 `setCam(bound?'lobby':'talk')`（推镜头由 `_moment` 驱动）
+  /// → **逐环点亮**（每环 `showRing`，非 lock 环 `igniteRing` + `Sound.play('ignite',i)`
+  ///   + `buzz(6)`；每环停 **140ms**、lock 环只停 **50ms**）→ 再等 **500ms** 才开口。
+  /// 她的闭眼/抬眼皮/睁眼/欢迎手势留 Mac 轮（R5 末段）。
+  Future<void> _wakeSequence() async {
+    _pulse(color: const Color(0xFF9FF0FF), a: .26, ms: 520, shakePx: 0);
+    unawaited(Sfx.play('boot'));
+    unawaited(Haptics.buzz('boot'));
+
     if (_goal.isEmpty && !_resumedExec) {
       setState(() => _moment = Moment.onboard);
       return; // 绑定仪式的问话走 LineLayer（askGoal），不叠离开问候
     }
     setState(() => _moment = _resumedExec ? Moment.exec : Moment.lobby);
+
+    // 逐环点亮（原型在这段之后还有 500ms 留白，才轮到 greet）
+    await _igniteRings();
+
     final DateTime? seen = _prevSeen;
     final Duration away = seen == null
         ? Duration.zero
         : DateTime.now().difference(seen);
     // `fromBoot` 会强制开口，所以 null（离开太短）也要退回默认那一档
     final AwayKind k = AwayGreeting.kindFor(away) ?? AwayKind.back10m;
+    if (!mounted) return;
     _sayAside(AwayGreeting.text(k, away), holdMs: 3200, busy: true);
+  }
+
+  /// 唤醒时逐环点亮的调度（原型 `flows.js:87-93`）。
+  /// 环场本身一直画着（没有 per-ring 显隐），所以"点亮"用 [RingField.ringMul]
+  /// （每环亮度系数）表达：`_litMul[i]` 从 0 爬到 1 = 亮起；lock 环不点。
+  static const int _kIgniteStep = 140; // 非 lock 环的停拍（原型 sleep(140)）
+  static const int _kIgniteLockStep = 50; // lock 环的停拍（原型 sleep(50)）
+  static const int _kIgniteRamp = 120; // 单环 0→1 的耗时（比停拍短，不叠拍）
+  static const int _kIgniteTail = 500; // 亮完到开口之间的留白（原型 sleep(500)）
+
+  /// 唤醒逐环点亮的驱动器（懒建：没被唤醒过就不白占一个 ticker）
+  AnimationController? _igniteC;
+
+  Future<void> _igniteRings() async {
+    final List<GoalRing> rings = _goal.rings;
+    if (rings.isEmpty) return;
+    final List<double> at = <double>[];
+    int ms = 0;
+    for (final GoalRing r in rings) {
+      at.add(ms.toDouble());
+      ms += r.state == RingState.lock ? _kIgniteLockStep : _kIgniteStep;
+    }
+    final int total = ms + _kIgniteTail;
+    final AnimationController c = _igniteC ??= AnimationController(vsync: this);
+    c.duration = Duration(milliseconds: total);
+    final List<double> startAt = at
+        .map((double v) => v / total)
+        .toList(growable: false);
+    final double ramp = _kIgniteRamp / total;
+    // 每环只响一次（原型 `flows.js:90`：`Sound.play('ignite', i)` + `buzz(6)`）
+    final List<bool> fired = List<bool>.filled(rings.length, false);
+
+    void tick() {
+      final double v = c.value;
+      final List<double> next = List<double>.generate(rings.length, (int i) {
+        if (rings[i].state == RingState.lock) return 1; // lock 环不点（原型只 showRing）
+        return ((v - startAt[i]) / ramp).clamp(0.0, 1.0);
+      });
+      // 发声/震动放在 setState 外面（setState 里只改状态）
+      for (int i = 0; i < rings.length; i++) {
+        if (!fired[i] && next[i] > 0) {
+          fired[i] = true;
+          unawaited(Sfx.play('ignite', variant: i));
+          unawaited(Haptics.buzz('ignite'));
+        }
+      }
+      setState(() => _litMul = next);
+    }
+
+    c.addListener(tick);
+    tick();
+    try {
+      await c.forward(from: 0).orCancel;
+    } catch (_) {
+      // 演出被切断（页面销毁/连续唤醒）：安静收场，别把异常抛给调用方
+    }
+    c.removeListener(tick);
+    if (mounted) setState(() => _litMul = null);
+  }
+
+  /// 环亮度系数：**失败变暗**（`_ringMul`，原型 `Stage.dimRing`）与
+  /// **唤醒点亮**（`_litMul`）两路按位相乘后一起交给 [RingField]。
+  List<double>? _ringsMulNow() {
+    if (_ringMul == null && _litMul == null) return null;
+    final int n = _goal.rings.length;
+    final List<double> m = List<double>.filled(n, 1);
+    for (int i = 0; i < n; i++) {
+      if (_ringMul != null && i < _ringMul!.length) m[i] *= _ringMul![i];
+      if (_litMul != null && i < _litMul!.length) m[i] *= _litMul![i];
+    }
+    return m;
   }
 
   /// 读档（store.js L34）—— 没有档就用**空白档**（t19/A1：真新档直达绑定仪式，
@@ -2106,6 +2208,7 @@ class _AppShellState extends State<AppShell>
     _camTicker.dispose();
     _cam.dispose();
     _ringDim.dispose();
+    _igniteC?.dispose();
     _flashC.dispose();
     _fx.dispose();
     _ask.dispose();

@@ -5,6 +5,7 @@ import 'package:system_panel/widgets/chat_bar.dart';
 import 'package:system_panel/widgets/dock.dart';
 import 'package:system_panel/widgets/hud.dart';
 import 'package:system_panel/widgets/line_layer.dart';
+import 'package:system_panel/widgets/type_text.dart';
 
 /// 大厅页（HUD / 字幕 / 底栏）。
 ///
@@ -152,6 +153,21 @@ void main() {
       expect(line.right, 370);
       expect(line.top, closeTo(506.4, .5));
       expect(line.height, closeTo(71, 1.5));
+
+      // docs/22 §R4 对白节奏三档：没给 paceMs → TypeText 用自己的默认（34）；
+      // main.dart 接线后给 24/34/42 → 原样透传到打字机的 speed
+      expect(tester.widget<TypeText>(find.byType(TypeText)).speed, isNull);
+      await tester.pumpWidget(const SizedBox());
+      await _mount(
+        tester,
+        const LineLayer(
+          text: '我手里有 5 单。都是给你的。',
+          mood: '尚可',
+          y: 506.4,
+          paceMs: 24, // 快档
+        ),
+      );
+      expect(tester.widget<TypeText>(find.byType(TypeText)).speed, 24);
       await tester.pumpWidget(const SizedBox());
     });
   });

@@ -137,7 +137,7 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('系统页：四行开关 + LLM 设置组 + 一行按住重置 + 页脚', (
+    testWidgets('系统页：四行开关 + 一行对白节奏 + LLM 设置组 + 一行按住重置 + 页脚', (
       WidgetTester tester,
     ) async {
       _mockPrefs();
@@ -148,7 +148,15 @@ void main() {
       await tester.pumpAndSettle(); // 等设置异步加载完
       expect(find.text('SYSTEM · 设置'), findsOneWidget);
       expect(find.text('系统'), findsOneWidget);
-      for (final String s in <String>['音效', '她的声音', '震动', '全息描边', '重置存档']) {
+      for (final String s in <String>[
+        '音效',
+        '她的声音',
+        // docs/22 §R4：对白节奏三档（慢 42 / 标准 34 / 快 24）
+        '对白节奏',
+        '震动',
+        '全息描边',
+        '重置存档',
+      ]) {
         expect(find.text(s), findsOneWidget);
       }
       // 文案如实（宿主裁决 B′）：音效是离线包、单发正常，但**逐字电子音在这台
@@ -249,18 +257,19 @@ void main() {
       expect(s.voice, 'blip');
       expect(s.reasoningEffort, 'low'); // docs/22 §R1-2 默认低档
       expect(s.strictMode, 'auto'); // docs/22 §2.0 默认自动
-      // 写入
-      await store.save(
-        s.copyWith(
-          apiKey: 'sk-test',
-          visionEnabled: false,
-          sound: false,
-          voice: 'tts',
-          model: 'deepseek-v4-pro',
-          reasoningEffort: 'max',
-          strictMode: 'on',
-        ),
+      expect(s.paceMs, 34); // docs/22 §R4：默认档 = 标准 34（真源 kDefaultPaceMs）
+      // 写入（这一份同时当「读回后应当等于什么」的期望值）
+      final AgentSettings want = s.copyWith(
+        apiKey: 'sk-test',
+        visionEnabled: false,
+        sound: false,
+        voice: 'tts',
+        model: 'deepseek-v4-pro',
+        reasoningEffort: 'max',
+        strictMode: 'on',
+        paceMs: 24, // 快档
       );
+      await store.save(want);
       // 新实例（= 重启后）读回
       final AgentSettings s2 = await SettingsStore().load();
       expect(s2.apiKey, 'sk-test');
@@ -270,6 +279,10 @@ void main() {
       expect(s2.model, 'deepseek-v4-pro');
       expect(s2.reasoningEffort, 'max');
       expect(s2.strictMode, 'on');
+      expect(s2.paceMs, 24); // 档位往返不丢（同 key opus-v2/settings/v1）
+      // `==`/`hashCode` 也把 paceMs 算进去：整份相等，只改节奏的两份不相等
+      expect(s2, want);
+      expect(s2 == want.copyWith(paceMs: 42), isFalse);
     });
 
     test('老档/坏档迁移：缺字段补默认，坏 JSON 不炸', () async {
@@ -288,8 +301,8 @@ void main() {
       expect(s2.model, 'deepseek-v4.1flash'); // 回到默认，不抛异常
     });
 
-    test('老档缺 reasoningEffort/strictMode：补默认、不清档、不炸（docs/22 §2.0）', () async {
-      // 只有旧字段的老档（本轮两个新字段一个都没有）
+    test('老档缺 reasoningEffort/strictMode/paceMs：补默认、不清档、不炸（docs/22 §2.0/§R4）', () async {
+      // 只有旧字段的老档（本轮三个新字段一个都没有）
       _mockPrefs(<String, Object>{
         SettingsStore.key: jsonEncode(<String, dynamic>{
           'apiKey': 'sk-old',
@@ -302,9 +315,10 @@ void main() {
       expect(s.apiKey, 'sk-old');
       expect(s.visionEnabled, isFalse);
       expect(s.voice, 'tts');
-      // 缺的两个新字段补默认
+      // 缺的三个新字段补默认
       expect(s.reasoningEffort, 'low');
       expect(s.strictMode, 'auto');
+      expect(s.paceMs, 34); // 老档没有 paceMs → 标准档，不写迁移代码
       // 补默认后回写一轮：老字段一个不少，新字段落进 JSON
       await SettingsStore().save(s);
       final AgentSettings s2 = await SettingsStore().load();
@@ -312,9 +326,10 @@ void main() {
       expect(s2.visionEnabled, isFalse);
       expect(s2.reasoningEffort, 'low');
       expect(s2.strictMode, 'auto');
+      expect(s2.paceMs, 34);
     });
 
-    testWidgets('思考档位/严格模式：两行三档都在、可点、点后落盘', (WidgetTester tester) async {
+    testWidgets('思考档位/严格模式/对白节奏：三行三档都在、可点、点后落盘', (WidgetTester tester) async {
       _mockPrefs();
       await _mount(
         tester,
@@ -323,29 +338,40 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('思考档位'), findsOneWidget);
       expect(find.text('严格模式'), findsOneWidget);
+      expect(find.text('对白节奏'), findsOneWidget);
       for (final String k in <String>['low', 'high', 'max']) {
         expect(find.byKey(Key('sheet.seg.effort.$k')), findsOneWidget);
       }
       for (final String k in <String>['auto', 'on', 'off']) {
         expect(find.byKey(Key('sheet.seg.strict.$k')), findsOneWidget);
       }
-      // 默认停在 low / auto（表里读出来的，不是硬编码）
+      // docs/22 §R4：三档 = 慢 42 / 标准 34 / 快 24（值是毫秒数的字符串）
+      for (final String k in <String>['42', '34', '24']) {
+        expect(find.byKey(Key('sheet.seg.pace.$k')), findsOneWidget);
+      }
+      // 默认停在 low / auto / 34（表里读出来的，不是硬编码）
       final AgentSettings before = await SettingsStore().load();
       expect(before.reasoningEffort, 'low');
       expect(before.strictMode, 'auto');
+      expect(before.paceMs, 34);
 
-      // 两行在面板下半截，先滚进视口再点
+      // 三行在面板下半截，先滚进视口再点
       await tester.ensureVisible(find.byKey(const Key('sheet.seg.effort.max')));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('sheet.seg.effort.max')));
       await tester.ensureVisible(find.byKey(const Key('sheet.seg.strict.on')));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('sheet.seg.strict.on')));
+      // 对白节奏那一行在「她的声音」下面，滚回上去点「快」档
+      await tester.ensureVisible(find.byKey(const Key('sheet.seg.pace.24')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('sheet.seg.pace.24')));
       await tester.pump(const Duration(milliseconds: 500)); // 过 400ms 防抖
 
       final AgentSettings s = await SettingsStore().load();
       expect(s.reasoningEffort, 'max'); // 落盘了
       expect(s.strictMode, 'on');
+      expect(s.paceMs, 24); // 快档落盘（切完就存，不用重启）
       expect(s.haptic, isTrue); // 没动过的保持原样
       expect(tester.takeException(), isNull);
     });

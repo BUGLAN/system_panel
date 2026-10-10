@@ -76,8 +76,8 @@
 - EXP count-up：800ms ease-out cubic；暴击：定格 200ms → CRIT 印章 scale 2.2→1 → 续滚双倍
 - 经验条上涨（v11 取代"金币弧线飞入 HUD"）：不跨级＝520ms ease-out 从旧值涨到新值，期间条内一次性流光 0.55s + 条尾脉冲；跨级＝先涨满 360ms → 白闪 + 升级动效 → 归零 → 再涨到余额 420ms。金币不再有飞行动画，结算时直接入账，进账反馈由经验条 + 结算面板的金币芯片承担
 - 结算总时长 ≤1.6s；升级 ≤2s（同日重复只播简版）；发布 ≤800ms
-- 失败：更短更暗更安静（成功亮度的 1/3）；打字机 30ms/字
-- 8-bit 音效用 Web Audio 合成的频率写在 demo 里，Flutter 侧用 `audioplayers` 预生成音效包或保持合成方案
+- 失败：更短更暗更安静（成功亮度的 1/3）；打字机节奏 **标准 34ms/字**（唯一真源 `AgentSettings.kPaceStandardMs`，设置页「对白节奏」另有 慢 42 / 快 24 两档；此处原先写的 30 是原型遗留、已按 R4 统一）
+- 8-bit 音效用 Web Audio 合成的频率写在 demo 里，Flutter 侧走**离线烘焙的音效包**（`tools/audio/` → `app/assets/audio/`，84 件，`docs/22` 批次②）：播放总线在 `app/lib/state/sfx.dart`（池化、永不抛、开关真正生效）
 
 ## Stitch 生成管线（屏幕设计稿）
 
@@ -90,9 +90,11 @@
 - 本地预览：`npx stitch serve -p <id> --port 8788`（被占会自动顺延，以输出 url 为准）
 - v2 屏幕清单与正确 screen ID 见 `prototype/README.md`
 
-## ComfyUI 素材管线（规划中，等宿主开机）
+## ComfyUI 素材管线（已落地首件：游戏背景）
 
-- 端点约定 `127.0.0.1:8188`（未在线）；素材需求清单见 `09-动效场景全集.txt` 底部
+- 端点 `127.0.0.1:8188`（本机 ComfyUI-aki-v2 已在线，RTX 5090 32G）；素材需求清单见 `09-动效场景全集.txt` 底部
+- **工作流已落地 `tools/comfyui/`**：Qwen-Image 2.1 文生图 + 2x-AnimeSharpV4 放大——`qwen21-game-bg.workflow.json` 可直接拖进 ComfyUI GUI，`gen_game_bg.mjs` 一键重生成（`--seed` 抽卡），参数与坑见该目录 README
+- 首件产出：游戏天幕背景 `prototype/opus-v2-dir/img/bg-void.jpg`（垫在 `#bg .sky` 底层，CSS 轨道环/地面网格/噪点等动态层继续叠加）；PNG 母版在 `ComfyUI/output/SystemBG/`
 - 生图：辉光 burst、稀有度框、粒子 sprite、印章纹章、glitch 帧
 - 生视频（img2vid）：结算光线 loop、升级光环、扫描线氛围、glitch 转场——压暗后 `<video>`/Video Widget 垫底层
 - 优先级：纯 CSS/canvas（Flutter 端 CustomPainter）先行，AI 素材只做质感替换

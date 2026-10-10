@@ -64,6 +64,16 @@ class Sfx {
       'audio/rank_5.wav',
       'audio/rank_6.wav',
     ],
+    'ignite': <String>[ // 点环（唤醒时逐个点亮主线环）：原型 `audio.js:88-91` 按环序号 x 变调
+      'audio/ignite_0.wav',
+      'audio/ignite_1.wav',
+      'audio/ignite_2.wav',
+      'audio/ignite_3.wav',
+      'audio/ignite_4.wav',
+      'audio/ignite_5.wav',
+      'audio/ignite_6.wav',
+      'audio/ignite_7.wav',
+    ],
     'seal': <String>['audio/seal.wav'], // 按满接单 / 提交钤印
     'publish': <String>['audio/ding.wav'], // 发布（原型叫 ding，「只属于派单」）
     'impact': <String>['audio/impact.wav'], // 结算砸印

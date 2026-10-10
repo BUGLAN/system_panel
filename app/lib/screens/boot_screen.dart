@@ -5,10 +5,34 @@ import 'package:flutter/material.dart';
 import '../data/content.dart';
 import '../design/tokens.dart';
 
+/// 日志行的入场时长 —— app.css L534 `.bt-log div { animation: fadeUp .3s var(--out) }`。
+/// 快进时「先铺完日志、再演唤醒」的那一拍也用它：铺完的行先把入场走完，唤醒才接管画面。
+/// （不等的后果就是快进一闪而过 ≈ 还是把日志跳掉了，正是 docs/22 §R5 要修的那个问题。）
+const Duration _kLineIn = Duration(milliseconds: 300);
+
+/// 进度条走一格的时长 —— app.css L537 `.bt-bar i { transition: width .5s var(--out) }`。
+/// ⚠️ 这个常量**一物两用**：既喂进度条的 TweenAnimationBuilder，又是「进度条打到 100%」
+/// 到「唤醒序列就绪」之间的间隔。依据是原型 flows.js L53-63：先 `bar.style.width='100%'`，
+/// `await sleep(500)` 之后才 `add(LINES.bootLog[4])` —— 两个 500ms 在原版里本来就是同一个数
+/// （CSS 过渡时长 = 那一拍 sleep），所以「条走满」与「最后一行落下」是同一拍。
+/// 移植后靠这一个共享常量保住对齐，不靠手感调参；真机上只差 1 帧（ticker 首次 tick 在下一帧）。
+const Duration _kBarTravel = Duration(milliseconds: 500);
+
+/// 开机脚本的一步：落一行日志 / 推一次进度条，`hold` 之后走下一步
+class _Step {
+  const _Step({this.line, this.bar, this.hold = Duration.zero});
+
+  final String? line;
+  final double? bar;
+  final Duration hold;
+}
+
 /// ═══════════════════════════════════════════════════════════
 ///  开机自检（app.css L524-540 `#boot` · flows.js `boot()`）
 ///  不是 logo 页，是一台正在启动的系统：日志在滚、进度在走、
 ///  底下写「触碰屏幕 · 唤醒系统」——点一下才开始。
+///  门禁（docs/22 §R5 裁决 D-m）：点任意处 = 触发唤醒这一拍；
+///  日志没滚完就先快进再唤醒，演出开始后不可二次跳过。
 /// ═══════════════════════════════════════════════════════════
 class BootScreen extends StatefulWidget {
   const BootScreen({super.key, this.host, this.onWake});
@@ -29,9 +53,24 @@ class _BootScreenState extends State<BootScreen> with TickerProviderStateMixin {
   final List<String> _log = <String>[];
   double _bar = 0;
   int _tipIx = 0;
-  bool _gone = false;
   String _clock = '--:--:--';
 
+  /// 开机脚本 + 游标（`_cursor` = 下一步的序号）
+  List<_Step> _script = const <_Step>[];
+  int _cursor = 0;
+  Timer? _stepTimer;
+
+  /// 日志滚完（最后一拍已落）→ 门禁走「点一下 = 直接唤醒」那条路
+  bool _ready = false;
+
+  /// 门禁放行闩：**一次点击定生死**。快进的 300ms 节拍里再点也不会插队，
+  /// 因为闩在第一次点击时就落下了；两条唤醒路径都锁在它后面。
+  bool _gate = false;
+
+  /// 唤醒演出已经开始（画面淡出 + 不再收点击）—— 现有语义，保留：不可二次跳过
+  bool _gone = false;
+
+  Timer? _ffTimer;
   Timer? _clockTimer;
   Timer? _tipTimer;
   late final AnimationController _breathe;
@@ -61,6 +100,8 @@ class _BootScreenState extends State<BootScreen> with TickerProviderStateMixin {
 
   @override
   void dispose() {
+    _stepTimer?.cancel();
+    _ffTimer?.cancel();
     _clockTimer?.cancel();
     _tipTimer?.cancel();
     _breathe.dispose();
@@ -74,50 +115,105 @@ class _BootScreenState extends State<BootScreen> with TickerProviderStateMixin {
     d.second.toString().padLeft(2, '0'),
   ].join(':');
 
-  void _add(String line) {
-    if (!mounted) return;
-    setState(() {
+  /// 开机脚本（原型 flows.js L41-64 的节奏）。
+  /// 原型真值的三个间隔一律不动：160 / 160 / `_kBarTravel`；
+  /// 收紧的只是移植时自己造的两处占位：字形 300 → 240（Flutter 字体随包，不用 await 字体表）、
+  /// 模型就绪 700 → 560（原型这一段由 Stage.init 的模型加载进度驱动，模型还没移植）。
+  /// 总时长 2020 → 1780ms。
+  List<_Step> _buildScript() => <_Step>[
+    const _Step(
+      line: 'SYS//BOOT · 链路建立',
+      bar: .08,
+      hold: Duration(milliseconds: 240),
+    ),
+    const _Step(
+      line: '字形载入 ✓',
+      bar: .18,
+      hold: Duration(milliseconds: 560),
+    ),
+    // 原型这一段由 Stage.init 的模型加载进度驱动（bar 18% → 88%）；
+    // 模型还没移植，先用一个「就绪」占位，bar 直接跳到 88%
+    const _Step(line: '就绪', bar: .88, hold: Duration(milliseconds: 160)),
+    _Step(line: LINES.bootLog[0], hold: const Duration(milliseconds: 160)),
+    _Step(line: LINES.bootLog[2], hold: const Duration(milliseconds: 160)),
+    _Step(
+      line: LINES.bootLog[3].replaceAll(
+        '{host}',
+        widget.host ?? LINES.hostUnknown,
+      ),
+      bar: 1,
+      hold: _kBarTravel, // 与进度条走格同源 → 最后一行落下时条正好走满
+    ),
+    _Step(line: LINES.bootLog[4]), // 「唤醒序列就绪」
+  ];
+
+  void _run() {
+    _script = _buildScript();
+    _step();
+  }
+
+  /// 走一步。第一次调用 = 脚本第一步立即执行（`initState` 里同步落第一行），
+  /// 之后每一步由上一步的 `hold` 定时器推进。
+  void _step() {
+    if (!mounted || _cursor >= _script.length) return;
+    final _Step s = _script[_cursor++];
+    setState(() => _apply(s));
+    if (_cursor >= _script.length) {
+      _ready = true;
+      _goFade.forward(); // 唤醒提示淡入，随后一直呼吸
+      return;
+    }
+    _stepTimer = Timer(s.hold, _step);
+  }
+
+  /// 落一步的内容（不 setState，由调用方决定是「一步一帧」还是「快进一帧全铺」）
+  void _apply(_Step s) {
+    final String? line = s.line;
+    if (line != null) {
       _log.add(line);
       while (_log.length > _maxLines) {
         _log.removeAt(0);
       }
+    }
+    final double? bar = s.bar;
+    if (bar != null) _bar = bar;
+  }
+
+  /// 门禁（docs/22 §R5 裁决 D-m）：**点任意处 = 触发唤醒这一拍**
+  /// · 日志没滚完 → 先把剩下的铺完（快进），等行入场走完（`_kLineIn`）再演唤醒；
+  /// · 日志已滚完 → 直接唤醒（不多等一拍）；
+  /// · 演出开始后不可二次跳过 —— `_gate` 一落，后面所有点击都进不来。
+  void _tap() {
+    if (_gate) return;
+    _gate = true;
+    if (_ready) {
+      _wake();
+      return;
+    }
+    _fastForward();
+    _ffTimer = Timer(_kLineIn, _wake);
+  }
+
+  /// 快进：把脚本里**剩下的每一步在同一帧铺完**（日志一次补齐到最终 5 行、进度条一次打满），
+  /// 已经落好的行不动。所以快进后日志区就是终态，不是中途状态。
+  void _fastForward() {
+    _stepTimer?.cancel();
+    _stepTimer = null;
+    setState(() {
+      while (_cursor < _script.length) {
+        _apply(_script[_cursor++]);
+      }
     });
+    if (!_ready) {
+      _ready = true;
+      _goFade.forward();
+    }
   }
 
-  void _setBar(double v) {
-    if (!mounted) return;
-    setState(() => _bar = v);
-  }
-
-  /// 开机序列（flows.js L41-67 的节奏）
-  Future<void> _run() async {
-    _add('SYS//BOOT · 链路建立');
-    _setBar(.08);
-    await Future<void>.delayed(const Duration(milliseconds: 300));
-    _add('字形载入 ✓');
-    _setBar(.18);
-    // 原型这一段由 Stage.init 的模型加载进度驱动；
-    // 模型还没移植，先用一个「就绪」占位，bar 直接跳到 88%
-    await Future<void>.delayed(const Duration(milliseconds: 700));
-    _add('就绪');
-    _setBar(.88);
-    await Future<void>.delayed(const Duration(milliseconds: 200));
-    _add(LINES.bootLog[0]);
-    await Future<void>.delayed(const Duration(milliseconds: 160));
-    _add(LINES.bootLog[2]);
-    await Future<void>.delayed(const Duration(milliseconds: 160));
-    _add(
-      LINES.bootLog[3].replaceAll('{host}', widget.host ?? LINES.hostUnknown),
-    );
-    _setBar(1);
-    await Future<void>.delayed(const Duration(milliseconds: 500));
-    _add(LINES.bootLog[4]);
-    if (!mounted) return;
-    _goFade.forward(); // 唤醒提示淡入，随后一直呼吸
-  }
-
+  /// `onWake` 的**唯一**调用点：门禁闩 `_gate` 保证引到它的路径只有一条，
+  /// `_gone` 再兜一层 —— 整个生命周期最多一次。
   void _wake() {
-    if (_gone) return;
+    if (!mounted || _gone) return;
     setState(() => _gone = true);
     widget.onWake?.call();
   }
@@ -148,7 +244,8 @@ class _BootScreenState extends State<BootScreen> with TickerProviderStateMixin {
         ignoring: _gone,
         child: GestureDetector(
           behavior: HitTestBehavior.opaque,
-          onTapDown: (TapDownDetails _) => _wake(),
+          // 原型是 `pointerdown`（flows.js L65）——按下即算，不等抬手
+          onTapDown: (TapDownDetails _) => _tap(),
           child: Padding(
             padding: const EdgeInsets.fromLTRB(22, 22, 22, 38),
             child: Column(
@@ -204,11 +301,13 @@ class _BootScreenState extends State<BootScreen> with TickerProviderStateMixin {
     );
   }
 
-  /// .bt-bar
+  /// .bt-bar —— 走格时长 = `_kBarTravel`，与「最后一行」的间隔同源（见文件头注释）
   Widget _barBlock() {
     return Padding(
       padding: const EdgeInsets.only(top: 12),
       child: Container(
+        // 轨道整体宽度：对齐证据用它当分母（fill / 轨道 = 走格比例）
+        key: const Key('boot.bar'),
         height: 2,
         decoration: BoxDecoration(
           color: const Color(0x1A38E1FF), // rgba(56,225,255,.1)
@@ -216,7 +315,7 @@ class _BootScreenState extends State<BootScreen> with TickerProviderStateMixin {
         ),
         child: TweenAnimationBuilder<double>(
           tween: Tween<double>(begin: 0, end: _bar),
-          duration: const Duration(milliseconds: 500),
+          duration: _kBarTravel,
           curve: kOut,
           builder: (BuildContext _, double v, Widget? _) => Align(
             alignment: Alignment.centerLeft,
@@ -334,10 +433,10 @@ class _LogLine extends StatelessWidget {
       if (i < parts.length - 1) spans.add(TextSpan(text: '✓', style: hit));
     }
 
-    // animation: fadeUp .3s var(--out) both
+    // animation: fadeUp .3s var(--out) both（`_kLineIn` 与快进节拍同源）
     return TweenAnimationBuilder<double>(
       tween: Tween<double>(begin: 0, end: 1),
-      duration: const Duration(milliseconds: 300),
+      duration: _kLineIn,
       curve: kOut,
       builder: (BuildContext _, double v, Widget? child) => Opacity(
         opacity: v,

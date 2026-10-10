@@ -18,6 +18,7 @@ class AppSettings {
     this.voice = 'blip',
     this.reasoningEffort = LlmConfig.kDefaultReasoningEffort,
     this.strictMode = AgentSettings.kDefaultStrictMode,
+    this.paceMs = AgentSettings.kDefaultPaceMs,
   });
 
   final bool sound;
@@ -40,6 +41,13 @@ class AppSettings {
   /// 这里只是数据。
   final String strictMode;
 
+  /// 对白节奏（docs/22 §R4 / 裁决 D-h）：她每字显形的毫秒数，
+  /// 三档 = 慢 / 标准 / 快（见 [paceOptions]）。默认引用
+  /// `AgentSettings.kDefaultPaceMs`（34）——同 [strictMode] 的纪律，
+  /// 默认值只有 settings_store 一个真源，这里不写第二份字面量。
+  /// 真正消费方是 main.dart 的装配（喂给 LineLayer / ChatPanel）。
+  final int paceMs;
+
   static const AppSettings demo = AppSettings();
 
   /// 那一行「她的声音」的三个选项（真源 ui.js L599）
@@ -61,5 +69,14 @@ class AppSettings {
     <String>['auto', '自动'],
     <String>['on', '开'],
     <String>['off', '关'],
+  ];
+
+  /// 那一行「对白节奏」的三个选项（docs/22 §R4 / 裁决 D-h；默认停在标准 34）。
+  /// 值是**毫秒数的字符串**（分段开关按字符串比对/回传，与上面两张表同形），
+  /// 但三个数都从 [AgentSettings] 的常量插值而来 —— 表里不再写第二份字面量。
+  static const List<List<String>> paceOptions = <List<String>>[
+    <String>['${AgentSettings.kPaceSlowMs}', '慢'],
+    <String>['${AgentSettings.kDefaultPaceMs}', '标准'],
+    <String>['${AgentSettings.kPaceFastMs}', '快'],
   ];
 }

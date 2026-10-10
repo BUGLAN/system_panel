@@ -838,6 +838,7 @@ class _SystemPaneState extends State<_SystemPane> {
       voice: seed.voice,
       reasoningEffort: seed.reasoningEffort,
       strictMode: seed.strictMode,
+      paceMs: seed.paceMs,
     );
     _baseC = TextEditingController(text: _s.baseUrl);
     _keyC = TextEditingController(text: _s.apiKey);
@@ -969,6 +970,25 @@ class _SystemPaneState extends State<_SystemPane> {
         _seg('voice', AppSettings.voiceOptions, _s.voice, (String v) {
           _update((AgentSettings s) => s.copyWith(voice: v));
         }),
+      ),
+      // docs/22 §R4 / 裁决 D-h：对白节奏三档（慢 42 / 标准 34 / 快 24 毫秒每字）。
+      // 值喂给 LineLayer（字幕）与 ChatPanel（聊天气泡）的打字机；
+      // 存档里存的是毫秒数本身（与选项表同源，见 AppSettings.paceOptions）。
+      _setRow(
+        '对白节奏',
+        '她每个字蹦出来的速度：慢 42 / 标准 34 / 快 24 毫秒；点一句可立刻铺完',
+        _seg(
+          'pace',
+          AppSettings.paceOptions,
+          '${_s.paceMs}',
+          (String v) {
+            _update(
+              (AgentSettings s) => s.copyWith(
+                paceMs: int.tryParse(v) ?? AgentSettings.kDefaultPaceMs,
+              ),
+            );
+          },
+        ),
       ),
       _setRow(
         '震动',

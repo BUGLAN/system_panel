@@ -21,6 +21,24 @@ class AgentSettings {
   /// 「两套默认值将来会漂」就是这个问题。
   static const String kDefaultStrictMode = 'auto';
 
+  /// ═══ 对白节奏（docs/22 §R4 / 裁决 D-h）═══
+  ///
+  /// **这三个数就是全仓唯一的节奏真源**：慢 / 标准 / 快三档，单位=每字毫秒。
+  /// `widgets/type_text.dart` 的默认值、`state/settings.dart` 的选项表、
+  /// 设置页那一行、`main.dart` 喂给 `LineLayer` / `ChatPanel` 的值，
+  /// 全部从这里派生——之前「同一件事三个数（34 / 30 / 文档 30）」的根因
+  /// 就是各处各写一份字面量，别再犯。
+  static const int kPaceSlowMs = 42;
+
+  /// 标准档 = 默认档（34ms/字，`type_text.dart` 的既有默认值）
+  static const int kPaceStandardMs = 34;
+
+  /// 快档
+  static const int kPaceFastMs = 24;
+
+  /// 默认档位（老档缺 `paceMs` 时取它）
+  static const int kDefaultPaceMs = kPaceStandardMs;
+
   const AgentSettings({
     this.visionEnabled = true,
     this.baseUrl = LlmConfig.kDefaultBase,
@@ -32,6 +50,7 @@ class AgentSettings {
     this.voice = 'blip',
     this.reasoningEffort = LlmConfig.kDefaultReasoningEffort,
     this.strictMode = kDefaultStrictMode,
+    this.paceMs = kDefaultPaceMs,
   });
 
   /// 视觉校验开关（关 = 纯信任模式，证据全按「未校验」计）
@@ -64,6 +83,11 @@ class AgentSettings {
   /// 严格模式：auto（debug/profile 报错不兜底、release 兜底但标注）/ on / off
   final String strictMode;
 
+  /// 对白节奏：**她说话时每个字显形的毫秒数**（docs/22 §R4）。
+  /// 三档取值见 [kPaceSlowMs] / [kPaceStandardMs] / [kPaceFastMs]，默认标准 34。
+  /// 消费方：`LineLayer`（字幕）与 `ChatPanel`（聊天气泡）的打字机。
+  final int paceMs;
+
   factory AgentSettings.fromJson(
     Map<String, dynamic>? json, {
     required AgentSettings fallback,
@@ -84,6 +108,8 @@ class AgentSettings {
         fallback.reasoningEffort,
       ),
       strictMode: pick<String>('strictMode', fallback.strictMode),
+      // 老档没有这个 key → 落回 fallback（= 默认 34），不写迁移代码
+      paceMs: pick<int>('paceMs', fallback.paceMs),
     );
   }
 
@@ -98,6 +124,7 @@ class AgentSettings {
     'voice': voice,
     'reasoningEffort': reasoningEffort,
     'strictMode': strictMode,
+    'paceMs': paceMs,
   };
 
   AgentSettings copyWith({
@@ -111,6 +138,7 @@ class AgentSettings {
     String? voice,
     String? reasoningEffort,
     String? strictMode,
+    int? paceMs,
   }) => AgentSettings(
     visionEnabled: visionEnabled ?? this.visionEnabled,
     baseUrl: baseUrl ?? this.baseUrl,
@@ -122,6 +150,7 @@ class AgentSettings {
     voice: voice ?? this.voice,
     reasoningEffort: reasoningEffort ?? this.reasoningEffort,
     strictMode: strictMode ?? this.strictMode,
+    paceMs: paceMs ?? this.paceMs,
   );
 
   @override
@@ -136,7 +165,8 @@ class AgentSettings {
       other.holo == holo &&
       other.voice == voice &&
       other.reasoningEffort == reasoningEffort &&
-      other.strictMode == strictMode;
+      other.strictMode == strictMode &&
+      other.paceMs == paceMs;
 
   @override
   int get hashCode => Object.hash(
@@ -150,6 +180,7 @@ class AgentSettings {
     voice,
     reasoningEffort,
     strictMode,
+    paceMs,
   );
 }
 

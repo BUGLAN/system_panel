@@ -166,7 +166,11 @@ class _TypeTextState extends State<TypeText>
   @override
   void didUpdateWidget(covariant TypeText old) {
     super.didUpdateWidget(old);
-    if (old.text != widget.text || old.soft != widget.soft) {
+    // 节奏（`speed`）也算"变了要重建节奏表"：设置页切档时，**正在打的那一句
+    // 剩下的字立刻按新档走**（docs/22 §R4 的"切完立刻生效"；否则要等下一句）
+    if (old.text != widget.text ||
+        old.soft != widget.soft ||
+        old.speed != widget.speed) {
       _build();
       setState(() {});
       return;
