@@ -27,6 +27,12 @@ class Sfx {
   /// 全局音量（0~1）。素材里已经按原型叠好相对响度，这里只做总衰减
   static double volume = 1.0;
 
+  /// 播放失败计数 + 最近一次原因（诊断用）。
+  /// 独立验收（task-12）建议：像 LLM 那行一样在设置页回显——这次「池化回归」
+  /// 就是靠验收人 grep logcat 才发现的，这种信号不该只活在日志里。
+  static int failCount = 0;
+  static String? lastError;
+
   /// 事件 → 素材路径（相对 `assets/`，`AssetSource` 前缀就是 `assets/`）。
   /// 多条 = 变体：每次随机取一条（原型每发都随机音高，不随机就丢手感）。
   /// 命名约定由 `tools/audio/` 的烘焙脚本保证。
@@ -75,25 +81,37 @@ class Sfx {
   static final Random _rnd = Random();
 
   // ── 池化播放器 ─────────────────────────────────────────────
-  static final List<AudioPlayer> _pool = <AudioPlayer>[];
+  //
+  // 池里存的是 **Future<AudioPlayer>**（不是实例）——一把解决两个坑：
+  //   ① 上限严格：`_slots.length` 只在**同步**路径增长，并发再多也 ≤ _poolSize
+  //      （曾经只数 `_pool.length`：判断与 add 之间夹着 await，实机 22ms 内建 30 个）
+  //   ② 绝不交付未就绪实例：复用路径 `await` 同一个 future，配置没完就先等着
+  //      （曾经"先占位再配置"直接交出未就绪实例 → `play()` 永不返回 → 30s 超时，
+  //       打字机逐字音节成片不播，见 `.verify/batch2/j-summary.md` §3.3）
+  // 另外**不能用 `Future.delayed` 轮询**：widget 测试里会留下 pending timer
+  // （`A Timer is still pending even after the widget tree was disposed`）。
+  static final List<Future<AudioPlayer>> _slots = <Future<AudioPlayer>>[];
   static int _next = 0;
   static const int _poolSize = 6;
 
-  static Future<AudioPlayer> _take() async {
-    if (_pool.length < _poolSize) {
-      final AudioPlayer p = AudioPlayer();
-      // ⚠️ **先占位再 await**（独立验收 N7）：实机测到冷启那波打字机在 22ms 内
-      // 建了 30 个 AudioPlayer——`_pool.length < 6` 的判断与 `_pool.add` 之间夹着
-      // 两个 await，并发请求全落在窗口里。先 add 再配置，并发调用看到的就是 ≤6。
-      // （配置失败的实例留在池里无害：每次 play 都在 try/catch 里。）
-      _pool.add(p);
-      await p.setPlayerMode(PlayerMode.lowLatency);
-      await p.setReleaseMode(ReleaseMode.stop);
-      return p;
-    }
-    final AudioPlayer p = _pool[_next % _pool.length];
-    _next++;
+  /// 建一个**配置完成**的播放器（短音效用低延迟模式：Android 走 SoundPool，
+  /// 打字机逐字 34ms 一发才跟得上）
+  static Future<AudioPlayer> _create() async {
+    final AudioPlayer p = AudioPlayer();
+    await p.setPlayerMode(PlayerMode.lowLatency);
+    await p.setReleaseMode(ReleaseMode.stop);
     return p;
+  }
+
+  static Future<AudioPlayer> _take() {
+    if (_slots.length < _poolSize) {
+      final Future<AudioPlayer> f = _create();
+      _slots.add(f); // 同步占位：并发调用看到的是"已占位"，交付时等它就绪
+      return f;
+    }
+    final Future<AudioPlayer> f = _slots[_next % _slots.length];
+    _next++;
+    return f;
   }
 
   static String? _pick(String key, int? variant) {
@@ -149,6 +167,8 @@ class Sfx {
       await p.play(AssetSource(files.first), volume: volume * 0.5);
       _ambientOn = true;
     } catch (e) {
+      failCount++;
+      lastError = '底噪：$e';
       debugPrint('[sfx] 底噪不可用：$e');
     }
   }
@@ -160,18 +180,20 @@ class Sfx {
       await p.play(AssetSource(file), volume: volume * (soft ? 0.5 : 1.0));
     } catch (e) {
       // 素材缺失 / 平台不支持都只是"没声"：记一行，不抛
+      failCount++;
+      lastError = '$key → $e';
       debugPrint('[sfx] 播放失败 key=$key file=$file：$e');
     }
   }
 
   /// 释放（App 退出/测试收尾）
   static Future<void> dispose() async {
-    for (final AudioPlayer p in _pool) {
+    for (final Future<AudioPlayer> f in _slots) {
       try {
-        await p.dispose();
+        await (await f).dispose();
       } catch (_) {}
     }
-    _pool.clear();
+    _slots.clear();
     try {
       await _ambient?.dispose();
     } catch (_) {}

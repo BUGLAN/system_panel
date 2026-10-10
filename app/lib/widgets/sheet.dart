@@ -12,6 +12,7 @@ import '../agent/llm_client.dart';
 import '../agent/llm_telemetry.dart';
 import '../agent/settings_store.dart';
 import '../data/items.dart';
+import '../state/sfx.dart';
 import '../data/rewards.dart';
 import '../data/titles.dart';
 import '../design/tokens.dart';
@@ -945,8 +946,11 @@ class _SystemPaneState extends State<_SystemPane> {
       _setRow(
         '音效',
         // 文案更正（独立验收 N5）：批次② 起是**离线烘好的音效包**（76 件 WAV，
-        // tools/audio/ 生成），不再是"现场合成、没有音频文件"
-        '离线音效包（76 件）· 打字机逐字有电子音',
+        // tools/audio/ 生成），不再是"现场合成、没有音频文件"。
+        // 播放失败计数（task-12 建议）：这类回归不该只活在 logcat 里。
+        Sfx.failCount == 0
+            ? '离线音效包（76 件）· 打字机逐字有电子音'
+            : '离线音效包（76 件）· ⚠️ 播放失败 ${Sfx.failCount} 次：${Sfx.lastError ?? ''}',
         _seg('sound', const <List<String>>[
           <String>['1', '开'],
           <String>['0', '关'],
