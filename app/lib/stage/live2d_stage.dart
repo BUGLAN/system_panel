@@ -1,8 +1,11 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show AssetManifest, ByteData, rootBundle;
 import 'package:flutter_live2d/flutter_live2d.dart';
+import 'package:path_provider/path_provider.dart';
 
 import 'camera.dart';
 import 'stage_port.dart';
@@ -31,12 +34,15 @@ import 'stage_port.dart';
 
 /// 舞台对外的把手：给页面驱动"她现在什么表情、做什么动作"。
 class Live2DStageHandle {
-  Live2DStageHandle(this._ctrl, [this._onIdleMood]);
+  Live2DStageHandle(this._ctrl, [this._onIdleMood, this._onSleepingChanged]);
 
   final Live2DViewController _ctrl;
 
   /// 待机池心情落回 state（原型 `Stage.idleMood = mood`）
   final void Function(String mood)? _onIdleMood;
+
+  /// 睡眠态回写（`_Live2DStageState._sleeping`）：睡觉期间待机池暂停
+  final ValueChanged<bool>? _onSleepingChanged;
 
   bool get isReady => _ctrl.value.isLoaded;
 
@@ -71,6 +77,52 @@ class Live2DStageHandle {
     final int xi = StageBridges.verbExpIndex(verb);
     if (xi >= 0) await expression(xi);
     await motion(StageBridges.groupOf(verb), priority: 2);
+  }
+
+  // ── 开机睡姿与唤醒编排（docs/22 R5「Mac 轮验收项」· 2026-10-11 补完）──
+  //
+  // 为什么不走 `param()`：插件 wrapper 的 SetParam 单帧即被
+  // `LoadParameters→motion→SaveParameters` 循环覆写（STAGE-OPTIONS
+  // 「表演补完」节实测）；表情在管线里于 eyeblink 之后应用、
+  // Blend=Overwrite 可持续覆写 —— 所以闭眼/抬眼皮全部走 `exp_sys_*` 合成表情。
+
+  /// 开机睡姿（原型 flows.js L54-61：`emote('sleep') + look('down')`，
+  /// FACES.sleep 原值 lid 0 / ay −16 / az 2 / cheek .1）：
+  /// 闭眼 + 低头 + 眼球下移 + 动作停住（speed 0，物理照跑）。
+  Future<void> sleep() async {
+    _onSleepingChanged?.call(true);
+    speed(0);
+    final int i = Live2DStage.expressionIndex('exp_sys_sleep');
+    debugPrint('[stage] 睡姿下发（exp_sys_sleep 下标 $i）');
+    if (i >= 0) await expression(i);
+  }
+
+  /// 唤醒睁眼编排（原型 flows.js `wake()` L77-84 的拍子，逐拍照抄）：
+  /// 闭眼抬头 450ms → 眼皮 .35 停 140ms → .05 停 120ms → neutral 睁眼
+  /// （+ 动作恢复）。返回后由调用方接欢迎手势。
+  Future<void> wakeEyes() async {
+    final int up = Live2DStage.expressionIndex('exp_sys_wake');
+    final int l35 = Live2DStage.expressionIndex('exp_sys_lid35');
+    final int l05 = Live2DStage.expressionIndex('exp_sys_lid05');
+    final int neutral = Live2DStage.expressionIndex('exp_idle01');
+    final bool stepsOk = up >= 0 && l35 >= 0 && l05 >= 0 && neutral >= 0;
+    debugPrint(
+      '[stage] 睁眼编排开始：抬头 $up / lid35 $l35 / lid05 $l05 / neutral $neutral'
+      '${stepsOk ? '' : " ⚠️ 有下标 -1 —— 模型数据版本可能没刷新"}',
+    );
+    // 抬头（仍闭眼）
+    if (up >= 0) await expression(up);
+    await Future<void>.delayed(const Duration(milliseconds: 450));
+    // 眼皮颤两下：.35 → .05
+    if (l35 >= 0) await expression(l35);
+    await Future<void>.delayed(const Duration(milliseconds: 140));
+    if (l05 >= 0) await expression(l05);
+    await Future<void>.delayed(const Duration(milliseconds: 120));
+    // 睁眼看向宿主（neutral = 原型 emote('neutral')；视线由 drag(0,0) 天然正对）
+    if (neutral >= 0) await expression(neutral);
+    speed(1);
+    _onSleepingChanged?.call(false);
+    debugPrint('[stage] 睁眼编排完成（450/140/120ms 三拍）');
   }
 }
 
@@ -142,7 +194,11 @@ class Live2DStage extends StatefulWidget {
   /// 插件只收**下标**不收名字，所以这里留一份名字表供调用方按名字查。
   /// ⚠️ 顺序由 `tools/l2d/convert.py` **按名字排序**写出（prefab 里的原序是随机的，
   ///    不可依赖），所以这张表就是字母序。**改了转换器就要同步这里** ——
-  ///    `test/live2d_stage_test.dart` 会拿实际生成的 `model3.json` 来核对。
+  ///    `test/stage_port_test.dart` 核对桥接表、本表与产物的一致性。
+  /// 尾部 4 个 `exp_sys_*` 是转换器生成的**系统合成表情**（2026-10-11 表演补完，
+  ///    STAGE-OPTIONS「表演补完」节）：Blend=Overwrite 持续覆写眼部/头部参数，
+  ///    服务开机睡姿与唤醒睁眼编排 —— 原型 `faceT` 脸层的原生等价物
+  ///    （插件 `SetParam` 单帧即被 motion 管线覆写，所以走表情不走参数）。
   static const List<String> expressions = <String>[
     'exp_angry01',
     'exp_angry02',
@@ -172,41 +228,143 @@ class Live2DStage extends StatefulWidget {
     'exp_surprised01',
     'exp_surprised02',
     'exp_surprised03',
+    'exp_sys_lid05',
+    'exp_sys_lid35',
+    'exp_sys_sleep',
+    'exp_sys_wake',
   ];
+
+  /// 常驻基底动作组（转换器在 model3.json 里生成的 `"Idle"` 别名组，指向
+  /// `mtn_idle01_C`）。插件的 iOS wrapper 对字面 `"Idle"` 组**循环播放**、
+  /// 且在动作播完时**自动兜底回它** —— 这正是原型 stage.js L167
+  /// `playMotion(defaultMotion, {loop:true})` 的常驻基底语义。
+  /// ⚠️ 17 个语义组（[motionGroups]）是桥接表用的；基底是这一条，别混。
+  static const String baseGroup = 'Idle';
+
+  /// 模型数据版本戳（改一次数据升一次）：
+  /// · v2 = 2026-10-11 表演补完（"Idle" 别名组 + 4 个 exp_sys_* 合成表情）
+  /// · v3 = 2026-10-11 眼皮颤动改脆（exp_sys_* 淡出 .25→.05）
+  ///
+  /// ⚠️ **为什么自管解压目录（不交给插件的 asset 缓存）**：
+  /// 插件的 `_extractAssetDirToCache`（asset_cache.dart L60-77）以「目录存在 +
+  /// `.ready` 标记」短路，缓存键只有**目录名的 base64、没有内容指纹** ——
+  /// 换数据后旧 model3.json 会被无限复用。2026-10-11 实测踩中：插件缓存里
+  /// 还是 Oct 10 23:54 解压的旧数据（28 表情 / 无 Idle 组 / 无 exp_sys_*），
+  /// 新数据 00:53 才生成，之后重装 App 三次都没刷新 → 表情下标 30 越界静默
+  /// no-op、基底组找不到，她「一点没变」。
+  /// ⚠️ 踩坑细节：`getTemporaryDirectory()`（path_provider）在 iOS 上返回的是
+  ///    **`Library/Caches`**，而插件走的是 `NSTemporaryDirectory()` = **`tmp/`**
+  ///    —— 两者不是同一个目录，所以「删插件缓存目录」那条路走不通（第一版
+  ///    就是这么白写的）。改为自己解压到我们选定的目录、喂**绝对路径**。
+  /// 取证手段（下次复用）：
+  ///   xcrun devicectl device copy from --domain-type appDataContainer \
+  ///     --domain-identifier com.systempanel.app \
+  ///     --source Library/Caches/sys_l2d --destination /tmp/devextract
+  ///   （要看插件自己那份旧缓存就把 source 换成 tmp/flutter_live2d_models）
+  ///
+  /// 插件的 `loadModel` 接受**绝对路径**（`_isAbsolutePath` → 原样返回），
+  /// 所以这里按版本号解压到 `Library/Caches/sys_l2d/v<N>/` 再喂绝对路径 ——
+  /// 刷新时机完全由我们掌控，未来重跑转换器只需把版本号 +1。
+  /// · v2 = 表演补完（Idle 别名组 + 4 个 exp_sys_*）
+  /// · v3 = 眼皮颤动改脆（exp_sys_* 淡出 .25→.05）
+  /// · v4 = 贴图 2× Lanczos 上采样试过（2048²→4096²）—— **已退回**：
+  ///        高频能量只 +3%（插件 mipmap 链会把有效细节归一化），宿主主观
+  ///        验收「更糊」，GPU 显存还 4 倍 ⇒ 回到 v5 = 原版 2048² 贴图
+  /// · v5 = 2026-10-11 几何修正（画布比例 2:3 的舞台矩形）+ 贴图回 2048²
+  static const int modelDataVersion = 5;
+
+  /// 把声明的模型资产解压到版本化目录，返回**绝对路径**（带尾斜杠）。
+  /// 版本一致就复用；不一致先把整棵树删掉（连旧版本目录）再重解。
+  static Future<String> resolveModelDir() async {
+    final Directory tmp = await getTemporaryDirectory();
+    final Directory root = Directory('${tmp.path}/sys_l2d');
+    final Directory dir = Directory('${root.path}/v$modelDataVersion');
+    final File marker = File('${dir.path}/.complete');
+    if (dir.existsSync() && marker.existsSync()) {
+      debugPrint('[stage] 模型资产 v$modelDataVersion 已就位（复用）');
+      return '${dir.path}/';
+    }
+    if (root.existsSync()) await root.delete(recursive: true);
+    await dir.create(recursive: true);
+    final AssetManifest manifest =
+        await AssetManifest.loadFromAssetBundle(rootBundle);
+    final List<String> keys = manifest
+        .listAssets()
+        .where((String k) => k.startsWith(modelDir))
+        .toList();
+    for (final String key in keys) {
+      final String rel = key.substring(modelDir.length);
+      final File out = File('${dir.path}/$rel');
+      await out.parent.create(recursive: true);
+      final ByteData data = await rootBundle.load(key);
+      await out.writeAsBytes(data.buffer.asUint8List(), flush: true);
+    }
+    await marker.writeAsString('ok', flush: true);
+    debugPrint('[stage] 模型资产 v$modelDataVersion 解压完成（${keys.length} 件）→ ${dir.path}');
+    return '${dir.path}/';
+  }
+
 
   /// 按名字取表情下标（找不到给 -1）
   static int expressionIndex(String name) => expressions.indexOf(name);
 
   /// ── 相机矩形（docs/18 §1.5.3 布局矩形复刻相机）──────────────────
   ///
-  /// 她**应占**的屏幕矩形：中心 = `Cam.screenCenter`，高 = 屏高 × `Cam.s`。
-  /// 数学对照（大厅 s=.92、syF=.505）：top = .505H − .46H = 4.5%H、
-  /// bottom = 96.5%H —— 与原型"大厅她占屏高 92%、顶 4.5% 底 96.5%"一致。
+  /// 她**应占**的屏幕矩形：中心 = `Cam.screenCenter`，高 = 屏高 × `Cam.s`
+  /// × [StageCalib.kSize]，宽按**模型画布比例**（见 [kCanvasAspect]）。
   ///
-  /// 插件在视图内如何框住模型没有 API 可查，误差全部吸收进 [StageCalib]
-  /// 这三个常数 —— 由 `tools/ref/calib_alpha.py`（alpha 包围盒法）实测回填。
+  /// ⚠️⚠️ **为什么必须保持画布比例（2026-10-11 iOS 真机轮踩的坑）**：
+  /// 插件 iOS 侧把模型塞进视图的规则是（`Live2DWrapper.mm` L615 / L658）——
+  /// ```objc
+  /// if (w > h) _model->GetModelMatrix()->SetHeight(2.0f);
+  /// else       _model->GetModelMatrix()->SetWidth(2.0f);   // 方形/竖视图走这里
+  /// ```
+  /// 即**非宽视图按「画布宽度」塞满视图宽度**。sakiko 的画布是 6000×9000
+  /// （宽:高 = 2:3），于是画布高 = 3.0 个世界单位被塞进只有 2.0 单位高的
+  /// **正方形**视图 → 她**恒定被上下各裁掉 25% 视图高**（宿主观感：头顶与脚
+  /// 都被截断、她"太大"）。而且：**视图是正方形时，矩形调多大都没用** ——
+  /// 可见的世界范围只由视图**宽高比**决定，不由尺寸决定。
+  /// 所以舞台矩形必须保持画布比例（宽 = 高 × 2/3），此时可见范围正好等于
+  /// 整张画布（高 3.0 单位），她完整可见；大小再交给 [StageCalib.kSize]。
+  ///
+  /// 旧的"正方形 + 当成 92% 屏高"那套是**循环论证**：方形视图裁掉的内容让
+  /// 可见轮廓恰好填满矩形，`calib_alpha` 量到的"92.0%"其实是被裁后的范围
+  /// （HANDOFF 警告过"别拿被裁的轮廓当信号"，这次是另一种同款：量到的是
+  /// 裁剪框本身）。
   static Rect stageRect(Cam cam, Size size) {
     final Offset center = cam.screenCenter(size);
-    final double side = size.height * cam.s * StageCalib.kSize;
-    return Rect.fromCenter(center: center, width: side, height: side)
+    final double h = size.height * cam.s * StageCalib.kSize;
+    final double w = h * kCanvasAspect;
+    return Rect.fromCenter(center: center, width: w, height: h)
         .translate(StageCalib.dx, StageCalib.dy);
   }
+
+  /// 模型画布的宽高比（宽 / 高）——`sakiko_orig/models/*.json` 的
+  /// `model.canvas = {width: 6000, height: 9000}`。舞台矩形必须与它一致，
+  /// 否则插件按宽度适配时会把她的头/脚裁掉（见 [stageRect] 注释）。
+  static const double kCanvasAspect = 6000 / 9000;
 
   @override
   State<Live2DStage> createState() => _Live2DStageState();
 }
 
-/// 标定常数（alpha 包围盒法回填；禁截图轮廓量测——HANDOFF 前车之鉴）。
+/// 标定常数（阈值包围盒法回填；禁截图轮廓量测——HANDOFF 前车之鉴）。
 ///
-/// 标定流程（app/STAGE-OPTIONS.md「MuMu · 原生舞台标定」节）：
-///  1. `flutter run -d 127.0.0.1:16512` 进大厅；
-///  2. `python tools/ref/calib_alpha.py --device 127.0.0.1:16512`
-///     （截图 → alpha/亮度阈值包围盒 → 反解常数建议值）；
-///  3. 把建议值回填到这里，热重载复查。
+/// ⚠️ 语义（2026-10-11 改）：`kSize` 现在是**矩形高 / (屏高 × cam.s)** 的系数，
+/// 而矩形本身已经按画布比例（2:3）展开。因为插件按画布宽度适配，她的实际
+/// 身高 = 矩形宽 × (她的画布高占比)，所以 kSize 要按实测反解，不再是"1.0
+/// 就正好 92%"。
+///
+/// 标定流程（真机，iOS）：
+///  1. 应用内把 [Live2DStage] 挂到画布比例的矩形上（已是默认路径）；
+///  2. `xcrun devicectl device capture screenshot --device <UDID> --destination shot.png`
+///  3. `python tools/ref/calib_alpha.py --png shot.png --logical 430x932`
+///     （阈值包围盒 → 反解 kSize/dx/dy 建议值）
+///  4. 回填这里，热重载复查（她完整可见后，量到的不再是裁剪框）。
 class StageCalib {
   const StageCalib._();
 
-  /// 视图边长 × 系数（1.0 = 矩形高恰好等于她应占屏高；模型在视图内不满铺就 >1）
+  /// 矩形高 / (屏高 × cam.s)（见类注释；由真机实测反解）
   static const double kSize = 1.0;
 
   /// 中心平移（逻辑像素；alpha 包围盒中心与 `Cam.screenCenter` 的差）
@@ -235,23 +393,30 @@ class _Live2DStageState extends State<Live2DStage> {
     _load();
   }
 
-  /// 待机池轮播（原型 `Stage.tick` L412 的 pools：优先级 1，不抢主动作）。
-  /// 间隔照原型的"动作播完歇一下"节奏随机化，避免机械感。
+  /// 待机池轮播（原型 `Stage.tick` L410-412：`idle.next = t + rand(7,15)`，
+  /// 优先级 1 不抢主动作）。睡眠期间（开机闭眼）池子暂停 —— 原型的睡姿
+  /// 由 boot 流程持有，不会被待机小动作打扰。
   void _startIdleLoop() {
     _idleTimer?.cancel();
-    _idleTimer = Timer.periodic(const Duration(milliseconds: 900), (Timer t) {
-      if (!mounted || _failed) return;
-      if (t.tick % 9 != _idleSlot) return; // ≈8s 上下随机一拍
+    _idleTimer = Timer.periodic(const Duration(seconds: 1), (Timer t) {
+      if (!mounted || _failed || _sleeping) return;
+      final DateTime now = DateTime.now();
+      if (now.isBefore(_nextIdleAt)) return;
+      _nextIdleAt = now.add(Duration(seconds: 7 + _rnd.nextInt(9)));
       final List<String> pool =
           StageBridges.idlePool[StageBridges.poolOf(_idleMood)] ??
           StageBridges.idlePool['neutral']!;
       final String group = pool[_rnd.nextInt(pool.length)];
+      debugPrint('[stage] 待机池动作 → $group（心情 $_idleMood，下次 ${_nextIdleAt.second}s）');
       unawaited(_ctrl.startMotion(group: group, priority: 1));
     });
   }
 
-  /// 每次启动错开一拍，避免多实例同步轮播
-  static final int _idleSlot = DateTime.now().second % 9;
+  /// 下一次待机小动作的时间（`rand(7,15)s`，原型 stage.js L411）
+  DateTime _nextIdleAt = DateTime.now().add(const Duration(seconds: 4));
+
+  /// 开机睡姿持有期间为真（[Live2DStageHandle.sleep] / [wakeEyes] 驱动）
+  bool _sleeping = false;
 
   @override
   void reassemble() {
@@ -264,6 +429,14 @@ class _Live2DStageState extends State<Live2DStage> {
     try {
       // ⚠️ 第一条命令必须等原生视图就绪，否则报 VIEW_NOT_ATTACHED
       await _ctrl.whenAttached;
+      // ⚠️ **绝对路径**喂模型：绕开插件那份无内容指纹的 asset 缓存
+      //    （见 [resolveModelDir] 注释）；解压失败退回资产目录由插件自理。
+      String modelDirArg = Live2DStage.modelDir;
+      try {
+        modelDirArg = await Live2DStage.resolveModelDir();
+      } on Object catch (e) {
+        debugPrint('[stage] 自管解压失败（退回插件资产缓存）：$e');
+      }
       debugPrint('[stage] 原生视图已就绪 → loadModel');
       // ⚠️ 原生侧 `nativeLoadModel` 有竞态：GL 上下文/surface 就绪的时机稍有不同
       //    就会返回 false（同一份数据时而 true 时而 false）。所以重试几次，
@@ -272,7 +445,7 @@ class _Live2DStageState extends State<Live2DStage> {
       for (int i = 0; i < 5 && !ok; i++) {
         if (i > 0) await Future<void>.delayed(Duration(milliseconds: 400 * i));
         ok = await _ctrl.loadModel(
-          modelDir: Live2DStage.modelDir,
+          modelDir: modelDirArg,
           modelFileName: Live2DStage.modelFile,
         );
         debugPrint(
@@ -283,10 +456,12 @@ class _Live2DStageState extends State<Live2DStage> {
       }
       if (!mounted) return;
       if (ok) {
-        // 默认待机动作与表情（与游戏剧情里一致：`mtn_idle01_C` / `exp_idle01`）
+        // 常驻基底：`Idle` 别名组（mtn_idle01_C，插件对字面 "Idle" 循环播放、
+        // 播完自动兜底回来 —— 2026-10-11 表演补完，STAGE-OPTIONS 有根因）。
+        // 对照原型 stage.js L167 `playMotion(defaultMotion, {loop:true})`。
         unawaited(
           _ctrl.startMotion(
-            group: Live2DStage.useHiyoriControl ? 'Idle' : 'idle',
+            group: Live2DStage.useHiyoriControl ? 'Idle' : Live2DStage.baseGroup,
             priority: 1,
           ),
         );
@@ -294,7 +469,11 @@ class _Live2DStageState extends State<Live2DStage> {
         if (ei >= 0) unawaited(_ctrl.setExpression(ei));
         _startIdleLoop();
         widget.onReady?.call(
-          Live2DStageHandle(_ctrl, (String m) => _idleMood = m),
+          Live2DStageHandle(
+            _ctrl,
+            (String m) => _idleMood = m,
+            (bool s) => _sleeping = s,
+          ),
         );
       } else {
         _fail();

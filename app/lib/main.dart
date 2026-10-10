@@ -953,6 +953,12 @@ class _AppShellState extends State<AppShell>
                           onReady: (Live2DStageHandle handle) {
                             _stagePort = NativeStagePort(handle);
                             debugPrint('[stage] 原生舞台就绪（flutter_live2d）');
+                            // 开机睡姿（docs/22 R5「Mac 轮验收项」）：boot 全程
+                            // 闭眼低头睡着，等宿主触碰唤醒。舞台加载晚于唤醒
+                            // （罕见）就跳过 —— 她已经醒了不必再睡。
+                            if (_moment == Moment.boot) {
+                              unawaited(_stagePort!.sleep());
+                            }
                           },
                           onFailed: () {
                             debugPrint(
@@ -2034,16 +2040,22 @@ class _AppShellState extends State<AppShell>
     _wakeSequence();
   }
 
-  /// 唤醒这一拍（原型 `flows.js:71-99` 的 `wake()`）——**只做不靠她身体的那一半**：
+  /// 唤醒这一拍（原型 `flows.js:71-99` 的 `wake()`）：
   /// `Sound.play('boot')` → `buzz([10,60,20])` → `FX.flash('#9ff0ff',.26,520)`
+  /// → **她的睁眼编排**（闭眼抬头 450ms → 眼皮 .35 停 140ms → .05 停 120ms →
+  ///   睁眼看向宿主 —— R5「Mac 轮验收项」，2026-10-11 补完）
   /// → 相机 `setCam(bound?'lobby':'talk')`（推镜头由 `_moment` 驱动）
   /// → **逐环点亮**（每环 `showRing`，非 lock 环 `igniteRing` + `Sound.play('ignite',i)`
-  ///   + `buzz(6)`；每环停 **140ms**、lock 环只停 **50ms**）→ 再等 **500ms** 才开口。
-  /// 她的闭眼/抬眼皮/睁眼/欢迎手势留 Mac 轮（R5 末段）。
+  ///   + `buzz(6)`；每环停 **140ms**、lock 环只停 **50ms**）→ 再等 **500ms** 才开口
+  ///   → **欢迎手势**（`act('present')` → kime 组，R5 验收项）+ 问候台词
+  ///   带情绪（原型 `_greet`：back10m→smug，其余 neutral）。
   Future<void> _wakeSequence() async {
     _pulse(color: const Color(0xFF9FF0FF), a: .26, ms: 520, shakePx: 0);
     unawaited(Sfx.play('boot'));
     unawaited(Haptics.buzz('boot'));
+
+    // 她的睁眼编排（原型 wake() L77-84；未睡=降级路线时 no-op 直接过）
+    await _stagePort?.wakeEyes();
 
     if (_goal.isEmpty && !_resumedExec) {
       setState(() => _moment = Moment.onboard);
@@ -2061,6 +2073,12 @@ class _AppShellState extends State<AppShell>
     // `fromBoot` 会强制开口，所以 null（离开太短）也要退回默认那一档
     final AwayKind k = AwayGreeting.kindFor(away) ?? AwayKind.back10m;
     if (!mounted) return;
+    // 欢迎手势 + 问候情绪（原型 _greet：睁眼后亮个相再开口）
+    debugPrint('[stage] 欢迎手势 act(present) + mood'
+        '=${k == AwayKind.back10m ? 'smug' : 'neutral'}');
+    _stagePort?.act('present');
+    _stagePort?.mood(k == AwayKind.back10m ? 'smug' : 'neutral');
+    _stagePort?.idleMood('neutral');
     _sayAside(AwayGreeting.text(k, away), holdMs: 3200, busy: true);
   }
 

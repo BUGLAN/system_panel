@@ -411,3 +411,117 @@ Info.plist 有 `CADisableMinimumFrameDurationOnPhone=true`，当前锁 60 是插
 **MuMu/旧 AVD 的「不上屏」结论只对模拟器 emugl GL 转译栈成立**——真机（A17 Pro
 硬件 GPU + EAGL）上 flutter_live2d 1.0.2 一次加载成功、渲染、合成、性能全部正常。
 原生路线（①）正式转正，WebView（②）退居降级备份。
+
+## iOS 真机轮 · 表演补完（2026-10-11）—— 她为什么是"一张会眨眼的图片"
+
+> 宿主验收：上屏 ✅ 但**不动**——待机动作/呼吸没了，开机也不睡、不睁眼、不打招呼。
+> 对照 docs/22 R5「Mac 轮验收项（写死防丢）」逐项补完。根因与修法如下。
+
+### 根因（插件 iOS 侧两处硬编码，全部用**数据层**绕开，不改插件）
+
+`flutter_live2d 1.0.2` 的 iOS wrapper（`Live2DWrapper.mm`）：
+
+1. **待机兜底组名写死 `"Idle"`（大写 I，Hiyori 约定）**：
+   `Update()` 里 `if (_motionManager->IsFinished()) StartMotion("Idle", 0, PriorityIdle)`，
+   而 sakiko 的 17 个组全小写 → `GetMotionCount("Idle")==0` → **静默 return**。
+   且 `SetLoop(true)` 只对字面 `"Idle"` 组生效。
+   → 我们 `startMotion('idle')` 播**一遍**就停，兜底每帧找不存在的组无声失败。
+   症状：开场动十几秒 → 彻底冻结，只剩眨眼 + 物理余晖（4 秒差分实测仅 0.4% 像素变化，
+   躯干 0 变化）。
+2. **`SetParam` 单帧即失效**：wrapper 的 Update 是标准 Cubism
+   `LoadParameters→motion→SaveParameters` 循环，method channel 进来的 SetParam
+   下一帧就被 LoadParameters 覆写 → 开机闭眼/抬眼皮没法靠 param() 持续驱动
+   （docs/22 R5 当初假设 param() 可用，实测不成立）。
+
+### 修法（转换器数据层，零插件补丁）
+
+- **`"Idle"` 别名组**：`convert.py` 在 model3.json 的 Motions 里加
+  `"Idle": [mtn_idle01_C]` —— 插件的循环与兜底逻辑**按数据对上**：
+  加载即播 `Idle`(循环=真) 做常驻基底（对应原型 stage.js L167
+  `playMotion(defaultMotion, {loop:true})`）；待机池小动作播完后兜底自动回到基底。
+  17 个语义组原样不动（桥接表零影响）。
+- **4 个 `exp_sys_*` 合成表情**（转换器生成，Blend=Overwrite）：
+  表情在管线里于 eyeblink **之后**应用，可持续覆写眼部/头部参数——
+  相当于原型 `faceT` 脸层的原生等价物，绕开 SetParam 单帧失效：
+  - `exp_sys_sleep`：眼 0 + 低头 AngleY -16 + Az 2 + 眼球下移 + 脸颊 .1
+    （原型 FACES.sleep 原值）+ `speed(0)` 动作停住 —— 开机睡姿
+  - `exp_sys_wake`：眼 0 + 头回正（原型 wake() 先抬头 450ms）
+  - `exp_sys_lid35` / `exp_sys_lid05`：眼皮 .35 / .05（原型睁眼前颤两下，
+    FadeIn 0.06 保证 140/120ms 的拍子不被 0.5s 默认淡入糊掉）
+- **SRC 回退**：本机原型目录为空，转换器 SRC 自动落到 `app/assets/live2d/sakiko_orig/`
+  （prefab 全套已验证：766 节点/贴图/moc3.gz）。
+
+### 接线（main.dart / stage 层，对照原型 flows.js wake() L71-99 与 _greet）
+
+- boot 舞台就绪且 moment==boot → `port.sleep()`（睡整场）
+- `_wakeSequence`：亮帧/音效/震动后插**睁眼编排** —— 抬头 450ms → lid .35 140ms →
+  lid .05 120ms → neutral 睁眼 → **欢迎手势 `act('present')`（kime）** → 逐环点亮 →
+  问候台词 + `mood(back10m?'smug':'neutral')`（原型 _greet 的情绪档）
+- 待机池节奏对齐原型：`rand(7,15)s`（原为固定 ~8.1s）；睡眠期间池子暂停
+- WebView 路线：sleep/wakeEyes 在 StagePort 上为 no-op（降级路线行为不变，留档）
+
+### 明确不在本轮（记录防丢）
+
+- 视线跟手指（原生 view 被 IgnorePointer 包着，插件无 drag API，需插件补丁）
+- 池子动作的 L/R 变体随机（现固定 index 0，C 向）
+- 口型同步（TTS 未接原生路线）
+
+## iOS 真机轮 · 几何与清晰度（2026-10-11 深夜）—— 她被裁 + 有点糊
+
+> 宿主连续两条验收：「头顶以及脚都被截断了，显得太大了」→「有点模糊」。
+> 两条都查到底了，结论完全不同：**裁切是真 bug（已修）**，**糊是素材物理上限（无 bug）**。
+
+### 一、裁切/太大：根因是「视图宽高比」，不是矩形大小
+
+插件 iOS 侧把模型塞进视图的规则（`Live2DWrapper.mm` L615 / L658）：
+
+```objc
+if (w > h) _model->GetModelMatrix()->SetHeight(2.0f);
+else       _model->GetModelMatrix()->SetWidth(2.0f);   // 方形/竖视图走这里
+```
+
+即**非宽视图按「画布宽度」塞满视图宽度**。sakiko 的画布是 **6000×9000（宽:高 = 2:3）**，
+画布高 = 3.0 个世界单位被塞进只有 2.0 单位高的**正方形**视图 ⇒
+**她恒定被上下各裁掉 25% 视图高**。
+
+⚠️ 关键推论（踩了两小时的坑）：**视图是正方形时，矩形调多大都没用** ——
+可见的世界范围只由视图**宽高比**决定，与尺寸无关；而且旧标定量到的
+「92.0% 完美匹配」是**量了裁剪框本身**（裁掉的内容让可见轮廓恰好填满矩形，
+`calib_alpha.py` 量到的就是这个框）—— 又一种「拿噪声当信号」，与 HANDOFF
+警告的旧 AVD 轮廓量测同源。宿主眼睛比指标准。
+
+**修法（`Live2DStage.stageRect`）**：舞台矩形保持画布比例（宽 = 高 × 2/3），
+此时可见范围 = 整张画布 → 她完整可见；实测 **顶 4.6% / 底 96.5% / 占屏高 92%**，
+与原型目标一致，`StageCalib.kSize` 仍是 1.0（无需标定）。
+副作用（正向）：她从「被裁掉的 1.5× 放大」变回设计尺寸，脸小了 1.5 倍 →
+顺带更清晰（旧版瞳孔横向跨度 198px → 现在 131px）。
+`stage_port_test.dart` 新增「矩形必须是画布比例」用例钉死这条。
+
+### 二、糊：不是渲染链路，是素材分辨率上限
+
+排查链（每步都有量化证据）：
+
+| 假设 | 实验 | 结论 |
+|---|---|---|
+| 显示链路/FBO 分辨率低 | 量边缘过渡宽度：Flutter 文字 **1px**、她的强边也 **1px** | ❌ 排除（FBO 是原生 3×） |
+| 贴图被插件降采样 | 贴图 2048² < GL_MAX_TEXTURE_SIZE，无 downscale 日志 | ❌ 排除 |
+| 贴图分辨率不够 | 贴图里两眼间距 **71px** vs 屏幕 **111px** ⇒ 放大 **1.56×** 采样（几何修正前是 2.3×） | ✅ **就是这个** |
+| 加大贴图能救 | 2× Lanczos 上采样（2048²→4096²，`convert.py --tex-scale 2`） | ⚠️ 高频能量只 **+3%**（插件 mipmap 链按缩小倍数选级，把有效细节归一化）；宿主主观验收「更糊」、显存 4× ⇒ **退回 2048²** |
+| mipmap 预模糊 | 打本机补丁关 mipmap（`tools/l2d/patch_plugin.py`，两处：wrapper + `CubismShader_OpenGLES2.cpp:1101`） | ❌ 宿主主观验收「**变差了**」（缩小时无 mip 链 → 走样/噪点感）⇒ **补丁回滚，插件保持原版** |
+
+**定论**：与原型**同一份 2048² 素材**在 2796px 高的大屏上被放大 ~1.56× 采样，
+这是素材侧的上限，不是渲染 bug —— 原型当年同样受此限制。真要提升只有两条路：
+① **换 AI 放大过的素材**（Real-ESRGAN 等"真加细节"，Windows 机 ComfyUI 现成管线）；
+② 把她显示得更小（放弃 92% 屏高框架）。补丁脚本与 `--tex-scale` 选项都留着备用。
+
+### 三、本轮顺带确认/修好的
+
+- **大厅「她不动」**：基底 `mtn_idle01_C` 实测振幅只有 0.3~2.9°（是游戏里的
+  「静立呼吸」待机，本来就这么安静）；「活」的感觉来自**待机池动作**
+  （`look` 头转 32° / `kime` 抬头 28°，日志已确认每 7~15s 发一次，与原型
+  `stage.js` L411 `rand(7,15)` 同拍）⇒ 机制正常。
+- **开机睡姿 / 唤醒编排 / 欢迎手势**：全部真机验收通过（宿主：「还没唤醒的时候
+  是闭眼的」「看到了这些动作」）。
+- 取证手法留档（下次直接用）：`xcrun devicectl device capture screenshot` 截屏；
+  `devicectl device copy from --domain-type appDataContainer` 取 App 沙箱文件
+  （用它抓出插件缓存里的旧 model3.json，是"她一点没变"的定案证据）。

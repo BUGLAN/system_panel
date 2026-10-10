@@ -53,6 +53,10 @@ import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 SRC = ROOT / "prototype" / "opus-v2-dir" / "live2d" / "sakiko"
+if not SRC.exists():
+    # Mac 轮（2026-10-11）：原型目录不带模型数据（版权不入库），原始 prefab
+    # 全套在本机 sakiko_orig（已验证：manifest + 766 节点 + moc3.gz + 双贴图）。
+    SRC = ROOT / "app" / "assets" / "live2d" / "sakiko_orig"
 # ⚠️ 默认直接写进 app 的 assets —— `flutter_live2d` 要求模型目录在
 #    `pubspec.yaml` 的 `flutter.assets` 里声明。该目录在 `.gitignore` 之下，
 #    不会入库（模型版权红线）。
@@ -253,6 +257,81 @@ def write_expressions(exprs):
     return names
 
 
+# ── 系统合成表情（2026-10-11 · iOS 真机表演补完，STAGE-OPTIONS 有完整决策）──
+#
+# 为什么需要：插件 wrapper 的 `SetParam` 走 method channel，下一帧就被
+# `LoadParameters→motion→SaveParameters` 循环覆写（单帧失效）；而**表情在管线里
+# 于 eyeblink 之后应用**（Update: motion → drag → eyeblink → expression →
+# physics），Blend=Overwrite 可持续覆写眼部/头部参数 —— 是原型 `faceT`
+# 脸层的原生等价物。
+#
+# 参数值全部对照原型 stage.js：FACES.sleep（L39: lid 0 / ay -16 / az 2 /
+# cheek .1）、look('down')（L475: tx -.25 / ty -.75）、wake() 的眼皮颤两下
+# （flows.js L80-84: lid .35 → 140ms → .05 → 120ms）。
+# FadeIn 刻意压小：默认 0.5s 会把 140/120ms 的颤动拍子糊掉。
+SYS_EXPRESSIONS = {
+    "exp_sys_sleep": {
+        "FadeInTime": 0.5,
+        "Parameters": [
+            {"Id": "ParamEyeLOpen", "Value": 0.0, "Blend": "Overwrite"},
+            {"Id": "ParamEyeROpen", "Value": 0.0, "Blend": "Overwrite"},
+            {"Id": "ParamAngleY", "Value": -16.0, "Blend": "Overwrite"},
+            {"Id": "ParamAngleZ", "Value": 2.0, "Blend": "Overwrite"},
+            {"Id": "ParamEyeBallX", "Value": -0.25, "Blend": "Overwrite"},
+            {"Id": "ParamEyeBallY", "Value": -0.6, "Blend": "Overwrite"},
+            {"Id": "ParamCheek", "Value": 0.1, "Blend": "Add"},
+        ],
+    },
+    "exp_sys_wake": {
+        "FadeInTime": 0.25,
+        "Parameters": [
+            {"Id": "ParamEyeLOpen", "Value": 0.0, "Blend": "Overwrite"},
+            {"Id": "ParamEyeROpen", "Value": 0.0, "Blend": "Overwrite"},
+            {"Id": "ParamAngleY", "Value": 0.0, "Blend": "Overwrite"},
+            {"Id": "ParamAngleZ", "Value": 0.0, "Blend": "Overwrite"},
+            {"Id": "ParamEyeBallX", "Value": 0.0, "Blend": "Overwrite"},
+            {"Id": "ParamEyeBallY", "Value": 0.0, "Blend": "Overwrite"},
+        ],
+    },
+    "exp_sys_lid35": {
+        "FadeInTime": 0.06,
+        "Parameters": [
+            {"Id": "ParamEyeLOpen", "Value": 0.35, "Blend": "Overwrite"},
+            {"Id": "ParamEyeROpen", "Value": 0.35, "Blend": "Overwrite"},
+        ],
+    },
+    "exp_sys_lid05": {
+        "FadeInTime": 0.06,
+        "Parameters": [
+            {"Id": "ParamEyeLOpen", "Value": 0.05, "Blend": "Overwrite"},
+            {"Id": "ParamEyeROpen", "Value": 0.05, "Blend": "Overwrite"},
+        ],
+    },
+}
+
+
+def write_sys_expressions():
+    """把上面 4 个合成表情写盘并返回名字表（追加在 28 个原版之后，字母序由
+    调用方统一排序保证 `setExpression(index)` 下标与 Dart 名表一致）。"""
+    d = OUT / "expressions"
+    d.mkdir(parents=True, exist_ok=True)
+    for name, spec in SYS_EXPRESSIONS.items():
+        doc = {
+            "Version": 3,
+            "Type": "Live2D Expression",
+            "FadeInTime": spec["FadeInTime"],
+            # ⚠️ 淡出必须**短**：睁眼编排是 .35→(140ms)→.05→(120ms)→睁开，
+            # 0.25s 的淡出会把这两下颤动整个糊掉（实机肉眼看不出来）。
+            # 0.05 ≈ 一帧，切换即生效 —— 等价原型 faceT 直接写参数的手感。
+            "FadeOutTime": 0.05,
+            "Parameters": spec["Parameters"],
+        }
+        (d / f"{name}.exp3.json").write_text(
+            json.dumps(doc, ensure_ascii=False, separators=(",", ":")), "utf-8"
+        )
+    return list(SYS_EXPRESSIONS)
+
+
 def write_physics(rig):
     """`_rig` → physics3.json（字段一一对应）"""
     if not rig:
@@ -352,8 +431,8 @@ def write_physics(rig):
     return True
 
 
-def write_assets(manifest):
-    """moc3 解压 + 贴图拷出来"""
+def write_assets(manifest, tex_scale=1):
+    """moc3 解压 + 贴图拷出来（`tex_scale>1` 时用 Lanczos 上采样贴图）"""
     files = manifest["files"]
     for key, meta in files.items():
         rel = meta.get("asset")
@@ -365,7 +444,28 @@ def write_assets(manifest):
         elif key.startswith("textures/"):
             name = key.split("/", 1)[1].split("-")[0] + ".png"  # texture_00-f765bdff.png → texture_00.png
             (OUT / "textures").mkdir(parents=True, exist_ok=True)
-            shutil.copyfile(src, OUT / "textures" / name)
+            dst = OUT / "textures" / name
+            if tex_scale <= 1:
+                shutil.copyfile(src, dst)
+                continue
+            # ⚠️ 2026-10-11 iOS 真机「她有点糊」的修法：
+            #    贴图是 2048²，而真机上她按「大厅 92% 屏高」渲染 ≈ 2571 物理像素高。
+            #    实测贴图里两眼间距 71px、屏幕上 111px ⇒ **放大 1.56×** 采样，边缘发虚。
+            #    先用 Lanczos 上采样（2 的幂尺寸）再交给 GPU：渲染变成 0.78× 缩小
+            #    采样，比 GPU 双线性放大清晰一档（Live2D 高 DPI 常规做法）。
+            #    ⚠️ 放大后必须仍是 **2 的幂**：ES2 里 NPOT 纹理不能带 mipmap，而插件
+            #       会 glGenerateMipmap（NPOT + mipmap 在 ES2 下会让纹理不完整）。
+            from PIL import Image  # noqa: PLC0415
+
+            im = Image.open(src).convert("RGBA")
+            w, h = im.size
+            nw, nh = int(w * tex_scale), int(h * tex_scale)
+            if (nw & (nw - 1)) or (nh & (nh - 1)):
+                raise SystemExit(
+                    f"贴图放大后必须是 2 的幂（{w}x{h} × {tex_scale} = {nw}x{nh}）"
+                )
+            im.resize((nw, nh), Image.LANCZOS).save(dst, optimize=True)
+            print(f"  贴图 {name}: {w}x{h} → {nw}x{nh}（Lanczos ×{tex_scale}）")
 
 
 def write_model3(manifest, motions, exprs, has_phys, eyeblink, lipsync):
@@ -383,6 +483,16 @@ def write_model3(manifest, motions, exprs, has_phys, eyeblink, lipsync):
         g = re.sub(r"\d.*$", "", body) or "misc"
         groups.setdefault(g, []).append({"File": f"motions/{name}.motion3.json"})
     refs["Motions"] = groups
+    # ⚠️ `"Idle"` 别名组（2026-10-11 · iOS 真机表演补完）：
+    # flutter_live2d 的 iOS wrapper 把待机兜底组名与「循环播放」都写死在
+    # 字面 `"Idle"` 上（Hiyori 约定，sakiko 全小写对不上 → 播一遍就冻结，
+    # STAGE-OPTIONS「表演补完」节有完整根因）。别名指向 mtn_idle01_C
+    # （= 原型 stage.js L167 的 `playMotion(defaultMotion, {loop:true})` 常驻
+    # 基底），17 个语义组原样不动、桥接表零影响。
+    if "idle" in groups and "Idle" not in groups:
+        refs["Motions"]["Idle"] = [
+            {"File": "motions/mtn_idle01_C.motion3.json"}
+        ]
     refs["Expressions"] = [{"Name": n, "File": f"expressions/{n}.exp3.json"} for n in exprs]
     doc = {
         "Version": 3,
@@ -414,6 +524,12 @@ def main() -> int:
     ap.add_argument("--slope-scale", type=float, default=1 / 3,
                     help="Hermite 切线 → 贝塞尔控制点的缩放（默认 1/3）")
     ap.add_argument("--fps", type=float, default=30.0)
+    ap.add_argument(
+        "--tex-scale", type=float, default=1.0,
+        help="贴图上采样倍数（默认 1 = 原始 2048²）。2026-10-11 真机实测："
+             "2× Lanczos 上采样只 +3%% 高频能量（插件 mipmap 链会把有效细节"
+             "归一化），宿主主观验收为『更糊』、且 GPU 显存 4 倍 —— 故回到 1。"
+             "将来若换 AI 放大（Real-ESRGAN 等真加细节）再开这个选项")
     args = ap.parse_args()
 
     manifest, nodes = load_prefab()
@@ -423,15 +539,18 @@ def main() -> int:
           f"物理 {'有' if phys else '无'}")
 
     OUT.mkdir(parents=True, exist_ok=True)
-    write_assets(manifest)
+    write_assets(manifest, args.tex_scale)
     mn = write_motions(motions, args.slope_scale, args.fps)
-    en = write_expressions(exprs)
+    en = write_expressions(exprs) + write_sys_expressions()
+    # ⚠️ 下标纪律：`setExpression(index)` 的下标 = model3.json Expressions
+    #    数组顺序，Dart 名表（live2d_stage.dart）必须与这里**同一排序**。
+    en = sorted(en)
     has_phys = write_physics(phys)
     doc = write_model3(manifest, mn, en, has_phys, eyeblink, lipsync)
 
     print(f"输出 → {OUT}")
     print(f"  sakiko.moc3 · sakiko.model3.json · physics3={'有' if has_phys else '无'}")
-    print(f"  motions {len(mn)} · expressions {len(en)} · textures 2")
+    print(f"  motions {len(mn)} · expressions {len(en)}（含 4 个 exp_sys_* 合成）· textures 2")
     print(f"  model3 动作分组 {len(doc['FileReferences']['Motions'])} 个: "
           f"{list(doc['FileReferences']['Motions'])[:8]}")
     return 0

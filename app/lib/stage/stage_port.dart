@@ -25,6 +25,16 @@ abstract class StagePort {
 
   /// 切待机池心情（cold / pleased / neutral）——原型 `Stage.idleMood`
   void idleMood(String mood);
+
+  /// 开机睡姿（闭眼低头 + 动作停住）——docs/22 R5「Mac 轮验收项」。
+  /// 原生走 `exp_sys_sleep` 合成表情（param() 单帧失效，见 STAGE-OPTIONS
+  /// 「表演补完」节）；默认 no-op，WebView 降级路线不实现（留档）。
+  Future<void> sleep() async {}
+
+  /// 唤醒睁眼编排（闭眼抬头 450ms → 眼皮 .35 停 140ms → .05 停 120ms →
+  /// 睁眼，原型 flows.js `wake()` L77-84 逐拍照抄）。返回的 Future 走完
+  /// 整个编排，调用方 `.then` 里接欢迎手势。默认 no-op。
+  Future<void> wakeEyes() async {}
 }
 
 /// 桥接表 + 查询。全部 static const，`stage_port_test.dart` 会逐条核对
@@ -127,10 +137,20 @@ class NativeStagePort implements StagePort {
 
   @override
   void idleMood(String mood) => _handle.setIdleMood(mood);
+
+  @override
+  Future<void> sleep() => _handle.sleep();
+
+  @override
+  Future<void> wakeEyes() => _handle.wakeEyes();
 }
 
 /// WebView 实现：转发给原型播放器的 `Stage.emote/motion`（stage.js 自带同名表）。
-class WebStagePort implements StagePort {
+///
+/// sleep/wakeEyes 走 [StagePort] 的默认 no-op：降级路线保留原型播放器自身的
+/// 待机行为即可，开机编排不实现（STAGE-OPTIONS「表演补完」节留档）。
+/// ⚠️ 用 `extends`（不是 `implements`）—— 要继承基类的默认 no-op 实现。
+class WebStagePort extends StagePort {
   WebStagePort(this._state);
 
   final Live2DWebState _state;

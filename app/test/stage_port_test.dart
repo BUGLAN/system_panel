@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:flutter/painting.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:system_panel/stage/camera.dart';
@@ -21,7 +24,7 @@ void main() {
       expect(StageBridges.emoExp.length, 12);
     });
 
-    test('每种情绪都能在 28 表情表里查到下标（≥0）', () {
+    test('每种情绪都能在 32 表情表里查到下标（≥0）', () {
       for (final MapEntry<String, String> e
           in StageBridges.emoExp.entries) {
         final int i = Live2DStage.expressionIndex(e.value);
@@ -135,19 +138,31 @@ void main() {
   });
 
   group('几何相机（docs/18 §1.5.3 布局矩形）', () {
-    // 大厅（s=.92, syF=.505）在 390×844 下：她应占屏高 92%、顶 ~4.5%、底 ~96.5%
-    test('stageRect：大厅矩形 = 中心 ± 屏高×s（数学对照原型相机表）', () {
+    test('stageRect：矩形高 = 屏高×cam.s×kSize，中心 = Cam.screenCenter', () {
       final Rect r = Live2DStage.stageRect(
         Cam.byName('lobby'),
-        const Size(390, 844),
+        const Size(430, 932),
       );
-      expect(r.height, closeTo(844 * .92, .5));
-      expect(r.width, closeTo(844 * .92, .5));
-      expect(r.center.dx, closeTo(390 * .5, .5));
-      expect(r.center.dy, closeTo(844 * .505, .5));
-      // 顶/底落在原型标定值附近（顶 ~4.5%H、底 ~96.5%H）
-      expect(r.top / 844, closeTo(.045, .01));
-      expect(r.bottom / 844, closeTo(.965, .01));
+      expect(r.height, closeTo(932 * .92 * StageCalib.kSize, .5));
+      expect(r.center.dx, closeTo(430 * .5 + StageCalib.dx, .5));
+      expect(r.center.dy, closeTo(932 * .505 + StageCalib.dy, .5));
+    });
+
+    // ⚠️ 2026-10-11 iOS 真机轮：矩形必须保持**画布比例**，否则插件按画布宽度
+    //    适配时会把她的头/脚裁掉（详见 Live2DStage.stageRect 注释）。
+    test('stageRect 宽高比 = 画布比例 2:3（否则她被裁头裁脚）', () {
+      expect(Live2DStage.kCanvasAspect, closeTo(6000 / 9000, 1e-9));
+      for (final String cam in <String>['boot', 'lobby', 'talk', 'exec']) {
+        final Rect r = Live2DStage.stageRect(
+          Cam.byName(cam),
+          const Size(430, 932),
+        );
+        expect(
+          r.width / r.height,
+          closeTo(Live2DStage.kCanvasAspect, 1e-6),
+          reason: '$cam 矩形不是画布比例 —— 插件会裁掉她的头/脚',
+        );
+      }
     });
 
     test('相机变了矩形跟着变（推镜头是布局矩形在动）', () {
@@ -161,6 +176,61 @@ void main() {
       );
       expect(talk.height, greaterThan(lobby.height), reason: 'talk s=1.70 > lobby s=.92');
       expect(talk.center.dy, lessThan(lobby.center.dy));
+    });
+  });
+
+  group('表演补完（2026-10-11 · STAGE-OPTIONS「表演补完」节）', () {
+    test('表情表 = 28 原版 + 4 个 exp_sys_* 合成（尾部追加，早期下标不动）', () {
+      expect(Live2DStage.expressions.length, 32);
+      expect(Live2DStage.expressions.sublist(28), <String>[
+        'exp_sys_lid05',
+        'exp_sys_lid35',
+        'exp_sys_sleep',
+        'exp_sys_wake',
+      ]);
+      // 字母序不变式（转换器与名表靠同一排序对齐下标）
+      for (int i = 1; i < Live2DStage.expressions.length; i++) {
+        expect(
+          Live2DStage.expressions[i - 1].compareTo(Live2DStage.expressions[i]),
+          lessThan(0),
+          reason: '表情表不是字母序：${Live2DStage.expressions[i - 1]} ≥ ${Live2DStage.expressions[i]}',
+        );
+      }
+    });
+
+    test('基底组 = "Idle" 别名（插件字面约定），与 17 个语义组不混', () {
+      expect(Live2DStage.baseGroup, 'Idle');
+      expect(Live2DStage.motionGroups, isNot(contains('Idle')),
+          reason: 'Idle 是基底别名，不进动词桥接表');
+    });
+
+    // 本机有转换产物（gitignore，版权红线）时核对名表与产物逐条一致；
+    // 新克隆没跑过转换器就跳过 —— 没有「模型可核对」这回事。
+    test('名表 ↔ sakiko.model3.json 一致（有产物时）', () {
+      final File f = File('assets/live2d/sakiko/sakiko.model3.json');
+      if (!f.existsSync()) {
+        // ignore: avoid_print
+        print('跳过：本机没有转换产物（先跑 python tools/l2d/convert.py）');
+        return;
+      }
+      final Map<String, dynamic> j =
+          jsonDecode(f.readAsStringSync()) as Map<String, dynamic>;
+      final Map<String, dynamic> refs =
+          j['FileReferences'] as Map<String, dynamic>;
+      final List<dynamic> exps = refs['Expressions'] as List<dynamic>;
+      expect(
+        exps.map((dynamic e) => (e as Map<String, dynamic>)['Name']),
+        Live2DStage.expressions,
+        reason: '表情名表与 model3.json 顺序不一致 —— 改了转换器要同步名表',
+      );
+      final Map<String, dynamic> motions =
+          refs['Motions'] as Map<String, dynamic>;
+      expect(motions.containsKey('Idle'), isTrue,
+          reason: 'model3.json 缺 "Idle" 别名组 —— 待机会冻结（插件字面约定）');
+      expect((motions['Idle'] as List<dynamic>).length, 1);
+      for (final String g in Live2DStage.motionGroups) {
+        expect(motions.containsKey(g), isTrue, reason: 'model3.json 缺语义组 $g');
+      }
     });
   });
 }
