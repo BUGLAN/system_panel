@@ -597,3 +597,63 @@ default:              { _error = "non-numeric charactor found"; return NULL; }
   不参与手势竞技场，所以两边都能收到事件；UI（底栏/按钮）在她之上，不受影响。
   ⚠️ 坐标必须用 `e.position`（全局）—— 用 `localPosition` 命中判定永远失败
   （踩过一次：戳她毫无反应）。
+
+## iOS 真机轮 · 待机三修（2026-10-11 凌晨 · 宿主验收三条）
+
+> 宿主：「首页待机的时候不会眨眼睛」「待机动作太少」「从唤醒到主界面转场太过突兀，
+> 像是直接切换一样……live2d 是直接过去的, 应该有个转场动画」。三条都落地了。
+
+### ① 不眨眼：表情把眼睑参数钉死了
+
+管线的应用顺序是 motion → drag → **eyeblink** → **expression** → physics
+（`Live2DWrapper.mm` 的 Update），表情在眨眼**之后**每帧覆写 —— 而 prefab 里
+**27/32 个表情**都把 `ParamEyeLOpen/ROpen` 用 `Overwrite` 钉住（含大厅待机那张
+`exp_idle01`，值 1.0）⇒ 眨眼被每帧盖掉，她永远睁着眼。
+
+**修法（转换器，数据侧）**：只剥掉「**值恰好 = 1.0 且 Overwrite**」的钉死 ——
+1.0 就是"正常睁眼"，相对眨眼**无操作**，删掉不丢任何表情语义；
+cry 的 0（闭眼哭）、smile02 的 0（眯眼笑）、shy 的 0.8、annoyed 的 0.7、
+surprised 的 1.5（瞪大）**全部保留**（那些表情生效期间不眨眼是对的）。
+修复后仍有 16 个表情带语义眼态、其余恢复眨眼。
+
+### ② 待机动作太少：组内永远只播 index 0
+
+原型 `MOVE[verb].m` 是**数组**（C 中 / L 左 / R 右 三向随机挑），待机池同理；
+我方池子里 6 个组固定 `index: 0` ⇒ 实际只出 6 个动作。
+**修法**：`Live2DStage.motionCounts`（变体数表，`stage_port_test` 拿转换产物逐项核对）
++ 池子/手势都改成**组内随机取变体** ⇒ 可用变体 **27 个**（4.5 倍）。
+日志可见：`待机池动作 → smile[1]`（下标不再恒 0）。
+
+### ③ 唤醒→主界面「直接切换」：三处硬跳 + 平台视图尺寸动画的落点
+
+跳变点（原来全是布尔门控 / 常量切换）：
+- `Hud` / `Dock`（底栏）/ 对话入口钮 —— `visible: lobby` 一翻就**硬出现**
+- 环场亮度 `dim: boot ? .34 : 1` —— 34% **直接跳**到 100%
+- 相机 `CamSpring` 本来就是弹簧（**不是** snap，这条没问题）
+
+**修法**：新增「唤醒过场」进度 `_wakeFade`（900ms ease-out），唤醒那一刻起跑：
+界面三层包 `_WakeFade`（0→1 淡入）、环场亮度 `_ringWakeDim = .34 + .66×ease(t)`
+连续推上去；并在切页那一拍**补一次 320ms 青蓝过渡**（对应原型 `Stage.glitch(420,1)`
+那一拍）—— 因为 Live2D 的平台视图**尺寸一变就要重建 FBO**（插件
+`layoutSubviews` → `recreateFramebufferOnMainThread`：排空渲染队列 + 主线程重配
+renderbuffer），推镜头那段她渲染会变稀、落点很像"跳"，必须用一拍过渡把落点盖住。
+⇒ 「睁眼 → 环亮起 → 界面浮上来 → 落进待机」现在是一段连续推移。
+
+### 本轮验证手法（可复用）
+
+宿主睡着没法点门禁，用 **VM Service 临时挂一个 debug 扩展**远程触发唤醒：
+
+```dart
+// 仅本机验证用，验完删（别入库）
+developer.registerExtension('ext.sys.wake', (m, p) async {
+  _wake(); return developer.ServiceExtensionResponse.result('{"ok":true}');
+});
+```
+```bash
+curl "$B/getVM"                                   # 取 isolateId
+curl "$B/ext.sys.wake?isolateId=$ISO"             # 触发（⚠️ 必须带 isolateId，
+                                                  #    否则 Method not found）
+```
+配合 `devicectl device capture screenshot` 连拍。⚠️ 宿主离开屏幕会自动调光，
+亮度对比要先用「她身上最亮 1% 像素」做标尺归一化（本次 247→149 就是调光，
+不是状态坏了）。

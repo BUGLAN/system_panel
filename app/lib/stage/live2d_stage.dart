@@ -73,11 +73,21 @@ class Live2DStageHandle {
 
   /// 动作入口（原型 `Stage.motion(verb)`）：动词→动作组；自带表情覆盖的
   /// （poke → exp_shy01）先下发表情。
+  ///
+  /// ⚠️ **组内随机取变体**：原型 `MOVE[verb].m` 是数组（C/L/R 三向），
+  /// 固定 index 0 会让她每次都做同一个动作（宿主验收「待机动作太少」）。
   Future<void> act(String verb) async {
     final int xi = StageBridges.verbExpIndex(verb);
     if (xi >= 0) await expression(xi);
-    await motion(StageBridges.groupOf(verb), priority: 2);
+    final String group = StageBridges.groupOf(verb);
+    await motion(
+      group,
+      index: _rnd.nextInt(Live2DStage.countOf(group)),
+      priority: 2,
+    );
   }
+
+  final math.Random _rnd = math.Random();
 
   // ── 开机睡姿与唤醒编排（docs/22 R5「Mac 轮验收项」· 2026-10-11 补完）──
   //
@@ -188,6 +198,36 @@ class Live2DStage extends StatefulWidget {
     'kime',
     'thinking',
   ];
+
+  /// 每个动作组的**变体数**（`sakiko.model3.json` 实测，2026-10-11）。
+  ///
+  /// 原型 `MOVE` 表里的 `m` 是**数组**（C 中 / L 左 / R 右 三向随机挑一个），
+  /// 待机池同理 —— 固定播 `index: 0` 的话，池子里那 6 个组实际只出 6 个动作，
+  /// 观感就是宿主验收的「待机动作太少」。按组内随机后可用变体 **27 个**。
+  /// `stage_port_test.dart` 会拿转换产物逐项核对这张表。
+  static const Map<String, int> motionCounts = <String, int>{
+    'idle': 3,
+    'smile': 6,
+    'nod': 6,
+    'cry': 3,
+    'angry': 3,
+    'look': 6,
+    'surprised': 3,
+    'question': 3,
+    'sad': 6,
+    'serious': 3,
+    'denial': 6,
+    'check': 3,
+    'bye': 3,
+    'misc_tear': 1,
+    'maskoff': 3,
+    'kime': 3,
+    'thinking': 3,
+    'Idle': 1, // 基底别名组（只有 mtn_idle01_C 一条）
+  };
+
+  /// 组内变体数（未知组按 1 处理，绝不越界 —— 越界插件会静默 no-op）
+  static int countOf(String group) => motionCounts[group] ?? 1;
 
   /// `model3.json` 里 `Expressions` 的顺序。
   ///
@@ -443,8 +483,11 @@ class _Live2DStageState extends State<Live2DStage> {
           StageBridges.idlePool[StageBridges.poolOf(_idleMood)] ??
           StageBridges.idlePool['neutral']!;
       final String group = pool[_rnd.nextInt(pool.length)];
-      debugPrint('[stage] 待机池动作 → $group（心情 $_idleMood，下次 ${_nextIdleAt.second}s）');
-      unawaited(_ctrl.startMotion(group: group, priority: 1));
+      final int ix = _rnd.nextInt(Live2DStage.countOf(group));
+      debugPrint(
+        '[stage] 待机池动作 → $group[$ix]（心情 $_idleMood，下次 ${_nextIdleAt.second}s）',
+      );
+      unawaited(_ctrl.startMotion(group: group, index: ix, priority: 1));
     });
   }
 

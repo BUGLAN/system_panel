@@ -283,6 +283,25 @@ class _AppShellState extends State<AppShell>
     duration: const Duration(milliseconds: 180),
   );
 
+  /// 「唤醒过场」进度 0→1（2026-10-11 宿主验收：「从唤醒到主界面转场太过突兀,
+  /// 像是直接切换一样」）。
+  ///
+  /// 原来开机态的几处是**布尔门控**、切页那一瞬间硬跳：
+  ///   · `Hud` / `Dock`（底栏）/ 对话入口钮 —— 从"不显示"变"显示"（没有过渡）
+  ///   · 环场亮度 `dim: boot ? .34 : 1` —— 从 34% 直接跳到 100%
+  ///   · 相机是弹簧（`CamSpring`）本来就顺，她本人的睁眼编排也顺
+  /// 现在这三处统一吃这条进度：唤醒那一刻从 0 起跑（900ms ease-out），
+  /// 于是「被唤醒 → 环亮起 → 界面浮上来 → 落进待机」是一气呵成的推移，
+  /// 而不是两次硬切。
+  late final AnimationController _wakeFade = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 900),
+    value: 1, // 非开机态默认就是"已就位"
+  );
+
+  /// 环场亮度：开机 34% → 唤醒后 100%，**顺着 [_wakeFade] 推**（原来硬跳）
+  double get _ringWakeDim => .34 + .66 * Curves.easeOut.transform(_wakeFade.value);
+
   /// 屏幕空间特效（#fx 画布）
   final FxController _fx = FxController();
 
@@ -1098,12 +1117,13 @@ class _AppShellState extends State<AppShell>
                     ringMul: _ringsMulNow(),
                     dim: boot
                         ? .34 // 开机态的全息参数
+                        // 唤醒过场：34% → 100% 顺着 _wakeFade 推上去（原来是硬跳）
                         : fail
                         ? 1 -
                               .4 *
                                   _ringDim
                                       .value // flows.js L530：holoTo({bright:.6}) 缓动过去
-                        : 1,
+                        : _ringWakeDim,
                     scan: .2, // settings.holo → Stage.scanT
                   ),
                 ),
@@ -1112,10 +1132,13 @@ class _AppShellState extends State<AppShell>
                 //    ⚠️ 原型的层级：`#veil` 是 z-auto（在 #ui 之后绘制），而 `.line` z=3、
                 //    `#choices` z=4、`#plateAlt` z=2 —— 所以认输时 veil 压得住 failv，
                 //    压不住字幕和选项。Stack 的先后顺序必须照这个 z 序排。
-                Hud(
-                  state: _host,
-                  visible: lobby || exec,
-                  onMenu: () => _openSheet(SheetKind.system),
+                _WakeFade(
+                  t: _wakeFade,
+                  child: Hud(
+                    state: _host,
+                    visible: lobby || exec,
+                    onMenu: () => _openSheet(SheetKind.system),
+                  ),
                 ),
                 // 对话入口（docs/18 §2.6「HUD 对话按钮」）：hud.dart 的单写者
                 // 纪律在 t9，这颗玻璃圆钮由本文件挂载——HUD 行下方左上，
@@ -1124,9 +1147,14 @@ class _AppShellState extends State<AppShell>
                   Positioned(
                     left: 16,
                     top: 78,
-                    child: ChatEntryButton(onTap: () => _openChat()),
+                    child: _WakeFade(
+                      t: _wakeFade,
+                      child: ChatEntryButton(onTap: () => _openChat()),
+                    ),
                   ),
-                Dock(
+                _WakeFade(
+                  t: _wakeFade,
+                  child: Dock(
                   state: _host,
                   visible: lobby,
                   // 队列空（今日已清）不再放行派单板 —— 免得接 到"幻影"演示单
@@ -1140,7 +1168,8 @@ class _AppShellState extends State<AppShell>
                     } else if (i == 1 || i == 2) {
                       _openSheet(i == 1 ? SheetKind.archive : SheetKind.supply);
                     }
-                  },
+                    },
+                  ),
                 ),
                 // 派单板
                 Plate(
@@ -2162,6 +2191,16 @@ class _AppShellState extends State<AppShell>
     // 她的睁眼编排（原型 wake() L77-84；未睡=降级路线时 no-op 直接过）
     await _stagePort?.wakeEyes();
 
+    // ── 转场这一拍（2026-10-11 宿主验收：「从唤醒到主界面转场太过突兀, 像是
+    //    直接切换」「live2d 是直接过去的, 应该有个转场动画」）──────────────
+    // 平台视图的**尺寸**一变，插件就在 layoutSubviews 里重建 FBO（排空渲染队列 +
+    // 主线程重配 renderbuffer），所以推镜头那段她基本不渲染、落点像是"跳"过去。
+    // 原型用 `Stage.glitch(420,1)` 把这一下盖住；我们对应地再补一拍青蓝过渡，
+    // 同时把界面层/环场的淡入（_wakeFade）从这一刻起跑 —— 于是
+    // 「睁眼 → 环亮起 → 界面浮上来 → 落进待机」是一段连续的推移，不是硬切。
+    _pulse(color: const Color(0xFF9FF0FF), a: .14, ms: 320, shakePx: 0);
+    _wakeFade.forward(from: 0);
+
     if (_goal.isEmpty && !_resumedExec) {
       setState(() => _moment = Moment.onboard);
       return; // 绑定仪式的问话走 LineLayer（askGoal），不叠离开问候
@@ -2341,6 +2380,30 @@ class _AppShellState extends State<AppShell>
     _ask.dispose();
     _asideDone?.cancel();
     _pokeReset?.cancel();
+    _wakeFade.dispose();
     super.dispose();
+  }
+}
+
+
+/// 唤醒过场用：把界面层按 0→1 淡入（吃 [AppShellState._wakeFade]）。
+/// 开机态这些层是**布尔门控**（`visible: lobby`）—— 切页那一瞬间硬出现，
+/// 观感就是「直接切换」。包一层 Opacity 后它们随推镜头一起浮上来。
+class _WakeFade extends StatelessWidget {
+  const _WakeFade({required this.t, required this.child});
+
+  final Animation<double> t;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: t,
+      builder: (BuildContext _, Widget? c) => Opacity(
+        opacity: Curves.easeOut.transform(t.value.clamp(0.0, 1.0)),
+        child: c,
+      ),
+      child: child,
+    );
   }
 }

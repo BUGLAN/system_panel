@@ -248,6 +248,18 @@ void main() {
           refs['Motions'] as Map<String, dynamic>;
       expect(motions.containsKey('Idle'), isTrue,
           reason: 'model3.json 缺 "Idle" 别名组 —— 待机会冻结（插件字面约定）');
+      // 变体数表必须与产物一致（组内随机取变体就靠它，错了会越界/退化成 1）
+      for (final String g in Live2DStage.motionCounts.keys) {
+        expect(motions.containsKey(g), isTrue, reason: 'model3.json 缺组 $g');
+        expect(
+          Live2DStage.motionCounts[g],
+          (motions[g] as List<dynamic>).length,
+          reason: '$g 的变体数与 model3.json 不一致',
+        );
+      }
+      for (final String g in Live2DStage.motionGroups) {
+        expect(Live2DStage.countOf(g), greaterThan(0));
+      }
       expect((motions['Idle'] as List<dynamic>).length, 1);
       for (final String g in Live2DStage.motionGroups) {
         expect(motions.containsKey(g), isTrue, reason: 'model3.json 缺语义组 $g');

@@ -360,11 +360,29 @@ def write_expressions(exprs):
         name = asset_name(raw)
         ps = []
         for p in e.get("Parameters") or []:
+            blend = BLEND.get(int(p.get("Blend", 0)), "Add")
+            # ⚠️⚠️ **剥掉「眼睑 = 1.0 且 Overwrite」的钉死**（2026-10-11 宿主验收：
+            #    「首页待机的时候不会眨眼睛」）。
+            #    管线的应用顺序是 motion → drag → **eyeblink** → **expression** →
+            #    physics（Live2DWrapper.mm 的 Update），表情在眨眼**之后**每帧覆写，
+            #    所以只要表情把 ParamEyeLOpen/ROpen 用 Overwrite 钉住，眨眼就被它
+            #    每帧盖掉 —— 而 27/32 个表情都这么钉（含大厅待机那张 exp_idle01=1.0）。
+            #    值恰好 1.0 = 「眼睛就是正常睁开」= 相对眨眼**无操作**，删掉它既恢复
+            #    眨眼、又不丢任何表情语义。
+            #    ⚠️ 只删 1.0：cry 的 0（闭眼哭）、smile02 的 0（眯眼笑）、shy 的 0.8、
+            #    annoyed 的 0.7、surprised 的 1.5（瞪大）都是表情本体，必须保留 ——
+            #    那些表情生效期间不眨眼是对的。
+            if (
+                p["Id"] in ("ParamEyeLOpen", "ParamEyeROpen")
+                and blend == "Overwrite"
+                and abs(float(p["Value"]) - 1.0) < 1e-6
+            ):
+                continue
             ps.append(
                 {
                     "Id": p["Id"],
                     "Value": p["Value"],
-                    "Blend": BLEND.get(int(p.get("Blend", 0)), "Add"),
+                    "Blend": blend,
                 }
             )
         doc = {

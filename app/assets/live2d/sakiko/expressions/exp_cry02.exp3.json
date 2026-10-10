@@ -5,19 +5,9 @@
   "FadeOutTime": 1,
   "Parameters": [
     {
-      "Id": "ParamEyeLOpen",
-      "Value": 1,
-      "Blend": "Overwrite"
-    },
-    {
       "Id": "ParamEyeLSmile",
       "Value": 1,
       "Blend": "Multiply"
-    },
-    {
-      "Id": "ParamEyeROpen",
-      "Value": 1,
-      "Blend": "Overwrite"
     },
     {
       "Id": "ParamEyeRSmile",
