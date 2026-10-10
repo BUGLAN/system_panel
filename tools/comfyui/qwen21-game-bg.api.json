@@ -1,0 +1,107 @@
+{
+  "1": {
+    "class_type": "UNETLoader",
+    "inputs": {
+      "unet_name": "qwen_image_2.1_bf16.safetensors",
+      "weight_dtype": "default"
+    }
+  },
+  "2": {
+    "class_type": "QwenImage21Cache",
+    "inputs": {
+      "model": ["1", 0],
+      "device": "auto",
+      "dtype": "default"
+    }
+  },
+  "3": {
+    "class_type": "CLIPLoader",
+    "inputs": {
+      "clip_name": "qwen3vl_8b_int8_convrot.safetensors",
+      "type": "qwen_image",
+      "device": "default"
+    }
+  },
+  "4": {
+    "class_type": "TextEncodeQwenImage21",
+    "inputs": {
+      "clip": ["3", 0],
+      "prompt": "Vertical mobile game background, portrait 9:19.5 composition. A vast sci-fi void of deep navy blue fading to near-black at the edges. In the upper third, a huge circular holographic array made of thin glowing electric-cyan concentric rings and delicate arc segments floats in darkness like a high-tech summoning circle seen face-on, its center left empty. Far below, a barely visible holographic floor of thin cyan grid lines recedes toward a glowing horizon line, with soft volumetric cyan light falling from high above onto an empty central stage. Fine luminous particles and small cyan bokeh drift through the air; faint hexagonal data patterns and subtle scanlines dissolve into the darkness; thin wisps of fog catch the light near the floor. Clean empty center, soft vignette, very dark and low contrast so bright user-interface text stays readable. Cinematic lighting, ultra-detailed polished digital art, premium sci-fi game UI key visual. No people, no characters, no text, no letters, no numbers, no watermark, no logo.",
+      "negative_prompt": "people, person, character, girl, face, body, hands, text, letters, numbers, watermark, signature, logo, rainbow colors, bright daylight, oversaturated, high contrast center, clutter, noise, jpeg artifacts",
+      "resolution": 1024
+    }
+  },
+  "5": {
+    "class_type": "EmptyLatentImage",
+    "inputs": {
+      "width": 768,
+      "height": 1664,
+      "batch_size": 1
+    }
+  },
+  "6": {
+    "class_type": "KSampler",
+    "inputs": {
+      "model": ["2", 0],
+      "seed": 610207,
+      "steps": 25,
+      "cfg": 1,
+      "sampler_name": "euler",
+      "scheduler": "simple",
+      "positive": ["4", 0],
+      "negative": ["4", 1],
+      "latent_image": ["5", 0],
+      "denoise": 1
+    }
+  },
+  "7": {
+    "class_type": "VAELoader",
+    "inputs": {
+      "vae_name": "qwen_image_2.1_vae_bf16.safetensors"
+    }
+  },
+  "8": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": ["6", 0],
+      "vae": ["7", 0]
+    }
+  },
+  "9": {
+    "class_type": "UpscaleModelLoader",
+    "inputs": {
+      "model_name": "2x-AnimeSharpV4_Fast_RCAN_PU.safetensors"
+    }
+  },
+  "10": {
+    "class_type": "ImageUpscaleWithModel",
+    "inputs": {
+      "upscale_model": ["9", 0],
+      "image": ["8", 0]
+    }
+  },
+  "11": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "images": ["10", 0],
+      "filename_prefix": "SystemBG/qwen21_bg_2x"
+    }
+  },
+  "12": {
+    "class_type": "ImageScale",
+    "inputs": {
+      "image": ["10", 0],
+      "upscale_method": "lanczos",
+      "width": 1080,
+      "height": 2340,
+      "crop": "disabled"
+    }
+  },
+  "13": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "images": ["12", 0],
+      "filename_prefix": "SystemBG/qwen21_bg_web"
+    }
+  }
+}

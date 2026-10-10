@@ -1,0 +1,217 @@
+{
+  "id": "7e3a1c20-b8d4-4f5a-9c2e-qwen21gamebg",
+  "revision": 0,
+  "last_node_id": 13,
+  "last_link_id": 13,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "UNETLoader",
+      "pos": [0, 0],
+      "size": [320, 82],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [{ "name": "MODEL", "type": "MODEL", "links": [1], "slot_index": 0 }],
+      "properties": { "Node name for S&R": "UNETLoader" },
+      "widgets_values": ["qwen_image_2.1_bf16.safetensors", "default"]
+    },
+    {
+      "id": 2,
+      "type": "QwenImage21Cache",
+      "pos": [0, 130],
+      "size": [320, 82],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [{ "name": "model", "type": "MODEL", "link": 1 }],
+      "outputs": [{ "name": "MODEL", "type": "MODEL", "links": [2], "slot_index": 0 }],
+      "properties": { "Node name for S&R": "QwenImage21Cache" },
+      "widgets_values": ["auto", "default"]
+    },
+    {
+      "id": 3,
+      "type": "CLIPLoader",
+      "pos": [0, 280],
+      "size": [320, 106],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [{ "name": "CLIP", "type": "CLIP", "links": [3], "slot_index": 0 }],
+      "properties": { "Node name for S&R": "CLIPLoader" },
+      "widgets_values": ["qwen3vl_8b_int8_convrot.safetensors", "qwen_image", "default"]
+    },
+    {
+      "id": 4,
+      "type": "TextEncodeQwenImage21",
+      "pos": [390, 60],
+      "size": [440, 340],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [{ "name": "clip", "type": "CLIP", "link": 3 }],
+      "outputs": [
+        { "name": "positive", "type": "CONDITIONING", "links": [4], "slot_index": 0 },
+        { "name": "negative", "type": "CONDITIONING", "links": [5], "slot_index": 1 },
+        { "name": "latent", "type": "LATENT", "links": null, "slot_index": 2 }
+      ],
+      "properties": { "Node name for S&R": "TextEncodeQwenImage21" },
+      "widgets_values": [
+        "Vertical mobile game background, portrait 9:19.5 composition. A vast sci-fi void of deep navy blue fading to near-black at the edges. In the upper third, a huge circular holographic array made of thin glowing electric-cyan concentric rings and delicate arc segments floats in darkness like a high-tech summoning circle seen face-on, its center left empty. Far below, a barely visible holographic floor of thin cyan grid lines recedes toward a glowing horizon line, with soft volumetric cyan light falling from high above onto an empty central stage. Fine luminous particles and small cyan bokeh drift through the air; faint hexagonal data patterns and subtle scanlines dissolve into the darkness; thin wisps of fog catch the light near the floor. Clean empty center, soft vignette, very dark and low contrast so bright user-interface text stays readable. Cinematic lighting, ultra-detailed polished digital art, premium sci-fi game UI key visual. No people, no characters, no text, no letters, no numbers, no watermark, no logo.",
+        "people, person, character, girl, face, body, hands, text, letters, numbers, watermark, signature, logo, rainbow colors, bright daylight, oversaturated, high contrast center, clutter, noise, jpeg artifacts",
+        1024
+      ]
+    },
+    {
+      "id": 5,
+      "type": "EmptyLatentImage",
+      "pos": [390, 460],
+      "size": [320, 106],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [{ "name": "LATENT", "type": "LATENT", "links": [6], "slot_index": 0 }],
+      "properties": { "Node name for S&R": "EmptyLatentImage" },
+      "widgets_values": [768, 1664, 1]
+    },
+    {
+      "id": 6,
+      "type": "KSampler",
+      "pos": [900, 60],
+      "size": [315, 262],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        { "name": "model", "type": "MODEL", "link": 2 },
+        { "name": "positive", "type": "CONDITIONING", "link": 4 },
+        { "name": "negative", "type": "CONDITIONING", "link": 5 },
+        { "name": "latent_image", "type": "LATENT", "link": 6 }
+      ],
+      "outputs": [{ "name": "LATENT", "type": "LATENT", "links": [7], "slot_index": 0 }],
+      "properties": { "Node name for S&R": "KSampler" },
+      "widgets_values": [610207, "fixed", 25, 1, "euler", "simple", 1]
+    },
+    {
+      "id": 7,
+      "type": "VAELoader",
+      "pos": [900, 380],
+      "size": [315, 58],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [{ "name": "VAE", "type": "VAE", "links": [8], "slot_index": 0 }],
+      "properties": { "Node name for S&R": "VAELoader" },
+      "widgets_values": ["qwen_image_2.1_vae_bf16.safetensors"]
+    },
+    {
+      "id": 8,
+      "type": "VAEDecode",
+      "pos": [900, 500],
+      "size": [210, 46],
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "inputs": [
+        { "name": "samples", "type": "LATENT", "link": 7 },
+        { "name": "vae", "type": "VAE", "link": 8 }
+      ],
+      "outputs": [{ "name": "IMAGE", "type": "IMAGE", "links": [9], "slot_index": 0 }],
+      "properties": { "Node name for S&R": "VAEDecode" },
+      "widgets_values": []
+    },
+    {
+      "id": 9,
+      "type": "UpscaleModelLoader",
+      "pos": [1230, 60],
+      "size": [340, 58],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [{ "name": "UPSCALE_MODEL", "type": "UPSCALE_MODEL", "links": [10], "slot_index": 0 }],
+      "properties": { "Node name for S&R": "UpscaleModelLoader" },
+      "widgets_values": ["2x-AnimeSharpV4_Fast_RCAN_PU.safetensors"]
+    },
+    {
+      "id": 10,
+      "type": "ImageUpscaleWithModel",
+      "pos": [1280, 200],
+      "size": [260, 46],
+      "flags": {},
+      "order": 9,
+      "mode": 0,
+      "inputs": [
+        { "name": "upscale_model", "type": "UPSCALE_MODEL", "link": 10 },
+        { "name": "image", "type": "IMAGE", "link": 9 }
+      ],
+      "outputs": [{ "name": "IMAGE", "type": "IMAGE", "links": [11, 12], "slot_index": 0 }],
+      "properties": { "Node name for S&R": "ImageUpscaleWithModel" },
+      "widgets_values": []
+    },
+    {
+      "id": 11,
+      "type": "SaveImage",
+      "pos": [1600, 60],
+      "size": [340, 420],
+      "flags": {},
+      "order": 10,
+      "mode": 0,
+      "inputs": [{ "name": "images", "type": "IMAGE", "link": 11 }],
+      "outputs": [],
+      "properties": { "Node name for S&R": "SaveImage" },
+      "widgets_values": ["SystemBG/qwen21_bg_2x"]
+    },
+    {
+      "id": 12,
+      "type": "ImageScale",
+      "pos": [1600, 540],
+      "size": [315, 130],
+      "flags": {},
+      "order": 11,
+      "mode": 0,
+      "inputs": [{ "name": "image", "type": "IMAGE", "link": 12 }],
+      "outputs": [{ "name": "IMAGE", "type": "IMAGE", "links": [13], "slot_index": 0 }],
+      "properties": { "Node name for S&R": "ImageScale" },
+      "widgets_values": ["lanczos", 1080, 2340, "disabled"]
+    },
+    {
+      "id": 13,
+      "type": "SaveImage",
+      "pos": [1960, 540],
+      "size": [340, 420],
+      "flags": {},
+      "order": 12,
+      "mode": 0,
+      "inputs": [{ "name": "images", "type": "IMAGE", "link": 13 }],
+      "outputs": [],
+      "properties": { "Node name for S&R": "SaveImage" },
+      "widgets_values": ["SystemBG/qwen21_bg_web"]
+    }
+  ],
+  "links": [
+    [1, 1, 0, 2, 0, "MODEL"],
+    [2, 2, 0, 6, 0, "MODEL"],
+    [3, 3, 0, 4, 0, "CLIP"],
+    [4, 4, 0, 6, 1, "CONDITIONING"],
+    [5, 4, 1, 6, 2, "CONDITIONING"],
+    [6, 5, 0, 6, 3, "LATENT"],
+    [7, 6, 0, 8, 0, "LATENT"],
+    [8, 7, 0, 8, 1, "VAE"],
+    [9, 8, 0, 10, 1, "IMAGE"],
+    [10, 9, 0, 10, 0, "UPSCALE_MODEL"],
+    [11, 10, 0, 11, 0, "IMAGE"],
+    [12, 10, 0, 12, 0, "IMAGE"],
+    [13, 12, 0, 13, 0, "IMAGE"]
+  ],
+  "groups": [],
+  "config": {},
+  "extra": {
+    "note": "SYSTEM 宿主 · 游戏背景（天幕）生成工作流 · Qwen-Image 2.1 文生图 + 2x 放大 · 详见 tools/comfyui/README.md"
+  },
+  "version": 0.4
+}

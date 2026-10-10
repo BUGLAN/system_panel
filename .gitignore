@@ -8,11 +8,17 @@ node_modules/
 # Stitch 生成产物原始响应
 prototype/stitch-bridge/results/
 
+# ComfyUI 生成脚本落地产物（母版在 ComfyUI/output，网页版已入库 img/）
+tools/comfyui/.out/
+
 # 日志
 *.log
 
 # 验证产物（模拟器截图等临时证据），不入库
 .verify/
+
+# AgentTeams 运行态（成员登记、会话内工作区），是工具状态不是项目产物
+.agent-teams/
 
 # 版权红线（14-系统形象与表演规则）：现成 Live2D 模型与 TTS 音频仅限本机验证，不入库不发布
 # 用通配覆盖所有原型变体（app / app2 / app-v2 / ink …），别再写死 prototype/app/——
