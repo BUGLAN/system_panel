@@ -342,3 +342,72 @@ cache/flutter_live2d_models`（换数据/清缓存步骤）→ `flutter run -d 1
   转译层不兼容（旧 AVD 同为 emugl，同因）。修它 = 改插件 C++（workspace 外、
   pubspec 锁 1.0.2），**不在任何任务 scope 内**。
 - 裸探针开关（`SysApp.kStageBareProbe`）默认 false 且不影响正常路径，保留供复验。
+
+## ✅ iOS 真机轮（2026-10-10 深夜 · Mac + iPhone 15 Pro Max）—— 原生路线复活成功
+
+> 宿主接好 iOS 真机（TK · iPhone 15 Pro Max · iOS 27.0.1 · Developer Mode 开），
+> 按本文档「翻回原生的条件 2」（换非模拟器 GPU 栈）复验。**五关全过，`kNativeStage = true`
+> 收尾，WebView 降级路径保留未动。** 证据图 `app/.verify/ios-t0/01~05`（未入库）。
+
+### 环境（这台 Mac 从零搭的）
+
+- Flutter 3.47.6 stable（arm64 zip，SHA256 校验过）@ `~/development/flutter`；
+  git 上游切 TUNA 镜像（`FLUTTER_GIT_URL`），pub/storage 走 flutter-io.cn —— 与
+  Windows 机同版本同源，`~/.zshrc` 已写好（`# >>> flutter-cn` 块）。
+- CocoaPods 1.17.0（brew）。Xcode 27.0 本来就有。
+- **签名**：`Apple Development (1831353087@qq.com)` 证书在钥匙串，但 Xcode
+  Accounts 没登录 → 自动签名报 "No Accounts"。宿主在 Xcode → Settings →
+  Accounts 登录一次后，`DEVELOPMENT_TEAM = VH546YKMN4` 已写进 pbxproj
+  6 处（Runner×3 + RunnerTests×3 配置），真机描述文件自动生成。
+- ⚠️ CLI 坑：`flutter analyze/test` 会在 shell 里隐式 `dart pub get --example`，
+  **不带 `PUB_HOSTED_URL` 会卡死在 "Downloading packages..."**（直连 pub.dev 不通）。
+  所有 flutter 命令都要带国内源环境变量。
+
+### 五关
+
+| 关 | 结果 | 证据 |
+|---|---|---|
+| ① 编译 | ✅ | `flutter build ios --no-codesign` 39s；pod install 1.2s（插件走传统 CocoaPods，不支持 SPM，警告无害） |
+| ② 挂载 | ✅ | `kNativeStage = true`（main.dart 常量，A/B 开关保留） |
+| ③ 上屏 | ✅ | **她完整渲染**：loadModel 第 1 次就 true（模拟器的加载竞态在真机没出现）、`Live2D Cubism SDK Core Version 6.0.1`、Impeller(Metal) 并存无冲突 |
+| ④ 层序 | ✅ | 天幕→她→环场/字幕/HUD/底栏，与原型 `#bg→#stage→#ui` 一致（`ios-t0/04_lobby_final.png`） |
+| ⑤ 性能 | ✅ | 见下 |
+
+### 相机标定（裸探针 + alpha/亮度阈值包围盒，430×932 逻辑）
+
+- `kStageBareProbe=true` 裸页截屏 → `tools/ref/calib_alpha.py --png ... --logical 430x932 --mask 0,0,140,44`
+  （mask 是为了抹掉裸页左上角「FLUTTER OVERLAY」对照字，否则包围盒被它顶到 12,9）。
+- 实测：**top 4.5% / bot 96.5% / 占屏高 92.0% / 中心 x=215.0** —— 与原型目标
+  （大厅 s=.92、syF=.505）逐项吻合 → **`StageCalib` 保持 kSize=1.0 / dx=0 / dy=0 不动**，
+  布局矩形复刻相机的数学在真机上天然成立，无需标定。
+- 顺手修了脚本的 dx/dy 公式 bug（比例当像素减，输出大 3~4 个数量级的垃圾值）；
+  另加 `--logical` / `--mask` 两个参数。MuMu 旧基准用法不变。
+
+### ⑤ 性能（profile 模式 · VM Service timeline · 稳态 3s 窗口）
+
+| 指标 | 数值 | 对照 |
+|---|---|---|
+| 帧率 | **60.0 FPS 锁满**（180 帧/3s） | WebView 基线（MuMu 模拟器）中位 89ms ≈ 11FPS |
+| UI 线程帧 | p50 **0.52ms** / p95 1.08ms | Dart 侧近乎空闲，动画都在插件渲染线程 |
+| 平台视图合成 | `PlatformViewsController::SubmitFrame` p50 **2.2ms** / p95 2.5ms | 她的 EAGL 纹理进 Flutter 帧很便宜 |
+| 帧耗时大头 | `WaitForNextDrawable` p95 15.6ms | = vsync 等待（空闲），非算力瓶颈 |
+| 进程 | 无 WebView 沙箱进程 | WebView 路线多 225MB |
+
+达标线（≤24ms 中位）远超。⚠️ 备注：iPhone 15 Pro Max 是 ProMotion 120Hz，
+Info.plist 有 `CADisableMinimumFrameDurationOnPhone=true`，当前锁 60 是插件
+自建 CADisplayLink 渲染循环 + Flutter 帧调度共同节拍的结果，60 已达设计帧率
+（原型即 60fps 口径），不必追 120。
+
+### 遗留（不阻塞，记录在案）
+
+1. **profile 冷启语音起播超时**：`[sfx] 起播超时（丢弃这一发）key=syl:pleased`
+   ×2 + audioplayers 的 `SWIFT TASK CONTINUATION MISUSE` 警告 —— 首播资源未
+   就绪被按设计丢弃，debug 模式未见；后续真机轮再看，非舞台范畴。
+2. WebView 降级路线未在 iOS 真机实测过（原生已活，暂时用不上；ATS 放行已配好）。
+3. `flutter_live2d` 需要跟进 SPM 支持（Flutter 未来版本会硬性要求）。
+
+### 结论
+
+**MuMu/旧 AVD 的「不上屏」结论只对模拟器 emugl GL 转译栈成立**——真机（A17 Pro
+硬件 GPU + EAGL）上 flutter_live2d 1.0.2 一次加载成功、渲染、合成、性能全部正常。
+原生路线（①）正式转正，WebView（②）退居降级备份。

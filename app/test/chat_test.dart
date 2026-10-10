@@ -98,11 +98,11 @@ void main() {
     });
 
     test('时间分组头：今天 / 昨天 / M月D日', () {
+      // ⚠️ 时钟健壮性：原来「今天」用 now-1h，00:00–01:00 之间跑必落在昨天
+      // （2026-10-11 00:15 iOS 真机轮首炸）。改为不可能跨午夜的时间差：
+      // 今天 = now 本身；昨天 = 整 24h 前（任意时刻都落在上一日历日）。
       final DateTime now = DateTime.now();
-      expect(
-        ChatHistory.dayLabel(now.subtract(const Duration(hours: 1))),
-        '今天',
-      );
+      expect(ChatHistory.dayLabel(now), '今天');
       expect(
         ChatHistory.dayLabel(now.subtract(const Duration(days: 1))),
         '昨天',

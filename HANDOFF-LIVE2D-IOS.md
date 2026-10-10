@@ -1,5 +1,10 @@
 # 交接：Live2D 原生渲染合成问题（iOS）
 
+> ✅ **2026-10-10 结案：iOS 真机上原生路线（①）已做成，`kNativeStage = true`。**
+> 五关全过、`StageCalib` 无需标定、profile 稳态 60FPS。证据与遗留见
+> `app/STAGE-OPTIONS.md`「iOS 真机轮」节。下文保留作过程记录，
+> 「iOS 待办」一节已完成勿重做。
+
 > 写给下一个 Agent。上一段工作：把 `prototype/opus-v2-dir` 原型逐页复刻进 Flutter 工程 `app/`（60 轮，全部已提交，最新 `22dc2bd`）。
 > 本次焦点（宿主指定）：**在 iOS 上解决 Live2D 的原生渲染合成问题**，替换掉目前承担角色渲染的 WebView（性能不达标）。
 >

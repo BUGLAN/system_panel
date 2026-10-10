@@ -52,7 +52,7 @@ def grab_from_device(device: str) -> bytes:
     return adb.stdout
 
 
-def bbox_alpha_or_luma(png_bytes: bytes, thresh: int) -> tuple[int, int, int, int]:
+def bbox_alpha_or_luma(png_bytes: bytes, thresh: int, mask_rect=None):
     """返回 (top, bot, left, right) 逻辑像素包围盒。
 
     优先 alpha 通道（α > thresh）；没有 alpha（screencap 的 framebuffer 就是
@@ -84,6 +84,16 @@ def bbox_alpha_or_luma(png_bytes: bytes, thresh: int) -> tuple[int, int, int, in
         mask = gray.point(lambda v: 255 if abs(v - base) > thresh else 0)
         src = f"luma(base={base})"
 
+    # --mask：把已知的 Flutter 覆盖物（如裸舞台页左上角对照文字）抹成背景，
+    # 防止它污染包围盒。传逻辑矩形 L,T,R,B；仍是阈值包围盒法，非轮廓量测。
+    if mask_rect:
+        from PIL import ImageDraw  # noqa: PLC0415
+        ml, mt, mr, mb = mask_rect
+        ImageDraw.Draw(mask).rectangle(
+            [int(ml * sx), int(mt * sy), int(mr * sx), int(mb * sy)], fill=0
+        )
+        src += " +mask"
+
     bbox = mask.getbbox()  # (l, t, r, b) 物理像素
     if bbox is None:
         sys.exit(f"阈值 {thresh} 下没找到任何前景（{src}）——调 --thresh")
@@ -103,15 +113,18 @@ def suggest(top: float, bot: float, left: float, right: float) -> None:
     实测占屏高比 p = (bot - top) / LOGICAL_H；
     中心 y 比 cy = (top + bot) / 2 / LOGICAL_H。
     矩形边长 = H * TARGET_S * kSize → kSize = p / TARGET_S；
-    dy = (cy - TARGET_SYF) * LOGICAL_H；dx 同理（对照 TARGET_SXF）。
+    dy = cy − 目标中心像素（TARGET_SYF * LOGICAL_H）；dx 同理（对照 TARGET_SXF）。
+    ⚠️ 2026-10-11 修正：原来写成 (cy - TARGET_SYF) * LOGICAL_H —— 把 0.505
+    这个「比例」直接当像素和 cy 相减，输出大 3~4 个数量级的垃圾值
+    （iOS 真机首跑实测 dx=92235 才暴露）。比例必须先乘逻辑分辨率换算成像素。
     """
     span = bot - top
     cy = (top + bot) / 2.0
     cx = (left + right) / 2.0
     p = span / LOGICAL_H
     k = p / TARGET_S
-    dy = (cy - TARGET_SYF) * LOGICAL_H
-    dx = (cx - TARGET_SXF) * LOGICAL_W
+    dy = cy - TARGET_SYF * LOGICAL_H
+    dx = cx - TARGET_SXF * LOGICAL_W
     print("── 实测包围盒（逻辑像素）──")
     print(f"top={top:.1f} bot={bot:.1f} left={left:.1f} right={right:.1f}")
     print(f"占屏高 {p * 100:.1f}%  中心=({cx:.1f}, {cy:.1f})")
@@ -122,11 +135,33 @@ def suggest(top: float, bot: float, left: float, right: float) -> None:
 
 
 def main() -> None:
+    global LOGICAL_W, LOGICAL_H
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--device", default="127.0.0.1:16512", help="adb 设备")
     ap.add_argument("--png", help="直接喂截图文件（跳过 adb）")
     ap.add_argument("--thresh", type=int, default=36, help="阈值（0-255）")
+    ap.add_argument(
+        "--logical",
+        help="目标设备逻辑分辨率 WxH（默认 390x844 = MuMu 基准；"
+        "iPhone 15 Pro Max 用 430x932）",
+    )
+    ap.add_argument(
+        "--mask",
+        help="抹掉已知覆盖物的逻辑矩形 L,T,R,B（如裸舞台页左上角"
+        "「FLUTTER OVERLAY」对照字用 0,0,140,44），防污染包围盒",
+    )
     args = ap.parse_args()
+
+    if args.logical:
+        w, _, h = args.logical.lower().partition("x")
+        LOGICAL_W, LOGICAL_H = float(w), float(h)
+
+    mask_rect = None
+    if args.mask:
+        parts = [float(v) for v in args.mask.split(",")]
+        if len(parts) != 4:
+            sys.exit("--mask 要 L,T,R,B 四个值")
+        mask_rect = parts
 
     if args.png:
         with open(args.png, "rb") as f:
@@ -143,7 +178,9 @@ def main() -> None:
         )
         data = grab_from_device(args.device)
 
-    (top, bot, left, right), src = bbox_alpha_or_luma(data, args.thresh)
+    (top, bot, left, right), src = bbox_alpha_or_luma(
+        data, args.thresh, mask_rect
+    )
     print(f"[阈值来源：{src} · 阈值 {args.thresh}]")
     suggest(top, bot, left, right)
 

@@ -172,7 +172,11 @@ class _AppShellState extends State<AppShell>
   ///
   /// 运行期原生加载失败也会自动落到 WebView（`_stageFallback`）——
   /// WebView 版保留作降级与验收参照（HANDOFF 明示）。
-  static const bool kNativeStage = false;
+  ///
+  /// **2026-10-10 iOS 真机轮（宿主指示）**：Mac 侧首次在真机（iPhone 15 Pro
+  /// Max，真实 GPU 非 emugl 转译）上验证原生路线 —— MuMu 的止损结论只对
+  /// 模拟器 GL 栈成立，真机是「翻回原生的条件 2」。本轮保持 true。
+  static const bool kNativeStage = true;
 
   /// 她的把手（emote/motion 桥）；原生失败落 WebView 后换成 WebStagePort
   StagePort? _stagePort;
