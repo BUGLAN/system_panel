@@ -945,11 +945,14 @@ class _SystemPaneState extends State<_SystemPane> {
     final List<Widget> rows = <Widget>[
       _setRow(
         '音效',
-        // 文案更正（独立验收 N5）：批次② 起是**离线烘好的音效包**（76 件 WAV，
-        // tools/audio/ 生成），不再是"现场合成、没有音频文件"。
-        // 播放失败/起播超时计数（task-12/14 建议）：这类回归不该只活在 logcat 里。
+        // 文案如实（宿主 2026-10-10 裁决 B′）：
+        // - 单发音效（落板/接单/结算/点击/道具…）本机实测正常
+        // - 逐字电子音在这台模拟器上**不响**（audioplayers 低延迟路径偶发拿不到
+        //   平台 `prepared`；已用 1.2s 看门狗止损，代价是"少响一发"被计数）
+        //   → 别再写"打字机逐字有电子音"，那是没兑现的承诺
+        // - 失败/丢弃计数照旧回显（这类回归不该只活在 logcat 里）
         Sfx.failCount == 0 && Sfx.dropCount == 0
-            ? '离线音效包（76 件）· 打字机逐字有电子音'
+            ? '离线音效包（76 件）· 单发音效正常；逐字电子音已知限制（见下）'
             : '离线音效包（76 件）·'
                   '${Sfx.failCount > 0 ? ' ⚠️ 播放失败 ${Sfx.failCount} 次：${Sfx.lastError ?? ''}' : ''}'
                   '${Sfx.dropCount > 0 ? ' ⚠️ 起播超时丢弃 ${Sfx.dropCount} 发（最近 ${Sfx.lastDrop ?? ''}）' : ''}',
