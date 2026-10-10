@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../data/format.dart';
 import '../design/tokens.dart';
+import '../state/sfx.dart';
 
 /// ═══════════════════════════════════════════════════════════
 ///  「执行中」药丸（`index.html` L40 + `ui.js` L59-61 + `css` `.pill`）
@@ -76,7 +77,13 @@ class _ExecPillState extends State<ExecPill>
               ),
             ),
             child: GestureDetector(
-              onTap: widget.onTap,
+              // 执行药丸：原型 `main.js:60` `$('#execPill')` → 只 `Sound.play('tap')`
+              onTap: widget.onTap == null
+                  ? null
+                  : () {
+                      Sfx.play('tap');
+                      widget.onTap!();
+                    },
               child: Container(
                 key: const Key('exec.pill'),
                 height: 28,

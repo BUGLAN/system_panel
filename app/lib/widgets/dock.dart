@@ -4,7 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../design/tokens.dart';
+import '../state/haptics.dart';
 import '../state/host_state.dart';
+import '../state/sfx.dart';
 import 'sys_icons.dart';
 
 /// ═══════════════════════════════════════════════════════════
@@ -199,7 +201,13 @@ class _DkState extends State<_Dk> {
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: widget.onTap,
+      // 底栏/侧键的点按：原型 `main.js:53` 只 `Sound.play('tap')`（无震动）
+      onTap: widget.onTap == null
+          ? null
+          : () {
+              Sfx.play('tap');
+              widget.onTap!();
+            },
       onTapDown: widget.onTap == null ? null : (_) => _set(true),
       onTapUp: widget.onTap == null ? null : (_) => _set(false),
       onTapCancel: widget.onTap == null ? null : () => _set(false),
@@ -288,7 +296,16 @@ class _CtaState extends State<_Cta> {
     final VoidCallback? onTap = widget.onTap;
     // .cta 有 margin-bottom: 2（外边距，不是内边距）
     return GestureDetector(
-      onTap: onTap,
+      // 主 CTA：原型 `main.js:47-48` `Sound.play('tap'); buzz(8)` ——
+      // **全原型唯一带震动的 tap**（底栏/侧键/HUD 那些只有声音）。
+      // 这是 docs/22 R3「15 处波形」里 tap 那一处的真实出处。
+      onTap: onTap == null
+          ? null
+          : () {
+              Sfx.play('tap');
+              Haptics.buzz('tap');
+              onTap();
+            },
       onTapDown: onTap == null ? null : (_) => _set(true),
       onTapUp: onTap == null ? null : (_) => _set(false),
       onTapCancel: onTap == null ? null : () => _set(false),

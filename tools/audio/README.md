@@ -27,7 +27,7 @@ node tools/audio/inspect_wav.mjs --spec rung_0,ding,tap      # FFT 主频校验
 | 组 | 文件名 | 件数 |
 |---|---|---|
 | 高频 12 件 | `tap` `choose` `land` `seal` `ding` `impact` `crit` `levelup` `fail`（单文件）+ `rank_0..rank_6`（7 档）+ `rung_0..rung_4`（5 档）+ `count_0..count_2`（3 变体） | 26 |
-| 兜底 | `rank.wav`（= i=2 中档；总线若有一次不带 variant 的 `rank` 调用，别落到没声） | 1 |
+| 备用 | `rank.wav`（= i=2 中档）—— **⚠️ 目前不被总线引用**（独立验收 N1 更正：`sfx.dart` 的 `_pick` 在 `variant == null` 时是**随机取一条变体**，所以这个文件永远不会被播；留档备用，想省 50KB 可直接删） | 1 |
 | 逐字音节 | `syl_<emotion>_<0..3>`，12 情绪 × 4 变体：`neutral smug cold annoyed pleased tsun joy proud surprised sad focus sleep` | 48 |
 | 环境底噪 | `ambient_loop.wav` | 1 |
 | 追加两件 | `boot.wav`（启动）`hold.wav`（按住每步） | 2 |
@@ -354,8 +354,10 @@ partial 3: 164.8Hz  detune +9c → 165.659Hz → 量化 165.6200Hz（1183 周期
 3. **压缩器参数**（attack 3ms / release 250ms）：原型只写了 threshold/ratio/knee，attack/release 是
    Web Audio 的默认值，我按默认值取（`audio.js` 没设这两个字段）。
 4. **每件加 10ms 尾巴**：原型 `stop(t0+dur+.05)`，我取 10ms（增益在 `dur` 已到 .0001，50ms 是纯静音）。
-5. **`rank.wav` 兜底 = i=2**：你说总线已改成按档查 `rank_<i>.wav`，但"缺文件就是没声"——
-   我额外留了一个 `rank.wav`（= 中档）当兜底。**若确认不会有裸 `play('rank')`，可以让我删掉**（省 50KB）。
+5. **`rank.wav`（i=2 中档）= 备用，不是兜底**：独立验收（`.verify/batch2/` N1）指出
+   `sfx.dart` 的 `_pick` 在 `variant == null` 时是**随机取一条变体**，所以这个文件
+   **永远不会被播**。原写法（"不带 variant 时的兜底"）与实现不符，已更正为"备用/留档"；
+   想省 50KB 可删，删前确认 `app/lib/state/sfx.dart` 的 rank 表只列 `rank_0..6`。
 6. **`--only` / `--out` / `--raw` / `--list` / `--seed` 这些 CLI** 都是我自己定的形状，没有原型依据。
 7. **TPDF dither 的随机流不带 seed**（固定按文件名派生）：故意这样，好让"换 seed 只影响原型里
    真随机的地方"这条性质可验证（§4.3）。dither 是 ±1 LSB，不影响响度。
@@ -394,5 +396,6 @@ shutter / deny / unhold` 与 `drone()` 两条连续音、`muffle()`（失败时�
 | `ambient` | `audio/ambient_loop.wav` | ✓ | `ReleaseMode.loop`；总线额外 `volume*0.5`，若嫌底噪浅可去掉那 0.5（或让我 +6dB 重烤） |
 | `syllable` | `audio/syl_<情绪>_<0..3>.wav`（48） | ✓ | 情绪串与 `persona.emotions` 一致 |
 
-总线表共引用 **73** 件，全部实有；我另有 **3 件总线暂未使用**：`boot.wav`、`hold.wav`（你说"以后要用"）、
-`rank.wav`（无 variant 时的兜底，= i=2）。73 + 3 = 76 ✓。
+总线表共引用 **73** 件，全部实有；另有 **3 件总线暂未使用**：`boot.wav`（R5 预留）、
+`hold.wav`（`docs/22 §10-G-2`：本批「按住」只用震动）、`rank.wav`（**备用留档**，
+`_pick` 在无 variant 时随机取变体 → 它不会被播，见上面第 5 条更正）。73 + 3 = 76 ✓。
