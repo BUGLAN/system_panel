@@ -317,7 +317,8 @@ class Live2DStage extends StatefulWidget {
   /// · v7 = **JSON 格式修正**（Cubism 私有解析器只认 `\n`/`,` 作数字终止符、
   ///        且不吃科学计数法；转换器原来压单行 → 每个数组的最后一个数字紧跟
   ///        `]` → `IsValid=0` → 动作与物理全部加载失败）
-  static const int modelDataVersion = 7;
+  /// · v8 = 表情剥掉「眼睑 = 1.0 的 Overwrite 钉死」→ 恢复眨眼（待机三修①）
+  static const int modelDataVersion = 8;
 
   /// 把声明的模型资产解压到版本化目录，返回**绝对路径**（带尾斜杠）。
   /// 版本一致就复用；不一致先把整棵树删掉（连旧版本目录）再重解。
