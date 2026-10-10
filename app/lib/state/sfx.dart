@@ -34,6 +34,12 @@ class Sfx {
   static int failCount = 0;
   static String? lastError;
 
+  /// 起播超时被丢弃的发数（平台侧 `prepared` 没来；见 `_playFile` 的说明）。
+  /// 单独计数、**不当失败**：它是"少响一发"，不是"播放报错"，但也不能瞒着——
+  /// 设置页会把它一并回显，开发阶段看得到平台在掉链子。
+  static int dropCount = 0;
+  static String? lastDrop;
+
   /// 事件 → 素材路径（相对 `assets/`，`AssetSource` 前缀就是 `assets/`）。
   /// 多条 = 变体：每次随机取一条（原型每发都随机音高，不随机就丢手感）。
   /// 命名约定由 `tools/audio/` 的烘焙脚本保证。
@@ -99,6 +105,11 @@ class Sfx {
   /// 逐字音节约 60ms、`land` 430ms；取 250ms 兜住最高频那条路：
   /// 12 槽 / 250ms = 48 发每秒 > 打字机 29 字每秒（34ms/字），不会饿死。
   static const Duration _busyHold = Duration(milliseconds: 250);
+
+  /// 单发起播的看门狗：超过它就认为这一发起不来了（平台 `prepared` 丢了），
+  /// 丢弃这一发 + 把槽踢出池子（audioplayers 自己的超时是 30 秒，太长——
+  /// 一发挂住会拖垮整段逐字音）。
+  static const Duration _playWatchdog = Duration(milliseconds: 1200);
 
   /// 建一个**配置完成**的播放器（短音效用低延迟模式：Android 走 SoundPool，
   /// 打字机逐字 34ms 一发才跟得上）
@@ -206,9 +217,26 @@ class Sfx {
     if (slot == null) return; // 槽位全忙：这一发不播（不是失败，不记账）
     try {
       final AudioPlayer p = await slot.ready;
-      // ⚠️ 这里**不再** `stop()`：拿到的一定是空闲槽位，而"同一实例上 stop/play
-      // 交错"正是 task-13 复现的 30s 超时来源（`.verify/batch2/k-summary.md` §3.4）
-      await p.play(AssetSource(file), volume: volume * (soft ? 0.5 : 1.0));
+      // ⚠️ 这里**不再** `stop()`：拿到的一定是空闲槽位。
+      //
+      // ⚠️⚠️ 真正的坑（独立验收 task-14 找到的真因）：audioplayers 在低延迟
+      // 模式下偶发等不到平台 `prepared` 事件，`play()` 会一直挂到
+      // `preparationTimeout`（默认 **30s**）才抛（`audioplayer.dart:22/366`）。
+      // 一发挂住就占着槽位 30 秒 → 后面几十发全被"全忙丢弃"。
+      // 所以这里给 `play()` 配 [_playWatchdog]：超时即**放弃这一发**（记
+      // [dropCount]，不算失败、不刷日志），并把坏槽踢出池子换新的——
+      // 用一个可诊断的丢弃换掉"一次卡顿拖垮整段逐字音"。
+      final Future<void> playing = p.play(
+        AssetSource(file),
+        volume: volume * (soft ? 0.5 : 1.0),
+      );
+      if (!await _startedWithin(playing, _playWatchdog)) {
+        dropCount++;
+        lastDrop = key;
+        debugPrint('[sfx] 起播超时（丢弃这一发）key=$key file=$file');
+        _retire(slot);
+        return;
+      }
       _releaseWhenDone(slot, p);
     } catch (e) {
       // 素材缺失 / 平台不支持都只是"没声"：记一行，不抛
@@ -219,20 +247,50 @@ class Sfx {
     }
   }
 
+  /// 起播是否在 [timeout] 内成功（超时返回 false；异常照旧往上传）
+  static Future<bool> _startedWithin(Future<void> playing, Duration timeout) {
+    final Completer<bool> c = Completer<bool>();
+    playing.then((_) {
+      if (!c.isCompleted) c.complete(true);
+    }).catchError((Object e, StackTrace s) {
+      if (!c.isCompleted) c.completeError(e, s);
+    });
+    Timer(timeout, () {
+      if (!c.isCompleted) c.complete(false);
+    });
+    return c.future;
+  }
+
+  /// 把坏槽（起播超时的那个实例）踢出池子并销毁；**不 await**，不阻塞这一发
+  static void _retire(_Slot slot) {
+    slot.busy = true; // 永不复发
+    _slots.remove(slot);
+    slot.ready
+        .then((AudioPlayer p) => p.dispose())
+        .catchError((Object _) {})
+        .ignore();
+  }
+
   /// 起播后把槽位还回池子。
   ///
-  /// 优先听 `onPlayerComplete`（不猜时长）；SoundPool 低延迟路径不保证回调，
-  /// 所以配一个 [_busyHold] 兜底计时器——否则槽位会泄漏成"越用越没声"。
-  /// 计时器只在**播放成功之后**创建，所以 widget 测试里不会留 pending timer。
+  /// 优先听 `onPlayerComplete`（不猜时长），并在释放时**取消订阅**
+  /// （完成事件永不到达的槽会累积订阅 → 慢性泄漏，task-14 观察点②）；
+  /// SoundPool 低延迟路径不保证回调，所以配一个 [_busyHold] 兜底计时器——
+  /// 否则槽位会泄漏成"越用越没声"。
+  /// 这两个都只在**起播成功之后**创建，所以 widget 测试里不会留 pending timer。
   static void _releaseWhenDone(_Slot slot, AudioPlayer p) {
     bool released = false;
+    StreamSubscription<void>? sub;
     void release() {
       if (released) return;
       released = true;
+      sub?.cancel();
       slot.busy = false;
     }
 
-    p.onPlayerComplete.first.then((_) => release()).catchError((Object _) {});
+    try {
+      sub = p.onPlayerComplete.listen((_) => release());
+    } catch (_) {}
     Timer(_busyHold, release);
   }
 
