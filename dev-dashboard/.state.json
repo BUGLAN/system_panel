@@ -1,0 +1,1180 @@
+{
+ "last_collect": "2026-10-09T14:46:10.313435+00:00",
+ "pending_items": [
+  {
+   "path": ".agent-teams/",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "AGENTS.md",
+   "kind": "doc",
+   "change": "modified"
+  },
+  {
+   "path": "HANDOFF-LIVE2D-IOS.md",
+   "kind": "doc",
+   "change": "added"
+  },
+  {
+   "path": "app/BEHAVIOR-GAPS.md",
+   "kind": "doc",
+   "change": "modified"
+  },
+  {
+   "path": "app/COVERAGE.md",
+   "kind": "doc",
+   "change": "added"
+  },
+  {
+   "path": "app/REGRESSION.md",
+   "kind": "doc",
+   "change": "added"
+  },
+  {
+   "path": "app/STAGE-OPTIONS.md",
+   "kind": "doc",
+   "change": "modified"
+  },
+  {
+   "path": "app/assets/img/bg-void.jpg",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/.gitignore",
+   "kind": "other",
+   "change": "modified"
+  },
+  {
+   "path": "app/assets/live2d/hiyori/Hiyori.2048/texture_00.png",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/hiyori/Hiyori.2048/texture_01.png",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/hiyori/Hiyori.cdi3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/hiyori/Hiyori.moc3",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/hiyori/Hiyori.model3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/hiyori/Hiyori.physics3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/hiyori/Hiyori.pose3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/hiyori/Hiyori.userdata3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/hiyori/motions/Hiyori_m01.motion3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/hiyori/motions/Hiyori_m02.motion3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/hiyori/motions/Hiyori_m03.motion3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/hiyori/motions/Hiyori_m04.motion3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/hiyori/motions/Hiyori_m05.motion3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/hiyori/motions/Hiyori_m06.motion3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/hiyori/motions/Hiyori_m07.motion3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/hiyori/motions/Hiyori_m08.motion3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/hiyori/motions/Hiyori_m09.motion3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/hiyori/motions/Hiyori_m10.motion3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko/README.md",
+   "kind": "doc",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko/expressions/exp_angry01.exp3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko/expressions/exp_angry02.exp3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko/expressions/exp_bsmile01.exp3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko/expressions/exp_bsmile02.exp3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko/expressions/exp_cry01.exp3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko/expressions/exp_cry02.exp3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko/expressions/exp_cry03.exp3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko/expressions/exp_cry04.exp3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko/expressions/exp_cry05.exp3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko/expressions/exp_cry06.exp3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko/expressions/exp_idle01.exp3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko/expressions/exp_idle02.exp3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko/expressions/exp_idle03.exp3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko/expressions/exp_idle04.exp3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko/expressions/exp_kime01.exp3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko/expressions/exp_pale01.exp3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko/expressions/exp_pale02.exp3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko/expressions/exp_sad01.exp3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko/expressions/exp_sad02.exp3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko/expressions/exp_serious01.exp3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko/expressions/exp_serious02.exp3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko/expressions/exp_shadow01.exp3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko/expressions/exp_shy01.exp3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko/expressions/exp_smile01.exp3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko/expressions/exp_smile02.exp3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko/expressions/exp_surprised01.exp3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko/expressions/exp_surprised02.exp3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko/expressions/exp_surprised03.exp3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko/motions/misc_tear01.motion3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko/motions/mtn_angry01_C.motion3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko/motions/mtn_angry01_L.motion3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko/motions/mtn_angry01_R.motion3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko/motions/mtn_bye01_C.motion3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko/motions/mtn_bye01_L.motion3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko/motions/mtn_bye01_R.motion3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko/motions/mtn_check01_C.motion3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko/motions/mtn_check01_L.motion3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko/motions/mtn_check01_R.motion3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko/motions/mtn_cry01_C.motion3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko/motions/mtn_cry01_L.motion3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko/motions/mtn_cry01_R.motion3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko/motions/mtn_denial01_C.motion3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko/motions/mtn_denial01_L.motion3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko/motions/mtn_denial01_R.motion3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko/motions/mtn_denial02_C.motion3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko/motions/mtn_denial02_L.motion3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko/motions/mtn_denial02_R.motion3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko/motions/mtn_idle01_C.motion3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko/motions/mtn_idle01_L.motion3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko/motions/mtn_idle01_R.motion3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko/motions/mtn_kime01_C.motion3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko/motions/mtn_kime01_L.motion3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko/motions/mtn_kime01_R.motion3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko/motions/mtn_look01_C.motion3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko/motions/mtn_look01_L.motion3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko/motions/mtn_look01_R.motion3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko/motions/mtn_look02_C.motion3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko/motions/mtn_look02_L.motion3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko/motions/mtn_look02_R.motion3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko/motions/mtn_maskoff01_C.motion3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko/motions/mtn_maskoff01_L.motion3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko/motions/mtn_maskoff01_R.motion3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko/motions/mtn_nod01_C.motion3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko/motions/mtn_nod01_L.motion3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko/motions/mtn_nod01_R.motion3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko/motions/mtn_nod02_C.motion3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko/motions/mtn_nod02_L.motion3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko/motions/mtn_nod02_R.motion3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko/motions/mtn_question01_C.motion3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko/motions/mtn_question01_L.motion3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko/motions/mtn_question01_R.motion3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko/motions/mtn_sad01_C.motion3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko/motions/mtn_sad01_L.motion3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko/motions/mtn_sad01_R.motion3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko/motions/mtn_sad02_C.motion3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko/motions/mtn_sad02_L.motion3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko/motions/mtn_sad02_R.motion3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko/motions/mtn_serious01_C.motion3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko/motions/mtn_serious01_L.motion3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko/motions/mtn_serious01_R.motion3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko/motions/mtn_smile01_C.motion3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko/motions/mtn_smile01_L.motion3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko/motions/mtn_smile01_R.motion3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko/motions/mtn_smile02_C.motion3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko/motions/mtn_smile02_L.motion3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko/motions/mtn_smile02_R.motion3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko/motions/mtn_surprised01_C.motion3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko/motions/mtn_surprised01_L.motion3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko/motions/mtn_surprised01_R.motion3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko/motions/mtn_thinking01_C.motion3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko/motions/mtn_thinking01_L.motion3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko/motions/mtn_thinking01_R.motion3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko/sakiko.moc3",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko/sakiko.model3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko/sakiko.physics3.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko/textures/texture_00.png",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko/textures/texture_01.png",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko_orig/assets/1ab0b5ffbcc56e31cd58d05286a3fabe786e14431009f9d840eba27bdd827116.glsl.gz",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko_orig/assets/1fb98c24253c28d076eb61c29d02fa56c93f591c15d3c0c17c602f3e74eb6a70.json.gz",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko_orig/assets/23632a6a488b0cf233dcb5f99af65cefa636b5490cfb9f8268c64ea422e37893.png",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko_orig/assets/23c5baaa47490353217fdc0ec44cdf81a9014db97067ebf612a8968a640593bc.glsl.gz",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko_orig/assets/294409d4a76657de2d24c08f34967764fe286b12f6d09977c06a42ccd51c6178.json.gz",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko_orig/assets/304264e4bed46d906796fdb92296fcced44df15a363825290e3df007004d4024.png",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko_orig/assets/3e596cdf7b4cb59cd64eaf95210128a6001f9645adfdeb50da2eaf5e05cbe672.glsl.gz",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko_orig/assets/52a623bf1ccea31db12047c424188cb97553f6791b29ca87883975ce90ccf0c4.glsl.gz",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko_orig/assets/63fb31adc1edfb73f89c52b25b84dc872a02b62c3adc55e2151568ee57f1e0c7.json.gz",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko_orig/assets/76ba0c9e55f6819bcaab2beb4059e20a3b96623afba1cdf97bfc2aed1d17e7dd.glsl.gz",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko_orig/assets/808d0b9b92adfe23b7be1587521682031302330400156a1ff343404175348b94.json.gz",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko_orig/assets/897161964d52d1f9dee31580c96239949c7db0a49bc97823080d50ede15dc99c.json.gz",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko_orig/assets/b76ce71628e85d2eae8ff3aa7ea3a2db0fa015edda9aaad4b43c0404f4beeb50.glsl.gz",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko_orig/assets/be0a00b9074fd458eaed77bfdc1d895b4c2331a040f67757f15d47b0920defcb.json.gz",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko_orig/assets/e32d9bbaf558ba3748bddeacdb48995315a341c5bba9cc644485588b13aa3293.json.gz",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko_orig/assets/e675927421e12afc3f3834e04cf04dea3db125857cf6cfe06dcc0a5908cde2b1.glsl.gz",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko_orig/assets/fae099c3bdea98e9187442821ac4b4e62f887481460bcd1b0fa515b45d0d777e.moc3.gz",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/sakiko_orig/models/adv_live2d_sakiko_010_casual_spring_01.json",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/vendor/live2dcubismcore.min.js",
+   "kind": "code",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/live2d/vendor/ournotes-live2d.element.min.js",
+   "kind": "code",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/stage/stage.html",
+   "kind": "code",
+   "change": "added"
+  },
+  {
+   "path": "app/assets/stage/stage.js",
+   "kind": "code",
+   "change": "modified"
+  },
+  {
+   "path": "app/lib/agent/context_adapter.dart",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/lib/agent/copy.dart",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/lib/agent/llm_client.dart",
+   "kind": "other",
+   "change": "modified"
+  },
+  {
+   "path": "app/lib/agent/llm_gateway.dart",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/lib/agent/memory.dart",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/lib/agent/persona.dart",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/lib/agent/settings_store.dart",
+   "kind": "other",
+   "change": "modified"
+  },
+  {
+   "path": "app/lib/agent/tools.dart",
+   "kind": "other",
+   "change": "modified"
+  },
+  {
+   "path": "app/lib/agent/vision.dart",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/lib/chat/chat_history.dart",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/lib/chat/chat_panel.dart",
+   "kind": "other",
+   "change": "modified"
+  },
+  {
+   "path": "app/lib/chat/chat_service.dart",
+   "kind": "other",
+   "change": "modified"
+  },
+  {
+   "path": "app/lib/data/attrs.dart",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/lib/data/content.dart",
+   "kind": "other",
+   "change": "modified"
+  },
+  {
+   "path": "app/lib/data/items.dart",
+   "kind": "other",
+   "change": "modified"
+  },
+  {
+   "path": "app/lib/data/rarity.dart",
+   "kind": "other",
+   "change": "modified"
+  },
+  {
+   "path": "app/lib/data/rewards.dart",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/lib/data/titles.dart",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/lib/design/tokens.dart",
+   "kind": "other",
+   "change": "modified"
+  },
+  {
+   "path": "app/lib/main.dart",
+   "kind": "other",
+   "change": "modified"
+  },
+  {
+   "path": "app/lib/screens/boot_screen.dart",
+   "kind": "other",
+   "change": "modified"
+  },
+  {
+   "path": "app/lib/stage/camera.dart",
+   "kind": "other",
+   "change": "modified"
+  },
+  {
+   "path": "app/lib/stage/live2d_stage.dart",
+   "kind": "other",
+   "change": "modified"
+  },
+  {
+   "path": "app/lib/stage/live2d_web.dart",
+   "kind": "other",
+   "change": "modified"
+  },
+  {
+   "path": "app/lib/stage/ring_painter.dart",
+   "kind": "other",
+   "change": "modified"
+  },
+  {
+   "path": "app/lib/stage/spring.dart",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/lib/stage/stage_port.dart",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/lib/state/app_clock.dart",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/lib/state/away.dart",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/lib/state/goal.dart",
+   "kind": "other",
+   "change": "modified"
+  },
+  {
+   "path": "app/lib/state/goal_gen.dart",
+   "kind": "other",
+   "change": "modified"
+  },
+  {
+   "path": "app/lib/state/host_state.dart",
+   "kind": "other",
+   "change": "modified"
+  },
+  {
+   "path": "app/lib/state/quest.dart",
+   "kind": "other",
+   "change": "modified"
+  },
+  {
+   "path": "app/lib/state/quest_flow.dart",
+   "kind": "other",
+   "change": "modified"
+  },
+  {
+   "path": "app/lib/state/result.dart",
+   "kind": "other",
+   "change": "modified"
+  },
+  {
+   "path": "app/lib/state/save_file.dart",
+   "kind": "other",
+   "change": "modified"
+  },
+  {
+   "path": "app/lib/state/settings.dart",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/lib/state/voice.dart",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/lib/widgets/ask_field.dart",
+   "kind": "other",
+   "change": "modified"
+  },
+  {
+   "path": "app/lib/widgets/banner.dart",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/lib/widgets/bg_layer.dart",
+   "kind": "other",
+   "change": "modified"
+  },
+  {
+   "path": "app/lib/widgets/chat_bar.dart",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/lib/widgets/choices.dart",
+   "kind": "other",
+   "change": "modified"
+  },
+  {
+   "path": "app/lib/widgets/dock.dart",
+   "kind": "other",
+   "change": "modified"
+  },
+  {
+   "path": "app/lib/widgets/exec_panel.dart",
+   "kind": "other",
+   "change": "modified"
+  },
+  {
+   "path": "app/lib/widgets/exec_pill.dart",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/lib/widgets/fail_layer.dart",
+   "kind": "other",
+   "change": "modified"
+  },
+  {
+   "path": "app/lib/widgets/fx_layer.dart",
+   "kind": "other",
+   "change": "modified"
+  },
+  {
+   "path": "app/lib/widgets/fx_particles.dart",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/lib/widgets/hold_button.dart",
+   "kind": "other",
+   "change": "modified"
+  },
+  {
+   "path": "app/lib/widgets/hud.dart",
+   "kind": "other",
+   "change": "modified"
+  },
+  {
+   "path": "app/lib/widgets/interview_deck.dart",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/lib/widgets/item_drawer.dart",
+   "kind": "other",
+   "change": "modified"
+  },
+  {
+   "path": "app/lib/widgets/line_layer.dart",
+   "kind": "other",
+   "change": "modified"
+  },
+  {
+   "path": "app/lib/widgets/main_view.dart",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/lib/widgets/plate.dart",
+   "kind": "other",
+   "change": "modified"
+  },
+  {
+   "path": "app/lib/widgets/plate_timeline.dart",
+   "kind": "other",
+   "change": "modified"
+  },
+  {
+   "path": "app/lib/widgets/press_scale.dart",
+   "kind": "other",
+   "change": "modified"
+  },
+  {
+   "path": "app/lib/widgets/radar.dart",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/lib/widgets/result_panel.dart",
+   "kind": "other",
+   "change": "modified"
+  },
+  {
+   "path": "app/lib/widgets/ring_labels.dart",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/lib/widgets/ring_tag.dart",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/lib/widgets/settle_timeline.dart",
+   "kind": "other",
+   "change": "modified"
+  },
+  {
+   "path": "app/lib/widgets/sheet.dart",
+   "kind": "other",
+   "change": "modified"
+  },
+  {
+   "path": "app/lib/widgets/stats_pane.dart",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "app/lib/widgets/sys_icons.dart",
+   "kind": "other",
+   "change": "modified"
+  },
+  {
+   "path": "app/lib/widgets/type_text.dart",
+   "kind": "other",
+   "change": "modified"
+  },
+  {
+   "path": "app/lib/widgets/voice_bars.dart",
+   "kind": "other",
+   "change": "added"
+  },
+  {
+   "path": "docs/18-Agent系统升级方案.md",
+   "kind": "doc",
+   "change": "added"
+  },
+  {
+   "path": "docs/19-产品分析.md",
+   "kind": "doc",
+   "change": "added"
+  },
+  {
+   "path": "docs/20-项目现状汇总.md",
+   "kind": "doc",
+   "change": "added"
+  },
+  {
+   "path": "prototype/.stitch/DESIGN.md",
+   "kind": "doc",
+   "change": "added"
+  },
+  {
+   "path": "prototype/.stitch/SCREENS.md",
+   "kind": "doc",
+   "change": "added"
+  },
+  {
+   "path": "prototype/README.md",
+   "kind": "doc",
+   "change": "added"
+  },
+  {
+   "path": "prototype/motion-demo/index.html",
+   "kind": "code",
+   "change": "added"
+  },
+  {
+   "path": "prototype/opus-v2-dir/README.md",
+   "kind": "doc",
+   "change": "added"
+  },
+  {
+   "path": "prototype/opus-v2-dir/css/app.css",
+   "kind": "code",
+   "change": "modified"
+  },
+  {
+   "path": "prototype/opus-v2-dir/index.html",
+   "kind": "code",
+   "change": "added"
+  },
+  {
+   "path": "prototype/opus-v2-dir/js/audio.js",
+   "kind": "code",
+   "change": "added"
+  },
+  {
+   "path": "prototype/opus-v2-dir/js/content.js",
+   "kind": "code",
+   "change": "added"
+  },
+  {
+   "path": "prototype/opus-v2-dir/js/flows.js",
+   "kind": "code",
+   "change": "added"
+  },
+  {
+   "path": "prototype/opus-v2-dir/js/fx.js",
+   "kind": "code",
+   "change": "added"
+  },
+  {
+   "path": "prototype/opus-v2-dir/js/main.js",
+   "kind": "code",
+   "change": "added"
+  },
+  {
+   "path": "prototype/opus-v2-dir/js/stage.js",
+   "kind": "code",
+   "change": "added"
+  },
+  {
+   "path": "prototype/opus-v2-dir/js/store.js",
+   "kind": "code",
+   "change": "added"
+  },
+  {
+   "path": "prototype/opus-v2-dir/js/ui.js",
+   "kind": "code",
+   "change": "added"
+  },
+  {
+   "path": "prototype/opus-v2-dir/js/util.js",
+   "kind": "code",
+   "change": "added"
+  },
+  {
+   "path": "prototype/opus-v2-dir/server.mjs",
+   "kind": "code",
+   "change": "added"
+  }
+ ]
+}
