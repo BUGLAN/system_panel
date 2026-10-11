@@ -4,7 +4,7 @@ import 'package:system_panel/data/items.dart';
 import 'package:system_panel/widgets/item_rail.dart';
 import 'package:system_panel/widgets/rail_base.dart';
 
-/// 甲 · 物件台（`docs/23` §4）—— 领位抬起 / 让位退让 / 点法语义。
+/// 甲 · 物件台（`docs/28` §4）—— 领位抬起 / 让位退让 / 点法语义。
 ///
 /// 几何（实测值，不是推的）：视口 266、卡 86、间距 8、一格 94。
 /// 领位槽永远落在视口中心（内容坐标 133），侧卡槽 = 133 ± (94 + 14 浮动)。
@@ -131,7 +131,7 @@ void main() {
     });
 
     testWidgets('⚠️ 可读性铁律：退让项的正文等效字号 ≥ 13px', (WidgetTester tester) async {
-      // 名称字号 15 × 侧卡缩放 .88 = 13.2px（docs/23 §3.4-6）
+      // 名称字号 15 × 侧卡缩放 .88 = 13.2px（docs/28 §3.4-6）
       expect(kItemNameSize * kItemSideScale, greaterThanOrEqualTo(13));
       expect(kItemNameSize * kItemLeadScale, greaterThanOrEqualTo(13));
       expect(kItemSideScale, greaterThanOrEqualTo(.88));

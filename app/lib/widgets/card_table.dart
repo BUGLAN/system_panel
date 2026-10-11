@@ -10,7 +10,7 @@ import 'rail_base.dart';
 export 'card_skins.dart';
 
 /// ═══════════════════════════════════════════════════════════
-///  牌桌 · 抉择场景（docs/27）——「她发牌，你落子」
+///  牌桌 · 抉择场景（docs/32）——「她发牌，你落子」
 ///
 ///  本文件只管**机械**：入场 / 领位 / 拖拽吸附 / 落定压印，
 ///  以及每种皮肤自己的几何。**长什么样**全在 `card_skins.dart`。
@@ -46,7 +46,7 @@ const int kSweepMs = 520;
 const int kStampMs = 200;
 const double kStampFlash = .16;
 
-/// 点**侧牌**时是否顺手落定。默认 false（只送位）—— docs/27 §7.3-1。
+/// 点**侧牌**时是否顺手落定。默认 false（只送位）—— docs/32 §7.3-1。
 const bool kCardSideTapCommits = false;
 
 /// 牌桌（皮肤由 [skin] 决定，几何由 `geomOf(skin)` 给出）

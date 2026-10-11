@@ -10,7 +10,7 @@ import 'card_skins.dart';
 import 'rail_base.dart';
 
 /// ═══════════════════════════════════════════════════════════
-///  甲 · 物件台（`docs/23` §4）—— 「选择道具」的新形态
+///  甲 · 物件台（`docs/28` §4）—— 「选择道具」的新形态
 ///
 ///  道具是**实体物件**，所以走**厚卡 + 摊牌**：三件东西摊在台面上，
 ///  中间那件被推到你面前**抬起来**（悬停抬起），旁边两件**向外旋开让位**。
@@ -18,7 +18,7 @@ import 'rail_base.dart';
 ///  与乙 · 铭牌轨（`choice_rail.dart`，横版斜切薄牌 / 不缩放 / 阶梯缩进）
 ///  刻意不同：这里是**竖版厚卡**，靠**放大 + 抬起 + 旋转**领位。
 ///
-///  ── 纪律（docs/23 §3.4）────────────────────────────────
+///  ── 纪律（docs/28 §3.4）────────────────────────────────
 ///  1. **只动 `Transform` / `Opacity`** —— 卡的布局尺寸恒为 86×112，
 ///     领位的 104×136 由 `Transform.scale` 表达，绝不改布局（禁止 AnimatedContainer）。
 ///  2. 位移曲线 `kOut`（[kItemRailMs]）；过冲用 `railOvershoot`。
@@ -44,7 +44,7 @@ const double kItemLeadH = 353;
 /// 领位缩放 = 104 / 86
 const double kItemLeadScale = kItemLeadW / kItemCardW; // ≈ 1.2093
 
-/// 侧卡缩放。**取值受可读性铁律约束**（docs/23 §3.4-6：退让项的缩放不得让正文
+/// 侧卡缩放。**取值受可读性铁律约束**（docs/28 §3.4-6：退让项的缩放不得让正文
 /// 等效小于 13px）：名称字号 [kItemNameSize] 15 × .88 = **13.2px** ≥ 13。
 /// 所以这里不是 .82 —— .82 会把 13px 的正文压到 10.7px，违反铁律。
 const double kItemSideScale = .88;
@@ -81,7 +81,7 @@ const double kItemShopW = 60;
 /// 物件台与「去补给」之间的间隙
 const double kItemRailGap = 6;
 
-/// 位移 / 形变时长（docs/23 §3.4-2：350~420ms）
+/// 位移 / 形变时长（docs/28 §3.4-2：350~420ms）
 const Duration kItemRailMs = Duration(milliseconds: 380);
 
 /// 领位抬起高度（向上为负）
@@ -200,7 +200,7 @@ class _ItemRailState extends State<ItemRail>
     _rail.clampTo(widget.ids.length);
   }
 
-  /// 换领位 → 响 `rung` + 轻震（docs/23 §3.3）
+  /// 换领位 → 响 `rung` + 轻震（docs/28 §3.3）
   ///
   /// 不再需要「滚到领位」那一步：三张卡 + 浮动量本来就在视口内
   /// （最左 25-43 = -18 起、最右 241+43 = 284 止，视口 266 —— 只溢出边缘一点，

@@ -687,7 +687,7 @@ void main() {
           onBuyItem: bought.add,
         ),
       );
-      // 补给页现在是**牌桌 · 货架**（docs/27）：领位落在第一件买得起的牌上，
+      // 补给页现在是**牌桌 · 货架**（docs/32）：领位落在第一件买得起的牌上，
       // 点领位即落定购买。340 金币 → 领位 = 双倍卡（60，第一件买得起的）。
       await tester.tapAt(tester.getCenter(find.byKey(const Key('sheet.shop'))));
       await tester.pumpAndSettle();

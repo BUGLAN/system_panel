@@ -885,7 +885,7 @@ class _EvidenceBlockState extends State<_EvidenceBlock> {
     if (_shots.length >= 3) return; // 双保险：槽位只有 3 格
     setState(() => _busy = true);
     try {
-      // docs/27 §13-8：Material 弹层（全 App 唯一异类长相）→ **悬浮的取景窗**：
+      // docs/32 §13-8：Material 弹层（全 App 唯一异类长相）→ **悬浮的取景窗**：
       // 全屏浮在舞台上，没有面板壳、没有分节标题；点侧牌送位、点领位落定。
       final ImageSource? src = await showGeneralDialog<ImageSource>(
         context: context,

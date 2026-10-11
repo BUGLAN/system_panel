@@ -7,7 +7,7 @@ import 'choices.dart';
 import 'rail_base.dart';
 
 /// ═══════════════════════════════════════════════════════════
-///  乙 · 铭牌轨 —— 回应（docs/23 §5）
+///  乙 · 铭牌轨 —— 回应（docs/28 §5）
 ///
 ///  立意：回应是**她的几个方向**，不是物件 —— 所以走「薄牌 + 抽牌」：
 ///  像档案柜里一排斜切铭牌，被选中的那张**抽出来领位**（左对齐到边 +
@@ -24,7 +24,7 @@ import 'rail_base.dart';
 ///  位移走 `kOut`，过冲走 [railOvershoot]（错峰入场）。
 /// ═══════════════════════════════════════════════════════════
 
-// ── 几何（docs/23 §5.2）—— 手感参数全部集中在这一段，一轮可调 ──
+// ── 几何（docs/28 §5.2）—— 手感参数全部集中在这一段，一轮可调 ──
 
 /// 铭牌尺寸：横版斜切薄牌（**不是**甲的竖版厚卡）
 const double kPlateW = 268;
@@ -73,7 +73,7 @@ const double kRailHideDy = 28;
 const Duration kRailFadeMs = Duration(milliseconds: 300);
 const Duration kRailHideMs = Duration(milliseconds: 500);
 
-/// 位移曲线时长（350~420ms，docs/23 §3.4-2）
+/// 位移曲线时长（350~420ms，docs/28 §3.4-2）
 const Duration kRailMoveMs = Duration(milliseconds: 380);
 
 /// 确认滑出那一拍
@@ -173,7 +173,7 @@ class _ChoiceRailState extends State<ChoiceRail> {
     _ctrl.clampTo(widget.items.length);
   }
 
-  /// 领位换了一格 → 响一声 + 轻震（docs/23 §3.3：乙套用 tap）
+  /// 领位换了一格 → 响一声 + 轻震（docs/28 §3.3：乙套用 tap）
   void _onLeadChanged() {
     Sfx.play('tap');
     Haptics.buzz('choose');
@@ -224,7 +224,7 @@ class _ChoiceRailState extends State<ChoiceRail> {
       child: LayoutBuilder(
         builder: (BuildContext ctx, BoxConstraints c) {
           // 只剩 1 条（队列空时的「收工。」）时居中：它没有旁边的牌可让位，
-          // 贴着左边会显得孤零零（docs/23 §5.4 边界态）
+          // 贴着左边会显得孤零零（docs/28 §5.4 边界态）
           final double solo = n == 1 && c.hasBoundedWidth
               ? ((c.maxWidth - kPlateW) / 2).clamp(0.0, double.infinity)
               : 0;

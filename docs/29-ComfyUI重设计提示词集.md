@@ -1,4 +1,4 @@
-# 24 · ComfyUI 重设计：功能自然语言说明 + 提示词集
+# 29 · ComfyUI 重设计：功能自然语言说明 + 提示词集
 
 > 落地日期：2026-10-11 · 管线：**Qwen-Image 2.1 + 2x-AnimeSharpV4**（`tools/comfyui/`）
 > 提示词真源：`tools/comfyui/prompts/shots.json` · 批量脚本：`tools/comfyui/gen_shots.mjs`

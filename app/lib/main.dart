@@ -1256,7 +1256,7 @@ class _AppShellState extends State<AppShell>
                     } else if (i == 1) {
                       _openSheet(SheetKind.archive);
                     } else if (i == 2) {
-                      // 补给 → **悬浮货架**（docs/27：不开面板，牌直接浮在舞台上）
+                      // 补给 → **悬浮货架**（docs/32：不开面板，牌直接浮在舞台上）
                       _openTable(TableScene.supply);
                     }
                   },
@@ -1400,7 +1400,7 @@ class _AppShellState extends State<AppShell>
                   used: _usedItems,
                   coins: _host.coins,
                   onUse: _useItem,
-                  // 「去补给」—— 直接开**悬浮货架**（docs/27：不开面板）
+                  // 「去补给」—— 直接开**悬浮货架**（docs/32：不开面板）
                   onShop: () => _openTable(TableScene.supply),
                 ),
                 // 结算
@@ -2030,7 +2030,7 @@ class _AppShellState extends State<AppShell>
     });
   }
 
-  /// 打开**悬浮牌局**（docs/27 §3）—— 牌直接浮在舞台上，不开面板、不开弹层壳。
+  /// 打开**悬浮牌局**（docs/32 §3）—— 牌直接浮在舞台上，不开面板、不开弹层壳。
   ///
   /// 三个场景（补给 / 称号 / 证据）共用 [TableOverlay] 这一层壳，
   /// 但牌面皮肤完全不同（货架 / 名牒 / 取景窗）。

@@ -6,17 +6,17 @@ import 'package:flutter/scheduler.dart';
 import '../stage/spring.dart';
 
 /// ═══════════════════════════════════════════════════════════
-///  rail_base —— 「轨」的薄底座（docs/23 §7.1）
+///  rail_base —— 「轨」的薄底座（docs/28 §7.1）
 ///
 ///  甲 · 物件台（`item_rail.dart`）与 乙 · 铭牌轨（`choice_rail.dart`）
 ///  **共用这一层逻辑**，但**不共用外观**：这里只管「领位是谁 / 手势怎么吸附 /
 ///  错峰怎么排 / 减弱动态效果怎么落终态 / 命中怎么断」，
 ///  一张卡长什么样、怎么位移、怎么旋转，全在各自的 rail 文件里。
 ///
-///  这样 docs/23 §6 要求的「两套设计不相同」落在**视觉与动效层**，
+///  这样 docs/28 §6 要求的「两套设计不相同」落在**视觉与动效层**，
 ///  而吸附/命中/无障碍这类容易写错的机械活不会写两遍。
 ///
-///  ⚠️ 两条纪律（docs/23 §3.4）：
+///  ⚠️ 两条纪律（docs/28 §3.4）：
 ///  1. 只动 `Transform` / `Opacity` —— 不触发布局重排，
 ///     禁止用 `AnimatedContainer` 改尺寸做过渡。
 ///  2. 展开/收起时用 `IgnorePointer(ignoring: !open)` 断命中 ——
@@ -62,12 +62,12 @@ double rubberBand(
     (overshoot * dimension * constant) /
     (dimension + constant * overshoot.abs());
 
-/// 错峰入场的时间表（docs/23 §3.4-3）：0 / 60 / 120ms
+/// 错峰入场的时间表（docs/28 §3.4-3）：0 / 60 / 120ms
 Duration railStagger(int i) => Duration(milliseconds: 60 * i.clamp(0, 5));
 
 /// 系统「减弱动态效果」是否打开。
 ///
-/// 为真时**直接落终态、不挂任何动画**（docs/23 §3.4-4）。
+/// 为真时**直接落终态、不挂任何动画**（docs/28 §3.4-4）。
 /// 在 `build` 里读即可：`MediaQuery` 变化会重建。
 bool railReduceMotion(BuildContext context) =>
     MediaQuery.maybeDisableAnimationsOf(context) ?? false;
@@ -75,7 +75,7 @@ bool railReduceMotion(BuildContext context) =>
 /// 一条「轨」的领位状态机。
 ///
 /// 领位（lead）= 当前被推到你面前的那一个：甲套里它被放大抬起，乙套里它左对齐亮边。
-/// **任一时刻恰好一个领位**（docs/23 §3.1）。
+/// **任一时刻恰好一个领位**（docs/28 §3.1）。
 class RailController extends ChangeNotifier {
   // 对外叫 lead、对内是私有字段，所以用不了 initializing formal
   // ignore: prefer_initializing_formals
@@ -87,7 +87,7 @@ class RailController extends ChangeNotifier {
   int get lead => _lead;
 
   /// 换领位。返回**是否真的动了** —— 调用方据此决定要不要响一声
-  /// （docs/23 §3.3：换领位才响 `rung`/`tap`，点原地不响）。
+  /// （docs/28 §3.3：换领位才响 `rung`/`tap`，点原地不响）。
   ///
   /// [length] 传 0 或 1 时永远不动（单卡居中，左右留白，不硬撑）。
   bool moveTo(int i, {required int length}) {
@@ -377,7 +377,7 @@ class RailSpringTicker {
 
 /// 单向「过冲」曲线：0 → 1，末尾轻轻过一下（≈1.08），用于入场与确认那一拍。
 ///
-/// 这是 docs/23 §3.4-2 说的 `easeOutBack`。过冲量**收窄到 1.08**
+/// 这是 docs/28 §3.4-2 说的 `easeOutBack`。过冲量**收窄到 1.08**
 /// （原型 `--spring` 的手感），不是 Flutter `Curves.easeOutBack` 的 1.10。
 double railOvershoot(double t) {
   const double c1 = 1.08;

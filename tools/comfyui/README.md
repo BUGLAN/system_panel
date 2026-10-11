@@ -44,7 +44,7 @@ node tools/comfyui/gen_game_bg.mjs --out E:\tmp
 ## 重设计提示词库（`prompts/shots.json` + `gen_shots.mjs`）
 
 把 `prototype/opus-v2-dir/` 原型里**每一个功能时刻**翻成提示词：游戏化 + Live2D 舞台 + 虚拟娘。
-每个镜头的中文功能说明、她的表演、提示词全文见 **`docs/24-ComfyUI重设计提示词集.md`**。
+每个镜头的中文功能说明、她的表演、提示词全文见 **`docs/29-ComfyUI重设计提示词集.md`**。
 
 ```powershell
 node gen_shots.mjs --list                     # 30 镜清单（不需要 ComfyUI 在线）
