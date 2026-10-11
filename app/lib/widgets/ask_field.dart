@@ -11,7 +11,7 @@ import '../design/tokens.dart';
 ///
 ///  实测盒模型（390×844，目标那一步）：
 ///    ask [20,653,350,157]（bottom 34）
-///    presets [20,653,350,91]（两行 42 + 间隔 7）
+///    presets [20,653,350,91]（两行 42 + 间隔 7）→ 现改为**卡片**（见 [_preset]）
 ///    label [20,756,350,54] · ps [38,775,41,16] · input [89,756,201,54]
 /// ═══════════════════════════════════════════════════════════
 class AskField extends StatelessWidget {
@@ -76,6 +76,10 @@ class AskField extends StatelessWidget {
                 if (presets.isNotEmpty)
                   Padding(
                     padding: const EdgeInsets.only(bottom: 12),
+                    // ⚠️ 这里**不能用 LayoutBuilder 算半宽**：AskField 挂在 Column 里，
+                    //    宽度约束是无界的，`(inf - 8) / 2` 会算出 Infinity 直接抛断言。
+                    //    所以卡片方案作废（宿主 2026-10-11：「立目标预设 卡片太丑了，
+                    //    没见过这么丑的」），回到原来这排胶囊。
                     child: Wrap(
                       key: const Key('ask.presets'),
                       spacing: 7,
@@ -122,6 +126,9 @@ class AskField extends StatelessWidget {
       ),
     );
   }
+
+  /// 预设小牌的轮廓：左上斜切 14（与货架的 22、名牒的挂孔都不同）
+
 
   Widget _field() {
     return Container(
@@ -198,3 +205,4 @@ class AskField extends StatelessWidget {
     );
   }
 }
+

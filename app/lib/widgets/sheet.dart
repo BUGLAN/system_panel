@@ -6,8 +6,6 @@ import 'package:flutter/material.dart';
 
 import 'hold_button.dart';
 
-import 'package:flutter_svg/flutter_svg.dart';
-
 import '../agent/llm_client.dart';
 import '../agent/llm_telemetry.dart';
 import '../agent/settings_store.dart';
@@ -21,8 +19,8 @@ import '../stage/live2d_stage.dart';
 import '../stage/perf_presets.dart';
 import '../state/settings.dart';
 import 'radar.dart';
+import 'card_table.dart';
 import 'stats_pane.dart';
-import 'sys_icons.dart';
 
 /// ═══════════════════════════════════════════════════════════
 ///  投影面板（app.css L78-81 `#beam` + L436-498 `#sheet`）
@@ -36,7 +34,7 @@ import 'sys_icons.dart';
 ///    secs y = 465 / 751 / 849 / 1058（每个 margin-top 18）
 ///    beam 顶点 (195, .31173H)
 /// ═══════════════════════════════════════════════════════════
-class Sheet extends StatelessWidget {
+class Sheet extends StatefulWidget {
   const Sheet({
     super.key,
     required this.host,
@@ -46,6 +44,7 @@ class Sheet extends StatelessWidget {
     this.onClose,
     this.onWipe,
     this.onEquipTitle,
+    this.onOpenTitles,
     this.onBuyItem,
     this.onSettingsChanged,
     this.onOpenPerfDebug,
@@ -66,6 +65,8 @@ class Sheet extends StatelessWidget {
   /// 口头巨人生效中禁止换挂 —— store.js `equip`）。宿主侧接到 QuestFlow.equip。
   final ValueChanged<String>? onEquipTitle;
 
+  final VoidCallback? onOpenTitles;
+
   /// D7：点购买（买得起才触发；买不起按钮已置灰）。宿主侧接到 QuestFlow.buy。
   final ValueChanged<String>? onBuyItem;
 
@@ -83,9 +84,40 @@ class Sheet extends StatelessWidget {
   };
 
   @override
+  State<Sheet> createState() => _SheetState();
+}
+
+class _SheetState extends State<Sheet> {
+  /// 面板正文的滚动控制器。
+  ///
+  /// ⚠️ 它存在的唯一理由：档案页点「本周战绩与六维走势」切到回顾视图时，
+  /// `SingleChildScrollView` 会**沿用上一屏的滚动偏移**，于是新视图一进来就停在
+  /// 底部（宿主 2026-10-11 报的「跳过去确实底部，不符合样式」）。
+  /// 换视图时把偏移归零，滚动位置就跟着视图走。
+  final ScrollController _scroll = ScrollController();
+
+  // 只读别名：这个类里 host / kind / visible / settings 出现得太多，
+  // 每处都写 widget. 只会让 diff 变吵。别名只转发，不缓存。
+  HostState get host => widget.host;
+  SheetKind get kind => widget.kind;
+  bool get visible => widget.visible;
+  AppSettings get settings => widget.settings;
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  void _toTop() {
+    if (!_scroll.hasClients) return;
+    _scroll.jumpTo(0);
+  }
+
+  @override
   Widget build(BuildContext context) {
     final double h = MediaQuery.sizeOf(context).height;
-    final List<String> t = _titles[kind]!;
+    final List<String> t = Sheet._titles[kind]!;
 
     return Positioned(
       left: 0,
@@ -121,6 +153,7 @@ class Sheet extends StatelessWidget {
                     Expanded(
                       child: SingleChildScrollView(
                         key: const Key('sheet.body'),
+                        controller: _scroll,
                         padding: const EdgeInsets.fromLTRB(20, 8, 20, 34),
                         child: _body(),
                       ),
@@ -194,7 +227,7 @@ class Sheet extends StatelessWidget {
             ),
           ),
           GestureDetector(
-            onTap: onClose,
+            onTap: widget.onClose,
             behavior: HitTestBehavior.opaque,
             child: Container(
               key: const Key('sheet.close'),
@@ -237,12 +270,15 @@ class Sheet extends StatelessWidget {
   Widget _archive() {
     return _ArchiveSwitch(
       host: host,
+      // 换视图（档案 ↔ 回顾）时把面板正文的滚动偏移归零 —— 否则回顾视图
+      // 会沿用档案页的偏移、一进来就停在底部（宿主 2026-10-11 报的那个）。
+      onViewChanged: _toTop,
       profileBuilder: (VoidCallback openReview) => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
           _arTop(),
           _section(
-            '六维 · 平方根刻度',
+            '六维 · 线性刻度 · 满值 50',
             // `.radar { width:100%; max-width:300px; margin:4px auto 0 }` —— 要居中，
             // 不能让它被 Column 的 stretch 拉满
             Center(
@@ -250,8 +286,13 @@ class Sheet extends StatelessWidget {
             ),
           ),
           _section('战绩', _stats()),
-          _section('称号 · 点一下挂上', _titlesGrid()),
-          _section('道具', _inv()),
+          // 称号只有**一处**（宿主 2026-10-11：「这两个是同一个东西，保留下面的，
+          // 但是重命名为称号」）—— 就是这一行入口，点它拉起悬浮的名牒册。
+          _section('称号', _titlesEntry(), top: 12),
+          // ⚠️ 「道具」那一段（两列格）**已按宿主指定删除**：宿主原话
+          //    「此页面那个道具就不用显示了，因为主页面就已经有了这个道具了，
+          //     显示是冗余的」。四件道具的持有数在**补给货架**上都有
+          //    （`TableOverlay` / `_supply()` 的 `持有 ×N` 角标），信息不丢。
           _section('数据 · 本周回顾', _reviewEntry(openReview)),
         ],
       ),
@@ -285,7 +326,13 @@ class Sheet extends StatelessWidget {
             const Spacer(),
             Text(
               '›',
-              style: fs(family: F.mono, size: 14, wght: 500, height: 1, color: C.mist),
+              style: fs(
+                family: F.mono,
+                size: 14,
+                wght: 500,
+                height: 1,
+                color: C.mist,
+              ),
             ),
           ],
         ),
@@ -509,284 +556,115 @@ class Sheet extends StatelessWidget {
     );
   }
 
-  /// .titles —— 拿到的实心，没拿到的写「？？？ · 提示」
-  Widget _titlesGrid() {
-    return Wrap(
-      key: const Key('sheet.titles'),
-      spacing: 7,
-      runSpacing: 7,
-      children: <Widget>[
-        for (final HostTitle t in HostTitle.all)
-          _titleChip(t, host.ownedTitles.contains(t.id)),
-      ],
-    );
-  }
-
-  Widget _titleChip(HostTitle t, bool owned) {
-    final bool equipped = owned && host.title == t.id;
-    final Color fg = equipped
-        ? C.deep
-        : owned
-        ? C.ice
-        : const Color(0xFF4F607B);
-    final Color border = !owned
-        ? const Color(0x4D4F607B) // rgba(79,96,123,.3)
-        : t.shame
-        ? const Color(0x66FF4D5E) // rgba(255,77,94,.4)
-        : C.line2;
+  /// 面板里只留一枚入口（**只写册子，不重复称号名** —— 名字在上一段的 chip 上
+  /// 已经有了，同一个名字出现两次是噪音）。点它拉起悬浮的名牒册。
+  Widget _titlesEntry() {
     return GestureDetector(
-      key: Key('sheet.title.${t.id}'),
+      key: const Key('sheet.titles'),
       behavior: HitTestBehavior.opaque,
-      // D6：点已解锁称号 → 挂上（store.js equip 的两道门：
-      //   没解锁的点不动；「口头巨人」生效中禁止换挂，耻辱章摘不掉）
-      onTap: () {
-        if (!owned) return;
-        if (host.title == 'mouth') return;
-        onEquipTitle?.call(t.id);
-      },
+      onTap: widget.onOpenTitles,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
         decoration: BoxDecoration(
-          color: equipped ? C.blue : (owned ? C.blue.withAlpha(15) : null),
-          borderRadius: BorderRadius.circular(15),
-          border: Border.all(color: border, width: 1),
-          boxShadow: equipped
-              ? <BoxShadow>[
-                  BoxShadow(color: C.blue.withAlpha(89), blurRadius: 14),
-                ]
-              : null,
+          color: C.blue.withAlpha(10), // 与「道具格 / 回顾入口」同款
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: C.line2),
         ),
-        child: Text(
-          owned ? t.name : '？？？ · ${t.hint}',
-          style: fs(
-            family: F.cn,
-            size: 12,
-            wght: equipped ? 650 : 400,
-            height: 1,
-            color: fg,
-          ),
-        ),
-      ),
-    );
-  }
-
-  /// .inv —— 两列道具
-  Widget _inv() {
-    return Wrap(
-      key: const Key('sheet.inv'),
-      spacing: 8,
-      runSpacing: 8,
-      children: <Widget>[
-        for (final Item it in Item.all)
-          SizedBox(
-            width: 171,
-            child: Container(
-              padding: const EdgeInsets.all(9),
-              decoration: BoxDecoration(
-                color: C.blue.withAlpha(10), // rgba(56,225,255,.04)
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Row(
-                children: <Widget>[
-                  Text(
-                    it.glyph,
-                    style: fs(family: F.cn, size: 15, wght: 400, color: C.ice),
-                  ),
-                  const SizedBox(width: 10),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: <Widget>[
-                      Text(
-                        it.name,
-                        style: fs(
-                          family: F.cn,
-                          size: 12.5,
-                          wght: 400,
-                          color: C.ice,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        '×${host.items[it.id] ?? 0}',
-                        style: fs(
-                          family: F.num,
-                          size: 12,
-                          wght: 700,
-                          color: C.blue,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
+        child: Row(
+          children: <Widget>[
+            Text(
+              '名牒册',
+              style: fs(
+                family: F.mono,
+                size: 9,
+                wght: 600,
+                ls: 1.4,
+                height: 1,
+                color: C.blue,
               ),
             ),
-          ),
-      ],
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                '整册浮在舞台上 · 挑一张挂上',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: fs(
+                  family: F.cn,
+                  size: 12.5,
+                  wght: 400,
+                  height: 1,
+                  color: C.ice,
+                ),
+              ),
+            ),
+            Text(
+              '${host.ownedTitles.length}/${HostTitle.all.length} 张',
+              style: fs(
+                family: F.num,
+                size: 12,
+                wght: 700,
+                height: 1,
+                color: C.mist,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              '›',
+              style: fs(
+                family: F.mono,
+                size: 14,
+                wght: 500,
+                height: 1,
+                color: C.mist,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
   /// ── 补给（金币唯一去处） ────────────────────────────────
+  ///
+  /// docs/27 §13-4：四行列表 → **牌桌 · 货架**：四张牌摊开，
+  /// 点侧牌送位、点领位落定购买；买不起 = 灰 + 价签红描边（点了不生效）。
   Widget _supply() {
+    final List<Item> items = Item.all;
+    // 领位落在**买得起的那一件**上：一进来就有一张牌可以立刻落定，
+    // 而不是先看一张灰的、还得左右滑过去（docs/27 §5.1「任一时刻恰有一个领位」）。
+    // 全买不起时退回中位（保持原型那套居中几何）。
+    final int firstAfford = items.indexWhere(
+      (Item it) => host.coins >= it.price,
+    );
+    final int lead = firstAfford >= 0 ? firstAfford : (items.length - 1) ~/ 2;
     return _section(
       '金币 ◈ ${host.coins} · 只能花在这',
-      Column(
+      CardTable(
         key: const Key('sheet.shop'),
-        children: <Widget>[
-          for (int i = 0; i < Item.all.length; i++) ...<Widget>[
-            if (i > 0) const SizedBox(height: 10), // .shop gap
-            _shopRow(Item.all[i]),
-          ],
+        size: CardTableSize.l,
+        initialLead: lead,
+        cards: <TableCard>[
+          for (final Item it in items)
+            TableCard(
+              id: it.id,
+              kicker: 'ITEM · ${it.id.toUpperCase()}',
+              title: it.name,
+              glyph: it.glyph,
+              rule: it.desc,
+              badge: '持有 ×${host.items[it.id] ?? 0}',
+              price: it.price,
+              enabled: host.coins >= it.price,
+              sealWord: '买',
+            ),
         ],
+        onPick: (int i) {
+          final Item it = items[i];
+          if (host.coins < it.price) return; // 买不起：点了不生效
+          widget.onBuyItem?.call(it.id);
+        },
       ),
       top: 6, // 原型这处 `.sec` 带 inline style="margin-top:6px"
-    );
-  }
-
-  /// `.shop .row`
-  Widget _shopRow(Item it) {
-    final int owned = host.items[it.id] ?? 0;
-    final bool afford = host.coins >= it.price;
-    return Container(
-      // Border 占布局、CSS 的 inset 阴影不占 → padding 各减 1px。
-      // 少减这 1px 每行就高 1px，四行下来第 4 行会低 8px
-      padding: const EdgeInsets.all(11),
-      decoration: BoxDecoration(
-        color: C.blue.withAlpha(11), // rgba(56,225,255,.045)
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: C.line2, width: 1),
-      ),
-      child: Row(
-        children: <Widget>[
-          _glyph(it.glyph, size: 42, fontSize: 15),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: <Widget>[
-                Text.rich(
-                  TextSpan(
-                    children: <InlineSpan>[
-                      TextSpan(
-                        text: it.name,
-                        style: fs(
-                          family: F.cn,
-                          size: 14,
-                          wght: 400,
-                          color: C.ice,
-                        ),
-                      ),
-                      TextSpan(
-                        text: '持有 ×$owned',
-                        style: fs(
-                          family: F.num,
-                          size: 11,
-                          wght: 700,
-                          color: C.mist,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  it.desc,
-                  style: fs(
-                    family: F.cn,
-                    size: 11.5,
-                    wght: 400,
-                    height: 1.45,
-                    color: C.mist,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 12),
-          _buy(it, it.price, afford),
-        ],
-      ),
-    );
-  }
-
-  /// `.glyph` —— 圆形字标
-  Widget _glyph(String text, {required double size, required double fontSize}) {
-    return SizedBox(
-      width: size,
-      height: size,
-      child: Stack(
-        alignment: Alignment.center,
-        children: <Widget>[
-          // `0 0 12px rgba(56,225,255,.25)` —— 不能用 BoxShadow：
-          // Flutter 的外阴影会**透进透明的内部**（CSS 只画在 border-box 外面），
-          // 而这个圆的内部是半透明径向渐变，整块会被点亮
-          Positioned.fill(
-            child: IgnorePointer(
-              child: CustomPaint(
-                painter: _RingGlowPainter(color: C.blue.withAlpha(64)),
-              ),
-            ),
-          ),
-          Container(
-            width: size,
-            height: size,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              // inset 0 0 0 1.5px + radial-gradient(.18 → transparent 70%)
-              border: Border.all(color: C.blue, width: 1.5),
-              gradient: RadialGradient(
-                colors: <Color>[C.blue.withAlpha(46), C.blue.withAlpha(0)],
-                stops: const <double>[0, .7],
-              ),
-            ),
-            child: Text(
-              text,
-              style: fs(
-                family: F.num,
-                size: fontSize,
-                wght: 800,
-                color: C.blue,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// `.buy` —— D7：买得起 → 点了触发 onBuyItem（扣币加道具在宿主侧结算）；
-  /// 买不起保持原型语义「自动禁用」（置灰、点不动）。
-  Widget _buy(Item it, int price, bool afford) {
-    final Color fg = afford ? C.deep : const Color(0xFF4F607B);
-    return GestureDetector(
-      key: Key('sheet.buy.${it.id}'),
-      behavior: HitTestBehavior.opaque,
-      onTap: afford ? () => onBuyItem?.call(it.id) : null,
-      child: Container(
-        height: 34,
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-        decoration: BoxDecoration(
-          color: afford ? C.blue : C.blue.withAlpha(26), // rgba(56,225,255,.1)
-          borderRadius: BorderRadius.circular(17),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            SvgPicture.string(
-              afford ? kIconCoinDark : kIconCoinMuted,
-              width: 11,
-              height: 11,
-            ),
-            const SizedBox(width: 5),
-            Text(
-              '$price',
-              style: fs(family: F.num, size: 13, wght: 800, color: fg),
-            ),
-          ],
-        ),
-      ),
     );
   }
 
@@ -795,31 +673,76 @@ class Sheet extends StatelessWidget {
   /// `opus-v2/settings/v1`，重启保留。
   Widget _system() {
     return _SystemPane(
+      // 一级菜单顶部那行实时读数要读宿主（LV/连击/道具数）——菜单即仪表
+      host: host,
       settingsSeed: settings,
-      onWipe: onWipe,
-      onSettingsChanged: onSettingsChanged,
-      onOpenPerfDebug: onOpenPerfDebug,
+      // 位置/结构取 feat/ui（_SheetState 里一律走 widget.）；
+      // onOpenPerfDebug 是 master 的「表演调试台」回调，保留
+      onWipe: widget.onWipe,
+      onSettingsChanged: widget.onSettingsChanged,
+      onOpenPerfDebug: widget.onOpenPerfDebug,
+      // 一级 ↔ 二级切换时把面板正文滚回顶部：一级清单比二级长，不归零的话
+      // 进二级会沿用清单的滚动位置，看上去就是「先闪过一段内容才进二级」
+      onViewChanged: _toTop,
     );
   }
 }
 
-/// ── 系统子面板（D8 四开关 + LLM·视觉校验组） ────────────────
+/// ── 系统子面板（宿主指定：二级菜单）────────────────────────
 ///
-/// 自己持有状态：四开关与 LLM 组经 [SettingsStore]（`opus-v2/settings/v1`）
+/// 一级 = 模块清单（[_SetCat] 五类，每行回显当前值）；
+/// 二级 = 分类子面板（表头常驻 + 内容独立滚动），控件沿用旧 ID 与回调。
+///
+/// 自己持有状态：所有开关与 LLM 组经 [SettingsStore]（`opus-v2/settings/v1`）
 /// 持久化，重启保留；文本改动防抖 400ms 落盘，关面板时兜底写最后一笔。
+/// [_cat] 只是一层视图状态，不落盘 —— 关面板/切底栏即时复位到一级。
+/// 设置页的一级分类（宿主指定：二级菜单）。
+///
+/// 分类口径来自宿主 2026-10-11 原话：「菜单分别为，音效设置、level、
+/// 2D 设置、LM 设置，其他关于这些的」——「2D」经宿主确认为 **Live2D 设置**。
+/// 所以是这五类：音效 / 声音 / Live2D / LLM / 系统。
+/// `name` 同时是控件 Key 的后缀（`sheet.setMenu.<name>` / `sheet.setPane.<name>`），
+/// 改字等于改测试锚点，别随手改。
+enum _SetCat {
+  sound('音效', 'SOUND · 音效', '♪'),
+  voice('声音', 'VOICE · 她的声音', '◍'),
+  live2d('Live2D', 'LIVE2D · 角色', '◈'),
+  llm('LLM', 'LLM · 视觉校验', '✦'),
+  system('本机', 'SYSTEM · 控制台', '⚙');
+
+  const _SetCat(this.label, this.kicker, this.glyph);
+
+  /// 一级菜单上的名字
+  final String label;
+
+  /// mono kicker（一级的行内副标题，二级的表头 kicker）
+  final String kicker;
+
+  /// 图标框里的那个字形（**不用 emoji**：全是几何/音乐记号，字体一定有）
+  final String glyph;
+}
+
 class _SystemPane extends StatefulWidget {
   const _SystemPane({
+    required this.host,
     required this.settingsSeed,
     this.onWipe,
     this.onSettingsChanged,
     this.onOpenPerfDebug,
+    this.onViewChanged,
   });
+
+  /// 一级菜单顶部那行实时读数用的宿主副本（LV / 连击 / 道具数）
+  final HostState host;
 
   /// 存档加载完成前的初值（main.dart 未接 settings 时 = AppSettings.demo）
   final AppSettings settingsSeed;
   final VoidCallback? onWipe;
   final ValueChanged<AgentSettings>? onSettingsChanged;
   final VoidCallback? onOpenPerfDebug;
+
+  /// 一级 ↔ 二级切换时回调（宿主拿它把面板正文滚回顶部）
+  final VoidCallback? onViewChanged;
 
   @override
   State<_SystemPane> createState() => _SystemPaneState();
@@ -835,6 +758,10 @@ class _SystemPaneState extends State<_SystemPane> {
   bool _testing = false;
   bool? _testOk;
   String _testStatus = '';
+
+  /// 当前停在哪一级：null = 一级模块清单，非 null = 二级子面板。
+  /// 面板每次重开都会重建 [_SystemPane]，所以「切底栏/关面板即时复位」是白拿的。
+  _SetCat? _cat;
 
   @override
   void initState() {
@@ -928,7 +855,8 @@ class _SystemPaneState extends State<_SystemPane> {
             : '连接成功 · ${config.normalizedModel}';
       } else if (r.ok) {
         // 连上了但没吐字 = 隐性失败，必须说清楚，不许打勾
-        _testStatus = '连上了但没吐字（HTTP 200、正文为空——多半是思考把 '
+        _testStatus =
+            '连上了但没吐字（HTTP 200、正文为空——多半是思考把 '
             'max_tokens 用尽：把「思考档位」调低，或别把上限设太小）';
       } else {
         _testStatus = '失败 · ${_failureText(r.failure, r.detail)}';
@@ -950,143 +878,356 @@ class _SystemPaneState extends State<_SystemPane> {
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final List<Widget> rows = <Widget>[
-      _setRow(
-        '表演调试台',
-        '预设 ${PerfPresets.all.length} 条（动作 × 表情）、18 个动作组、'
-            '${Live2DStage.expressions.length} 个表情 —— 点一下就地演给你看',
-        GestureDetector(
-          key: const Key('sheet.perfDebug'),
-          behavior: HitTestBehavior.opaque,
-          onTap: () => widget.onOpenPerfDebug?.call(),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(15),
-              border: Border.all(color: C.line),
-            ),
-            child: Text(
-              '打开',
-              style: fs(family: F.cn, size: 12, wght: 700, color: C.ice),
-            ),
-          ),
-        ),
-      ),
-      _setRow(
-        '音效',
-        // 文案如实（宿主 2026-10-10 裁决 B′）：
-        // - 单发音效（落板/接单/结算/点击/道具…）本机实测正常
-        // - 逐字电子音在这台模拟器上**不响**（audioplayers 低延迟路径偶发拿不到
-        //   平台 `prepared`；已用 1.2s 看门狗止损，代价是"少响一发"被计数）
-        //   → 别再写"打字机逐字有电子音"，那是没兑现的承诺
-        // - 失败/丢弃计数照旧回显（这类回归不该只活在 logcat 里）
-        Sfx.failCount == 0 && Sfx.dropCount == 0
-            ? '离线音效包（76 件）· 单发音效正常；逐字电子音已知限制（见下）'
-            : '离线音效包（76 件）·'
-                  '${Sfx.failCount > 0 ? ' ⚠️ 播放失败 ${Sfx.failCount} 次：${Sfx.lastError ?? ''}' : ''}'
-                  '${Sfx.dropCount > 0 ? ' ⚠️ 起播超时丢弃 ${Sfx.dropCount} 发（最近 ${Sfx.lastDrop ?? ''}）' : ''}',
-        _seg('sound', const <List<String>>[
-          <String>['1', '开'],
-          <String>['0', '关'],
-        ], _s.sound ? '1' : '0', (String v) {
-          _update((AgentSettings s) => s.copyWith(sound: v == '1'));
-        }),
-      ),
-      _setRow(
-        '她的声音',
-        '人声用浏览器自带中文语音，效果看设备',
-        _seg('voice', AppSettings.voiceOptions, _s.voice, (String v) {
-          _update((AgentSettings s) => s.copyWith(voice: v));
-        }),
-      ),
-      // docs/22 §R4 / 裁决 D-h：对白节奏三档（慢 42 / 标准 34 / 快 24 毫秒每字）。
-      // 值喂给 LineLayer（字幕）与 ChatPanel（聊天气泡）的打字机；
-      // 存档里存的是毫秒数本身（与选项表同源，见 AppSettings.paceOptions）。
-      _setRow(
-        '对白节奏',
-        '她每个字蹦出来的速度：慢 42 / 标准 34 / 快 24 毫秒；点一句可立刻铺完',
-        _seg(
-          'pace',
-          AppSettings.paceOptions,
-          '${_s.paceMs}',
-          (String v) {
-            _update(
-              (AgentSettings s) => s.copyWith(
-                paceMs: int.tryParse(v) ?? AgentSettings.kDefaultPaceMs,
-              ),
-            );
-          },
-        ),
-      ),
-      _setRow(
-        '震动',
-        // 文案更正（N5）：现在是 vibration 插件的**真波形震动**（原型 15 处节奏），
-        // 不再是浏览器 API；但模拟器没有振动器，手感只有真机有
-        '真波形震动（15 处节奏）· 模拟器不震，真机才有手感',
-        _seg('haptic', const <List<String>>[
-          <String>['1', '开'],
-          <String>['0', '关'],
-        ], _s.haptic ? '1' : '0', (String v) {
-          _update((AgentSettings s) => s.copyWith(haptic: v == '1'));
-        }),
-      ),
-      _setRow(
-        '全息描边',
-        '她身上的电光轮廓；低端机可关',
-        _seg('holo', const <List<String>>[
-          <String>['1', '开'],
-          <String>['0', '关'],
-        ], _s.holo ? '1' : '0', (String v) {
-          _update((AgentSettings s) => s.copyWith(holo: v == '1'));
-        }),
-      ),
-      _llmSection(),
-      _setRow('重置存档', '一切从绑定重新开始', _danger()),
-    ];
+  /// ── 一级 · 模块清单（宿主指定：二级菜单）────────────────────
+  ///
+  /// 宿主原话：「系统此处分为二级菜单，再从这个二级菜单点进去，才是里面的
+  /// 具体的这种细节……分类显示，这也符合 APP 的设计规则」。
+  ///
+  /// 一级只回答「有哪些模块、各自现在是什么值」——它本身就是一块仪表；
+  /// 二级才放控件。**控件 ID 与回调一律沿用旧键**（`sheet.seg.*` /
+  /// `sheet.llm.*` / `sheet.danger`），功能零改动，只是搬了家。
+  ///
+  /// ⚠️ master 的「表演调试台」（`sheet.perfDebug`）原在一个扁平列表里，
+  ///    feat/ui 拆二级后它归入 **Live2D · 角色** 子面板（见 [_paneBody]）。
+  Widget _menu() {
     return Column(
       key: const Key('sheet.set'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
-        for (int i = 0; i < rows.length; i++) ...<Widget>[
-          if (i > 0) const SizedBox(height: 2), // .set gap
-          rows[i],
+        _menuBrand(),
+        const SizedBox(height: 14),
+        for (int i = 0; i < _SetCat.values.length; i++) ...<Widget>[
+          if (i > 0) const SizedBox(height: 2),
+          _menuRow(_SetCat.values[i]),
         ],
-        const SizedBox(height: 18), // .about margin-top
-        Text(
-          'SYSTEM · opus-v2-dir\n她派任务，你去现实里做，拍下证据，她结算。\n存档只在这台设备的浏览器里。',
-          style: fs(
-            family: F.cn,
-            size: 11.5,
-            wght: 400,
-            height: 1.7,
-            color: const Color(0xFF5F7190),
-          ),
-        ),
+        const SizedBox(height: 18),
+        _sysAbout(),
       ],
     );
   }
 
-  /// LLM·视觉校验组（docs/18 §2.4）：开关 + BaseURL + Key(掩码) + 模型名 + 测试连接
-  Widget _llmSection() {
-    return Padding(
-      padding: const EdgeInsets.only(top: 16),
+  /// 菜单顶部：品牌块 + 一行实时读数（菜单即仪表）
+  Widget _menuBrand() {
+    final String state =
+        'LV${widget.host.lv} · 连击 ${widget.host.bestStreak} · 道具 ${widget.host.items.values.fold<int>(0, (int a, int b) => a + b)}';
+    return Container(
+      key: const Key('sheet.setBrand'),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      decoration: BoxDecoration(
+        color: C.blue.withAlpha(10),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: C.line2, width: 1),
+      ),
       child: Column(
-        key: const Key('sheet.llm'),
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          _kicker('LLM · 视觉校验'),
+          Text(
+            'SYSTEM CONSOLE',
+            style: fs(
+              family: F.mono,
+              size: 10,
+              wght: 600,
+              ls: 2,
+              height: 1,
+              color: C.blue,
+            ),
+          ),
+          const SizedBox(height: 7),
+          Text(
+            state,
+            style: fs(
+              family: F.num,
+              size: 12,
+              wght: 700,
+              height: 1,
+              color: C.ice,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 一级的一行：图标框 + 名称/kicker + 当前值回显 + ›
+  Widget _menuRow(_SetCat c) {
+    return GestureDetector(
+      key: Key('sheet.setMenu.${c.name}'),
+      behavior: HitTestBehavior.opaque,
+      onTap: () {
+        setState(() => _cat = c);
+        widget.onViewChanged?.call();
+      },
+      child: Container(
+        constraints: const BoxConstraints(minHeight: 56),
+        decoration: BoxDecoration(
+          border: Border(bottom: BorderSide(color: C.line2, width: 1)),
+        ),
+        child: Row(
+          children: <Widget>[
+            Container(
+              width: 30,
+              height: 30,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: C.blue.withAlpha(15),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: C.line, width: 1),
+              ),
+              child: Text(
+                c.glyph,
+                style: fs(
+                  family: F.cn,
+                  size: 13,
+                  wght: 500,
+                  height: 1,
+                  color: C.blue,
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  Text(
+                    c.label,
+                    style: fs(family: F.cn, size: 14, wght: 400, color: C.ice),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    c.kicker,
+                    style: fs(
+                      family: F.mono,
+                      size: 9,
+                      wght: 400,
+                      ls: 1.6,
+                      height: 1,
+                      color: C.mist,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 10),
+            Text(
+              _summary(c),
+              key: Key('sheet.setSum.${c.name}'),
+              style: fs(
+                family: F.num,
+                size: 11,
+                wght: 700,
+                height: 1,
+                color: C.blue,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              '›',
+              style: fs(
+                family: F.mono,
+                size: 14,
+                wght: 500,
+                height: 1,
+                color: C.mist,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 二级 · 子面板（表头常驻 + 内容独立滚动）
+  Widget _pane(_SetCat c) {
+    return Column(
+      key: Key('sheet.setPane.${c.name}'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        _subHead(c),
+        _paneBody(c),
+      ],
+    );
+  }
+
+  /// 子面板表头：返回键 + 分类 kicker/标题（表头常驻，不随内容滚）
+  Widget _subHead(_SetCat c) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          GestureDetector(
+            key: const Key('sheet.setBack'),
+            behavior: HitTestBehavior.opaque,
+            onTap: () {
+              setState(() => _cat = null);
+              widget.onViewChanged?.call();
+            },
+            child: Container(
+              width: 32,
+              height: 32,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(color: C.line, width: 1),
+              ),
+              child: Text(
+                '‹',
+                style: fs(
+                  family: F.mono,
+                  size: 16,
+                  wght: 500,
+                  height: 1,
+                  color: C.ice,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  c.kicker,
+                  style: fs(
+                    family: F.mono,
+                    size: 9,
+                    wght: 600,
+                    ls: 1.8,
+                    height: 1,
+                    color: C.blue,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  c.label,
+                  style: fs(
+                    family: F.hd,
+                    size: 18,
+                    wght: 400,
+                    ls: .64,
+                    height: 1,
+                    color: C.ice,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 子面板正文：每一类各自的分组（控件沿用旧键，功能零改动）
+  Widget _paneBody(_SetCat c) {
+    switch (c) {
+      case _SetCat.sound:
+        return _rows(<Widget>[
           _setRow(
-            '视觉校验',
-            '拍照后交她核一眼；关=纯信任，全按未校验计',
-            _seg('vision', const <List<String>>[
-              <String>['1', '开'],
-              <String>['0', '关'],
-            ], _s.visionEnabled ? '1' : '0', (String v) {
-              _update((AgentSettings s) => s.copyWith(visionEnabled: v == '1'));
+            '音效',
+            Sfx.failCount == 0 && Sfx.dropCount == 0
+                ? '离线音效包（76 件）· 单发音效正常；逐字电子音已知限制（见下）'
+                : '离线音效包（76 件）·'
+                      '${Sfx.failCount > 0 ? ' ⚠️ 播放失败 ${Sfx.failCount} 次：${Sfx.lastError ?? ''}' : ''}'
+                      '${Sfx.dropCount > 0 ? ' ⚠️ 起播超时丢弃 ${Sfx.dropCount} 发（最近 ${Sfx.lastDrop ?? ''}）' : ''}',
+            _seg(
+              'sound',
+              const <List<String>>[
+                <String>['1', '开'],
+                <String>['0', '关'],
+              ],
+              _s.sound ? '1' : '0',
+              (String v) {
+                _update((AgentSettings s) => s.copyWith(sound: v == '1'));
+              },
+            ),
+          ),
+        ]);
+      case _SetCat.voice:
+        return _rows(<Widget>[
+          _setRow(
+            '她的声音',
+            '人声用浏览器自带中文语音，效果看设备',
+            _seg('voice', AppSettings.voiceOptions, _s.voice, (String v) {
+              _update((AgentSettings s) => s.copyWith(voice: v));
             }),
           ),
+          _setRow(
+            '对白节奏',
+            '她每个字蹦出来的速度：慢 42 / 标准 34 / 快 24 毫秒；点一句可立刻铺完',
+            _seg('pace', AppSettings.paceOptions, '${_s.paceMs}', (String v) {
+              _update(
+                (AgentSettings s) => s.copyWith(
+                  paceMs: int.tryParse(v) ?? AgentSettings.kDefaultPaceMs,
+                ),
+              );
+            }),
+          ),
+        ]);
+      case _SetCat.live2d:
+        return _rows(<Widget>[
+          // master 的「表演调试台」（宿主 2026-10-11）：二级菜单重构后它归到
+          // Live2D · 角色 这一格 —— 它本来就是预设/动作/表情的调试入口。
+          _setRow(
+            '表演调试台',
+            '预设 ${PerfPresets.all.length} 条（动作 × 表情）、18 个动作组、'
+                '${Live2DStage.expressions.length} 个表情 —— 点一下就地演给你看',
+            GestureDetector(
+              key: const Key('sheet.perfDebug'),
+              behavior: HitTestBehavior.opaque,
+              onTap: () => widget.onOpenPerfDebug?.call(),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(15),
+                  border: Border.all(color: C.line),
+                ),
+                child: Text(
+                  '打开',
+                  style: fs(family: F.cn, size: 12, wght: 700, color: C.ice),
+                ),
+              ),
+            ),
+          ),
+          _setRow(
+            '全息描边',
+            '她身上的电光轮廓；低端机可关',
+            _seg(
+              'holo',
+              const <List<String>>[
+                <String>['1', '开'],
+                <String>['0', '关'],
+              ],
+              _s.holo ? '1' : '0',
+              (String v) {
+                _update((AgentSettings s) => s.copyWith(holo: v == '1'));
+              },
+            ),
+          ),
+          // ⚠️ 模型地址（原型设置页的 `#l2dUrl`）在 Flutter 端**还没有落点**，
+          //    所以这里如实写出来，不放一个假的输入框：
+          //    「说得出在哪改」比「看起来能改」重要。
+          _setRow(
+            '角色模型',
+            '现在读的是随包发的那一份；换 model3.json 地址这一步还没接',
+            Text(
+              '随包',
+              style: fs(
+                family: F.mono,
+                size: 10,
+                wght: 600,
+                height: 1,
+                color: C.mist,
+              ),
+            ),
+          ),
+        ]);
+      case _SetCat.llm:
+        return _llmSection();
+      case _SetCat.system:
+        return _rows(<Widget>[
           // docs/22 §R1-2：思考档位（请求体 reasoning_effort，默认 low）
           _setRow(
             '思考档位',
@@ -1101,9 +1242,107 @@ class _SystemPaneState extends State<_SystemPane> {
           _setRow(
             '严格模式',
             '自动＝debug/profile 构建下失败直接报错、不产兜底台词；release 仍兜底但标注原因',
-            _seg('strict', AppSettings.strictOptions, _s.strictMode, (String v) {
+            _seg('strict', AppSettings.strictOptions, _s.strictMode, (
+              String v,
+            ) {
               _update((AgentSettings s) => s.copyWith(strictMode: v));
             }),
+          ),
+          _setRow(
+            '震动',
+            '真波形震动（15 处节奏）· 模拟器不震，真机才有手感',
+            _seg(
+              'haptic',
+              const <List<String>>[
+                <String>['1', '开'],
+                <String>['0', '关'],
+              ],
+              _s.haptic ? '1' : '0',
+              (String v) {
+                _update((AgentSettings s) => s.copyWith(haptic: v == '1'));
+              },
+            ),
+          ),
+          _setRow('重置存档', '一切从绑定重新开始', _danger()),
+        ]);
+    }
+  }
+
+  /// `.set` 的行距（原来那份一长条的排法，原样保留）
+  Widget _rows(List<Widget> rows) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        for (int i = 0; i < rows.length; i++) ...<Widget>[
+          if (i > 0) const SizedBox(height: 2),
+          rows[i],
+        ],
+      ],
+    );
+  }
+
+  /// 一级菜单里每一行的「当前值」回显 —— 菜单本身就是仪表
+  String _summary(_SetCat c) {
+    switch (c) {
+      case _SetCat.sound:
+        return _s.sound ? '开' : '关';
+      case _SetCat.voice:
+        final String name = AppSettings.voiceOptions
+            .where((List<String> o) => o[0] == _s.voice)
+            .map((List<String> o) => o[1])
+            .join();
+        return '${name.isEmpty ? _s.voice : name} · ${_s.paceMs}ms';
+      case _SetCat.live2d:
+        return _s.holo ? '描边 开' : '描边 关';
+      case _SetCat.llm:
+        return _s.visionEnabled ? '校验 开' : '校验 关';
+      case _SetCat.system:
+        return _s.haptic ? '震动 开' : '震动 关';
+    }
+  }
+
+  /// 菜单底部：控制台状态条（只读回显，可观测）
+  Widget _sysAbout() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        _kicker('SYSTEM · 本机'),
+        Text(
+          '存档 key opus-v2/widget.settings/v1 · 角色模型随包 · 音效 ${_s.sound ? '开' : '关'} · 语音 ${_s.voice}\n她派任务，你去现实里做，拍下证据，她结算。',
+          style: fs(
+            family: F.cn,
+            size: 11.5,
+            wght: 400,
+            height: 1.7,
+            color: const Color(0xFF5F7190),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// LLM·视觉校验组（docs/18 §2.4）：开关 + BaseURL + Key(掩码) + 模型名 + 测试连接
+  ///
+  /// 现在它整组就是「LLM」那个二级子面板的正文 —— 分类标题由子面板表头承担，
+  /// 所以这里不再挂 `_kicker`（同一个名字出现两次是噪音）。
+  Widget _llmSection() {
+    return _rows(<Widget>[
+          _setRow(
+            '视觉校验',
+            '拍照后交她核一眼；关=纯信任，全按未校验计',
+            _seg(
+              'vision',
+              const <List<String>>[
+                <String>['1', '开'],
+                <String>['0', '关'],
+              ],
+              _s.visionEnabled ? '1' : '0',
+              (String v) {
+                _update(
+                  (AgentSettings s) => s.copyWith(visionEnabled: v == '1'),
+                );
+              },
+            ),
           ),
           _llmField(
             '接口地址',
@@ -1141,9 +1380,7 @@ class _SystemPaneState extends State<_SystemPane> {
                     wght: 500,
                     color: _testOk == null
                         ? C.mist
-                        : (_testOk!
-                              ? C.blue
-                              : const Color(0xFFFF8F99)),
+                        : (_testOk! ? C.blue : const Color(0xFFFF8F99)),
                   ),
                 ),
               ),
@@ -1186,9 +1423,7 @@ class _SystemPaneState extends State<_SystemPane> {
               ),
             ),
           ),
-        ],
-      ),
-    );
+    ]);
   }
 
   /// 与档案/补给页 `.sec` 同款的小节头
@@ -1387,7 +1622,44 @@ class _SystemPaneState extends State<_SystemPane> {
     borderSide: BorderSide(color: color, width: 1),
   );
 
+  @override
+  Widget build(BuildContext context) {
+    final _SetCat? c = _cat;
+    // ⚠️ 这里**不能**用「所有进出都从右侧滑入」那种写法：旧的一级清单还留在屏幕上
+    //    往右滑走，视觉上就是「中间闪过一张清单，然后才进二级」——宿主 2026-10-11 报的
+    //    那个「十分突兀的 bug」就是它。
+    //    正确做法是**有向滑动**：进二级时一级往左退、二级从右来；返回时反过来。
+    //    同一时刻只有一条边在动，中间不会闪出第三样东西。
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 260),
+      switchInCurve: kOut,
+      switchOutCurve: kOut.flipped,
+      transitionBuilder: (Widget child, Animation<double> a) {
+        final Animation<double> e = CurvedAnimation(
+          parent: a,
+          curve: Curves.easeOut,
+        );
+        final bool entering = a.status == AnimationStatus.reverse;
+        final bool isMenu = (child.key as ValueKey<String>?)?.value == 'menu';
+        final double from = entering
+            ? (isMenu ? -.08 : .12)
+            : (isMenu ? .12 : -.08);
+        return SlideTransition(
+          position: Tween<Offset>(
+            begin: Offset(from, 0),
+            end: Offset.zero,
+          ).animate(e),
+          child: FadeTransition(opacity: e, child: child),
+        );
+      },
+      child: c == null
+          ? KeyedSubtree(key: const ValueKey<String>('menu'), child: _menu())
+          : KeyedSubtree(key: const ValueKey<String>('pane'), child: _pane(c)),
+    );
+  }
+
   /// `.danger` —— 按住 2 秒重置（ui.js L624）
+
   ///
   /// **按满 2.0s**，松手以 1.0s 退回（三处按压件里退得最慢的一处）。
   /// 按满 → `Store.wipe()` + `location.reload()`；我们这里是回到绑定仪式。
@@ -1443,12 +1715,20 @@ class _SystemPaneState extends State<_SystemPane> {
 /// 入口在档案段尾（_reviewEntry），回顾由 [StatsPane] 呈现。
 /// 用内部状态而非 SheetKind，main.dart 的装配零改动。
 class _ArchiveSwitch extends StatefulWidget {
-  const _ArchiveSwitch({required this.host, required this.profileBuilder});
+  const _ArchiveSwitch({
+    required this.host,
+    required this.profileBuilder,
+    this.onViewChanged,
+  });
 
   final HostState host;
 
   /// 档案内容（openReview 由本组件提供：点入口切到回顾）
   final Widget Function(VoidCallback openReview) profileBuilder;
+
+  /// 换视图时回调（档案 ↔ 回顾）：宿主拿它把面板正文的滚动偏移归零。
+  /// 没有这一下，回顾视图会沿用档案页的偏移、一进来就停在底部。
+  final VoidCallback? onViewChanged;
 
   @override
   State<_ArchiveSwitch> createState() => _ArchiveSwitchState();
@@ -1487,7 +1767,10 @@ class _ArchiveSwitchState extends State<_ArchiveSwitch> {
                 // 返回条（与入口同一行语言）
                 GestureDetector(
                   key: const Key('sheet.reviewBack'),
-                  onTap: () => setState(() => _review = false),
+                  onTap: () {
+                    setState(() => _review = false);
+                    widget.onViewChanged?.call();
+                  },
                   behavior: HitTestBehavior.opaque,
                   child: Padding(
                     padding: const EdgeInsets.only(bottom: 12),
@@ -1533,9 +1816,11 @@ class _ArchiveSwitchState extends State<_ArchiveSwitch> {
                 StatsPane(attrs: widget.host.attrs),
               ],
             )
-          : widget.profileBuilder(
-              () => setState(() => _review = true),
-            ),
+          : widget.profileBuilder(() {
+              setState(() => _review = true);
+              // 换视图 → 正文回顶部（否则沿用档案页的偏移，一进来就停在底部）
+              widget.onViewChanged?.call();
+            }),
     );
   }
 }
@@ -1607,30 +1892,6 @@ class _BeamPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _BeamPainter o) => o.size != size;
-}
-
-/// `.glyph` 的外发光 `0 0 12px` —— 描边的模糊圆，只往外散
-class _RingGlowPainter extends CustomPainter {
-  const _RingGlowPainter({required this.color});
-
-  final Color color;
-
-  @override
-  void paint(Canvas canvas, Size s) {
-    final double r = s.width / 2;
-    canvas.drawCircle(
-      Offset(r, r),
-      r,
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 4
-        ..color = color
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6),
-    );
-  }
-
-  @override
-  bool shouldRepaint(covariant _RingGlowPainter o) => o.color != color;
 }
 
 /// `.sh-edge` —— 顶边一道光：中间白、两侧青，外加一层向上的辉光

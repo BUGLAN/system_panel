@@ -7,6 +7,7 @@ import 'package:image_picker/image_picker.dart' show ImageSource;
 
 import 'hold_button.dart';
 import 'press_scale.dart';
+import 'table_overlay.dart';
 
 import '../agent/vision.dart';
 import '../data/format.dart';
@@ -54,7 +55,8 @@ class ExecPanel extends StatelessWidget {
     this.onQuitProgress,
     this.onItem,
     this.onCollapse,
-  });  final Quest quest;
+  });
+  final Quest quest;
 
   /// 已经executed了多久
   final Duration elapsed;
@@ -119,86 +121,86 @@ class ExecPanel extends StatelessWidget {
         builder: (BuildContext _, BoxConstraints c) {
           final Color rk = quest.rarity.color;
           final Duration limit = Duration(minutes: quest.minutes);
-          final double progress = (elapsed.inMilliseconds / limit.inMilliseconds)
-              .clamp(0.0, 1.0);
+          final double progress =
+              (elapsed.inMilliseconds / limit.inMilliseconds).clamp(0.0, 1.0);
           final bool warn = elapsed.inMilliseconds > limit.inMilliseconds * .85;
           return Stack(
-          children: <Widget>[
-            // .ex-col
-            Positioned(
-              left: 22,
-              top: 92,
-              width: c.maxWidth * .62,
-              child: Column(
-                key: const Key('exec.col'),
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  _kindRow(rk),
-                  const SizedBox(height: 10),
-                  Text(
-                    quest.name,
-                    style: fs(
-                      family: F.hd,
-                      size: 21,
-                      wght: 400,
-                      ls: .42,
-                      height: 1.3,
-                      color: C.ice,
+            children: <Widget>[
+              // .ex-col
+              Positioned(
+                left: 22,
+                top: 92,
+                width: c.maxWidth * .62,
+                child: Column(
+                  key: const Key('exec.col'),
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    _kindRow(rk),
+                    const SizedBox(height: 10),
+                    Text(
+                      quest.name,
+                      style: fs(
+                        family: F.hd,
+                        size: 21,
+                        wght: 400,
+                        ls: .42,
+                        height: 1.3,
+                        color: C.ice,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 24),
-                  Text(
-                    fmtClock(elapsed),
-                    // 计时器永远不许折行（窄屏上 07:00 会被挤成两行）
-                    maxLines: 1,
-                    style: fs(
-                      family: F.num,
-                      size: 70,
-                      wght: 800,
-                      wdth: 78,
-                      ls: .7,
-                      height: .9,
-                      color: warn ? Colors.white : const Color(0xFFF3FDFF),
-                      shadows: <Shadow>[
-                        Shadow(color: C.blue.withAlpha(128), blurRadius: 26),
-                      ],
+                    const SizedBox(height: 24),
+                    Text(
+                      fmtClock(elapsed),
+                      // 计时器永远不许折行（窄屏上 07:00 会被挤成两行）
+                      maxLines: 1,
+                      style: fs(
+                        family: F.num,
+                        size: 70,
+                        wght: 800,
+                        wdth: 78,
+                        ls: .7,
+                        height: .9,
+                        color: warn ? Colors.white : const Color(0xFFF3FDFF),
+                        shadows: <Shadow>[
+                          Shadow(color: C.blue.withAlpha(128), blurRadius: 26),
+                        ],
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 10),
-                  _limitRow(progress),
-                  const SizedBox(height: 18),
-                  _watchRow(),
-                  const SizedBox(height: 30),
-                  _evidence(),
-                ],
+                    const SizedBox(height: 10),
+                    _limitRow(progress),
+                    const SizedBox(height: 18),
+                    _watchRow(),
+                    const SizedBox(height: 30),
+                    _evidence(),
+                  ],
+                ),
               ),
-            ),
-            // .ex-act
-            Positioned(
-              left: 20,
-              right: 20,
-              bottom: 82,
-              child: Row(
-                key: const Key('exec.act'),
-                children: <Widget>[
-                  _itemButton(),
-                  const SizedBox(width: 10),
-                  _submitButton(),
-                ],
+              // .ex-act
+              Positioned(
+                left: 20,
+                right: 20,
+                bottom: 82,
+                child: Row(
+                  key: const Key('exec.act'),
+                  children: <Widget>[
+                    _itemButton(),
+                    const SizedBox(width: 10),
+                    _submitButton(),
+                  ],
+                ),
               ),
-            ),
-            // .ex-low
-            Positioned(
-              left: 20,
-              right: 20,
-              bottom: 26,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: <Widget>[_quitButton(), _miniButton()],
+              // .ex-low
+              Positioned(
+                left: 20,
+                right: 20,
+                bottom: 26,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: <Widget>[_quitButton(), _miniButton()],
+                ),
               ),
-            ),
-          ],
-        );
+            ],
+          );
         },
       ),
     );
@@ -676,10 +678,11 @@ class _EvidenceBlockState extends State<_EvidenceBlock> {
     final int unverified = count - verified;
     final double displayCrit = count == 0
         ? widget.critBase
-        : math.min(.85, widget.critBase + evidenceCritBonus(
-            verified: verified,
-            unverified: unverified,
-          ));
+        : math.min(
+            .85,
+            widget.critBase +
+                evidenceCritBonus(verified: verified, unverified: unverified),
+          );
 
     // 最新一条存疑的 note（验收要求「存疑+note」可见）；
     // 没有存疑时退而显示最新一条「未校验」的原因（无 Key/断网/超时…）
@@ -882,38 +885,21 @@ class _EvidenceBlockState extends State<_EvidenceBlock> {
     if (_shots.length >= 3) return; // 双保险：槽位只有 3 格
     setState(() => _busy = true);
     try {
-      final ImageSource? src = await showModalBottomSheet<ImageSource>(
+      // docs/27 §13-8：Material 弹层（全 App 唯一异类长相）→ **悬浮的取景窗**：
+      // 全屏浮在舞台上，没有面板壳、没有分节标题；点侧牌送位、点领位落定。
+      final ImageSource? src = await showGeneralDialog<ImageSource>(
         context: context,
-        backgroundColor: const Color(0xEE061228),
-        shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(14)),
-        ),
-        builder: (BuildContext sheetCtx) => SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              for (final (ImageSource, String, String) opt in const <(ImageSource, String, String)>[
-                (ImageSource.camera, '拍照', '现场拍一张'),
-                (ImageSource.gallery, '从相册选', '挑一张现成的'),
-              ])
-                ListTile(
-                  leading: Text(
-                    opt.$1 == ImageSource.camera ? '◉' : '▣',
-                    style: fs(family: F.num, size: 16, wght: 700, color: C.blue),
-                  ),
-                  title: Text(
-                    opt.$2,
-                    style: fs(family: F.cn, size: 14, wght: 400, color: C.ice),
-                  ),
-                  subtitle: Text(
-                    opt.$3,
-                    style: fs(family: F.cn, size: 10.5, wght: 400, color: C.mist),
-                  ),
-                  onTap: () => Navigator.of(sheetCtx).pop(opt.$1),
+        barrierDismissible: false,
+        barrierColor: Colors.transparent,
+        transitionDuration: const Duration(milliseconds: 220),
+        pageBuilder:
+            (BuildContext ctx, Animation<double> a, Animation<double> b) =>
+                TableOverlay(
+                  scene: TableScene.evidence,
+                  onClose: () => Navigator.of(ctx).pop(),
+                  onPick: (int i) => Navigator.of(ctx)
+                      .pop(i == 0 ? ImageSource.camera : ImageSource.gallery),
                 ),
-            ],
-          ),
-        ),
       );
       if (src == null || !mounted) return;
       if (_shots.length >= 3) return;
@@ -1121,7 +1107,8 @@ class _BadgeIn extends StatefulWidget {
   State<_BadgeIn> createState() => _BadgeInState();
 }
 
-class _BadgeInState extends State<_BadgeIn> with SingleTickerProviderStateMixin {
+class _BadgeInState extends State<_BadgeIn>
+    with SingleTickerProviderStateMixin {
   /// 280ms 总窗：前 120ms 全透明，后 160ms 淡入
   late final AnimationController _c = AnimationController(
     vsync: this,

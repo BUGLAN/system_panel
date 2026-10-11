@@ -400,49 +400,94 @@ class _Who extends StatelessWidget {
             color: C.blue,
           ),
         ),
-        const SizedBox(height: 3),
-        // `连击 <b>6</b> 天`：数字是 Tektur
-        Text.rich(
-          TextSpan(
-            children: <InlineSpan>[
-              TextSpan(
-                text: state.streak > 0 ? '连击 ' : '连击 —',
-                style: fs(
-                  family: F.mono,
-                  size: 9.5,
-                  wght: 500,
-                  ls: .95,
-                  height: 1,
-                  color: C.mist,
+      ],
+    );
+  }
+}
+
+/// 连击药丸（宿主 2026-10-11：「主界面这个联机……给它换个位置，换到这个委托的上方一点」）。
+///
+/// 原先是 `.hud-who` 里的第三行（名字 / 称号 / 连击），压在左上角那一小块里、
+/// 和称号挤在一起看不出分量。现在把它**摘出来单独一颗**，贴在顶栏下沿居中：
+/// 既离开了那个角落，又稳稳落在委托卡上方（派单板与执行面板都在屏幕下三分之一）。
+///
+/// 读数照旧：`连击 <b>N</b> 天`（数字走 Tektur），0 连击显示破折号。
+class StreakPill extends StatelessWidget {
+  const StreakPill({super.key, required this.streak, this.visible = true});
+
+  /// 当前连击天数（0 = 还没连上）
+  final int streak;
+
+  final bool visible;
+
+  @override
+  Widget build(BuildContext context) {
+    return Positioned(
+      // ⚠️ 位置踩过一次坑：原先贴顶栏下沿**居中**（top 46），结果正撞在
+      //    「执行中 00:59」那颗计时药丸上（它 top:80、也居中）—— 两颗药丸叠在一起。
+      //    现在**右上角**、压在金币与菜单那一列上方：既离开了左上角那个小方块，
+      //    又和居中的计时药丸彻底错开。
+      top: 30,
+      right: 16,
+      child: IgnorePointer(
+        child: AnimatedOpacity(
+          opacity: visible ? 1 : 0,
+          duration: const Duration(milliseconds: 300),
+          curve: kOut,
+          child: Align(
+            alignment: Alignment.topRight,
+            child: Container(
+              key: const Key('hud.streak'),
+              padding: const EdgeInsets.fromLTRB(11, 5, 11, 5),
+              decoration: BoxDecoration(
+                color: const Color(0xB3040E20), // rgba(4,14,32,.7)：与对话圆钮同款玻璃
+                borderRadius: BorderRadius.circular(13),
+                border: Border.all(color: C.line2, width: 1),
+              ),
+              child: Text.rich(
+                TextSpan(
+                  children: <InlineSpan>[
+                    TextSpan(
+                      text: streak > 0 ? '连击 ' : '连击 —',
+                      style: fs(
+                        family: F.mono,
+                        size: 9.5,
+                        wght: 500,
+                        ls: .95,
+                        height: 1,
+                        color: C.mist,
+                      ),
+                    ),
+                    if (streak > 0) ...<InlineSpan>[
+                      TextSpan(
+                        text: '$streak',
+                        style: fs(
+                          family: F.num,
+                          size: 11,
+                          wght: 700,
+                          height: 1,
+                          color: C.ice,
+                        ),
+                      ),
+                      TextSpan(
+                        text: ' 天',
+                        style: fs(
+                          family: F.mono,
+                          size: 9.5,
+                          wght: 500,
+                          ls: .95,
+                          height: 1,
+                          color: C.mist,
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
               ),
-              if (state.streak > 0) ...<InlineSpan>[
-                TextSpan(
-                  text: '${state.streak}',
-                  style: fs(
-                    family: F.num,
-                    size: 10,
-                    wght: 700,
-                    height: 1,
-                    color: C.ice,
-                  ),
-                ),
-                TextSpan(
-                  text: ' 天',
-                  style: fs(
-                    family: F.mono,
-                    size: 9.5,
-                    wght: 500,
-                    ls: .95,
-                    height: 1,
-                    color: C.mist,
-                  ),
-                ),
-              ],
-            ],
+            ),
           ),
         ),
-      ],
+      ),
     );
   }
 }

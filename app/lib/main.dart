@@ -64,6 +64,7 @@ import 'widgets/result_panel.dart';
 import 'widgets/ring_labels.dart';
 import 'widgets/ring_tag.dart';
 import 'widgets/sheet.dart';
+import 'widgets/table_overlay.dart';
 
 /// 宿主 SYSTEM —— Flutter 客户端。
 /// 设计真源：prototype/opus-v2-dir（原型即规格）。
@@ -99,8 +100,7 @@ class SysApp extends StatelessWidget {
               Live2DStage(
                 visible: true,
                 cam: Cam.byName('lobby'),
-                onReady: (Live2DStageHandle h) =>
-                    debugPrint('[bare] 裸舞台就绪'),
+                onReady: (Live2DStageHandle h) => debugPrint('[bare] 裸舞台就绪'),
                 onFailed: () => debugPrint('[bare] 裸舞台失败'),
               ),
               // 一块对照 Flutter 内容（左上角），确认 Flutter 层还在画
@@ -443,7 +443,8 @@ class _AppShellState extends State<AppShell>
     final LlmGateway gw = LlmGateway(client);
     final MemoryStore mem = _memory ?? MemoryStore();
     // 工具读的是「当前那份」QuestFlow——绑定/读档会换实例，必须传取流回调
-    final AgentToolRegistry reg = _agentTools ??
+    final AgentToolRegistry reg =
+        _agentTools ??
         defaultAgentTools(
           context: QuestFlowAdapter(
             flowOf: () => _flow,
@@ -472,10 +473,10 @@ class _AppShellState extends State<AppShell>
   ///   release 仍走兜底（无 Key / 断网不得阻塞使用），但会标注原因。
   /// - `on` / `off`：设置页手动覆盖（便于在 release 上验证严格模式）。
   static bool _strictOf(AgentSettings s) => switch (s.strictMode) {
-        'on' => true,
-        'off' => false,
-        _ => kDebugMode || kProfileMode,
-      };
+    'on' => true,
+    'off' => false,
+    _ => kDebugMode || kProfileMode,
+  };
 
   /// 工具改了队列/计划之后：同步档案副本 + 存档（QuestFlowAdapter.onChanged）
   void _onAgentMutated() {
@@ -584,10 +585,7 @@ class _AppShellState extends State<AppShell>
 
   /// 毒舌：按到一半松手（waver 原句先行，LLM 毒舌到了再顶）
   void _onWaverRoast() {
-    _sayAside(
-      LINES.waver[_rnd.nextInt(LINES.waver.length)],
-      holdMs: 1400,
-    );
+    _sayAside(LINES.waver[_rnd.nextInt(LINES.waver.length)], holdMs: 1400);
     final SystemCopyProvider? copy = _copy;
     if (copy == null) return;
     copy
@@ -596,9 +594,9 @@ class _AppShellState extends State<AppShell>
           reason: '接单按到一半松了手',
         )
         .then((CopyLine line) {
-      if (!mounted || _moment != Moment.dispatch) return;
-      if (line.source == CopySource.llm) _sayAside(line.text, holdMs: 1600);
-    });
+          if (!mounted || _moment != Moment.dispatch) return;
+          if (line.source == CopySource.llm) _sayAside(line.text, holdMs: 1600);
+        });
   }
 
   /// 追问：绑定仪式的问目标（LLM 回了才顶掉 LINES.askGoal）
@@ -1022,6 +1020,24 @@ class _AppShellState extends State<AppShell>
       body: Stack(
         fit: StackFit.expand,
         children: <Widget>[
+          // ⚠️ 系统返回键 = 失败页的**硬出口**（语义就是「今天算了。」→ 大厅）。
+          //    「永远有补救」不能只押在那两张铭牌上：2026-10-11 的死局恰恰是
+          //    铭牌自己把自己拆了（见 `_onChoice` 与 `Choices._confirm` 的注释）
+          //    —— 返回键是最后一道门，跟演出闸门、跟任何锁都无关。
+          //    别处照旧：`canPop: !fail` → 系统默认行为（退到桌面 / 关掉当前层）。
+          //
+          //    形态说明：`PopScope` 只要挂在**这一条路由里**就会生效（它向
+          //    `ModalRoute` 注册一个 pop entry），不需要包住任何东西 ——
+          //    所以这里用一颗 0×0 的空壳当挂点：整棵 build 树**一行缩进都不动**
+          //    （包住 Scaffold 的话，`dart format` 会把 600+ 行全部重排）。
+          PopScope(
+            canPop: !fail,
+            onPopInvokedWithResult: (bool didPop, Object? result) {
+              if (didPop) return; // 正常 pop（不在失败页）：什么都不做
+              _onChoice(1); // 失败页接住了返回键 = 今天算了 → 大厅
+            },
+            child: const SizedBox.shrink(),
+          ),
           // `#shake` 包住 `#bg` 到 `#flash` 的全部内容（`#boot` 在它外面，不跟着抖）
           ShakeLayer(
             token: _shake,
@@ -1050,9 +1066,7 @@ class _AppShellState extends State<AppShell>
                     child: BgLayer(
                       // 绑定仪式还没立目标，天幕上写的还是 SYSTEM；
                       // 之后绑死 _goal.short（D10：绑定/换目标后自动跟随）
-                      word: (boot || onboard)
-                          ? 'SYSTEM'
-                          : _goal.short,
+                      word: (boot || onboard) ? 'SYSTEM' : _goal.short,
                       latin: boot || onboard,
                     ),
                   ),
@@ -1117,9 +1131,7 @@ class _AppShellState extends State<AppShell>
                             }
                           },
                           onFailed: () {
-                            debugPrint(
-                              '[stage] 原生舞台加载失败 → WebView 降级',
-                            );
+                            debugPrint('[stage] 原生舞台加载失败 → WebView 降级');
                             if (mounted) setState(() => _stageFallback = true);
                           },
                         )
@@ -1207,16 +1219,26 @@ class _AppShellState extends State<AppShell>
                   // 外面包带 RenderObject 的包装件会报 ParentDataWidget 错）
                   fade: _wakeFade,
                 ),
-                // 对话入口（docs/18 §2.6「HUD 对话按钮」）：hud.dart 的单写者
+                // 连击药丸（宿主 2026-10-11：从左上角那个小方块里摘出来，
+                // 贴到顶栏下沿居中 —— 位置落在委托卡上方，不再和称号挤在一起）
+                // 连击药丸 —— 宿主 2026-10-11：「连击 隐藏」（先不显示，组件留着，
+                // 要接回来把 visible 改回 lobby || exec 即可）
+                StreakPill(streak: _host.streak, visible: false),
                 // 纪律在 t9，这颗玻璃圆钮由本文件挂载——HUD 行下方左上，
                 // 在 Stack 里压着 Live2D 平台视图，触摸先命中它
+                // 对话入口（docs/18 §2.6）：宿主 2026-10-11 指定从左上角搬走 ——
+                // 「图2聊天框，移动到委托的上方，如图3位置」：现在挂在**右下、底栏之上**，
+                // 也就是委托板 / 今日已清那一块的正上方。
+                // 样式与底栏那几颗侧键同族（玻璃圆 + 1px 描边），只是大一号、贴右手拇指。
                 if (lobby)
                   Positioned(
-                    left: 16,
-                    top: 78,
+                    // 位置/尺寸取 feat/ui（宿主 10-11：右下、底栏之上，直径 56）；
+                    // 唤醒过场取 master（外面这层 _WakeFade 必须保留）
+                    right: 18,
+                    bottom: 150,
                     child: _WakeFade(
                       t: _wakeFade,
-                      child: ChatEntryButton(onTap: () => _openChat()),
+                      child: ChatEntryButton(onTap: () => _openChat(), size: 56),
                     ),
                   ),
                 Dock(
@@ -1231,8 +1253,11 @@ class _AppShellState extends State<AppShell>
                         _pickedRing = null;
                         _moment = Moment.main;
                       });
-                    } else if (i == 1 || i == 2) {
-                      _openSheet(i == 1 ? SheetKind.archive : SheetKind.supply);
+                    } else if (i == 1) {
+                      _openSheet(SheetKind.archive);
+                    } else if (i == 2) {
+                      // 补给 → **悬浮货架**（docs/27：不开面板，牌直接浮在舞台上）
+                      _openTable(TableScene.supply);
                     }
                   },
                 ),
@@ -1375,8 +1400,8 @@ class _AppShellState extends State<AppShell>
                   used: _usedItems,
                   coins: _host.coins,
                   onUse: _useItem,
-                  // 「去补给」—— 从执行页开的面板，关掉要回执行页（`_sheetFrom`）
-                  onShop: () => _openSheet(SheetKind.supply),
+                  // 「去补给」—— 直接开**悬浮货架**（docs/27：不开面板）
+                  onShop: () => _openTable(TableScene.supply),
                 ),
                 // 结算
                 ResultPanel(
@@ -1465,7 +1490,9 @@ class _AppShellState extends State<AppShell>
                           ? _dispatchLine ?? '接不接？'
                           : result && _resultChoicesOn
                           // 结算页的退出问话（原型 flows.js L462 的 choose()）
-                          ? _flow.queueEmpty ? '收工？……明天见。' : '还做吗？'
+                          ? _flow.queueEmpty
+                                ? '收工？……明天见。'
+                                : '还做吗？'
                           : fail
                           // `[[{dl}]]` 是补救单截止（真实认输时间 + 24h）
                           ? LINES.remedyLine.replaceFirst(
@@ -1599,10 +1626,7 @@ class _AppShellState extends State<AppShell>
                     right: 0,
                     bottom: 96,
                     child: InterviewDeck(
-                      cards: interviewCardsFor(
-                        _interviewCat!,
-                        level: _host.lv,
-                      ),
+                      cards: interviewCardsFor(_interviewCat!, level: _host.lv),
                       onDone: _completeOnboarding,
                     ),
                   ),
@@ -1620,6 +1644,7 @@ class _AppShellState extends State<AppShell>
                   onClose: () => setState(() => _moment = _sheetFrom),
                   onWipe: _wipe,
                   // D6/D7 装配（t9 组件回调 + t14 flow 业务）：挂称号 / 购买
+                  onOpenTitles: () => _openTable(TableScene.titles),
                   onEquipTitle: (String id) {
                     if (!_flow.equip(id)) return; // 未解锁/口头巨人期：组件已禁用，双保险
                     setState(() => _host = _flow.host);
@@ -2005,6 +2030,39 @@ class _AppShellState extends State<AppShell>
     });
   }
 
+  /// 打开**悬浮牌局**（docs/27 §3）—— 牌直接浮在舞台上，不开面板、不开弹层壳。
+  ///
+  /// 三个场景（补给 / 称号 / 证据）共用 [TableOverlay] 这一层壳，
+  /// 但牌面皮肤完全不同（货架 / 名牒 / 取景窗）。
+  /// 收起由 overlay 自己的幕接管（点幕 / 点出口铭牌），所以 barrier 不拦点击。
+  Future<void> _openTable(TableScene scene) async {
+    await showGeneralDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      barrierColor: Colors.transparent,
+      transitionDuration: const Duration(milliseconds: 240),
+      pageBuilder:
+          (BuildContext ctx, Animation<double> a, Animation<double> b) =>
+              TableOverlay(
+                scene: scene,
+                host: _host,
+                onClose: () => Navigator.of(ctx).pop(),
+                onBuy: (String id) {
+                  if (!_flow.buy(id)) return null;
+                  setState(() => _host = _flow.host);
+                  _persist();
+                  return _flow.host;
+                },
+                onEquip: (String id) {
+                  if (!_flow.equip(id)) return null;
+                  setState(() => _host = _flow.host);
+                  _persist();
+                  return _flow.host;
+                },
+              ),
+    );
+  }
+
   /// 本单已经挂上生效的道具（原型 `A.dbl / A.crit / A.shield`）
   final Set<String> _usedItems = <String>{};
 
@@ -2030,6 +2088,11 @@ class _AppShellState extends State<AppShell>
       _moment = Moment.fail;
       _quitP = 0;
       _resultChoicesOn = false;
+      // 终态优先：进失败页 = 这一段演出到此为止，顺手把「她正在说回来那几句」
+      // 的演出闸门放掉（`_greetAfter` / `_wakeSequence` 会把它举起来 ~1~3 秒）。
+      // 不放的话，宿主在这段窗口里点【……接。】会被闸门挡掉（`_onChoice` 旧版
+      // 就是 `if (_busy) return`），2026-10-11 实机死局见 `_onChoice` 的注释。
+      _busy = false;
       _failAt = DateTime.now();
       _failTimeout = how == 'timeout';
       final Quest? r = fo?.remedy;
@@ -2061,8 +2124,7 @@ class _AppShellState extends State<AppShell>
   /// 回应选项什么时候出现：结算演出播完，或失败页进场（原型是她说完话
   /// 再 `choose()`；失败页那几句插话的时长不阻塞选项）
   bool get _choicesOn =>
-      _moment == Moment.fail ||
-      (_moment == Moment.result && _resultChoicesOn);
+      _moment == Moment.fail || (_moment == Moment.result && _resultChoicesOn);
 
   /// 两套选项：队列空时只剩【收工。】（flows.js L462）
   List<Choice> get _choices {
@@ -2080,15 +2142,24 @@ class _AppShellState extends State<AppShell>
   /// 选完的岔路（flows.js L464-465 / L554-558）：
   ///   再来一单 → 派单板 · 先歇会儿/收工 → 大厅
   ///   ……接 → 补救单插回队首 → 派单板 · 今天算了 → 大厅
-  void _onChoice(int i) {
-    if (_busy) return;
+  ///
+  /// 返回**这一下算不算数** —— `Choices` 据此决定要不要锁死、领位牌要不要
+  /// 滑走（见 `widgets/choices.dart` 的 [ChoicePick]）。
+  ///
+  /// ⚠️ 这里**故意不看 `_busy`**：`_busy` 是"她正在说回来那几句"的演出闸门
+  ///    （`_greetAfter` / `_wakeSequence` 两处），而失败页与结算页的回应是
+  ///    那两个终态**唯一的出口**。闸门关着就 return 的话，宿主点【……接。】
+  ///    没反应、牌却按"已确认"滑走 —— 2026-10-11 实机就是这么卡死的：
+  ///    回前台打招呼那 1~3 秒里超时判负（`_onSecond` → `_beginFail`），
+  ///    正好撞上宿主第一下点击，整页再无出路，只能杀进程重开。
+  bool _onChoice(int i) {
     if (_moment == Moment.result) {
       final bool more = i == 0 && !_flow.queueEmpty;
       setState(() {
         _resultChoicesOn = false;
         _moment = more ? Moment.dispatch : Moment.lobby;
       });
-      return;
+      return true;
     }
     if (_moment == Moment.fail) {
       if (i == 0) {
@@ -2098,10 +2169,13 @@ class _AppShellState extends State<AppShell>
           _moment = Moment.dispatch;
         });
         _persist();
-        return;
+        return true;
       }
       setState(() => _moment = Moment.lobby);
+      return true;
     }
+    // 不在可回应的时刻（理论上到不了）：不认这一下 —— 牌留在原地，可以再点
+    return false;
   }
 
   /// 板下两颗按钮的岔路（原型 dispatch 循环，flows.js L250-321）：
@@ -2117,10 +2191,7 @@ class _AppShellState extends State<AppShell>
     if (head == null) return;
     if (i == 1) {
       // 「等会儿」台词（content.js L338 later 二选一）
-      const List<String> later = <String>[
-        '它不会跑。我也不会。',
-        '行，先放我这。别让我等太久。',
-      ];
+      const List<String> later = <String>['它不会跑。我也不会。', '行，先放我这。别让我等太久。'];
       _sayAside(later[_rnd.nextInt(later.length)], holdMs: 1500);
       setState(() => _moment = Moment.lobby);
       _persist();
@@ -2131,14 +2202,11 @@ class _AppShellState extends State<AppShell>
     setState(() => _host = _flow.host);
     _persist();
     // retreat1/2/3（content.js L339-341，按当日第几次分档）
-    _sayAside(
-      switch (info.count) {
-        1 => '目标是你立的。……给你个台阶：[[降一档]]。',
-        2 => '今天第 [[${info.count}]] 次退了。系统开始给你建档案了。',
-        _ => '第 [[${info.count}]] 次。行，接下来的单，[[按幼儿档]]给你配。',
-      },
-      holdMs: 1500,
-    );
+    _sayAside(switch (info.count) {
+      1 => '目标是你立的。……给你个台阶：[[降一档]]。',
+      2 => '今天第 [[${info.count}]] 次退了。系统开始给你建档案了。',
+      _ => '第 [[${info.count}]] 次。行，接下来的单，[[按幼儿档]]给你配。',
+    }, holdMs: 1500);
     if (info.shame) {
       // 口头巨人强制佩戴（flows.js L323-327 的 shame；横幅内容是写死的
       // 见面礼，这里用插话宣布——横幅通用化归横幅自己的任务）
@@ -2390,7 +2458,9 @@ class _AppShellState extends State<AppShell>
     void tick() {
       final double v = c.value;
       final List<double> next = List<double>.generate(rings.length, (int i) {
-        if (rings[i].state == RingState.lock) return 1; // lock 环不点（原型只 showRing）
+        if (rings[i].state == RingState.lock) {
+          return 1; // lock 环不点（原型只 showRing）
+        }
         return ((v - startAt[i]) / ramp).clamp(0.0, 1.0);
       });
       // 发声/震动放在 setState 外面（setState 里只改状态）

@@ -8,16 +8,20 @@ import 'sys_icons.dart';
 /// ═══════════════════════════════════════════════════════════
 ///  对话层的两件 UI（docs/18 §2.6）
 ///
-///  · [ChatEntryButton]：大厅左上（HUD 下方）的对话入口，34×34 圆钮。
+///  · [ChatEntryButton]：对话入口。原先钉在大厅左上（HUD 下方）的 34×34 小圆钮；
+///    宿主 2026-10-11 指定搬到**右下、委托板正上方**，并放大到 56（贴右手拇指）。
 ///  · [ChatBar]：对话层底部的输入栏——【文本输入+发送】【🎤语音】双入口。
 ///    **语音是明确的预留态**：置灰 + 「即将支持」角标，点了弹插话不假装可用。
 /// ═══════════════════════════════════════════════════════════
 
 /// 大厅的对话入口（原型无此物，样式对齐 `#sheet ×`/`.dk` 的玻璃圆钮）
 class ChatEntryButton extends StatelessWidget {
-  const ChatEntryButton({super.key, this.onTap});
+  const ChatEntryButton({super.key, this.onTap, this.size = 34});
 
   final VoidCallback? onTap;
+
+  /// 直径。默认 34（原型那颗）；搬到委托上方后宿主指定 56。
+  final double size;
 
   @override
   Widget build(BuildContext context) {
@@ -28,15 +32,15 @@ class ChatEntryButton extends StatelessWidget {
       ],
       child: Container(
         key: const Key('chat.entry'),
-        width: 34,
-        height: 34,
+        width: size,
+        height: size,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           color: const Color(0xB3040E20), // rgba(4,14,32,.7)
           border: Border.all(color: C.line, width: 1),
         ),
         child: Center(
-          child: SvgPicture.string(kIconChat, width: 16, height: 16),
+          child: SvgPicture.string(kIconChat, width: size * .47, height: size * .47),
         ),
       ),
     );

@@ -40,16 +40,22 @@ void main() {
   }
 
   group('内容', () {
-    testWidgets('三样执行道具 + 去补给，一共四格', (WidgetTester tester) async {
+    testWidgets('三样执行道具，一共三张卡', (WidgetTester tester) async {
       await mount(tester);
       expect(find.byKey(const Key('exec.drawer.dbl')), findsOneWidget);
       expect(find.byKey(const Key('exec.drawer.crit')), findsOneWidget);
       expect(find.byKey(const Key('exec.drawer.shield')), findsOneWidget);
-      expect(find.byKey(const Key('exec.drawer.shop')), findsOneWidget);
       expect(find.text('双倍卡'), findsOneWidget);
       expect(find.text('暴击芯片'), findsOneWidget);
       expect(find.text('免死金牌'), findsOneWidget);
-      expect(find.text('去补给'), findsOneWidget);
+    });
+
+    testWidgets('⚠️「去补给」键与抽屉外壳都已删除（宿主指定）', (WidgetTester tester) async {
+      await mount(tester);
+      expect(find.byKey(const Key('exec.drawer.shop')), findsNothing);
+      expect(find.text('去补给'), findsNothing);
+      // 外壳的装饰容器已拆：`exec.drawer` 这个 key 现在挂在物件台本身上
+      expect(find.byKey(const Key('exec.drawer')), findsOneWidget);
     });
 
     testWidgets('换单券不在执行期抽屉里（它只在派单时用）', (WidgetTester tester) async {
@@ -57,10 +63,9 @@ void main() {
       expect(find.text('换单券'), findsNothing);
     });
 
-    testWidgets('副标题显示持有数；去补给显示金币', (WidgetTester tester) async {
+    testWidgets('副标题显示持有数', (WidgetTester tester) async {
       await mount(tester);
       expect(find.text('持有 ×1'), findsNWidgets(3));
-      expect(find.text('金币 340'), findsOneWidget);
     });
 
     testWidgets('挂上生效的显示「已生效」', (WidgetTester tester) async {
@@ -103,13 +108,9 @@ void main() {
       expect(used, <String>['dbl'], reason: '已生效的仍可点（原型会 return，回调由上层判）');
     });
 
-    testWidgets('「去补给」走 onShop', (WidgetTester tester) async {
-      int shops = 0;
-      await mount(tester, onShop: () => shops++);
-      await tester.tap(find.byKey(const Key('exec.drawer.shop')));
-      await tester.pump();
-      expect(shops, 1);
-    });
+    // 「去补给」那条测试已删：该键按宿主指定移除了。
+    // `ItemDrawer.onShop` 参数与构造签名仍保留（`main.dart` 调用点不动），
+    // 只是当前没有 UI 触发它，所以没有可断言的行为。
   });
 
   group('开合', () {
