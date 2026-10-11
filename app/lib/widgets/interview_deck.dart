@@ -215,10 +215,13 @@ class _CardPanel extends StatelessWidget {
           if (custom)
             _customField()
           else ...<Widget>[
-            Wrap(
+            // 宿主 2026-10-11：绑定仪式这几张访谈卡的答案也做成卡片 ——
+            // 但「样式不能完全一样」，所以这里**竖排**（预设那排是横排胶囊、
+            // 货架是竖版厚卡、名牒带挂孔）：一张答案一张横版薄牌，
+            // 左上斜切 14 + 左侧 2px 青竖条，右侧一枚指向箭头。
+            Column(
               key: const Key('deck.options'),
-              spacing: 7,
-              runSpacing: 7,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: <Widget>[
                 for (int i = 0; i < card.options.length; i++)
                   _chip(
@@ -240,32 +243,96 @@ class _CardPanel extends StatelessWidget {
     );
   }
 
-  /// 42px 圆角 chip（`#ask .presets button` 同款盒模型）
-  /// ⚠️ PressBuilder 不收 key，钥匙挂在外层 KeyedSubtree 上
+  /// 一张答案牌（宿主指定的「访谈卡也做成卡片」）。
+  ///
+  /// 与另外几套卡语言刻意不同：货架＝竖版厚卡＋斜切 22＋吊钩价签；
+  /// 名牒＝竖版窄牌＋挂孔；预设＝横排胶囊；**这里＝竖排横版薄牌**
+  /// （左上斜切 14 + 左侧 2px 青竖条 + 右侧箭头）。
+  ///
+  /// ⚠️ 形状是**真的裁**（ClipPath），斜切那一段也要有描边，所以描边沿同一条路径画。
+  /// ⚠️ PressBuilder 不收 key，钥匙挂在外层 KeyedSubtree 上。
   Widget _chip(String text, {required VoidCallback onTap, Key? key, bool ghost = false}) {
     return KeyedSubtree(
       key: key,
       child: PressBuilder(
         onTap: onTap,
-        builder: (BuildContext _, bool down) => Container(
-          height: 42,
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          decoration: BoxDecoration(
-            color: ghost
-                ? (down ? const Color(0x3338E1FF) : Colors.transparent)
-                : (down ? const Color(0x3338E1FF) : const Color(0xD1040C1C)),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: ghost ? C.line : C.line2),
-          ),
-          child: Center(
-            widthFactor: 1,
-            child: Text(
-              text,
-              style: fs(
-                family: F.cn,
-                size: 12.5,
-                wght: 700,
-                color: ghost ? C.mist : C.ice,
+        builder: (BuildContext _, bool down) => Padding(
+          padding: const EdgeInsets.only(bottom: 7),
+          child: SizedBox(
+            height: 52,
+            child: ClipPath(
+              clipper: const _ChipClipper(),
+              child: Stack(
+                children: <Widget>[
+                  if (!ghost)
+                    const Positioned.fill(
+                      child: ColoredBox(color: Color(0xFF050A14)),
+                    ),
+                  Positioned.fill(
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: down
+                              ? const <Color>[Color(0xFF1B3358), Color(0xFF0A1424)]
+                              : (ghost
+                                    ? const <Color>[Color(0x00000000), Color(0x00000000)]
+                                    : const <Color>[Color(0xFF122441), Color(0xFF070D18)]),
+                        ),
+                      ),
+                    ),
+                  ),
+                  // 左侧那一道青竖条：跟「这一条能选」的语义走（幽灵项不画）
+                  if (!ghost)
+                    Positioned(
+                      left: 0,
+                      top: 0,
+                      bottom: 0,
+                      width: 2,
+                      child: ColoredBox(
+                        color: down ? C.blue : C.blue.withAlpha(120),
+                      ),
+                    ),
+                  Positioned.fill(
+                    child: CustomPaint(
+                      painter: _ChipEdgePainter(
+                        color: ghost ? C.line : (down ? C.blue : C.line2),
+                      ),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(14, 0, 12, 0),
+                    child: Row(
+                      children: <Widget>[
+                        Expanded(
+                          child: Text(
+                            text,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: fs(
+                              family: F.cn,
+                              size: 13,
+                              wght: ghost ? 400 : 650,
+                              color: ghost ? C.mist : C.ice,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          ghost ? '＋' : '›',
+                          style: fs(
+                            family: F.mono,
+                            size: 13,
+                            wght: 500,
+                            height: 1,
+                            color: down ? C.blue : C.mist,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
@@ -273,6 +340,20 @@ class _CardPanel extends StatelessWidget {
       ),
     );
   }
+
+  /// 答案牌的轮廓：左上斜切 14
+  static Path chipPath(Size s, {double inset = 0}) {
+    const double b = 14;
+    final double w = s.width - inset, h = s.height - inset;
+    return Path()
+      ..moveTo(inset, b)
+      ..lineTo(b, inset)
+      ..lineTo(w, inset)
+      ..lineTo(w, h)
+      ..lineTo(inset, h)
+      ..close();
+  }
+
 
   /// 「自己写」的自由输入行
   Widget _customField() {
@@ -334,4 +415,37 @@ class _CardPanel extends StatelessWidget {
       ),
     );
   }
+}
+
+/// 沿答案牌的轮廓描 1px 线（斜切那一段也要有线 —— `Border.all` 画的是圆角矩形，
+/// 斜切段会缺一条、圆角的弧会漏在斜切外面，实测过）。
+class _ChipEdgePainter extends CustomPainter {
+  const _ChipEdgePainter({required this.color});
+
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size s) {
+    canvas.drawPath(
+      _CardPanel.chipPath(s, inset: .5),
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1
+        ..color = color,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_ChipEdgePainter old) => old.color != color;
+}
+
+/// 答案牌的轮廓（左上斜切 14）
+class _ChipClipper extends CustomClipper<Path> {
+  const _ChipClipper();
+
+  @override
+  Path getClip(Size s) => _CardPanel.chipPath(s);
+
+  @override
+  bool shouldReclip(_ChipClipper oldClipper) => false;
 }

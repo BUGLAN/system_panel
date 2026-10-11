@@ -7,8 +7,10 @@
 | 文件 | 用途 |
 |---|---|
 | `qwen21-game-bg.workflow.json` | **可拖入 ComfyUI GUI 的工作流**（UI 格式） |
-| `qwen21-game-bg.api.json` | API 格式（POST `/prompt` 用，脚本读这份） |
-| `gen_game_bg.mjs` | 一键重生成脚本 |
+| `qwen21-game-bg.api.json` | API 格式（POST `/prompt` 用，两个脚本都读这份） |
+| `gen_game_bg.mjs` | 天幕背景一键重生成脚本 |
+| `prompts/shots.json` | **重设计提示词库**：30 镜（角色/素材/整屏时刻），三把锁拼装 |
+| `gen_shots.mjs` | 按提示词库批量出图（`--list` / `--print` / `--shot` / `--group` / `--all`） |
 
 ## 流程（Qwen-Image 2.1 文生图 + 放大）
 
@@ -38,6 +40,26 @@ node tools/comfyui/gen_game_bg.mjs --out E:\tmp
 ```
 
 游戏内引用：`prototype/opus-v2-dir/css/app.css` 的 `#bg .sky`（图片垫底，CSS 扫描线/轨道环/地面网格等动态层继续叠在上面）。
+
+## 重设计提示词库（`prompts/shots.json` + `gen_shots.mjs`）
+
+把 `prototype/opus-v2-dir/` 原型里**每一个功能时刻**翻成提示词：游戏化 + Live2D 舞台 + 虚拟娘。
+每个镜头的中文功能说明、她的表演、提示词全文见 **`docs/24-ComfyUI重设计提示词集.md`**。
+
+```powershell
+node gen_shots.mjs --list                     # 30 镜清单（不需要 ComfyUI 在线）
+node gen_shots.mjs --print S10-settle         # 打印拼装好的完整正/负提示词，手动粘 GUI
+node gen_shots.mjs --shot A0-bg-void          # 只出一张
+node gen_shots.mjs --group 整屏时刻            # 24 张
+node gen_shots.mjs --all --out E:\tmp         # 30 张全出
+node gen_shots.mjs --shot A1-fx-burst --no-upscale
+```
+
+- **拼装规则**：`positive = style_lock + character_lock(有她的镜) + variation`，`negative = negative_base + negative_extra`。
+  这是为了防"连续生成同类提示词串台"——改词只改 `shots.json` 里那一镜的 `variation`，别动三把锁。
+- **产物**：`tools/comfyui/.out/SystemShots/<镜 id>*.png`，PNG 母版**不入库**。
+- **哪些是真素材**：只有 `A0-bg-void`（替换 `prototype/opus-v2-dir/img/bg-void.jpg`）、`A1-fx-burst`、`A2-stamp-crit`、`A3-glitch` 会直接进产品；其余 26 镜是给 CSS / Flutter 对齐气质用的概念参照。
+- 脚本会先探活 `http://127.0.0.1:8188/system_stats`，ComfyUI 没起来就直接退出并提示。
 
 ## 约定
 

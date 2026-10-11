@@ -17,6 +17,11 @@ tools/comfyui/.out/
 # 验证产物（模拟器截图等临时证据），不入库
 .verify/
 
+# 并行排查留下的临时证据目录（点选卡顿的帧计时、UI 截图），不入库
+.verify_jank/
+.verify_jank_shot.png
+.verify_ui/
+
 # AgentTeams 运行态（成员登记、会话内工作区），是工具状态不是项目产物
 .agent-teams/
 

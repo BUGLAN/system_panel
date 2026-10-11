@@ -78,9 +78,7 @@ void main() {
       expect(find.textContaining('认输'), findsNothing);
     });
 
-    testWidgets('记录行与补救单收进「失败卡」背板（t26/TODO-14）', (
-      WidgetTester tester,
-    ) async {
+    testWidgets('记录行与补救单收进「失败卡」背板（t26/TODO-14）', (WidgetTester tester) async {
       await _mount(
         tester,
         const FailLayer(
@@ -104,9 +102,9 @@ void main() {
       );
       // 62% 屏高钳制（h 与实现同源：测试里 setSurfaceSize 不改 view 尺寸，
       // MediaQuery 还是 800×600，所以不能写死 844×.62）
-      final double h =
-          MediaQuery.sizeOf(tester.element(find.byKey(const Key('fail.card'))))
-              .height;
+      final double h = MediaQuery.sizeOf(
+        tester.element(find.byKey(const Key('fail.card'))),
+      ).height;
       expect(cb.constraints.maxHeight, closeTo(h * .62, .5));
       // 背板 = rgba(2,6,14,.78) 圆角 12 + 1px line2 描边（与结算卡同款语言）
       // —— 背板装饰就挂在 fail.card 这个 DecoratedBox 上
@@ -153,24 +151,36 @@ void main() {
   });
 
   group('回应按钮', () {
-    testWidgets('两颗各 50 高、右缘 370、整体底 810', (WidgetTester tester) async {
+    // 【本轮改形状】回应从「底部竖排堆 2 颗胶囊」换成「横排错位斜切铭牌轨」
+    // （docs/23 §5 · 乙 · 铭牌轨）：卡 268×58 横版斜切薄牌，领位左对齐到边
+    // 并抬起 8px，让位向右阶梯缩进 14px + 下沉 6px。旧的竖堆盒模型
+    // （350×50 / gap 9 / 整体 109 高）随之作废，断言换成新的横排形状。
+    testWidgets('横排斜切铭牌：领位左对齐到边、让位向右阶梯缩进', (WidgetTester tester) async {
       await _mount(
         tester,
         const Choices(
           items: <Choice>[Choice('……接。', main: true), Choice('今天算了。')],
         ),
       );
+      // 错峰入场（0/60/120ms + 420ms）走完再量
+      await tester.pumpAndSettle();
+
       final Rect box = tester.getRect(find.byKey(const Key('choices')));
       expect(box.left, 20);
       expect(box.right, 370);
       expect(box.bottom, closeTo(810, .5)); // bottom 34
-      expect(box.height, 109); // 50 + gap 9 + 50
-      for (final String k in <String>['choices.0', 'choices.1']) {
-        final Rect r = tester.getRect(find.byKey(Key(k)));
-        expect(r.left, 20);
-        expect(r.right, 370);
-        expect(r.height, 50);
-      }
+      expect(box.height, 78); // 抬起 8 + 牌高 58 + 最深让位下沉 12
+
+      final Rect lead = tester.getRect(find.byKey(const Key('choices.0')));
+      expect(lead.left, 20); // 领位左对齐到边
+      expect(lead.width, 268); // 横版薄牌（不是甲的竖版厚卡）
+      expect(lead.height, 58);
+      expect(lead.top, closeTo(732, .5)); // 810 - 78
+
+      final Rect side = tester.getRect(find.byKey(const Key('choices.1')));
+      expect(side.left, 34); // 让位向右缩进 14px
+      expect(side.top, lead.top + 14); // 领位抬起 8 + 让位下沉 6
+
       expect(find.text('宿主'), findsNWidgets(2));
       expect(tester.takeException(), isNull);
     });
@@ -195,7 +205,11 @@ void main() {
           ],
         ),
       );
-      await tester.tapAt(const Offset(195, 780)); // 正好压在收起的回应按钮上
+      // 先证明这一枪确实打在「收起的回应」上（否则这条测试会悄悄变成空转）：
+      // 收起 = 整叠向下 28px 淡出 → 盒子在 760..838，但命中必须照样打穿
+      final Rect box = tester.getRect(find.byKey(const Key('choices')));
+      expect(box.contains(const Offset(195, 780)), isTrue);
+      await tester.tapAt(const Offset(195, 780)); // 正好压在收起的铭牌轨上
       await tester.pump();
       expect(hits, 1);
     });
@@ -207,6 +221,60 @@ void main() {
       expect(kFailColorMatrix[0], closeTo(0.20372, 1e-5));
       expect(kFailColorMatrix[1], closeTo(0.3146, 1e-5));
       expect(kFailColorMatrix[6], closeTo(0.4246, 1e-5));
+    });
+  });
+
+  group('失败页 · 系统返回键硬出口（main.dart 的 PopScope 挂点）', () {
+    // 「永远有补救」不能只押在那两张铭牌上：2026-10-11 的死局恰恰是铭牌
+    // 自己把自己拆了（`Choices._confirm` 先锁死、`_onChoice` 被 `_busy` 挡掉），
+    // 于是失败页再无出路。返回键是最后一道门 —— 但它挂在 main.dart 的
+    // build 里（那里整棵子树包不了 widget 测试），所以这里只钉**挂点形态**：
+    // `PopScope` 向 `ModalRoute` 注册 pop entry，**不需要包住任何东西** ——
+    // main.dart 里它就是 Stack 里一颗 0×0 的空壳（包住 Scaffold 会让
+    // `dart format` 把 600+ 行整棵 build 树重排）。这个挂法若失效，
+    // 硬出口会**静默失效**，所以必须有测试看着。
+    testWidgets('0×0 的 PopScope 挂在 Stack 里，系统返回键照样被接住', (
+      WidgetTester tester,
+    ) async {
+      int hits = 0;
+      await _mount(
+        tester,
+        PopScope(
+          canPop: false, // = 失败页
+          onPopInvokedWithResult: (bool didPop, Object? result) {
+            if (!didPop) hits++;
+          },
+          child: const SizedBox.shrink(), // 挂点：不占位、不参与命中
+        ),
+      );
+
+      // 系统返回键在框架里的入口（`SystemChannels.navigation` 的 popRoute）
+      final bool handled = await tester.binding.handlePopRoute();
+      await tester.pump();
+
+      expect(handled, isTrue); // 框架接住了：没有退到系统去关 App
+      expect(hits, 1); // 回调到了 → 失败页那一下就是「今天算了。」
+    });
+
+    testWidgets('不在失败页（canPop: true）→ 回调不响，交回系统默认行为', (
+      WidgetTester tester,
+    ) async {
+      int hits = 0;
+      await _mount(
+        tester,
+        PopScope(
+          canPop: true,
+          onPopInvokedWithResult: (bool didPop, Object? result) {
+            if (!didPop) hits++;
+          },
+          child: const SizedBox.shrink(),
+        ),
+      );
+
+      await tester.binding.handlePopRoute();
+      await tester.pump();
+
+      expect(hits, 0); // 别处照旧：返回键该退桌面就退桌面
     });
   });
 }
