@@ -30,6 +30,48 @@ Future<void> _mount(WidgetTester tester, Widget child) async {
 }
 
 void main() {
+  // ⚠️ 回归网：`Hud` / `Dock` 的 build 顶层是 `Positioned`（ParentDataWidget），
+  //    唤醒过场的淡入**必须**在它们**内部**套 Opacity。2026-10-11 我在 main.dart
+  //    外面包了一层带 RenderObject 的包装件，真机直接抛
+  //    `Incorrect use of ParentDataWidget`（HUD 与底栏各一次）—— 这条用例就是
+  //    防它回归：挂在 Stack 里跑一遍淡入，异常会被 flutter_test 记为失败。
+  testWidgets('Hud/Dock 淡入：Opacity 在内部，不抛 ParentDataWidget', (WidgetTester tester) async {
+    final AnimationController c = AnimationController(
+      vsync: const TestVSync(),
+      duration: const Duration(milliseconds: 900),
+    );
+    addTearDown(c.dispose);
+    await _mount(
+      tester,
+      Stack(
+        children: <Widget>[
+          Hud(state: HostState.demo, fade: c),
+          Dock(state: HostState.demo, fade: c),
+        ],
+      ),
+    );
+    c.forward(from: 0);
+    await tester.pump(); // 先让 ticker 起跑一帧（不然第一次 pump 的 elapsed 还是 0）
+    await tester.pump(const Duration(milliseconds: 300));
+    final List<double> ops = tester
+        .widgetList<Opacity>(find.byType(Opacity))
+        .map((Opacity o) => o.opacity)
+        .toList();
+    expect(ops.any((double o) => o > 0 && o < 1), isTrue,
+        reason: '淡入途中应出现中间不透明度（说明 Opacity 真的接上了动画）');
+    expect(tester.takeException(), isNull, reason: '不许有框架异常');
+    // ⚠️ 不能用 pumpAndSettle：Hud/Dock 里有常驻呼吸/脉冲动画，永远 settle 不了。
+    //    有界推进到淡入结束即可。
+    await tester.pump(const Duration(milliseconds: 1200));
+    final List<double> done = tester
+        .widgetList<Opacity>(find.byType(Opacity))
+        .map((Opacity o) => o.opacity)
+        .toList();
+    expect(done.every((double o) => o > .99 || o == 0), isTrue,
+        reason: '淡入结束后应回到 1（或本来就该隐的 0）');
+    expect(tester.takeException(), isNull);
+  });
+
   group('宿主档案', () {
     test('升级所需经验 = Rewards 曲线 12 + lv×6（旧 60+lv*40 已废）', () {
       expect(HostState.need(1), 18);

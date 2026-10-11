@@ -23,7 +23,14 @@ class Dock extends StatelessWidget {
     this.visible = true,
     this.onCta,
     this.onSide,
+    this.fade,
   });
+
+  /// 唤醒过场用的淡入动画（0→1）。⚠️ 必须**在本组件内部**套 Opacity：
+  /// 本 build 顶层是 `Positioned`（ParentDataWidget），外面再包一层带
+  /// RenderObject 的包装件会报 `Incorrect use of ParentDataWidget`
+  /// （2026-08-11 实测：HUD 与底栏各抛一次）。
+  final Animation<double>? fade;
 
   /// 点了哪颗侧键（0 主线 / 1 档案 / 2 补给）
   final ValueChanged<int>? onSide;
@@ -41,13 +48,7 @@ class Dock extends StatelessWidget {
     final bool running = false; // 有执行中的任务时中央环变成计时器（后续步骤接）
     final bool idle = !running && state.queue == 0;
 
-    return Positioned(
-      left: 0,
-      right: 0,
-      bottom: 0,
-      height: 148,
-      // 收起来时同时断掉命中，别替下面的东西挨点
-      child: IgnorePointer(
+    Widget body = IgnorePointer(
         ignoring: !visible,
         child: AnimatedSlide(
           offset: visible ? Offset.zero : const Offset(0, 1.20),
@@ -128,7 +129,24 @@ class Dock extends StatelessWidget {
             ),
           ),
         ),
-      ),
+      );
+    if (fade != null) {
+      final Animation<double> f = fade!;
+      body = AnimatedBuilder(
+        animation: f,
+        builder: (BuildContext _, Widget? c) => Opacity(
+          opacity: Curves.easeOut.transform(f.value.clamp(0.0, 1.0)),
+          child: c,
+        ),
+        child: body,
+      );
+    }
+    return Positioned(
+      left: 0,
+      right: 0,
+      bottom: 0,
+      height: 148,
+      child: body,
     );
   }
 

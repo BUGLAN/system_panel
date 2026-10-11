@@ -23,7 +23,19 @@ import 'sys_icons.dart';
 ///  相位函数 [hudLevelFx] 是纯函数，fx_test 钉死。
 /// ═══════════════════════════════════════════════════════════
 class Hud extends StatefulWidget {
-  const Hud({super.key, required this.state, this.visible = true, this.onMenu});
+  const Hud({
+    super.key,
+    required this.state,
+    this.visible = true,
+    this.onMenu,
+    this.fade,
+  });
+
+  /// 唤醒过场用的淡入动画（0→1）。⚠️ 必须在**本组件内部**套 Opacity：
+  /// 本 build 的顶层就是 `Positioned`（ParentDataWidget），外面再包一层
+  /// 带 RenderObject 的包装件会报 `Incorrect use of ParentDataWidget`
+  /// （2026-10-11 实测：HUD/底栏各抛一次）。
+  final Animation<double>? fade;
 
   /// 点右上角那三根横杠（原型没有承载物，这里接「系统」面板）
   final VoidCallback? onMenu;
@@ -142,13 +154,7 @@ class _HudState extends State<Hud> with SingleTickerProviderStateMixin {
 
   @override
   Widget build(BuildContext context) {
-    return Positioned(
-      left: 0,
-      right: 0,
-      top: 0,
-      height: 74,
-      // 收起来时同时断掉命中，别替下面的东西挨点
-      child: IgnorePointer(
+    Widget body = IgnorePointer(
         ignoring: !widget.visible,
         child: AnimatedSlide(
           offset: widget.visible ? Offset.zero : const Offset(0, -1.10),
@@ -198,7 +204,24 @@ class _HudState extends State<Hud> with SingleTickerProviderStateMixin {
             ),
           ),
         ),
-      ),
+      );
+    if (widget.fade != null) {
+      final Animation<double> f = widget.fade!;
+      body = AnimatedBuilder(
+        animation: f,
+        builder: (BuildContext _, Widget? c) => Opacity(
+          opacity: Curves.easeOut.transform(f.value.clamp(0.0, 1.0)),
+          child: c,
+        ),
+        child: body,
+      );
+    }
+    return Positioned(
+      left: 0,
+      right: 0,
+      top: 0,
+      height: 74,
+      child: body,
     );
   }
 }

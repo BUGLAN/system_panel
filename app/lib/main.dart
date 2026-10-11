@@ -1132,13 +1132,13 @@ class _AppShellState extends State<AppShell>
                 //    ⚠️ 原型的层级：`#veil` 是 z-auto（在 #ui 之后绘制），而 `.line` z=3、
                 //    `#choices` z=4、`#plateAlt` z=2 —— 所以认输时 veil 压得住 failv，
                 //    压不住字幕和选项。Stack 的先后顺序必须照这个 z 序排。
-                _WakeFade(
-                  t: _wakeFade,
-                  child: Hud(
-                    state: _host,
-                    visible: lobby || exec,
-                    onMenu: () => _openSheet(SheetKind.system),
-                  ),
+                Hud(
+                  state: _host,
+                  visible: lobby || exec,
+                  onMenu: () => _openSheet(SheetKind.system),
+                  // 唤醒过场：淡入（在组件内部套 Opacity —— 它顶层是 Positioned，
+                  // 外面包带 RenderObject 的包装件会报 ParentDataWidget 错）
+                  fade: _wakeFade,
                 ),
                 // 对话入口（docs/18 §2.6「HUD 对话按钮」）：hud.dart 的单写者
                 // 纪律在 t9，这颗玻璃圆钮由本文件挂载——HUD 行下方左上，
@@ -1152,11 +1152,10 @@ class _AppShellState extends State<AppShell>
                       child: ChatEntryButton(onTap: () => _openChat()),
                     ),
                   ),
-                _WakeFade(
-                  t: _wakeFade,
-                  child: Dock(
+                Dock(
                   state: _host,
                   visible: lobby,
+                  fade: _wakeFade,
                   // 队列空（今日已清）不再放行派单板 —— 免得接 到"幻影"演示单
                   onCta: _enterDispatchOrRest,
                   onSide: (int i) {
@@ -1168,8 +1167,7 @@ class _AppShellState extends State<AppShell>
                     } else if (i == 1 || i == 2) {
                       _openSheet(i == 1 ? SheetKind.archive : SheetKind.supply);
                     }
-                    },
-                  ),
+                  },
                 ),
                 // 派单板
                 Plate(

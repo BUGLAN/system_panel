@@ -657,3 +657,18 @@ curl "$B/ext.sys.wake?isolateId=$ISO"             # 触发（⚠️ 必须带 is
 配合 `devicectl device capture screenshot` 连拍。⚠️ 宿主离开屏幕会自动调光，
 亮度对比要先用「她身上最亮 1% 像素」做标尺归一化（本次 247→149 就是调光，
 不是状态坏了）。
+
+### ③ 追加：淡入**必须在 Hud/Dock 内部**做（我踩的 ParentDataWidget 坑）
+
+第一版我把 `Hud` / `Dock` 用外层包装件（`_WakeFade` → `AnimatedBuilder` → `Opacity`）
+包起来做淡入 —— 真机直接抛 **`Incorrect use of ParentDataWidget`**（HUD 与底栏各一次）：
+这两个组件 `build` 的**顶层就是 `Positioned`**（ParentDataWidget），它要求从自己到
+`Stack` 之间**只有不产生 RenderObject 的 widget**，而 `Opacity` 是 RenderObject ✗。
+
+**正确做法**：把动画**传进组件内部**（`Hud(fade: …)` / `Dock(fade: …)`），由它们在
+`Positioned` 之内套 `AnimatedBuilder`+`Opacity`；`_WakeFade` 只保留给
+「对话入口钮」那处（它的 `Positioned` 在包装件**外面**，安全）。
+回归网：`test/lobby_test.dart` 新增用例——在 `Stack` 里挂 `Hud`/`Dock` 跑一遍淡入，
+断言「中途出现中间不透明度」且 `takeException()` 为空（框架异常会被 flutter_test 记为失败）。
+⚠️ 两条测试细节：Ticker 要先 `pump()` 起跑一帧再 `pump(300ms)`；**别用 `pumpAndSettle`**
+（Hud/Dock 有常驻呼吸动画，永远 settle 不了）。
