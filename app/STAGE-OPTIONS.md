@@ -672,3 +672,17 @@ curl "$B/ext.sys.wake?isolateId=$ISO"             # 触发（⚠️ 必须带 is
 断言「中途出现中间不透明度」且 `takeException()` 为空（框架异常会被 flutter_test 记为失败）。
 ⚠️ 两条测试细节：Ticker 要先 `pump()` 起跑一帧再 `pump(300ms)`；**别用 `pumpAndSettle`**
 （Hud/Dock 有常驻呼吸动画，永远 settle 不了）。
+
+### ④ 追加：键盘两修（2026-10-11 · 宿主：「换出键盘之后, 点击系统内应用,
+键盘无法正常收缩回去」）
+
+Flutter 里键盘不会像 web 那样"点空白自然失焦"，必须显式 unfocus：
+- **点舞台/空白处**（`_onStageDown`，覆盖大半屏的 translucent Listener）→
+  `FocusScope.of(context).unfocus()`；注意**不能**挡 TextField 的焦点
+  （translucent Listener 不参与手势竞技场，TextField 在上层照常拿焦点）。
+- **开投影面板**（系统/档案/补给）/ **取消换目标** / **提交换目标** →
+  同样 unfocus（键盘别压在面板上）。
+
+复现受限说明：远程 `requestFocus` 在 iOS 上**不保证弹出软键盘**
+（诊断日志确认焦点已生效但键盘未出现）⇒ 键盘弹起态的复现需要真手点输入框。
+修好的行为（点空白收键盘）已并入 `_onStageDown`。

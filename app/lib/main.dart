@@ -649,6 +649,7 @@ class _AppShellState extends State<AppShell>
   /// 具体 → `buildNextGoal`（按新那句话的时长词重铸 5~8 环）→ `flow.newGoal`
   /// 落库（旧主线单移除、新主线钉队首）→ 存盘 → 回主线页。
   void _onGoalChangeSubmitted() {
+    FocusScope.of(context).unfocus();
     final String typed = _goalAsk.text.trim();
     // 「先问小祥」不是目标，是入口：带场合上下文开对话（D5 的入口保留）
     if (typed == _kAskXiangPreset) {
@@ -690,6 +691,7 @@ class _AppShellState extends State<AppShell>
 
   /// 换目标中途算了：什么都不动。
   void _cancelGoalChange() {
+    FocusScope.of(context).unfocus(); // 键盘一并收起（宿主验收）
     setState(() {
       _goalChangeOn = false;
       _goalAsk.clear();
@@ -777,6 +779,9 @@ class _AppShellState extends State<AppShell>
   /// 当前临时台词的情绪（喂 [LineLayer.emotion] 的逐字音节）
   String? _asideEmotion;
 
+  /// 换目标输入框的焦点（弹键盘用；临时调试扩展 ext.sys.goalchange 也用它）
+  final FocusNode _goalAskFocus = FocusNode();
+
   /// 临时台词结束后的回调（原型 `Line.say(...).then(...)`）
   Timer? _asideDone;
 
@@ -824,6 +829,9 @@ class _AppShellState extends State<AppShell>
     _tap++;
     _voice.hush();
     _lastAct = DateTime.now();
+    // ⚠️ 收起键盘：web 里点空白输入框自然失焦；Flutter 必须显式 unfocus
+    //    （宿主验收：「换出键盘之后, 点击系统内应用, 键盘无法正常收缩回去」）
+    FocusScope.of(context).unfocus();
     final bool hit = Live2DStage.hitHer(global, rect);
     debugPrint('[stage] 舞台按下 (${global.dx.toStringAsFixed(0)},'
         '${global.dy.toStringAsFixed(0)}) 命中她=$hit');
@@ -1478,6 +1486,7 @@ class _AppShellState extends State<AppShell>
                     _kAskXiangPreset,
                   ],
                   controller: _goalAsk,
+                  focusNode: _goalAskFocus,
                   visible: _goalChangeOn,
                   onPreset: (String v) => _goalAsk.text = v,
                   onSubmit: _onGoalChangeSubmitted,
@@ -1889,6 +1898,7 @@ class _AppShellState extends State<AppShell>
 
   /// 开投影面板（原型 `App.sheet(kind)`）
   void _openSheet(SheetKind kind) {
+    FocusScope.of(context).unfocus(); // 键盘别压在面板上（宿主验收）
     setState(() {
       _sheetFrom = _moment == Moment.exec ? Moment.exec : Moment.lobby;
       _sheetKind = kind;

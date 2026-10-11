@@ -21,6 +21,7 @@ class AskField extends StatelessWidget {
     this.placeholder = '',
     this.presets = const <String>[],
     this.controller,
+    this.focusNode,
     this.visible = true,
     this.onSubmit,
     this.onPreset,
@@ -35,6 +36,9 @@ class AskField extends StatelessWidget {
   final List<String> presets;
 
   final TextEditingController? controller;
+
+  /// 外部持有的焦点（弹/收键盘由外部控制；null = 组件内部自理）
+  final FocusNode? focusNode;
   final bool visible;
   final VoidCallback? onSubmit;
   final ValueChanged<String>? onPreset;
@@ -145,6 +149,7 @@ class AskField extends StatelessWidget {
             child: TextField(
               key: const Key('ask.input'),
               controller: controller,
+              focusNode: focusNode,
               onSubmitted: (_) => onSubmit?.call(),
               cursorColor: C.blue,
               style: fs(family: F.cn, size: 16, wght: 500, color: C.ice),
