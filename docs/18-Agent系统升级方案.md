@@ -141,10 +141,17 @@ app/
 - **覆盖块仍在且仍在生效路径上**：`app/android/build.gradle.kts:33-45` 的 `subprojects { afterEvaluate { ... setVersion("3.22.1") } }` 反射块原样在位；`app/pubspec.yaml:12` 仍依赖 `flutter_live2d ^1.0.2`；块在 `evaluationDependsOn(":app")`（L47-49）**之前**——顺序约束满足（注释写明：放后面会报 "Cannot run Project.afterEvaluate when the project is already evaluated"）。
 - **结论**：只要插件版本不动（1.0.2）且 AGP 不换大版本，覆盖**继续生效**，无需改动。MuMu 首跑若报 CXX1300 再按序降级处置：① 确认本机 SDK 有 `cmake;3.22.1`（`sdkmanager --list | grep cmake`）；② 反射目标值改成本机实际有的版本；③ 最后手段 `dependency_overrides` 本地补丁插件（不入库，需在 STAGE-OPTIONS 记录）。
 
-#### 1.5.3 相机：几何矩形驱动 + alpha 包围盒标定（勿用截图轮廓量测）
+#### 1.5.3 相机：固定尺寸族 + Transform 慢推 + alpha 包围盒标定（勿用截图轮廓量测）
 
-- **插件没有相机矩阵 API**（live2d_stage.dart 注释 L19-21 明示），且平台视图外**不能套 Transform/Opacity**（saveLayer 会吞掉平台视图，STAGE-OPTIONS 坑 4）。
-- **方案：用布局矩形复刻相机**。`Live2DStage` 从 `Cam`（camera.dart）算出她应在的屏幕矩形：`rect = 中心 Cam.screenCenter(size) ± scale`，把 `Live2DView` 放进 `Positioned.fromRect`（平台视图随布局尺寸变化是安全路径，不走 saveLayer）。切页推镜头 = `_cam` ValueNotifier 驱动矩形逐帧更新（弹簧已在 main.dart `_onCamTick` 跑，环场已吃它，舞台接同一数据源即可）。
+> **▸ v2 修订（2026-10-11 真机验收「换目标 UI 重合 / 小 live2d 到正常大小是硬切」）**
+> 本节原来写的是「用布局矩形逐帧复刻相机」，理由是"平台视图外不能套 Transform"。**这两条都被推翻了**：
+> - `Transform` 在 `UiKitView` 上是**支持**的（Flutter 文档：`_DarwinView` "support for transforms, clips, and opacity"），真机实测她按中间尺寸正常渲染；只有 `Opacity` 不行（saveLayer，STAGE-OPTIONS 坑 3/4）。
+> - 逐帧改**布局尺寸**会让插件 iOS 侧 `layoutSubviews()` 每帧 `recreateFramebufferOnMainThread()` + `onSurfaceChanged()`（重建 FBO、排空渲染队列）→ 推镜头那段她基本不渲染 → 落点像"直接切过去"。
+>
+> **现行做法**：矩形只按**族**定尺寸（`Live2DStage.kViewFamilies = [1.05, 1.70]`，族内所有 cam 共用同一块布局矩形 → 不触发 FBO 重建），族内缩放/平移交给 `Transform.scale(cam.s / 族尺寸)`（几何上与"把矩形改成 cam.s 那么大"完全等价，测试 `stage_port_test.dart` 有等价性断言）；换景别再走 `CamSpring.glideTo(..., ms: 1400)` 的 **easeInOutCubic 慢推**（弹簧约 0.5s 到位，配上亮帧/界面淡入就是"硬切"观感）。真机证据：相机逐帧轨迹连续（0.92↔0.68，每段 13~14 个采样、单调不过冲），连拍帧里头顶位置出现两端之间的中间值。
+
+- **插件没有相机矩阵 API**（live2d_stage.dart 注释 L19-21 明示），所以相机的缩放/平移只能靠"布局矩形 + `Transform`"两条腿走路（见上面的 v2 修订）。
+- **方案**：`Live2DStage` 从 `Cam`（camera.dart）算出她的**逻辑**矩形 `stageRect`（中心 `Cam.screenCenter`、高 = 屏高 × `cam.s`，命中层与环位数学仍吃这个）；**平台视图**则吃 `viewRect(族尺寸)` + `Transform.scale`。切页推镜头 = `_cam` ValueNotifier 驱动（弹簧在 main.dart `_onCamTick` 跑，环场与舞台同一数据源）。
 - **标定（alpha 包围盒，正道）**：`StageAnchors`（camera.dart:26-41）已有原型 `_fitGeo` 实测值（hair .4386 / feet −1.5114，同模型同数据，直接沿用）。若 MuMu 上她的大小/位置与原型基准图有出入，重标定流程：
   1. 进**标定模式**（debug-only 开关：隐藏 dock/HUD/环场/字幕/底栏，纯色背景——隐藏 UI 是关键，防止旧 AVD 上「底部吃到委托按钮与地面光晕、bot 恒为 807」的噪声复现）；
   2. `adb exec-out screencap` 取 PNG，用 **alpha 通道阈值**（如 α>8 的行列范围）算包围盒——这是 alpha 包围盒法，**不是**旧坑的"轮廓/边缘量测"；

@@ -23,6 +23,7 @@ class AskField extends StatelessWidget {
     this.controller,
     this.focusNode,
     this.visible = true,
+    this.bottomInset = 0,
     this.onSubmit,
     this.onPreset,
   });
@@ -40,6 +41,13 @@ class AskField extends StatelessWidget {
   /// 外部持有的焦点（弹/收键盘由外部控制；null = 组件内部自理）
   final FocusNode? focusNode;
   final bool visible;
+
+  /// 键盘高度（`MediaQuery.viewInsetsOf(context).bottom`）。
+  /// 主 Scaffold 用 `resizeToAvoidBottomInset: false`（**不能**让整屏随键盘缩，
+  /// 否则舞台矩形跟着变 → 插件重建 FBO + 她整条位移；见 main.dart 的注释），
+  /// 所以输入框得自己抬到键盘上面。
+  final double bottomInset;
+
   final VoidCallback? onSubmit;
   final ValueChanged<String>? onPreset;
 
@@ -48,7 +56,7 @@ class AskField extends StatelessWidget {
     return Positioned(
       left: 20,
       right: 20,
-      bottom: 34,
+      bottom: 34 + bottomInset,
       child: IgnorePointer(
         ignoring: !visible,
         child: AnimatedOpacity(

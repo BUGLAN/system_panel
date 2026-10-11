@@ -35,6 +35,37 @@ abstract class StagePort {
   /// 睁眼，原型 flows.js `wake()` L77-84 逐拍照抄）。返回的 Future 走完
   /// 整个编排，调用方 `.then` 里接欢迎手势。默认 no-op。
   Future<void> wakeEyes() async {}
+
+  /// 直给一条表演（docs/24 §4：不经过动词表，动作组 + 表情一次下发）。
+  /// 用于发布任务/升级/收官这些**没有现成动词**的时刻。默认 no-op（WebView
+  /// 降级路线没有组名直通，保留原行为）。
+  void perf(String group, String exp, {int priority = 2}) {}
+
+  /// 情绪 + 兜底动作一起演（docs/24 §4「情绪→动作」）：情绪强烈的
+  /// （annoyed/cold/sad/joy/surprised/tsun）多演一个动作，其余只换脸。
+  /// 默认退回纯 [mood]。
+  void react(String mood) => this.mood(mood);
+
+  /// 打瞌睡（docs/24 #15：真机侧补整链）。默认退回 [sleep]。
+  Future<void> doze() async => sleep();
+
+  /// 从瞌睡里被戳醒（惊一下 → 回当前情绪）。默认 no-op。
+  Future<void> undoze() async {}
+}
+
+/// 一条表演：动作组 + 该拍要带的表情（docs/24 §2「动作与表情绑在一起」）。
+/// [priority] 遵循 Cubism 约定：0=none · 1=idle · 2=normal · 3=force；
+/// 待机 1 / 指令 2 / 强制（暴击、升级、收官）3。
+class Perf {
+  const Perf(this.group, this.exp, {this.priority = 2});
+
+  /// 动作组名（必须在 `sakiko.model3.json` 的 `Motions` 里）
+  final String group;
+
+  /// 表情文件名（必须在 `Expressions` 里；`''` = 这一拍不动表情）
+  final String exp;
+
+  final int priority;
 }
 
 /// 桥接表 + 查询。全部 static const，`stage_port_test.dart` 会逐条核对
@@ -83,16 +114,73 @@ abstract class StageBridges {
     'maskoff': 'maskoff',
   };
 
-  /// 动词自带的表情覆盖（stage.js MOVE 里的 `exp:` 字段——目前只有 poke）
-  static const Map<String, String> verbExp = <String, String>{
-    'poke': 'exp_shy01',
+  /// 动词 → 该拍要带的表情（docs/24 §4「动作与表情绑在一起」：**19 个动词全覆盖**，
+  /// `act()` 一次下发表情+动作；表情是"借"的，3s 后还给当前情绪，见
+  /// [Live2DStageHandle] 的归还定时器）。
+  static const Map<String, String> verbFace = <String, String>{
+    'present': 'exp_kime01', // 亮相/收官定格
+    'cheer': 'exp_kime01',
+    'nod': 'exp_serious02', // 接单/落库的正色点头
+    'nod2': 'exp_serious02',
+    'surprise': 'exp_surprised01', // 暴击
+    'fluster': 'exp_surprised01', // 戳她第 4 下：又惊又躲
+    'deny': 'exp_shy01', // 嘴硬
+    'down': 'exp_sad01', // 认输
+    'think': 'exp_serious02', // 追问/换目标
+    'happy': 'exp_smile01', // 得意
+    'poke': 'exp_shy01', // 原型 MOVE 里唯一带 exp 的，原值保留
+    'lookAway': 'exp_idle02', // 回来看一眼
+    'ask': 'exp_serious02', // 歪头疑问
+    'bye': 'exp_idle01',
+    'check': 'exp_serious01', // 打量/快照确认
+    'serious': 'exp_serious01',
+    'angry': 'exp_angry02', // 毒舌
+    'cry': 'exp_cry02', // 连败（清单 C：6 个哭脸只用 2~3 个）
+    'maskoff': 'exp_shadow01', // 翻脸黑脸（把闲置的 shadow 用起来）
   };
 
-  /// 心情 → 待机动作组池（stage.js `IDLE_POOL` L67-71 的 mtn 名 → 组名）
-  static const Map<String, List<String>> idlePool = <String, List<String>>{
-    'cold': <String>['serious', 'look', 'nod'],
-    'pleased': <String>['smile', 'kime', 'nod'],
-    'neutral': <String>['look', 'check', 'nod', 'smile', 'thinking', 'idle'],
+  /// 一条待机表演：动作组 + 该拍表情（docs/24 §3 清单 A）。
+  /// 待机一律 priority 1（不许盖过正在演的指令）。
+  static const List<Perf> _idleNeutral = <Perf>[
+    Perf('look', 'exp_idle01'),
+    Perf('check', 'exp_idle02'),
+    Perf('thinking', 'exp_idle03'),
+    Perf('smile', 'exp_smile01'),
+    Perf('nod', 'exp_idle01'),
+    Perf('idle', 'exp_idle01'),
+  ];
+  static const List<Perf> _idleCold = <Perf>[
+    Perf('serious', 'exp_serious01'),
+    Perf('look', 'exp_idle02'),
+    Perf('nod', 'exp_serious02'),
+    Perf('check', 'exp_serious01'),
+  ];
+  static const List<Perf> _idlePleased = <Perf>[
+    Perf('smile', 'exp_smile02'),
+    Perf('kime', 'exp_kime01'),
+    Perf('nod', 'exp_smile01'),
+    Perf('look', 'exp_smile01'),
+    Perf('idle', 'exp_bsmile01'),
+  ];
+
+  /// 心情 → 待机表演池（docs/24 §3；原来只有动作组名、不带表情）
+  static const Map<String, List<Perf>> idlePool = <String, List<Perf>>{
+    'cold': _idleCold,
+    'pleased': _idlePleased,
+    'neutral': _idleNeutral,
+  };
+
+  /// 情绪 → 默认动作**动词**（docs/24 §4 的"情绪→动作"兜底，给 [StagePort.react] 用）。
+  /// 只给**情绪强烈**的配动作（惊讶/生气/难过/得意/嘴硬），其余只换脸不动作 ——
+  /// 表演预算（docs/14）：一拍只演一件事，别句句都动。
+  /// ⚠️ 值必须是 [verbGroup] 的键（动词），不是动作组名。
+  static const Map<String, String> emotionAct = <String, String>{
+    'annoyed': 'angry',
+    'cold': 'serious',
+    'sad': 'down',
+    'joy': 'cheer',
+    'surprised': 'surprise',
+    'tsun': 'deny',
   };
 
   /// 认得的情绪？
@@ -115,12 +203,16 @@ abstract class StageBridges {
   /// 动词 → 动作组（未知动词回落 nod，绝不静默丢弃）
   static String groupOf(String verb) => verbGroup[verb] ?? 'nod';
 
-  /// 动词自带的表情覆盖（无则 -1）
-  static int verbExpIndex(String verb) {
-    final String? exp = verbExp[verb];
-    if (exp == null) return -1;
-    return Live2DStage.expressionIndex(exp);
-  }
+  /// 动词自带的表情（无则 ''；再经 [Live2DStage.expressionIndex] 得下标，
+  /// '' → -1 = 这一拍不动表情）
+  static String faceOf(String verb) => verbFace[verb] ?? '';
+
+  /// 动词自带表情的下标（无则 -1）
+  static int verbFaceIndex(String verb) =>
+      Live2DStage.expressionIndex(faceOf(verb));
+
+  /// 情绪 → 兜底动作的**动词**（无则 ''，只换脸不动作）
+  static String actOf(String mood) => emotionAct[mood] ?? '';
 }
 
 /// 原生实现：包住 `Live2DStageHandle`，查表后走插件 API。
@@ -139,10 +231,28 @@ class NativeStagePort implements StagePort {
   void idleMood(String mood) => _handle.setIdleMood(mood);
 
   @override
+  void perf(String group, String exp, {int priority = 2}) =>
+      _handle.perf(group, exp, priority: priority);
+
+  @override
+  void react(String mood) {
+    _handle.emote(mood);
+    // 情绪强烈的才加动作（表演预算：不是每句台词都动）
+    final String verb = StageBridges.actOf(mood);
+    if (verb.isNotEmpty) _handle.act(verb);
+  }
+
+  @override
   Future<void> sleep() => _handle.sleep();
 
   @override
   Future<void> wakeEyes() => _handle.wakeEyes();
+
+  @override
+  Future<void> doze() => _handle.sleep();
+
+  @override
+  Future<void> undoze() => _handle.undoze();
 }
 
 /// WebView 实现：转发给原型播放器的 `Stage.emote/motion`（stage.js 自带同名表）。

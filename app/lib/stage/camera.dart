@@ -109,10 +109,33 @@ class CamSpring {
 
   Size get size => _size;
 
+  /// ── 慢推（2026-10-11 宿主验收：「从这个小的 live2d 过渡到正常的 live2d，
+  ///    它是直接切过去了，而不是慢慢地放大」）────────────────────────────
+  ///
+  /// 弹簧 (70, .95) 冲得快（约 0.5s 到位），配上唤醒那一拍亮帧/界面淡入，
+  /// 观感就是"跳"过去。所以**换景别**这类要看得见的推镜头改走缓动补间：
+  /// 五个量按 easeInOutCubic 从当前值慢慢推到目标值，时长由调用方给。
+  ///
+  /// 实现上每帧把「插值值」同时当作弹簧的目标并 snap 到位（v=0）——
+  /// 于是过渡期间没有任何过冲/抖动，播完弹簧正好停在目标上（`done` 为真）。
+  bool _gliding = false;
+  double _glideT = 0; // 已走过的毫秒
+  double _glideMs = 0;
+  final List<double> _from = List<double>.filled(5, 0);
+  final List<double> _to = List<double>.filled(5, 0);
+
+  /// 缓动 = 原型 `ease.inOutCubic`（util.js），照抄那个式子
+  static double _easeInOutCubic(double t) =>
+      t < .5 ? 4 * t * t * t : 1 - math.pow(-2 * t + 2, 3) / 2;
+
+  /// 正在慢推？（`done` 会把它算进去）
+  bool get gliding => _gliding;
+
   /// 切到某个预设（`setCam(name, snap)`）
   void set(String camName, Size size, {bool snap = false}) {
     _size = size;
     name = camName;
+    _gliding = false; // 新的硬切指令作废进行中的慢推
     final Cam c = Cam.byName(camName);
     final double sc = c.scale(size.height);
     final Offset center = c.screenCenter(size);
@@ -124,8 +147,51 @@ class CamSpring {
     _inited = true;
   }
 
+  /// 慢推到某个预设：把五个量按缓动从**当前值**推到目标，[ms] 是整段时长。
+  /// 目标值 = `set` 会算出来的那一组（所以两者可以互换，落点完全一致）。
+  void glideTo(String camName, Size size, {int ms = 1200}) {
+    _size = size;
+    name = camName;
+    final Cam c = Cam.byName(camName);
+    final Offset center = c.screenCenter(size);
+    if (!_inited) {
+      set(camName, size, snap: true);
+      return;
+    }
+    _from[0] = _s.x;
+    _from[1] = _ax.x;
+    _from[2] = _ay.x;
+    _from[3] = _sx.x;
+    _from[4] = _sy.x;
+    _to[0] = c.scale(size.height);
+    _to[1] = c.ax;
+    _to[2] = c.ay;
+    _to[3] = center.dx;
+    _to[4] = center.dy;
+    _glideMs = ms.toDouble();
+    _glideT = 0;
+    _gliding = true;
+  }
+
   /// 推进一帧
   void step(double dt) {
+    if (_gliding) {
+      _glideT += dt * 1000;
+      final double t = _glideMs <= 0
+          ? 1
+          : (_glideT / _glideMs).clamp(0.0, 1.0);
+      final double e = _easeInOutCubic(t);
+      _s.set(_lerp(_from[0], _to[0], e), snap: true);
+      _ax.set(_lerp(_from[1], _to[1], e), snap: true);
+      _ay.set(_lerp(_from[2], _to[2], e), snap: true);
+      _sx.set(_lerp(_from[3], _to[3], e), snap: true);
+      _sy.set(_lerp(_from[4], _to[4], e), snap: true);
+      if (t >= 1) {
+        _gliding = false;
+        _glideT = 0;
+      }
+      return;
+    }
     _s.step(dt);
     _ax.step(dt);
     _ay.step(dt);
@@ -133,7 +199,10 @@ class CamSpring {
     _sy.step(dt);
   }
 
-  bool get done => _s.done && _ax.done && _ay.done && _sx.done && _sy.done;
+  static double _lerp(double a, double b, double t) => a + (b - a) * t;
+
+  bool get done =>
+      !_gliding && _s.done && _ax.done && _ay.done && _sx.done && _sy.done;
 
   /// 当前这一帧的相机（尺寸变化时 sxF/syF 换算成分数）
   Cam get cam => Cam(

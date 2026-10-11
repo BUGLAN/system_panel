@@ -145,4 +145,70 @@ void main() {
       expect(frames, lessThan(90));
     });
   });
+
+  group('慢推（glideTo）', () {
+    const Size size = Size(390, 844);
+
+    test('按给定时长走完，中途停在两端之间（真的"慢慢放大"）', () {
+      final CamSpring c = CamSpring()..set('boot', size);
+      final double from = c.cam.s;
+      // ⚠️ 用 `.s`（比例）而不是 `Cam.scale(h)`（像素）—— 别把两种单位混着比
+      final double to = Cam.byName('lobby').s;
+      c.glideTo('lobby', size, ms: 1400);
+      expect(c.gliding, isTrue);
+      expect(c.done, isFalse);
+
+      // 走 700ms（正好一半）：easeInOutCubic 在 t=.5 处恰好 0.5
+      for (int i = 0; i < 42; i++) {
+        c.step(1 / 60);
+      }
+      final double mid = c.cam.s;
+      expect(mid, greaterThan(from));
+      expect(mid, lessThan(to));
+      expect(mid, closeTo((from + to) / 2, (to - from) * .06));
+    });
+
+    test('时长走完就停在目标上（和 set 的落点完全一致）', () {
+      final CamSpring c = CamSpring()..set('boot', size);
+      c.glideTo('lobby', size, ms: 1400);
+      int frames = 0;
+      while (!c.done && frames < 1000) {
+        c.step(1 / 60);
+        frames++;
+      }
+      expect(c.gliding, isFalse);
+      expect(frames, closeTo(84, 3)); // 1400ms @60fps
+      final Cam want = Cam.byName('lobby');
+      expect(c.cam.s, closeTo(want.s, 1e-6));
+      expect(c.cam.ax, closeTo(want.ax, 1e-6));
+      expect(c.cam.ay, closeTo(want.ay, 1e-6));
+      expect(c.cam.sxF, closeTo(want.sxF, 1e-6));
+      expect(c.cam.syF, closeTo(want.syF, 1e-6));
+    });
+
+    test('慢推期间不过冲（单调推进，不会先冲过再弹回来）', () {
+      final CamSpring c = CamSpring()..set('boot', size);
+      final double to = Cam.byName('talk').s;
+      c.glideTo('talk', size, ms: 1200);
+      double last = c.cam.s;
+      for (int i = 0; i < 72; i++) {
+        c.step(1 / 60);
+        expect(c.cam.s, greaterThanOrEqualTo(last - 1e-9));
+        expect(c.cam.s, lessThanOrEqualTo(to + 1e-9));
+        last = c.cam.s;
+      }
+    });
+
+    test('慢推途中来了新的硬切指令 → 慢推立刻作废', () {
+      final CamSpring c = CamSpring()..set('boot', size);
+      c.glideTo('talk', size, ms: 1400);
+      c.step(1 / 60);
+      c.set('lobby', size);
+      expect(c.gliding, isFalse);
+      for (int i = 0; i < 300 && !c.done; i++) {
+        c.step(1 / 60);
+      }
+      expect(c.cam.s, closeTo(Cam.byName('lobby').s, 1e-3));
+    });
+  });
 }

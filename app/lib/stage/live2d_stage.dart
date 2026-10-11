@@ -63,28 +63,103 @@ class Live2DStageHandle {
   /// 0 = 停住动作（物理继续跑）
   void speed(double v) => _ctrl.setMotionSpeed(v);
 
-  /// 情绪入口（原型 `Stage.emote(name)`）：查 [StageBridges.emoExp]
-  /// 下发表情；`sleep` 额外把动作停住（docs/18 §1.5.4：idle speed 0）。
-  Future<void> emote(String name) async {
-    final int i = StageBridges.moodIndex(name);
-    if (i >= 0) await expression(i);
-    speed(name == 'sleep' ? 0 : 1);
+  // ── 表情借还（docs/24 §6 红线 3：借的表情要归还）──────────────────
+  // 动作/待机带的表情是"借"的：拍完 3s 自动回到**当前情绪**的脸。
+  // （原来没有这个机制——戳她以外的表情会一直挂到下一次 mood()。）
+  String _moodName = 'neutral';
+  Timer? _expGiveBack;
+
+  /// 当前基础情绪（[emote] 最后一次收下的名字）
+  String get moodName => _moodName;
+
+  /// 借出的表情多久归还（动作普遍 2~4s，取 3s 中位）
+  static const Duration _kExpGiveBack = Duration(seconds: 3);
+
+  void _scheduleGiveBack() {
+    _expGiveBack?.cancel();
+    _expGiveBack = Timer(_kExpGiveBack, () {
+      final int i = StageBridges.moodIndex(_moodName);
+      if (i >= 0) unawaited(expression(i));
+    });
   }
 
-  /// 动作入口（原型 `Stage.motion(verb)`）：动词→动作组；自带表情覆盖的
-  /// （poke → exp_shy01）先下发表情。
+  /// 释放定时器（`_Live2DStageState.dispose` 里调）
+  void dispose() {
+    _expGiveBack?.cancel();
+    _expGiveBack = null;
+  }
+
+  /// 情绪入口（原型 `Stage.emote(name)`）：查 [StageBridges.emoExp]
+  /// 下发表情；`sleep` 额外把动作停住（docs/18 §1.5.4：idle speed 0）。
+  /// 这是**基础脸**：换情绪会立刻作废没还完的"借出表情"。
+  Future<void> emote(String name) async {
+    _moodName = StageBridges.isMood(name) ? name : 'neutral';
+    _expGiveBack?.cancel();
+    final int i = StageBridges.moodIndex(_moodName);
+    if (i >= 0) await expression(i);
+    speed(_moodName == 'sleep' ? 0 : 1);
+  }
+
+  /// 动作入口（原型 `Stage.motion(verb)`）：动词→动作组 + **该拍表情**
+  /// （docs/24 §4：19 个动词全带脸，表情 3s 后还给当前情绪）。
   ///
   /// ⚠️ **组内随机取变体**：原型 `MOVE[verb].m` 是数组（C/L/R 三向），
   /// 固定 index 0 会让她每次都做同一个动作（宿主验收「待机动作太少」）。
   Future<void> act(String verb) async {
-    final int xi = StageBridges.verbExpIndex(verb);
-    if (xi >= 0) await expression(xi);
+    final int xi = StageBridges.verbFaceIndex(verb);
+    if (xi >= 0) {
+      await expression(xi);
+      _scheduleGiveBack();
+    }
     final String group = StageBridges.groupOf(verb);
     await motion(
       group,
       index: _rnd.nextInt(Live2DStage.countOf(group)),
       priority: 2,
     );
+  }
+
+  /// 直给一条表演（docs/24 §4：没有现成动词的时刻——发布任务/升级/收官）。
+  /// 表情同样是借的，3s 后回当前情绪。
+  Future<void> perf(String group, String exp, {int priority = 2}) async {
+    final int i = Live2DStage.expressionIndex(exp);
+    if (i >= 0) {
+      await expression(i);
+      _scheduleGiveBack();
+    }
+    await motion(
+      group,
+      index: _rnd.nextInt(Live2DStage.countOf(group)),
+      priority: priority,
+    );
+  }
+
+  /// 待机池条目（docs/24 §3：待机动作**带表情**，priority 恒 1）
+  Future<void> idlePerf(Perf p) async {
+    final int i = Live2DStage.expressionIndex(p.exp);
+    if (i >= 0) {
+      await expression(i);
+      _scheduleGiveBack();
+    }
+    await motion(
+      p.group,
+      index: _rnd.nextInt(Live2DStage.countOf(p.group)),
+      priority: 1,
+    );
+  }
+
+  /// 从瞌睡里被戳醒（docs/24 #15）：惊一下（exp_sys_wake）→ 回当前情绪。
+  Future<void> undoze() async {
+    final int wake = Live2DStage.expressionIndex('exp_sys_wake');
+    if (wake >= 0) await expression(wake);
+    speed(1);
+    _onSleepingChanged?.call(false);
+    // 350ms 后回到基础情绪的脸（惊那一拍要看得见）
+    _expGiveBack?.cancel();
+    _expGiveBack = Timer(const Duration(milliseconds: 350), () {
+      final int i = StageBridges.moodIndex(_moodName);
+      if (i >= 0) unawaited(expression(i));
+    });
   }
 
   final math.Random _rnd = math.Random();
@@ -386,6 +461,41 @@ class Live2DStage extends StatefulWidget {
         .translate(StageCalib.dx, StageCalib.dy);
   }
 
+  /// ── 视图固定尺寸族（2026-10-11 根治「推镜头像硬切」）──────────────
+  ///
+  /// 病灶：平台视图的**布局尺寸**一变，插件 iOS 侧就在 `layoutSubviews()` 里
+  /// `recreateFramebufferOnMainThread()` + `onSurfaceChanged()`（重建 FBO、
+  /// 排空渲染队列）。相机按帧改矩形尺寸 = **每帧重建** —— 于是推镜头那段她
+  /// 基本不渲染，落点看起来就是"直接切过去"（原来的应对只是拿亮帧盖住）。
+  ///
+  /// 现在：视图只在**族**之间换尺寸（罕见，且都有过场盖着），族内所有缩放
+  /// 交给 `Transform` —— Flutter 官方文档明确 `UiKitView`（`_DarwinView`）
+  /// **支持 transform / clip / opacity**，而 `Transform.scale` 绕矩形中心
+  /// 缩放与"把矩形改成 cam.s 那么大"在几何上完全等价（宽高比不变、中心不变）。
+  ///
+  /// 族尺寸 ≥ 族内最大 `cam.s`，所以缩放系数恒 ≤ 1（只缩小、不放大 → 不糊）。
+  /// 目前只有两族：小景别（boot/lobby/exec/result/full/panel/fail ≤ 1.05）
+  /// 与大景别（talk 1.70 = 派单时推到她跟前）。
+  static const List<double> kViewFamilies = <double>[1.05, 1.70];
+
+  /// 这一帧该用哪一族（取第一个 ≥ cam.s 的族）
+  static double viewFamilyS(double camS) {
+    for (final double f in kViewFamilies) {
+      if (camS <= f + 1e-6) return f;
+    }
+    return kViewFamilies.last;
+  }
+
+  /// 平台视图的**固定布局矩形**（族尺寸，中心仍是 `cam.screenCenter`）。
+  /// 视觉上的大小/位置由 `Transform.scale(cam.s / 族尺寸)` 表达。
+  static Rect viewRect(double familyS, Cam cam, Size size) {
+    final Offset center = cam.screenCenter(size);
+    final double h = size.height * familyS * StageCalib.kSize;
+    final double w = h * kCanvasAspect;
+    return Rect.fromCenter(center: center, width: w, height: h)
+        .translate(StageCalib.dx, StageCalib.dy);
+  }
+
   /// 模型画布的宽高比（宽 / 高）——`sakiko_orig/models/*.json` 的
   /// `model.canvas = {width: 6000, height: 9000}`。舞台矩形必须与它一致，
   /// 否则插件按宽度适配时会把她的头/脚裁掉（见 [stageRect] 注释）。
@@ -480,17 +590,31 @@ class _Live2DStageState extends State<Live2DStage> {
       final DateTime now = DateTime.now();
       if (now.isBefore(_nextIdleAt)) return;
       _nextIdleAt = now.add(Duration(seconds: 7 + _rnd.nextInt(9)));
-      final List<String> pool =
+      // docs/24 §3：待机条目 = 动作组 + 表情（原来只播动作不带脸）
+      final List<Perf> pool =
           StageBridges.idlePool[StageBridges.poolOf(_idleMood)] ??
           StageBridges.idlePool['neutral']!;
-      final String group = pool[_rnd.nextInt(pool.length)];
-      final int ix = _rnd.nextInt(Live2DStage.countOf(group));
+      // 不连播同一个组（原来纯随机，可能连续两次同一个动作）
+      int j = _rnd.nextInt(pool.length);
+      if (pool.length > 1 && pool[j].group == _lastIdleGroup) {
+        j = (j + 1) % pool.length;
+      }
+      final Perf p = pool[j];
+      _lastIdleGroup = p.group;
+      final int ix = _rnd.nextInt(Live2DStage.countOf(p.group));
       debugPrint(
-        '[stage] 待机池动作 → $group[$ix]（心情 $_idleMood，下次 ${_nextIdleAt.second}s）',
+        '[stage] 待机表演 → ${p.group}[$ix]+${p.exp}'
+        '（心情 $_idleMood，下次 ${_nextIdleAt.second}s）',
       );
-      unawaited(_ctrl.startMotion(group: group, index: ix, priority: 1));
+      unawaited(_handle?.idlePerf(p));
     });
   }
+
+  /// 上一次待机播的动作组（避免连播；docs/24 §3「可选加强」）
+  String? _lastIdleGroup;
+
+  /// 舞台把手（待机池要走它的表情借还；加载完成后创建）
+  Live2DStageHandle? _handle;
 
   /// 下一次待机小动作的时间（`rand(7,15)s`，原型 stage.js L411）
   DateTime _nextIdleAt = DateTime.now().add(const Duration(seconds: 4));
@@ -548,13 +672,12 @@ class _Live2DStageState extends State<Live2DStage> {
         final int ei = Live2DStage.expressionIndex('exp_idle01');
         if (ei >= 0) unawaited(_ctrl.setExpression(ei));
         _startIdleLoop();
-        widget.onReady?.call(
-          Live2DStageHandle(
-            _ctrl,
-            (String m) => _idleMood = m,
-            (bool s) => _sleeping = s,
-          ),
+        _handle = Live2DStageHandle(
+          _ctrl,
+          (String m) => _idleMood = m,
+          (bool s) => _sleeping = s,
         );
+        widget.onReady?.call(_handle!);
       } else {
         _fail();
       }
@@ -574,6 +697,7 @@ class _Live2DStageState extends State<Live2DStage> {
   @override
   void dispose() {
     _idleTimer?.cancel();
+    _handle?.dispose(); // 表情借还的定时器
     _ctrl.dispose();
     super.dispose();
   }
@@ -600,10 +724,16 @@ class _Live2DStageState extends State<Live2DStage> {
     //    可见性改成：**加载前/加载中都可见**（GL 清成透明，画出模型前本来就看不见，
     //    不会闪），只有**确认失败**才收掉，露出下面的全息剪影。
     //
-    // ⚠️ **几何相机 = 布局矩形复刻（docs/18 §1.5.3）**：平台视图外禁套
-    //    Transform/Opacity（saveLayer 会吞掉平台视图），所以相机的缩放/平移
-    //    全部落进 `Positioned.fromRect` 的布局矩形 —— 平台视图随布局尺寸变化
-    //    是安全路径。矩形每帧由 `Cam`（弹簧推镜头）给出，随 build 刷新。
+    // ⚠️ **几何相机 = 固定布局矩形 + Transform（docs/18 §1.5.3 · 2026-10-11 改）**
+    //    原来是"每帧把矩形改成 cam.s 那么大"——平台视图的布局尺寸一变，插件
+    //    iOS 侧就重建 FBO（见 [Live2DStage.kViewFamilies] 的注释），推镜头那段
+    //    她基本不渲染，落点像"直接切过去"（宿主验收原话）。
+    //    现在矩形只按**族**定尺寸（罕见地换），缩放用 `Transform.scale` 表达：
+    //    绕中心缩放与"把矩形改成 cam.s 那么大"几何等价，而 Flutter 的
+    //    `UiKitView` 官方支持 transform/clip/opacity —— 于是推镜头是每帧连续的。
+    //    ⚠️ 注意：这里说的"禁 Transform/Opacity"是旧结论（saveLayer 吞平台视图），
+    //    对当前 iOS `UiKitView` 路线不成立；`Opacity` 仍然别套（会用 saveLayer），
+    //    但 `Transform` 是安全的。
     return Positioned.fill(
       child: IgnorePointer(
         // ⚠️ 2026-10-11 改：**不吃触摸了**（原来是 true）。
@@ -625,10 +755,19 @@ class _Live2DStageState extends State<Live2DStage> {
         child: LayoutBuilder(
           builder: (BuildContext context, BoxConstraints c) {
             final Size size = Size(c.maxWidth, c.maxHeight);
-            final Rect rect = Live2DStage.stageRect(widget.cam, size);
+            final double familyS = Live2DStage.viewFamilyS(widget.cam.s);
+            final Rect rect = Live2DStage.viewRect(familyS, widget.cam, size);
+            // 视觉缩放 = cam.s / 族尺寸（恒 ≤ 1）；中心不变 → 与改矩形等价
+            final double k = widget.cam.s / familyS;
             return Stack(
               children: <Widget>[
-                Positioned.fromRect(rect: rect, child: Live2DView(controller: _ctrl)),
+                Positioned.fromRect(
+                  rect: rect,
+                  child: Transform.scale(
+                    scale: k,
+                    child: Live2DView(controller: _ctrl),
+                  ),
+                ),
               ],
             );
           },

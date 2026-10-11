@@ -524,7 +524,8 @@ class _AppShellState extends State<AppShell>
     if (!mounted) return;
     setState(() {});
     // emotion 标签 → 舞台 mood（docs/18 §2.6 演出联动）
-    _stagePort?.mood(entries.last.emotion);
+    // docs/24 #18：情绪强烈的连带一个兜底动作（react），不再只换脸
+    _stagePort?.react(entries.last.emotion);
   }
 
   /// 快捷 chip 直调工具（docs/19 §A3）：不经 LLM、全部本地可用；
@@ -576,7 +577,7 @@ class _AppShellState extends State<AppShell>
     if (!mounted || _moment != Moment.result || _chatOpen) return;
     if (line.source == CopySource.llm) {
       _sayAside(line.text, holdMs: 2600);
-      _stagePort?.mood(line.emotion);
+      _stagePort?.react(line.emotion); // docs/24 #18：强烈情绪连带动作
     }
   }
 
@@ -603,6 +604,8 @@ class _AppShellState extends State<AppShell>
   Future<void> _takeProbeLine(String topic) async {
     final SystemCopyProvider? copy = _copy;
     if (copy == null) return;
+    // docs/24 #2/#13 追问：歪头疑问（question + exp_serious02）
+    _stagePort?.act('ask');
     final CopyLine line = await copy.probeLine(
       CopyContext.fromState(host: _host, goal: _goal),
       topic: topic,
@@ -635,6 +638,8 @@ class _AppShellState extends State<AppShell>
   /// 点「换目标」→ 先问一句新目标（旧主线单先不动，说清楚再动）。
   void _beginGoalChange() {
     if (_busy) return;
+    // docs/24 #17 换目标：她先琢磨一下（thinking + exp_serious02）
+    _stagePort?.act('think');
     setState(() {
       _goalChangeOn = true;
       _goalAsk.clear();
@@ -682,6 +687,8 @@ class _AppShellState extends State<AppShell>
       _moment = Moment.main;
     });
     _persist();
+    // docs/24 #17 换目标落库：正色点头（nod + exp_serious02）
+    _stagePort?.act('nod');
     _sayAside(
       '行。旧的撤了，新的 [[${_goal.rings.length} 环]] 钉在队首。'
       '「$typed」——别又三天热度。',
@@ -709,6 +716,7 @@ class _AppShellState extends State<AppShell>
     final Quest? head = _flow.head;
     if (head != null) _flow.accept(head);
     // 原型 `App.dispatch()` 接单那一拍：Stage.motion('nod')
+    // （docs/24 #4：nod 现在自带 exp_serious02 正色脸）
     _stagePort?.act('nod');
     setState(() {
       _execStart = _flow.active?.startAt ?? DateTime.now();
@@ -722,6 +730,8 @@ class _AppShellState extends State<AppShell>
       _host = _flow.host;
       _goal = _flow.goal;
     });
+    // docs/24 #5 执行中：落进思考脸一次（低频、不打扰；之后交给待机池）
+    _stagePort?.perf('thinking', 'exp_idle02');
     _clock.startFast();
   }
 
@@ -838,9 +848,33 @@ class _AppShellState extends State<AppShell>
     if (hit) _poke();
   }
 
+  // ── 打瞌睡整链（docs/24 #15，原型 `App.doze()/undoze()` 的 Flutter 接线）──
+  bool _dozing = false;
+
+  void _maybeDoze(DateTime now) {
+    if (_dozing || _busy || _moment != Moment.lobby || _stagePort == null) {
+      return;
+    }
+    if (now.difference(_lastAct) <= ChatterScheduler.dozeAfter) return;
+    if (_aside != null) return; // 她正在说话，别睡
+    _dozing = true;
+    debugPrint('[stage] 没人理 → 打瞌睡（${ChatterScheduler.dozeAfter.inSeconds}s）');
+    unawaited(_stagePort!.doze());
+  }
+
+  void _undozeIfNeeded() {
+    if (!_dozing || _stagePort == null) return;
+    _dozing = false;
+    debugPrint('[stage] 瞌睡被戳醒');
+    unawaited(_stagePort!.undoze());
+  }
+
   /// 原型 `App.second()`：换日之外的那几件事
   void _onSecond() {
     final DateTime now = DateTime.now();
+    // docs/24 #15 打瞌睡：大厅里 80s 没人理 → 睡（`ChatterScheduler.dozeAfter`；
+    // 原型 `App.doze()`。睡姿 = speed 0 + exp_sys_sleep，任意触碰唤醒）
+    _maybeDoze(now);
     if (_asideUntil != null && now.isAfter(_asideUntil!)) {
       setState(() {
         _aside = null;
@@ -934,8 +968,17 @@ class _AppShellState extends State<AppShell>
     // 相机切页：只改弹簧的**目标**，每帧由 `_camTicker` 推过去（原型的 `setCam`）。
     // ⚠️ 这里不能碰 `_cam` 这个 ValueNotifier —— build 期间通知会触发
     //    "setState() or markNeedsBuild() called during build"；通知只放在 tick 里。
+    //
+    // 慢推（[_camGlideMs] > 0）：换景别这种**要看得见**的推镜头走缓动补间，
+    // 而不是让弹簧自己冲过去 —— 弹簧约 0.5s 到位，配上亮帧/界面淡入就像"硬切"。
     if (_camSpring.name != camOf) {
-      _camSpring.set(camOf, MediaQuery.sizeOf(context));
+      final int glideMs = _camGlideMs;
+      _camGlideMs = 0; // 一次性的：只对这一拍生效
+      if (glideMs > 0) {
+        _camSpring.glideTo(camOf, MediaQuery.sizeOf(context), ms: glideMs);
+      } else {
+        _camSpring.set(camOf, MediaQuery.sizeOf(context));
+      }
       if (!_camTicker.isActive) _camTicker.start();
     }
     final bool main = _moment == Moment.main;
@@ -946,7 +989,13 @@ class _AppShellState extends State<AppShell>
     // lineAt（flows.js L23）：
     //   lobby = H*.6，dispatch = H-568，fail = H*.47，sheet = H*.38 - 104，main = H-192
     //   result = H-230（flows.js L23 的 result 档 —— 结算页她的台词位）
-    final double lineY = dispatch
+    //
+    // ⚠️ 换目标（[_goalChangeOn]）要**让开输入框**：main 档的 H-192 正好压在
+    //    「新目标」输入框和预设词上（宿主截图：字幕压在预设词、确定钮压着「换目标」）。
+    //    这一拍借 onboard 的档位（H*.55，屏幕中段），字幕就不跟输入区抢地方了。
+    final double lineY = _goalChangeOn
+        ? size.height * .55
+        : dispatch
         ? size.height - 568
         : fail
         ? size.height * .47
@@ -962,6 +1011,13 @@ class _AppShellState extends State<AppShell>
 
     return Scaffold(
       backgroundColor: C.voidBg,
+      // ⚠️ **不能让整屏随键盘缩**（默认 true 就会缩）。原因：
+      //   · 舞台的矩形是按 LayoutBuilder 的可用高度算的 —— 键盘一弹，
+      //     矩形尺寸就变 → 插件 iOS 侧重建设 FBO（排空渲染队列）+ 她整条位移；
+      //   · 环场/命中层用的是 `MediaQuery.sizeOf`（整窗高），跟舞台对不上，
+      //     于是"她"和"环"会错位（宿主截图里那种错乱）。
+      // 代价：输入框要自己抬到键盘上面（`AskField.bottomInset`）。
+      resizeToAvoidBottomInset: false,
       body: Stack(
         fit: StackFit.expand,
         children: <Widget>[
@@ -1012,6 +1068,8 @@ class _AppShellState extends State<AppShell>
                       )) {
                         setState(() => _lastAct = DateTime.now());
                       }
+                      // docs/24 #15：瞌睡中被戳醒（惊一下 → 回情绪）
+                      _undozeIfNeeded();
                     },
                   ),
                 ),
@@ -1240,6 +1298,10 @@ class _AppShellState extends State<AppShell>
                     onEvidenceChanged: (List<EvidenceShot> list) {
                       final ActiveQuest? a = _flow.active;
                       if (a == null) return;
+                      // docs/24 #6 快照记录：证据进槽那一下，她抬眼确认一下
+                      if (list.length > a.evidence.length) {
+                        _stagePort?.act('check');
+                      }
                       setState(() {
                         a.evidence
                           ..clear()
@@ -1259,6 +1321,8 @@ class _AppShellState extends State<AppShell>
                       if (_busy) return; // 原型 `App.submit()` → `run()`
                       _clock.stopFast();
                       _active = false; // 交出去了，药丸该消失
+                      // docs/24 #7 提交任务：交单前满意地点个头
+                      _stagePort?.perf('nod', 'exp_smile01');
                       _pulse(color: const Color(0xFFBFF6FF), a: .24, ms: 280);
                       // 钤印那一下：涟漪 + 火花 + 爆散（ui.js L346-347 / L358）
                       _fx.ripple(
@@ -1470,6 +1534,9 @@ class _AppShellState extends State<AppShell>
                   ],
                   controller: _ask,
                   visible: onboard && _interviewCat == null,
+                  // 键盘高度：Scaffold 不随键盘缩屏（见 resizeToAvoidBottomInset
+                  // 的注释），所以输入框自己抬上去
+                  bottomInset: MediaQuery.viewInsetsOf(context).bottom,
                   onPreset: (String v) => _ask.text = v,
                   onSubmit: _onGoalSubmitted,
                 ),
@@ -1488,6 +1555,7 @@ class _AppShellState extends State<AppShell>
                   controller: _goalAsk,
                   focusNode: _goalAskFocus,
                   visible: _goalChangeOn,
+                  bottomInset: MediaQuery.viewInsetsOf(context).bottom,
                   onPreset: (String v) => _goalAsk.text = v,
                   onSubmit: _onGoalChangeSubmitted,
                 ),
@@ -1574,9 +1642,14 @@ class _AppShellState extends State<AppShell>
                   }),
                 ),
                 // 主线全景：环挂签挂在环上（位置由相机数学给出），面板压在上面
+                // ⚠️ 换目标时**整层退场**（`_goalChangeOn`）：原来她问新目标时
+                //    主线全景还留在屏上，于是「新目标」输入框的预设词/确定钮
+                //    正好压在底部的【让她派这一环】【换目标】上、字幕压在预设词上
+                //    —— 宿主截图里的"UI 重合"就是这两处（原型 `MainV.hide()`
+                //    也是整层收掉，只留她说话 + 输入）。
                 RingLabels(
                   goal: _goal,
-                  visible: main,
+                  visible: main && !_goalChangeOn,
                   onPick: (int i) => setState(() => _pickedRing = i),
                 ),
                 MainView(
@@ -1585,7 +1658,7 @@ class _AppShellState extends State<AppShell>
                   // 原型 `canGo = !S.active && cur >= 0 && 队列里有主线单`——
                   // veteran 档三条都成立，所以那颗蓝色主按钮是显示的
                   canDispatch: main && !_flow.queueEmpty,
-                  visible: main,
+                  visible: main && !_goalChangeOn,
                   onClose: () => setState(() => _moment = Moment.lobby),
                   onDispatch: _enterDispatchOrRest,
                   // D5：换目标 → 问一句新目标 → `newGoal` 落库（TODO-01；
@@ -1678,6 +1751,9 @@ class _AppShellState extends State<AppShell>
       _host = _flow.host;
       _lastRollDay = startOfDay(DateTime.now());
       _interviewCat = null;
+      // 绑定收卷 = 小景别（boot .64）→ 正常大小（lobby .92）：走慢推，
+      // 别让"绑定完就跳到大厅"（宿主验收：要看得见的放大）
+      _camGlideMs = 1400;
       _moment = Moment.lobby;
       _banner = true;
     });
@@ -1855,6 +1931,8 @@ class _AppShellState extends State<AppShell>
     if (line == null) return;
     // 演出还在跑就先不打断她
     if (_busy) return;
+    // docs/24 #16 回来：她转头看一眼（look + exp_idle02）
+    _stagePort?.act('lookAway');
     // 原型这几句**不给 hold**（flows.js L189）→ 走按字数算的默认值
     _sayAside(line, busy: true);
   }
@@ -1862,6 +1940,10 @@ class _AppShellState extends State<AppShell>
   /// 相机弹簧（`stage.js` L100-103）：切页时把镜头**推**过去，而不是瞬移。
   /// 只有环场与挂签吃这个相机（她本人还没接），所以这一改动只影响环的位置/缩放。
   final CamSpring _camSpring = CamSpring();
+
+  /// 下一拍相机换景别时用**慢推**（毫秒）而不是弹簧直冲；0 = 走弹簧。
+  /// 一次性的：`build` 里消费掉就归零（见那边的注释）。
+  int _camGlideMs = 0;
   final ValueNotifier<Cam> _cam = ValueNotifier<Cam>(Cam.byName('boot'));
   late final Ticker _camTicker = createTicker(_onCamTick);
   Duration _camLast = Duration.zero;
@@ -1922,8 +2004,9 @@ class _AppShellState extends State<AppShell>
     _clock.stopFast();
     // 原型 `_fail()` L529：`Stage.setCam('fail'); Stage.emote('sad'); Stage.motion('down')`
     // —— 原生/WebView 桥已接通（T7），这里恢复当时的"暂时拿掉"：
+    // docs/24 #11：认输垂头（exp_sad01）；**超时**另换惨白脸（exp_pale02）
     _stagePort?.mood('sad');
-    _stagePort?.act('down');
+    _stagePort?.perf('sad', how == 'timeout' ? 'exp_pale02' : 'exp_sad01');
     // 真实判负（store.js fail）：failCount 记账、主线单回队首、生成补救单
     // —— 失败页不再是死局：补救单可接可弃（见 _onChoice）
     final FailOutcome? fo = _flow.fail(how: how);
@@ -2055,17 +2138,32 @@ class _AppShellState extends State<AppShell>
     setState(() => _resultChoicesOn = true);
     final QuestResult r = _result;
     // 原型 settle() L442-444 的 tier 情绪/动作（桥接通后恢复）
-    _stagePort?.mood(switch (r.rarity.i) {
+    final String tier = switch (r.rarity.i) {
       <= 1 => 'smug',
       <= 3 => 'pleased',
-      <= 5 => 'tsun',
       _ => 'tsun',
-    });
-    if (r.crit) {
+    };
+    _stagePort?.mood(tier); // 基础脸（档位情绪）
+    // docs/24 #8/#9/#10 结算表演（借的表情 3s 后回到上面的档位脸）：
+    //   升级 > 暴击 > 档位动作 —— 一拍只演一件事（docs/14 表演预算）
+    if (r.ups.isNotEmpty) {
+      _stagePort?.perf('kime', 'exp_kime01', priority: 3); // #10 升级定格
+    } else if (r.crit) {
       _stagePort?.mood('surprised');
-      _stagePort?.act('surprise');
-    } else if (r.rarity.i >= 4) {
-      _stagePort?.act('happy');
+      _stagePort?.perf('surprised', 'exp_surprised01', priority: 3); // #9 暴击
+    } else {
+      switch (tier) {
+        case 'smug':
+          _stagePort?.perf('smile', 'exp_bsmile01');
+        case 'pleased':
+          _stagePort?.perf('kime', 'exp_kime01');
+        default:
+          if (r.rarity.i >= 4) {
+            _stagePort?.act('happy'); // 高级单：得意（原有行为）
+          } else {
+            _stagePort?.perf('denial', 'exp_shy01'); // tsun：嘴硬
+          }
+      }
     }
     final String line;
     if (r.tooFast) {
@@ -2091,6 +2189,8 @@ class _AppShellState extends State<AppShell>
   /// 她不会说「你完成了，再见」—— 叙事没有终点：
   /// 环数变了、题目变了，路还长。
   void _onFinale(QuestResult r) {
+    // docs/24 #19 收官：定格亮相（kime + exp_bsmile02，强制优先级盖过结算动作）
+    _stagePort?.perf('kime', 'exp_bsmile02', priority: 3);
     final FinaleOutcome? o = _flow.lastFinale;
     if (o == null || o.goal == null) {
       _sayAside('这条主线，你走完了。……接下来看你自己的。', holdMs: 2800);
@@ -2142,6 +2242,8 @@ class _AppShellState extends State<AppShell>
     // （和稍后单子落板的 `land` 是**两拍**：先"钉单"再"落板"，别合成一次）
     unawaited(Sfx.play('publish'));
     unawaited(Haptics.buzz('publish'));
+    // docs/24 #3 发布任务：摆个定格（kime + kime 脸），表情 3s 后还给当前情绪
+    _stagePort?.perf('kime', 'exp_kime01');
     _takeDispatchLine(); // 发布文案接管：LLM 回了顶掉「接不接？」
   }
 
@@ -2201,8 +2303,11 @@ class _AppShellState extends State<AppShell>
 
     // ── 转场这一拍（2026-10-11 宿主验收：「从唤醒到主界面转场太过突兀, 像是
     //    直接切换」「live2d 是直接过去的, 应该有个转场动画」）──────────────
-    // 平台视图的**尺寸**一变，插件就在 layoutSubviews 里重建 FBO（排空渲染队列 +
-    // 主线程重配 renderbuffer），所以推镜头那段她基本不渲染、落点像是"跳"过去。
+    // 两处一起改（2026-10-11 宿主第二次验收）：
+    //  ① 平台视图改成**固定尺寸族 + Transform**（见 `Live2DStage.kViewFamilies`）
+    //     —— 推镜头期间不再每帧重建 FBO，她**真的在动**了；
+    //  ② 这一拍换景别走**慢推**（1.4s easeInOutCubic，`_camGlideMs`）——
+    //     弹簧 0.5s 到位，配上亮帧/界面淡入就是"直接切过去"的观感。
     // 原型用 `Stage.glitch(420,1)` 把这一下盖住；我们对应地再补一拍青蓝过渡，
     // 同时把界面层/环场的淡入（_wakeFade）从这一刻起跑 —— 于是
     // 「睁眼 → 环亮起 → 界面浮上来 → 落进待机」是一段连续的推移，不是硬切。
@@ -2213,6 +2318,8 @@ class _AppShellState extends State<AppShell>
       setState(() => _moment = Moment.onboard);
       return; // 绑定仪式的问话走 LineLayer（askGoal），不叠离开问候
     }
+    // 小景别（boot .64）→ 正常大小（lobby .92）：这一段要**看得见地放大**
+    _camGlideMs = 1400;
     setState(() => _moment = _resumedExec ? Moment.exec : Moment.lobby);
 
     // 逐环点亮（原型在这段之后还有 500ms 留白，才轮到 greet）

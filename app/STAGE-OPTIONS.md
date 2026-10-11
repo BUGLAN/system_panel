@@ -85,8 +85,21 @@ WebView 沙箱进程     225 MB      ← 多出来的一个进程
    `onSurfaceTextureAvailable`，**必须真的参与绘制**才有。`Opacity(0)` 不画子树
    → surface 不创建 → `loadModel` 永不执行 → `await` 永远不返回。
    症状：日志停在「原生视图已就绪 → loadModel」，之后一片安静。
-4. **平台视图外面不能套 `Transform`/`Opacity`**（hybrid composition 走 saveLayer，
-   平台视图可能整个不画）。所以原型那套 `_camMul` 不能靠包一层 Transform 复刻。
+4. **`Opacity` 不能套在平台视图外**（走 saveLayer，会吞掉平台视图；`Opacity(0)`
+   还会让加载死锁，见坑 3）。
+   ⚠️ **但 `Transform` 可以** —— 这条 2026-10-11 真机复核**推翻了旧结论**
+   （旧写法把 Transform 和 Opacity 一起禁了）。依据两条：
+   · Flutter 自己的文档：`UiKitView` 所属的 `_DarwinView`
+     （`packages/flutter/lib/src/widgets/platform_view.dart`）写着
+     "support for transforms, clips, and opacity similar to any other Flutter widget"；
+   · 真机（iPhone 15 Pro Max / iOS 27）实测：舞台用**固定尺寸族 + `Transform.scale`**
+     推镜头，中途帧里她按**中间尺寸**正常渲染（截图量到头顶位置落在两端之间）。
+   所以「相机靠布局矩形逐帧改尺寸」那套**必须废掉**：插件 iOS 侧 `layoutSubviews()`
+   里会 `recreateFramebufferOnMainThread()` + `onSurfaceChanged()`（重建 FBO、排空
+   渲染队列），按帧改尺寸 = 每帧重建 —— 推镜头那段她基本不渲染，落点看着就是
+   "直接切过去"（宿主 2026-10-11 验收原话）。现在改为：
+   **矩形只按"族"定尺寸（`Live2DStage.kViewFamilies` = [1.05, 1.70]），族内缩放/平移
+   交给 `Transform`**，并配 `CamSpring.glideTo` 的 1.4s 慢推。
 5. **原生加载有竞态**：同一份数据时而 `false` 时而 `true`（实测第 1 次 false、
    第 2 次 true）。已加重试（最多 5 次）。
 

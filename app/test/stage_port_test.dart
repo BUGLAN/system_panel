@@ -100,35 +100,84 @@ void main() {
       });
     });
 
-    test('poke 自带表情覆盖 exp_shy01；未知动词回落 nod 不炸', () {
-      expect(StageBridges.verbExp['poke'], 'exp_shy01');
+    test('19 个动词全带表情（docs/24 §4「动作与表情绑在一起」）', () {
+      // poke 的原值保留
+      expect(StageBridges.verbFace['poke'], 'exp_shy01');
       expect(
-        StageBridges.verbExpIndex('poke'),
+        StageBridges.verbFaceIndex('poke'),
         Live2DStage.expressions.indexOf('exp_shy01'),
       );
-      expect(StageBridges.verbExpIndex('nod'), -1);
+      // 每个动词都有自己的脸，且都在 32 表情表里
+      for (final MapEntry<String, String> e in StageBridges.verbFace.entries) {
+        expect(
+          Live2DStage.expressions.contains(e.value),
+          isTrue,
+          reason: '${e.key} 的 ${e.value} 不在表情表里',
+        );
+      }
+      expect(
+        StageBridges.verbFace.keys.toSet(),
+        StageBridges.verbGroup.keys.toSet(),
+        reason: '动词表与表情表必须一一对应（全覆盖）',
+      );
       expect(StageBridges.isVerb('down'), isTrue);
       expect(StageBridges.isVerb('不存在'), isFalse);
       expect(StageBridges.groupOf('不存在'), 'nod', reason: '兜底不静默丢弃');
     });
+
+    test('情绪→兜底动作（emotionAct）：值全是合法动词，只给强烈情绪配', () {
+      for (final MapEntry<String, String> e
+          in StageBridges.emotionAct.entries) {
+        expect(
+          StageBridges.isVerb(e.value),
+          isTrue,
+          reason: '${e.key} → ${e.value} 不是动词',
+        );
+        expect(
+          StageBridges.isMood(e.key),
+          isTrue,
+          reason: '${e.key} 不是合法情绪',
+        );
+      }
+      // 克制的：neutral/smug 等不配动作（表演预算）
+      expect(StageBridges.actOf('neutral'), '');
+      expect(StageBridges.actOf('annoyed'), 'angry');
+      expect(StageBridges.actOf('tsun'), 'deny');
+    });
   });
 
-  group('待机池（stage.js IDLE_POOL）', () {
-    test('三档心情的池都非空且 ⊆ 17 组', () {
+  group('待机池（docs/24 §3 清单 A：动作组 + 表情）', () {
+    test('三档心情的池都非空，组 ⊆ 17 组、表情都在 32 表里', () {
       expect(StageBridges.idlePool.keys.toSet(), <String>{
         'cold', 'pleased', 'neutral',
       });
-      for (final MapEntry<String, List<String>> e
+      for (final MapEntry<String, List<Perf>> e
           in StageBridges.idlePool.entries) {
         expect(e.value, isNotEmpty, reason: '${e.key} 池空了');
-        for (final String g in e.value) {
+        for (final Perf p in e.value) {
           expect(
-            Live2DStage.motionGroups.contains(g),
+            Live2DStage.motionGroups.contains(p.group),
             isTrue,
-            reason: '${e.key} 池里的 $g 不是合法组',
+            reason: '${e.key} 池里的 ${p.group} 不是合法组',
           );
+          expect(
+            Live2DStage.expressions.contains(p.exp),
+            isTrue,
+            reason: '${e.key} 池里 ${p.group} 的 ${p.exp} 不在表情表里',
+          );
+          expect(p.priority, 2, reason: '池里不落优先级，播放时恒 1');
         }
       }
+    });
+
+    test('闲置表情真的用起来了（docs/24 §5：idle02/idle03/kime01）', () {
+      final Set<String> used = StageBridges.idlePool.values
+          .expand((List<Perf> l) => l)
+          .map((Perf p) => p.exp)
+          .toSet();
+      expect(used.containsAll(<String>['exp_idle02', 'exp_idle03', 'exp_kime01']),
+          isTrue,
+          reason: '清单 A 承诺启用这三个闲置表情');
     });
 
     test('未知心情回落 neutral', () {
@@ -163,6 +212,70 @@ void main() {
           reason: '$cam 矩形不是画布比例 —— 插件会裁掉她的头/脚',
         );
       }
+    });
+
+    // ── 视图固定尺寸族（2026-10-11 根治「推镜头像硬切」）──────────────
+    // 平台视图的布局尺寸一变，插件就重建 FBO；所以矩形只按"族"定尺寸，
+    // 族内的缩放交给 Transform.scale —— 这两条断言保证"改矩形"和
+    // "固定矩形 + 缩放"在几何上完全等价（否则她会跳位/变形）。
+    group('视图固定尺寸族 + Transform', () {
+      const Size screen = Size(430, 932);
+
+      test('族选择：每个 cam 都落到 ≥ 它的最小族，且缩放系数 ≤ 1（只缩不放大）', () {
+        for (final MapEntry<String, Cam> e in Cam.all.entries) {
+          final double f = Live2DStage.viewFamilyS(e.value.s);
+          expect(
+            e.value.s,
+            lessThanOrEqualTo(f + 1e-9),
+            reason: '${e.key} 的 s=${e.value.s} 超过了族 $f',
+          );
+          expect(
+            e.value.s / f,
+            lessThanOrEqualTo(1 + 1e-9),
+            reason: '${e.key} 的缩放系数必须 ≤ 1（放大 = 糊）',
+          );
+        }
+        // 小景别一族（含大厅/主线/结算），派单推近才换到 1.70 那族
+        expect(Live2DStage.viewFamilyS(.64), 1.05);
+        expect(Live2DStage.viewFamilyS(.92), 1.05);
+        expect(Live2DStage.viewFamilyS(1.05), 1.05);
+        expect(Live2DStage.viewFamilyS(1.70), 1.70);
+      });
+
+      test('固定矩形 + 缩放 ≡ 原来那个矩形（中心/尺寸逐项相等）', () {
+        for (final String cam in <String>['boot', 'lobby', 'talk', 'exec']) {
+          final Cam c = Cam.byName(cam);
+          final double f = Live2DStage.viewFamilyS(c.s);
+          final Rect view = Live2DStage.viewRect(f, c, screen);
+          final double k = c.s / f;
+          final Rect scaled = Rect.fromCenter(
+            center: view.center,
+            width: view.width * k,
+            height: view.height * k,
+          );
+          final Rect want = Live2DStage.stageRect(c, screen);
+          expect(scaled.center.dx, closeTo(want.center.dx, .01), reason: cam);
+          expect(scaled.center.dy, closeTo(want.center.dy, .01), reason: cam);
+          expect(scaled.width, closeTo(want.width, .01), reason: cam);
+          expect(scaled.height, closeTo(want.height, .01), reason: cam);
+        }
+      });
+
+      test('同一族内的不同 cam：布局矩形**完全一样**（这才是"不重建 FBO"）', () {
+        final Rect a = Live2DStage.viewRect(
+          Live2DStage.viewFamilyS(.64),
+          Cam.byName('boot'),
+          screen,
+        );
+        final Rect b = Live2DStage.viewRect(
+          Live2DStage.viewFamilyS(.92),
+          Cam.byName('lobby'),
+          screen,
+        );
+        // 尺寸必须一模一样（位置可以不同 —— 位置变不会触发 layoutSubviews）
+        expect(b.width, closeTo(a.width, 1e-9));
+        expect(b.height, closeTo(a.height, 1e-9));
+      });
     });
 
     // 「戳她」命中判定（原型 stage.js `hit()` 的宽度曲线）

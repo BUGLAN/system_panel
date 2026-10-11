@@ -36,6 +36,8 @@
 - **Flutter 工程在 `app/`**：`flutter create --org com.systempanel --project-name system_panel --platforms android,ios`；applicationId 与 iOS bundle id 均为 `com.systempanel.app`。跑：`cd app && flutter run`（Windows 用 Android 模拟器；iOS 模拟器在 Mac 上，见 `tools/setup-macos-ios.sh`）
 - **全程国内源、不走代理（硬要求）**：`PUB_HOSTED_URL=https://pub.flutter-io.cn`、`FLUTTER_STORAGE_BASE_URL=https://storage.flutter-io.cn`（已写入用户环境变量）；Gradle 发行版走腾讯云镜像（`app/android/gradle/wrapper/gradle-wrapper.properties`），AGP/Kotlin 依赖走阿里云镜像（`app/android/settings.gradle.kts`、`app/android/build.gradle.kts`，官方源只作兜底）；字体素材取自 jsDelivr 的 `google/fonts`
 - **iOS 测试路线**：本机只跑 Android 模拟器，iOS 模拟器在 Mac Air（配置脚本见上）；本机不接 Android 真机
+- **Live2D 舞台几何（2026-10-11 宿主验收后定稿，勿回退）**：平台视图的**布局尺寸按"族"固定**（`Live2DStage.kViewFamilies = [1.05, 1.70]`，族内所有相机共用一块矩形），缩放/平移交给 `Transform.scale(cam.s / 族尺寸)` —— 逐帧改布局尺寸会让插件 iOS 侧 `layoutSubviews()` 每帧重建 FBO，推镜头那段她基本不渲染（观感＝"直接切过去"）。换景别走 `CamSpring.glideTo(..., ms: 1400)` 的 easeInOutCubic **慢推**（弹簧 0.5s 到位太快，配上亮帧就是硬切观感）。**`Opacity` 仍然禁套平台视图**（saveLayer），`Transform` 可以（Flutter 文档 + 真机实测）。细节：`app/STAGE-OPTIONS.md` 坑 4、`docs/18` §1.5.3
+- **输入态（`#ask` / 换目标）布局纪律**：主 Scaffold 必须 `resizeToAvoidBottomInset: false`（整屏随键盘缩 → 舞台矩形变 → 重建 FBO + 她与环场错位），输入框自己用 `AskField.bottomInset: MediaQuery.viewInsetsOf(context).bottom` 抬到键盘之上；「换目标」(`_goalChangeOn`) 时**主线全景（抬头/环挂签/底部两颗）整层退场**、字幕让到屏幕中段 —— 输入框/预设词不许和【让她派这一环】【换目标】或字幕重叠（宿主截图里的"UI 重合"）
 
 ## 已锁定的设计决策
 
@@ -67,6 +69,7 @@
 | `15-今日场景与手感规则.txt` | 今日页=全息委托板、三动词（拔单/撕单/轻点）、主线卷轴、金币拾取、声音震动全铺、TTS 接入约定；【v4】任务袋与台词区已删 |
 | `16-执行与时间轴规则.txt` | v3 专注执行流：AI 访谈立主线、周期计划（任务数=天数-1）、唯一执行中、拔单=开始执行、证据时间轴、认输、连击新定义、精力删除 |
 | `17-主线时间轴与执行轴规则.txt` | v5：主线=左右交错时间轴、状态零文字纯样式、节点点击=顶部面板三态（执行中/只读回顾/待执行）、证据轴=紧凑书脊、动作区与底栏顺序、默认首屏=主线 |
+| `24-待机与动作表情绑定清单.md` | 待机动作 + 各指令的动作/表情绑定（宿主 2026-10-11 要求「动作与表情绑在一起」）：素材边界（18 动作组 × 32 表情，不可新增文件）、清单 A 待机池（带表情）/ B 19 个指令时刻 / C 闲置表情用途、红线、落地顺序 |
 
 ## 动效参数（样机 = 真机的唯一标准）
 
@@ -104,6 +107,6 @@
 
 - 先文档后代码；规则改动先改编号 txt，代码跟随文档
 - 每次只推进一件事，不超过 500 字的决策粒度
-- 动效/视觉改动必须先在样机验证手感，再移植 Flutter
+- **【宿主指定】不要参考、也不要在 `prototype/` 下的 HTML 原型上做验证或改动**：原型早已过时，只作历史参考；验证一律以 Flutter 工程 `app/`（真机 / iOS 模拟器）为准。旧约定「动效/视觉改动必须先在样机验证手感，再移植 Flutter」**作废**——现在动效/视觉直接在 Flutter 侧实现并验证
 - **动作区用词固定**：【快照记录】【提交任务】【认输】（顶部面板与执行面板同款，勿再用旧黑话；改名对照见 17 号文档开头）
 - `.env`、`results/`、`node_modules/` 永不入库
