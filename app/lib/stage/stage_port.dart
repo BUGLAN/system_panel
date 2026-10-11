@@ -1,4 +1,5 @@
 import 'live2d_stage.dart';
+import 'perf_presets.dart';
 import 'live2d_web.dart';
 
 /// ═══════════════════════════════════════════════════════════
@@ -40,6 +41,14 @@ abstract class StagePort {
   /// 用于发布任务/升级/收官这些**没有现成动词**的时刻。默认 no-op（WebView
   /// 降级路线没有组名直通，保留原行为）。
   void perf(String group, String exp, {int priority = 2}) {}
+
+  /// 按**预设**播放（`PerfPreset` = 命名好的"动作 × 表情"组合）。
+  /// 默认退回 [perf]。
+  void preset(PerfPreset p) => perf(p.group, p.exp, priority: p.priority);
+
+  /// 只换表情（按名字）——调试台"表情"页签用：不动动作、不借还。
+  /// 默认 no-op（WebView 路线用 [mood]）。
+  void face(String exp) {}
 
   /// 情绪 + 兜底动作一起演（docs/24 §4「情绪→动作」）：情绪强烈的
   /// （annoyed/cold/sad/joy/surprised/tsun）多演一个动作，其余只换脸。
@@ -233,6 +242,13 @@ class NativeStagePort implements StagePort {
   @override
   void perf(String group, String exp, {int priority = 2}) =>
       _handle.perf(group, exp, priority: priority);
+
+  @override
+  void preset(PerfPreset p) =>
+      _handle.perf(p.group, p.exp, priority: p.priority);
+
+  @override
+  void face(String exp) => _handle.face(exp);
 
   @override
   void react(String mood) {

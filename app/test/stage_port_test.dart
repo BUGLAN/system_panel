@@ -5,6 +5,7 @@ import 'package:flutter/painting.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:system_panel/stage/camera.dart';
 import 'package:system_panel/stage/live2d_stage.dart';
+import 'package:system_panel/stage/perf_presets.dart';
 import 'package:system_panel/stage/stage_port.dart';
 
 /// 舞台桥接表一致性（docs/18 §1.5.4 / stage.js L27-77 真源）。
@@ -143,6 +144,52 @@ void main() {
       expect(StageBridges.actOf('neutral'), '');
       expect(StageBridges.actOf('annoyed'), 'angry');
       expect(StageBridges.actOf('tsun'), 'deny');
+    });
+  });
+
+  group('预设总表（PerfPresets：动作 × 表情 的命名组合）', () {
+    test('每条预设的动作组与表情都真实存在（不可新增资源，只能组合）', () {
+      for (final PerfPreset p in PerfPresets.all) {
+        expect(
+          Live2DStage.motionGroups.contains(p.group) ||
+              p.group == Live2DStage.baseGroup,
+          isTrue,
+          reason: '${p.id} 的动作组 ${p.group} 不在 18 组里',
+        );
+        expect(
+          Live2DStage.expressions.contains(p.exp),
+          isTrue,
+          reason: '${p.id} 的表情 ${p.exp} 不在 32 个里',
+        );
+        expect(Live2DStage.countOf(p.group), greaterThan(0));
+      }
+    });
+
+    test('id 唯一、中文名非空、优先级合法（1 待机 / 2 指令 / 3 强制）', () {
+      final Set<String> ids = <String>{};
+      for (final PerfPreset p in PerfPresets.all) {
+        expect(ids.add(p.id), isTrue, reason: '预设 id 重复：${p.id}');
+        expect(p.name.trim(), isNotEmpty, reason: '${p.id} 没有中文名');
+        expect(p.priority, inInclusiveRange(1, 3), reason: '${p.id} 优先级越界');
+      }
+      expect(PerfPresets.all.length, greaterThanOrEqualTo(30),
+          reason: '预设是本次交付的主体，不该只剩几条');
+    });
+
+    test('按族取不丢条目（调试页分组与文档分节都靠它）', () {
+      int sum = 0;
+      for (final PerfFamily f in PerfFamily.values) {
+        sum += PerfPresets.of(f).length;
+      }
+      expect(sum, PerfPresets.all.length);
+      expect(PerfPresets.byId('present')?.name, '亮相');
+      expect(PerfPresets.byId('不存在的预设'), isNull);
+    });
+
+    test('动作组总表 = 17 语义组 + Idle 基底（调试页"动作"页签）', () {
+      expect(PerfPresets.groups.length, 18);
+      expect(PerfPresets.groups.toSet().length, 18, reason: '有重复组名');
+      expect(PerfPresets.groups.contains(Live2DStage.baseGroup), isTrue);
     });
   });
 

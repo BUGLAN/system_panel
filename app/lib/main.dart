@@ -57,6 +57,7 @@ import 'widgets/interview_deck.dart';
 import 'widgets/item_drawer.dart';
 import 'widgets/line_layer.dart';
 import 'widgets/main_view.dart';
+import 'widgets/perf_debug.dart';
 import 'widgets/plate.dart';
 import 'widgets/plate_timeline.dart';
 import 'widgets/result_panel.dart';
@@ -1610,6 +1611,11 @@ class _AppShellState extends State<AppShell>
                   host: _host,
                   kind: _sheetKind,
                   visible: sheet,
+                  // 设置页「表演调试台」→ 收起投影面板，开调试设施（她仍在背景可见）
+                  onOpenPerfDebug: () => setState(() {
+                    _moment = _sheetFrom;
+                    _perfDebugOn = true;
+                  }),
                   // 关掉回**开它的那个页面**（原型 `App.closeSheet()` → `_sheetFrom`）
                   onClose: () => setState(() => _moment = _sheetFrom),
                   onWipe: _wipe,
@@ -1677,6 +1683,13 @@ class _AppShellState extends State<AppShell>
                       _moment = Moment.exec;
                     }),
                   ),
+                ),
+                // 表演调试台（宿主 2026-10-11）：贴底半屏，上面半屏留给她 ——
+                // 点一条预设/动作/表情就地演，边看边调（不进底栏、不写存档）
+                PerfDebugPanel(
+                  visible: _perfDebugOn,
+                  port: _stagePort,
+                  onClose: () => setState(() => _perfDebugOn = false),
                 ),
                 // 对话层（docs/18 §2.6）：叠加，不替换；她仍在背景可见
                 // ——层序在 Live2D/字幕之上、亮帧与横幅之下
@@ -1977,6 +1990,9 @@ class _AppShellState extends State<AppShell>
   /// 投影面板是从哪开出来的（原型 `App._sheetFrom`）—— 关掉要回原处：
   /// 从执行页开的就得回执行页，不能一律回大厅
   Moment _sheetFrom = Moment.lobby;
+
+  /// 表演调试台开着没（宿主 2026-10-11：调试预设/动作/表情的设施）
+  bool _perfDebugOn = false;
 
   /// 开投影面板（原型 `App.sheet(kind)`）
   void _openSheet(SheetKind kind) {

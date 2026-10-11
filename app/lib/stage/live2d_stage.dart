@@ -134,6 +134,12 @@ class Live2DStageHandle {
     );
   }
 
+  /// 只换表情（按名字）——调试台"表情"页签用：不借还、不动动作，纯看脸。
+  Future<void> face(String exp) async {
+    final int i = Live2DStage.expressionIndex(exp);
+    if (i >= 0) await expression(i);
+  }
+
   /// 待机池条目（docs/24 §3：待机动作**带表情**，priority 恒 1）
   Future<void> idlePerf(Perf p) async {
     final int i = Live2DStage.expressionIndex(p.exp);

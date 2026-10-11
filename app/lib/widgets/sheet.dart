@@ -17,6 +17,8 @@ import '../data/rewards.dart';
 import '../data/titles.dart';
 import '../design/tokens.dart';
 import '../state/host_state.dart';
+import '../stage/live2d_stage.dart';
+import '../stage/perf_presets.dart';
 import '../state/settings.dart';
 import 'radar.dart';
 import 'stats_pane.dart';
@@ -46,6 +48,7 @@ class Sheet extends StatelessWidget {
     this.onEquipTitle,
     this.onBuyItem,
     this.onSettingsChanged,
+    this.onOpenPerfDebug,
   });
 
   final HostState host;
@@ -69,6 +72,9 @@ class Sheet extends StatelessWidget {
   /// D8/LLM：系统页任意设置变化回传（四开关 + 视觉校验组），
   /// 持久化由设置组自己经 SettingsStore 落盘，这里只是给宿主同步的机会。
   final ValueChanged<AgentSettings>? onSettingsChanged;
+
+  /// 打开「表演调试台」（宿主 2026-10-11：调试预设/动作/表情；由 main.dart 挂叠层）
+  final VoidCallback? onOpenPerfDebug;
 
   static const Map<SheetKind, List<String>> _titles = <SheetKind, List<String>>{
     SheetKind.archive: <String>['ARCHIVE · 宿主档案', '档案'],
@@ -792,6 +798,7 @@ class Sheet extends StatelessWidget {
       settingsSeed: settings,
       onWipe: onWipe,
       onSettingsChanged: onSettingsChanged,
+      onOpenPerfDebug: onOpenPerfDebug,
     );
   }
 }
@@ -805,12 +812,14 @@ class _SystemPane extends StatefulWidget {
     required this.settingsSeed,
     this.onWipe,
     this.onSettingsChanged,
+    this.onOpenPerfDebug,
   });
 
   /// 存档加载完成前的初值（main.dart 未接 settings 时 = AppSettings.demo）
   final AppSettings settingsSeed;
   final VoidCallback? onWipe;
   final ValueChanged<AgentSettings>? onSettingsChanged;
+  final VoidCallback? onOpenPerfDebug;
 
   @override
   State<_SystemPane> createState() => _SystemPaneState();
@@ -944,6 +953,27 @@ class _SystemPaneState extends State<_SystemPane> {
   @override
   Widget build(BuildContext context) {
     final List<Widget> rows = <Widget>[
+      _setRow(
+        '表演调试台',
+        '预设 ${PerfPresets.all.length} 条（动作 × 表情）、18 个动作组、'
+            '${Live2DStage.expressions.length} 个表情 —— 点一下就地演给你看',
+        GestureDetector(
+          key: const Key('sheet.perfDebug'),
+          behavior: HitTestBehavior.opaque,
+          onTap: () => widget.onOpenPerfDebug?.call(),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(15),
+              border: Border.all(color: C.line),
+            ),
+            child: Text(
+              '打开',
+              style: fs(family: F.cn, size: 12, wght: 700, color: C.ice),
+            ),
+          ),
+        ),
+      ),
       _setRow(
         '音效',
         // 文案如实（宿主 2026-10-10 裁决 B′）：
