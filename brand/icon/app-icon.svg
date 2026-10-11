@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    
+    <linearGradient id="icmarc" x1="0" y1="0" x2="0.35" y2="1">
+      <stop offset="0" stop-color="#B6F7FF"/>
+      <stop offset=".45" stop-color="#38E1FF"/>
+      <stop offset="1" stop-color="#1E9BFF"/>
+    </linearGradient>
+    <linearGradient id="icmcore" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#EAFDFF"/>
+      <stop offset=".55" stop-color="#7FE9FF"/>
+      <stop offset="1" stop-color="#38E1FF"/>
+    </linearGradient>
+    <filter id="icmblur" x="-70%" y="-70%" width="240%" height="240%">
+      <feGaussianBlur stdDeviation="22"/>
+    </filter>
+    
+    <radialGradient id="icsky" cx="50%" cy="34%" r="80%">
+      <stop offset="0" stop-color="#122647"/>
+      <stop offset=".45" stop-color="#0B1A36"/>
+      <stop offset="1" stop-color="#03060E"/>
+    </radialGradient>
+    <radialGradient id="ichalo" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#38E1FF" stop-opacity="0.15"/>
+      <stop offset=".45" stop-color="#38E1FF" stop-opacity="0.05"/>
+      <stop offset="1" stop-color="#38E1FF" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="icfade">
+      <stop offset=".55" stop-color="#fff" stop-opacity=".9"/>
+      <stop offset="1" stop-color="#fff" stop-opacity="0"/>
+    </radialGradient>
+    <mask id="icgridmask"><rect width="1024" height="1024" fill="url(#icfade)"/></mask>
+    <pattern id="icgrid" width="64" height="64" patternUnits="userSpaceOnUse">
+      <path d="M64 0H0V64" fill="none" stroke="#38E1FF" stroke-opacity=".075" stroke-width="2"/>
+    </pattern>
+    <radialGradient id="icvig" cx="50%" cy="50%" r="72%">
+      <stop offset=".5" stop-color="#000" stop-opacity="0"/>
+      <stop offset="1" stop-color="#000" stop-opacity=".55"/>
+    </radialGradient>
+  </defs>
+  <g >
+    <rect width="1024" height="1024" fill="url(#icsky)"/>
+    <rect width="1024" height="1024" fill="url(#icgrid)" mask="url(#icgridmask)"/>
+    <circle cx="512" cy="512" r="519.72" fill="none" stroke="#38E1FF" stroke-opacity=".13" stroke-width="1.4628571428571429" stroke-dasharray="24.38 4.88"/>
+    <circle cx="512" cy="512" r="603.9" fill="url(#ichalo)"/>
+    <g transform="translate(512 512) scale(2.13) translate(-256 -256)"><g filter="url(#icmblur)" opacity="0.5">
+      <path d="M256 84 L404.96 170 L404.96 342 L256 428 L107.04 342 L107.04 170Z" fill="none" stroke="#38E1FF" stroke-width="30" stroke-dasharray="774 258" stroke-linecap="round"/>
+      <path d="M256 196 L307.96 226 L307.96 286 L256 316 L204.04 286 L204.04 226Z"  fill="#38E1FF"/>
+      <circle cx="107.04" cy="256" r="21" fill="#38E1FF"/>
+    </g>
+    <path d="M256 84 L404.96 170 L404.96 342 L256 428 L107.04 342 L107.04 170Z" fill="none" stroke="#38E1FF" stroke-opacity="0.26" stroke-width="30"/>
+    <path d="M256 84 L404.96 170 L404.96 342 L256 428 L107.04 342 L107.04 170Z" fill="none" stroke="url(#icmarc)" stroke-width="30" stroke-dasharray="774 258" stroke-linecap="round"/>
+    <path d="M256 196 L307.96 226 L307.96 286 L256 316 L204.04 286 L204.04 226Z"  fill="url(#icmcore)"/>
+    <circle cx="107.04" cy="256" r="21" fill="#EAF7FF"/></g>
+    <rect width="1024" height="1024" fill="url(#icvig)"/>
+  </g>
+</svg>

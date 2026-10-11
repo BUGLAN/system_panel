@@ -23,6 +23,7 @@
 - **⚠️ 单文件原型的写入纪律**：`prototype/app/index.html` 是 2000+ 行单文件原型，**同时只允许一个 Agent 写它**。本仓库出现过两个会话并行改同一文件（一侧改面板头部 `.dsgoal`/`.dsid`/`pDoneNext`，另一侧改六维与顶部面板），`edit` 工具会以 `file changed since it was read` 报冲突。遇到该报错先轮询 `Get-FileHash` + `LastWriteTime` 确认是否有别的写入者，再决定避让或接手，**不要用脚本硬写覆盖对方改动**；本次改设置页前先探测 30s（哈希不变才动手）
 - **Live2D 角色（14）**：脚本本地化在 `prototype/app/vendor/`（入库），模型本地化在 `prototype/app/live2d/`（gitignore，版权红线），默认 Hiyori，设置页可换 model3.json 地址；等待播"召唤阵"，失败降级全息剪影
 - **TTS 语音钩子**：音频按 key 放 `prototype/app/voice/`（key 见该目录 README.txt），缺文件自动回退电子音垫音
+- **品牌标识（23）**：LOGO＝「六边核心 + 经验弧」，唯一真源 `brand/build.mjs`（一条命令重生成全部 SVG 母版 + Android/iOS 图标 + 原型 favicon + 规格卡，产物入库）；**禁手改任何生成的 SVG/PNG**，要改就改参数重跑并同步 `docs/23`；细节与落点见 `brand/README.md`
 - 未入库：`.env`（含 Stitch API Key）、`node_modules/`、`prototype/stitch-bridge/results/`
 
 ## 技术栈（已拍板，勿再摇摆）

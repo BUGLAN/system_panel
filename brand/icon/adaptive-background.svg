@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="108" height="108" viewBox="0 0 108 108">
+  <defs>
+    <radialGradient id="absky" cx="50%" cy="34%" r="80%">
+      <stop offset="0" stop-color="#122647"/>
+      <stop offset=".45" stop-color="#0B1A36"/>
+      <stop offset="1" stop-color="#03060E"/>
+    </radialGradient>
+    <radialGradient id="abfade">
+      <stop offset=".55" stop-color="#fff" stop-opacity=".9"/>
+      <stop offset="1" stop-color="#fff" stop-opacity="0"/>
+    </radialGradient>
+    <mask id="abgm"><rect width="108" height="108" fill="url(#abfade)"/></mask>
+    <pattern id="abgrid" width="6.75" height="6.75" patternUnits="userSpaceOnUse">
+      <path d="M6.75 0H0V6.75" fill="none" stroke="#38E1FF" stroke-opacity=".075" stroke-width=".55"/>
+    </pattern>
+  </defs>
+  <rect width="108" height="108" fill="url(#absky)"/>
+  <rect width="108" height="108" fill="url(#abgrid)" mask="url(#abgm)"/>
+</svg>

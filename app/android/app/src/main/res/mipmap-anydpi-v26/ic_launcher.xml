@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 宿主 SYSTEM · 自适应图标（API 26+；API 25 及以下回落到各密度 ic_launcher.png）
+     三层 PNG 全部由 brand/build.mjs 生成，别手改——改就改 brand/ 里的母版再重跑：
+       background = 虚空蓝黑渐变 + 细网格（108dp 满幅，系统负责裁切与视差）
+       foreground = 六边核心标识（透明底，内容落在中央 66dp 安全圆内，半径 28dp 留余量）
+       monochrome = Android 13+ 主题图标用的全白剪影（系统只取 alpha 重新上色） -->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@mipmap/ic_launcher_background"/>
+    <foreground android:drawable="@mipmap/ic_launcher_foreground"/>
+    <monochrome android:drawable="@mipmap/ic_launcher_monochrome"/>
+</adaptive-icon>
