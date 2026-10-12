@@ -84,8 +84,9 @@ class SysApp extends StatelessWidget {
 
   /// ⚠️ **诊断开关（T7 attempt 2）**：true = 裸舞台页（只有 Live2DStage，
   /// 无天幕/环场/任何 Flutter 层）——用来二分「原生不上屏」的责任方：
-  /// 裸页能上屏 = 我们 App 的树有合成冲突（可修）；裸页也黑 = 插件/emugl
-  /// 不兼容（scope 外，止损）。结论记 STAGE-OPTIONS；平时保持 false。
+  /// 裸页能上屏 = 我们 App 的树有合成冲突（可修）；裸页也黑 = 再看加载与
+  /// **shader 是否进包**（2026-10-12：当时的「也黑」就是缺 shader，不是插件/
+  /// emugl 不兼容 —— 见 STAGE-OPTIONS「2026-10-12 复盘」）。平时保持 false。
   static const bool kStageBareProbe = false;
 
   @override
@@ -161,16 +162,24 @@ class _AppShellState extends State<AppShell>
         WidgetsBindingObserver {
   /// ── 舞台渲染路线（docs/18 §1.5；HANDOFF-LIVE2D-IOS）──────────────
   ///
-  /// ⚠️ **2026-10-09 MuMu 实测：走止损线，默认 false（WebView）。**
-  /// 原生在 MuMu 上「loadModel=true 但不上屏」复现旧 AVD 结论，且拿到新证据：
-  /// Live2DTextureView 在树里（1080×1080，位置/尺寸正确）、loadModel 第 2 次
-  /// true、但渲染线程每帧报 GL 0x501（INVALID_VALUE）于顶点提交——emugl 转译层
-  /// 与插件的 shader/attrib 用法不兼容（旧 AVD 无此日志）。完整证据链见
-  /// `app/STAGE-OPTIONS.md`「MuMu · 原生舞台复验」节。
+  /// ⚠️ **2026-10-12 复盘：MuMu 上原生是可以跑的，之前的止损归因是错的。**
+  /// 旧结论（2026-10-09）把「loadModel=true 但不上屏 + 每帧 GL 0x501」判成
+  /// MuMu 的 emugl 转译层与插件不兼容。**真因在我们这边**：`flutter_live2d`
+  /// 1.0.2 不打包 Android shader 资产，原生加载器要的
+  /// `assets/FrameworkShaders/*` 根本不在 APK 里 → shader program = 0 →
+  /// attribute location 查询失败（负值）→ `glVertexAttribPointer` /
+  /// `glEnableVertexAttribArray` 每帧报 GL_INVALID_VALUE。
+  /// 补包见 `app/android/app/build.gradle.kts` 的 `syncLive2dShaders`；
+  /// 同一台 MuMu 修复后原生正常上屏（证据 `.verify/native-mumu/`、
+  /// 结论 `app/STAGE-OPTIONS.md`「2026-10-12 复盘」节）。
   ///
-  /// **翻回原生的条件**：flutter_live2d 插件升级（或换非模拟器 GPU 栈）后，
-  /// 改回 `true` 跑一轮大厅截图 + gfxinfo 对照即可；桥接层（StagePort）两条
-  /// 路线都已就绪，切换零成本。
+  /// 教训：插件把 SDK 日志回调设成空函数（`live2d_flutter.cpp` 的
+  /// `LogFunction`），shader 加载失败**不会打日志**；`loadModel=true` 也只
+  /// 代表模型配置解析成功，不校验 shader 编译/链接。别再把「无日志 + 有 GL
+  /// 报错」当成驱动不兼容的证据。
+  ///
+  /// **翻回 WebView 的条件**：原生加载失败（`_stageFallback` 会自动切），
+  /// 或真机上出现插件侧渲染异常。桥接层（StagePort）两条路线都就绪。
   ///
   /// 运行期原生加载失败也会自动落到 WebView（`_stageFallback`）——
   /// WebView 版保留作降级与验收参照（HANDOFF 明示）。

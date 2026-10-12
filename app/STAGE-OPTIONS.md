@@ -276,8 +276,52 @@ JS 桥驱动 `setCam` / `emote` / `motion`。
 无论走哪条，**先要宿主拍板**：这是"要不要为她的模型写一个格式转换器"的取舍，
 不是技术能不能做的问题。
 
+## ⛔ 2026-10-12 复盘 —— 下面那节「MuMu · 原生舞台复验」的结论是**错的**，已被推翻
+
+> **一句话：MuMu 上原生 Live2D 完全能跑。之前的「模拟器 emugl 转译层不兼容」
+> 是误判；真因在我们这边 —— 构建没把 Live2D 的 shader 打进 APK。**
+
+### 真因链（每一环都有实证）
+
+| 环 | 事实 | 证据 |
+|---|---|---|
+| ① 插件不打包 Android shader | `flutter_live2d` 1.0.2 只有 `src/main/cpp/.../Shaders/StandardES/*`，`android/src/main/assets` 目录不存在；`build.gradle.kts` 无 assets 映射、`CMakeLists.txt` 无拷贝任务 | 修复前 APK 里 `.vert/.frag` 只有 Flutter 自带的 2 个（`ink_sparkle.frag` / `stretch_effect.frag`） |
+| ② 原生加载器只认 APK 资产 | 相对路径从 `assets/FrameworkShaders/<name>` 读；读不到**静默返回空** | `Live2DPal.cpp` 相对路径分支 |
+| ③ 没 shader → program = 0，但没人检查 | `LoadShaderProgramFromFile` 失败返回 0，`loadModel` 仍返回 true（`IsLoaded` 只看模型配置解析成功） | `CubismShader_OpenGLES2.cpp` 加载失败分支 + `Live2DModel::IsLoaded` |
+| ④ 于是每帧报 GL 0x501 | program 无效 → `glGetAttribLocation` 返回负值 → 传给 `glEnableVertexAttribArray` / `glVertexAttribPointer` | 与 logcat 里 `emuglGLESv2_enc ... GL error 0x501` 的两条调用完全对应 |
+| ⑤ 为什么当时没查出来 | 插件把 SDK 日志回调设成空函数，shader 加载/编译失败**一条日志都没有**；`loadModel=true` 被误当成渲染成功 | `live2d_flutter.cpp` `LogFunction` 空实现 |
+
+**所以「无报错日志 + 有 GL 报错」组合并不指向驱动不兼容** —— 它指向「我们的 GL 调用用了无效 program」。
+真机（iOS）能跑，不是因为它不是模拟器，而是因为 **iOS 侧用的是 `.metal` 内嵌着色器路径，压根不读这套 APK shader 资产**。
+
+### 修复（2026-10-12，`app/android/app/build.gradle.kts`）
+
+`syncLive2dShaders` 任务把**插件自带**的 `Shaders/StandardES/*.vert|*.frag`（`#version 100`，
+与插件 ES2 上下文匹配）同步到生成 assets 的 `FrameworkShaders/`，挂进 `preBuild`，
+并 `check()` 必需文件存在（防将来依赖变更导致再次静默漏包）。文件不进仓库（版权红线同模型）。
+
+### 验证（同一台 MuMu · Android 12 / x86_64 · 127.0.0.1:16512）
+
+- 补包前：原生路径每帧刷 `GL error 0x501`，角色不上屏。
+- 补包后冷启动：`[stage] 原生舞台就绪（flutter_live2d）`；**`emuglGLESv2_enc` 匹配数 = 0**；
+  开机睡姿、唤醒、眨眼/呼吸正常；UI（HUD/字幕/底栏）照常压在她之上。
+- 无 WebView 舞台：logcat 不再出现 `[stage-web]`；进程表里没有本 App 的 WebView 沙箱进程。
+- 相隔 3s 两张截图差异像素 254754（她在动，不是定格）。
+- debug 与 release 两个 APK 都含 36 个 `assets/FrameworkShaders/` 条目。
+
+### ⚠️ 顺带修正的旧结论
+
+- 「旧 AVD / MuMu 的 emugl 栈渲染不了」——不成立，同因（缺 shader）即可解释旧 AVD 症状。
+- 「裸舞台探针在 MuMu 上崩进程 = 插件与 emugl 不兼容」——该探针当时同样是缺 shader 的构建，
+  崩溃原因需重新评估，**不要再引用它当证据**。
+- 「翻回原生的条件 = 插件升级 / 换真机」——真实条件是**把 shader 打进包**，与 GPU 栈无关。
+
+---
+
 ## MuMu · 原生舞台复验（2026-10-09 · T7）—— 结论：止损，默认回 WebView
 
+> ⛔ **本节结论已于 2026-10-12 被上一节推翻，保留作排查过程留痕（看「当时是怎么想错的」）。**
+>
 > **t7 任务按 docs/18 §1.5.1 五关重试路线①，MuMu（127.0.0.1:16512，Android 12，
 > 宿主 GPU 栈与旧 AVD 不同）复验到第 3 关（上屏关）触发硬止损线：**
 > **loadModel 成功、视图在树、尺寸正确，但角色不上屏——旧 AVD 同款结论在 MuMu 复现，
@@ -421,9 +465,12 @@ Info.plist 有 `CADisableMinimumFrameDurationOnPhone=true`，当前锁 60 是插
 
 ### 结论
 
-**MuMu/旧 AVD 的「不上屏」结论只对模拟器 emugl GL 转译栈成立**——真机（A17 Pro
-硬件 GPU + EAGL）上 flutter_live2d 1.0.2 一次加载成功、渲染、合成、性能全部正常。
-原生路线（①）正式转正，WebView（②）退居降级备份。
+**（2026-10-12 更正）** 当时写的「MuMu/旧 AVD 的『不上屏』只对模拟器 emugl 转译栈成立」
+**是错的** —— 真机（A17 Pro 硬件 GPU + EAGL）能跑是因为 **iOS 侧走 `.metal` 内嵌着色器**，
+不依赖 APK 里的 `FrameworkShaders/` 资产；Android 侧缺的是 shader 打包（见本文
+「2026-10-12 复盘」节），与 GPU 栈无关。事实是：真机上 flutter_live2d 1.0.2
+一次加载成功、渲染、合成、性能全部正常；**MuMu 补齐 shader 后同样正常**。
+原生路线（①）转正，WebView（②）退居降级备份 —— 这个结论本身不变。
 
 ## iOS 真机轮 · 表演补完（2026-10-11）—— 她为什么是"一张会眨眼的图片"
 
