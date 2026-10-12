@@ -399,7 +399,17 @@ class Live2DStage extends StatefulWidget {
   ///        且不吃科学计数法；转换器原来压单行 → 每个数组的最后一个数字紧跟
   ///        `]` → `IsValid=0` → 动作与物理全部加载失败）
   /// · v8 = 表情剥掉「眼睑 = 1.0 的 Overwrite 钉死」→ 恢复眨眼（待机三修①）
-  static const int modelDataVersion = 8;
+  /// · v9 = **表情 Blend 枚举映射修正**（2026-10-12，宿主：「默认的这个眼睛
+  ///        好像弄错了」）。prefab 的 Blend 是 Unity 的
+  ///        `0=Override/1=Additive/2=Multiply`，与 exp3.json 的
+  ///        `0=Add/1=Multiply/2=Overwrite` **不同序**；旧转换器按"同序"搬，
+  ///        于是 prefab 里 1962 条 `Additive 0`（= 加 0 = 什么都不做）被写成
+  ///        `Multiply 0` ⇒ **把参数清零**：大厅待机那张 `exp_idle01` 里的
+  ///        `ParamCheek`（腮红）、`ParamEyeLHighlight/RHighlight`（**瞳孔高光**）、
+  ///        `ParameyelidL/R`、`ParamMouthForm` 等全被钉成 0 —— 默认这张脸因此
+  ///        与原数据不一样。修正后 v8 那个"剥眼睑"补丁随之作废（同一条变成
+  ///        `Multiply 1.0` = 空操作，眨眼天然不受影响）。
+  static const int modelDataVersion = 9;
 
   /// 把声明的模型资产解压到版本化目录，返回**绝对路径**（带尾斜杠）。
   /// 版本一致就复用；不一致先把整棵树删掉（连旧版本目录）再重解。

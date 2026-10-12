@@ -64,8 +64,35 @@ OUT = ROOT / "app" / "assets" / "live2d" / "sakiko"
 
 # Unity 的 CubismPhysicsSourceComponent：0=X, 1=Y, 2=Angle
 PHYS_AXIS = {0: "X", 1: "Y", 2: "Angle"}
-# exp3.json 的 Blend 枚举：0=Add, 1=Multiply, 2=Overwrite（Unity 侧同序）
-BLEND = {0: "Add", 1: "Multiply", 2: "Overwrite"}
+
+# ⚠️⚠️ **prefab 的 Blend 整数 ≠ exp3.json 的 Blend 枚举，顺序不一样！**
+#
+# prefab 侧是 Unity 的 `CubismParameterBlendMode`：**0=Override / 1=Additive /
+# 2=Multiply**；exp3.json 侧是 SDK 的 `csmExpressionBlendType`：
+# **0=Add / 1=Multiply / 2=Overwrite**。两张枚举**不是同序**（是错位的一圈），
+# 这里必须做**语义映射**、不能按整数直接同名搬。
+#
+# 证据（不是推断）：上游播放器自己的实现就在仓库里 ——
+# `app/assets/live2d/vendor/ournotes-live2d.element.min.js`：
+#
+#     if (m && (m.blend===1 ? d=m.v : m.blend===2 ? y=m.v : _=m.v)) …   // d=add, y=mul, _=ov
+#     … e.override(i.i, (add + override) * multiply, weight)
+#
+# 即 1→Add、2→Multiply、其余→Override，最终值 = (add + override) × multiply。
+#
+# 2026-10-12 修：原来写的是 `{0:"Add",1:"Multiply",2:"Overwrite"}`（按"同序"假设
+# 直接搬），于是**每个表情都错位**了：
+#   · prefab 的 Additive-0（1962 条里的绝大多数，语义 = "加 0" = 什么都不做）
+#     被写成 `Multiply 0` ⇒ **把那 70 个参数直接清零** —— 而 exp_idle01 正是
+#     大厅待机那张脸：`ParamCheek=0`（腮红没了）、`ParamEyeLHighlight=0`
+#     （**瞳孔高光没了**）、`ParameyelidL/R=0`（眼皮形变参数被钉成 0）、
+#     `ParamMouthForm=0`…… 观感就是"默认这张脸不对、眼睛好像弄错了"
+#     （宿主 2026-10-12 原话）。
+#   · prefab 的 Multiply-1.0 被写成 `Overwrite 1.0` ⇒ 表情每帧覆写
+#     `ParamEyeLOpen=1`，把眨眼盖掉（v8 为此专门写了"剥掉眼睑 1.0"的补丁；
+#     映射修正后 1.0 变成 `Multiply 1.0` = 无害的空操作，**眨眼天然恢复**，
+#     那个补丁随之作废）。
+BLEND = {0: "Overwrite", 1: "Add", 2: "Multiply"}
 
 
 def load_prefab():
@@ -361,23 +388,13 @@ def write_expressions(exprs):
         ps = []
         for p in e.get("Parameters") or []:
             blend = BLEND.get(int(p.get("Blend", 0)), "Add")
-            # ⚠️⚠️ **剥掉「眼睑 = 1.0 且 Overwrite」的钉死**（2026-10-11 宿主验收：
-            #    「首页待机的时候不会眨眼睛」）。
-            #    管线的应用顺序是 motion → drag → **eyeblink** → **expression** →
-            #    physics（Live2DWrapper.mm 的 Update），表情在眨眼**之后**每帧覆写，
-            #    所以只要表情把 ParamEyeLOpen/ROpen 用 Overwrite 钉住，眨眼就被它
-            #    每帧盖掉 —— 而 27/32 个表情都这么钉（含大厅待机那张 exp_idle01=1.0）。
-            #    值恰好 1.0 = 「眼睛就是正常睁开」= 相对眨眼**无操作**，删掉它既恢复
-            #    眨眼、又不丢任何表情语义。
-            #    ⚠️ 只删 1.0：cry 的 0（闭眼哭）、smile02 的 0（眯眼笑）、shy 的 0.8、
-            #    annoyed 的 0.7、surprised 的 1.5（瞪大）都是表情本体，必须保留 ——
-            #    那些表情生效期间不眨眼是对的。
-            if (
-                p["Id"] in ("ParamEyeLOpen", "ParamEyeROpen")
-                and blend == "Overwrite"
-                and abs(float(p["Value"]) - 1.0) < 1e-6
-            ):
-                continue
+            # ▸ v8 的「剥掉眼睑 = 1.0 的 Overwrite 钉死」补丁**已作废、删掉**
+            #   （2026-10-12 · Blend 映射修正）。那段历史：当时映射是错的，把
+            #   prefab 的 `Multiply 1.0` 写成了 `Overwrite 1.0`，表情于是每帧覆写
+            #   `ParamEyeLOpen=1`、眨眼被盖死（宿主验收「首页待机的时候不会眨眼睛」）。
+            #   映射修正后同一条变成 `Multiply 1.0`（乘 1 = 空操作），眨眼天然不受
+            #   影响 —— 所以**不要再删任何参数**：删了就与原始数据不一致（这正是
+            #   2026-10-12「默认这张脸不对」的同源问题）。
             ps.append(
                 {
                     "Id": p["Id"],
