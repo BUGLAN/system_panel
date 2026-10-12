@@ -37,6 +37,13 @@ enum LlmFailure {
   badResponse,
 }
 
+/// 默认补全预算。推理模型会把 `reasoning_content` 也算在这里面，
+/// 所以「只回一句台词」并不等于「512 够用」（真机实测会整段被思考吃光）。
+const int kDefaultMaxTokens = 512;
+
+/// 思考吃光预算后抬预算的封顶 —— 她只回一句话，但思考可以很长。
+const int kMaxEscalatedTokens = 4096;
+
 class LlmConfig {
   const LlmConfig({
     String? baseUrl,
@@ -167,6 +174,8 @@ class LlmReply {
     this.text = '',
     this.toolCalls = const <LlmToolCall>[],
     this.model,
+    this.finishReason,
+    this.reasoningTokens,
   })  : ok = true,
         failure = null,
         detail = null;
@@ -175,7 +184,9 @@ class LlmReply {
     : ok = false,
       text = '',
       toolCalls = const <LlmToolCall>[],
-      model = null;
+      model = null,
+      finishReason = null,
+      reasoningTokens = null;
 
   final bool ok;
   final String text;
@@ -183,6 +194,26 @@ class LlmReply {
   final String? model;
   final LlmFailure? failure;
   final String? detail;
+
+  /// 端点的 `choices[0].finish_reason`（`stop` / `length` …）。
+  final String? finishReason;
+
+  /// `usage.completion_tokens_details.reasoning_tokens`（端点不报就 null）。
+  /// 真机实测（2026-10-12）：同一个 deepseek 推理端点 6 次里 2 次把 512 预算
+  /// **全花在思考上**，正文空 → 她静默退回模板，宿主看到的就是「她忽然哑了」。
+  final int? reasoningTokens;
+
+  /// 「话还没说出口就被掐了」：HTTP 200、正文空、没有工具调用，而且
+  /// 端点明说了是 `length` 截断（或确实产生了思考 token）。
+  ///
+  /// ⚠️ 这**不是失败**（strict 模式也不该按失败处理）——请求本身是成功的，
+  /// 只是预算不够她开口。所以由 [LlmClient.chat] 抬预算重来一次，
+  /// 而不是把这一发当成错误丢掉。只看 [ok] 会被它骗过去。
+  bool get starvedByThinking =>
+      ok &&
+      text.trim().isEmpty &&
+      toolCalls.isEmpty &&
+      (finishReason == 'length' || (reasoningTokens ?? 0) > 0);
 
   /// 「真的拿到了一句话」。验收 F-2：只看 [ok] 会被「HTTP 200 + 正文为空」
   /// 骗过去——推理模型把 `max_tokens` 花在思考上就是这个表现，
@@ -237,12 +268,30 @@ class LlmClient {
     int? maxTokens,
   }) async {
     final Stopwatch sw = Stopwatch()..start();
-    final LlmReply r = await _chat(
+    LlmReply r = await _chat(
       messages: messages,
       tools: tools,
       temperature: temperature,
       maxTokens: maxTokens,
     );
+    // 思考把预算吃光 → **抬预算重来一次**。
+    //
+    // ⚠️ 这不违反 strict 模式的纪律（docs/22 §2.0「开发期不重试、别把偶发失败
+    //    藏过去」）：那一条管的是**失败**重试。这一发请求是成功的、端点也没报错，
+    //    只是她在开口前就被 `max_tokens` 掐断了——不重来就必然静默退回模板，
+    //    宿主看到的是「她忽然哑了」，那才是真正被藏起来的问题。真机 2026-10-12
+    //    实测 6 次里 2 次命中，比例不低。
+    final int? bumped = _escalatedBudget(maxTokens);
+    if (bumped != null && r.starvedByThinking) {
+      debugPrint('[llm] 空正文（思考吃光 max_tokens=$maxTokens，'
+          'reasoning=${r.reasoningTokens}，finish=${r.finishReason}）→ 抬到 $bumped 重来一次');
+      r = await _chat(
+        messages: messages,
+        tools: tools,
+        temperature: temperature,
+        maxTokens: bumped,
+      );
+    }
     sw.stop();
     LlmTelemetry.record(r);
     // docs/22 F-1：聊天路径直连本客户端、**不走网关**，所以日志必须在这里打，
@@ -261,6 +310,21 @@ class LlmClient {
           'detail=${r.detail}');
     }
     return r;
+  }
+
+  /// 抬预算的目标值：×3、封顶 [kMaxEscalatedTokens]。已经到顶就返回 null
+  /// （不再重试，免得拿同样的预算白跑一趟）。
+  ///
+  /// ⚠️ 别写成 `(base*3).clamp(base+1, kMaxEscalatedTokens)` —— 当 base 已经等于
+  /// 封顶时下界会比上界大，Dart 的 `clamp` 直接抛 ArgumentError（本文件的测试
+  /// 「预算已封顶时不再白跑第二趟」抓到的就是这个）。
+  static int? _escalatedBudget(int? current) {
+    final int base = current ?? kDefaultMaxTokens;
+    if (base >= kMaxEscalatedTokens) return null;
+    final int tripled = base * 3;
+    final int target =
+        tripled > kMaxEscalatedTokens ? kMaxEscalatedTokens : tripled;
+    return target > base ? target : null;
   }
 
   Future<LlmReply> _chat({
@@ -365,10 +429,26 @@ class LlmClient {
         text: text,
         toolCalls: calls,
         model: config.normalizedModel,
+        // 截断证据：留给 chat() 判断「是不是思考把预算吃光了」
+        finishReason: first['finish_reason'] is String
+            ? first['finish_reason'] as String
+            : null,
+        reasoningTokens: _reasoningTokens(decoded['usage']),
       );
     } catch (e) {
       return LlmReply.failure(LlmFailure.badResponse, 'JSON 解析失败：$e');
     }
+  }
+
+  /// `usage.completion_tokens_details.reasoning_tokens`（OpenAI 兼容形状）。
+  /// 端点不报这个字段时返回 null —— 不猜、不默认 0（0 会让 [starvedByThinking]
+  /// 判不出来，null 只是少一条证据，另有 `finish_reason == 'length'` 兜着）。
+  static int? _reasoningTokens(Object? usage) {
+    if (usage is! Map<String, dynamic>) return null;
+    final Object? details = usage['completion_tokens_details'];
+    if (details is! Map<String, dynamic>) return null;
+    final Object? rt = details['reasoning_tokens'];
+    return rt is num ? rt.toInt() : null;
   }
 
   Map<String, dynamic> _decodeArguments(Object? raw) {

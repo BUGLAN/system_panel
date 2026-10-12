@@ -658,12 +658,12 @@ void main() {
     test('宿主那个 bug 的回归：HTTP 200 但正文为空（推理模型吃光 max_tokens）', () async {
       // docs/22 R1：端点是推理模型，max_tokens 同时算思考与正文——
       // 200 会被思考吃光 → content 空 → 旧版静默兜底、宿主永远不知道原因。
-      Map<String, dynamic>? sent;
+      final List<Map<String, dynamic>> sent = <Map<String, dynamic>>[];
       ChatService svc({required bool strict}) => ChatService(
             client: LlmClient(
               config: const LlmConfig(apiKey: 'sk-test'),
               httpClient: MockClient((http.Request r) async {
-                sent = jsonDecode(r.body) as Map<String, dynamic>;
+                sent.add(jsonDecode(r.body) as Map<String, dynamic>);
                 return http.Response(
                   jsonEncode(<String, dynamic>{
                     'choices': <dynamic>[
@@ -692,16 +692,23 @@ void main() {
 
       // 上限必须真的抬上去了（200 → 1024），推理档位默认 low
       final List<ChatMessage> strictOut = await svc(strict: true).respond('你好');
-      expect(sent!['max_tokens'], 1024);
-      expect(sent!['reasoning_effort'], 'low');
+      expect(sent.first['max_tokens'], 1024);
+      expect(sent.first['reasoning_effort'], 'low');
+      // 2026-10-12：`finish_reason == length` + 正文空 = 思考吃光预算 ——
+      // 客户端会**抬预算重来一次**（strict 模式也重来：这不是失败重试，
+      // 是「话没说完就断了」，不重来必然静默退回模板）。
+      expect(sent, hasLength(2), reason: '思考吃光 → 抬预算重来一次');
+      expect(sent.last['max_tokens'], 3072, reason: '重来那一发预算是 1024 × 3');
       // 严格模式：直接报错，不产假台词
       expectDiagText(strictOut.last.text);
       expect(strictOut.last.text, contains('正文为空'));
 
       // 非严格模式：兜底照旧，但必须标明是兜底 + 原因
+      sent.clear();
       final List<ChatMessage> relaxed = await svc(strict: false).respond('你好');
       expectFallbackText(relaxed.last.text);
       expect(relaxed.last.text, contains('正文为空'));
+      expect(sent, hasLength(2), reason: '两发都被吃光 → 不再无限重试');
     });
 
     test('无 Key / 没接客户端 → respond 退化为单条兜底（快捷 chip 场景的本地可用性）', () async {

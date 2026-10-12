@@ -21,7 +21,108 @@ void main() {
       ],
     }),
     200,
+    // ⚠️ 必须带 content-type：http 1.6.0 只在 `application/json` 时默认 UTF-8，
+    //    否则回落 latin1 —— 中文正文会在**构造**这一侧就抛
+    //    「Contains invalid characters」（真端点也是这个头，见 2026-10-12 实测）。
+    headers: <String, String>{'content-type': 'application/json'},
   );
+
+  /// 推理模型「思考把预算吃光」的应答：HTTP 200、正文空、finish_reason=length。
+  /// 真机实测（2026-10-12）：同一端点 6 次里 2 次长这样，正文空 → 她静默退回模板。
+  http.Response starvedBody({int reasoning = 512}) => http.Response(
+    jsonEncode(<String, dynamic>{
+      'choices': <dynamic>[
+        <String, dynamic>{
+          'finish_reason': 'length',
+          'message': <String, dynamic>{'content': '', 'reasoning_content': '想…'},
+        },
+      ],
+      'usage': <String, dynamic>{
+        'completion_tokens': reasoning,
+        'completion_tokens_details': <String, dynamic>{
+          'reasoning_tokens': reasoning,
+        },
+      },
+    }),
+    200,
+    headers: <String, String>{'content-type': 'application/json'},
+  );
+
+  group('思考吃光预算 → 抬预算重来（不以失败论，也不静默退回模板）', () {
+    test('首发出空正文 → 抬 max_tokens 重来一次，第二次拿到正文', () async {
+      final List<int> budgets = <int>[];
+      int calls = 0;
+      final LlmClient client = LlmClient(
+        config: const LlmConfig(apiKey: 'k'),
+        httpClient: MockClient((http.Request r) async {
+          calls++;
+          budgets.add(
+            (jsonDecode(r.body) as Map<String, dynamic>)['max_tokens'] as int,
+          );
+          return calls == 1 ? starvedBody() : okBody('[smug]哼。');
+        }),
+      );
+      final LlmReply r = await client.chat(
+        messages: <LlmMessage>[LlmMessage.user('hi')],
+        maxTokens: 512,
+      );
+      expect(calls, 2, reason: '应当重来一次');
+      expect(budgets, <int>[512, 1536], reason: '第二次预算要抬上去（×3）');
+      expect(r.text, '[smug]哼。');
+      expect(r.starvedByThinking, isFalse);
+    });
+
+    test('正常回复不触发重来（只发一次）', () async {
+      int calls = 0;
+      final LlmClient client = LlmClient(
+        config: const LlmConfig(apiKey: 'k'),
+        httpClient: MockClient((http.Request r) async {
+          calls++;
+          return okBody('正常一句');
+        }),
+      );
+      await client.chat(
+        messages: <LlmMessage>[LlmMessage.user('hi')],
+        maxTokens: 512,
+      );
+      expect(calls, 1);
+    });
+
+    test('两次都被吃光 → 不无限重试，返回空正文交给上层兜底', () async {
+      int calls = 0;
+      final LlmClient client = LlmClient(
+        config: const LlmConfig(apiKey: 'k'),
+        httpClient: MockClient((http.Request r) async {
+          calls++;
+          return starvedBody();
+        }),
+      );
+      final LlmReply r = await client.chat(
+        messages: <LlmMessage>[LlmMessage.user('hi')],
+        maxTokens: 512,
+      );
+      expect(calls, 2, reason: '只抬一次，不无限重试');
+      expect(r.ok, isTrue, reason: 'HTTP 200 不是失败');
+      expect(r.text, isEmpty);
+      expect(r.starvedByThinking, isTrue);
+    });
+
+    test('预算已封顶（4096）时不再白跑第二趟', () async {
+      int calls = 0;
+      final LlmClient client = LlmClient(
+        config: const LlmConfig(apiKey: 'k'),
+        httpClient: MockClient((http.Request r) async {
+          calls++;
+          return starvedBody(reasoning: 4096);
+        }),
+      );
+      await client.chat(
+        messages: <LlmMessage>[LlmMessage.user('hi')],
+        maxTokens: kMaxEscalatedTokens,
+      );
+      expect(calls, 1);
+    });
+  });
 
   group('LlmConfig · 模型名别名归一化', () {
     test('deepseek-v4.1flash → deepseek-flash（端点没有 v4.1flash）', () {
