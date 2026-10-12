@@ -37,12 +37,39 @@ enum LlmFailure {
   badResponse,
 }
 
-/// 默认补全预算。推理模型会把 `reasoning_content` 也算在这里面，
-/// 所以「只回一句台词」并不等于「512 够用」（真机实测会整段被思考吃光）。
-const int kDefaultMaxTokens = 512;
+/// 默认补全预算（调用点没指定时用）。
+///
+/// ⚠️ 宿主 2026-10-12 定调：**不用为省 token 做设计取舍** —— 这点成本是有的，
+///    后续用图片做证据校验还会更贵，所以别把预算卡在"刚好够"上。
+///    真机教训：最早是 120，被推理模型的 `reasoning_content` 吃光 → 正文空 →
+///    静默退回模板，于是抬到 512；但思考量在 68~2067 之间乱跳，
+///    任何"刚好够"的数字都是抛硬币。**给足，别猜。**
+const int kDefaultMaxTokens = 4096;
 
-/// 思考吃光预算后抬预算的封顶 —— 她只回一句话，但思考可以很长。
-const int kMaxEscalatedTokens = 4096;
+/// 工具循环（聊天里她调工具）的预算：**思考 + 工具调用 + 终答** 共用它，
+/// 所以要给得比"回一句话"宽得多。
+const int kToolLoopMaxTokens = 8192;
+
+/// 立主线 / 拆解一轮的预算：一条链的 JSON + 思考共用。
+const int kPlanMaxTokens = 8192;
+
+/// 需要思考的路径（拆解 / 工具循环）的档位**下限**。
+///
+/// 宿主把「思考档位」调到「关」是为了**台词说得快**，不该顺手把拆解质量
+/// 也砍掉 —— 所以这两条路至少停在 `low`。
+const String kPlanReasoningEffort = 'low';
+
+/// 把设置页的「思考档位」折算成"需要思考的路径"实际用的档位。
+/// 空 / `none` / `minimal` → 抬到 [kPlanReasoningEffort]；其余原样。
+String planReasoningEffort(String configured) {
+  final String e = configured.trim().toLowerCase();
+  if (e.isEmpty || e == 'none' || e == 'minimal') return kPlanReasoningEffort;
+  return e;
+}
+
+/// 「思考吃光预算」时抬预算的封顶（兜底网，不是常规路径）。
+/// 端点实测最多能吃到 65536，这里留一半当余量。
+const int kMaxEscalatedTokens = 16384;
 
 class LlmConfig {
   const LlmConfig({
@@ -266,6 +293,7 @@ class LlmClient {
     List<LlmTool>? tools,
     double? temperature,
     int? maxTokens,
+    String? reasoningEffort,
   }) async {
     final Stopwatch sw = Stopwatch()..start();
     LlmReply r = await _chat(
@@ -273,6 +301,7 @@ class LlmClient {
       tools: tools,
       temperature: temperature,
       maxTokens: maxTokens,
+      reasoningEffort: reasoningEffort,
     );
     // 思考把预算吃光 → **抬预算重来一次**。
     //
@@ -290,6 +319,7 @@ class LlmClient {
         tools: tools,
         temperature: temperature,
         maxTokens: bumped,
+        reasoningEffort: reasoningEffort,
       );
     }
     sw.stop();
@@ -301,12 +331,12 @@ class LlmClient {
       // tools=N：工具循环第一轮就是「200 + content 空 + 有 tool_calls」，
       // 不打出调用数会被误读成"空正文的成功"（task-4 验收建议）
       debugPrint('[llm] ok model=${config.normalizedModel} '
-          'effort=${config.reasoningEffort} max_tokens=$maxTokens '
+          'effort=${reasoningEffort ?? config.reasoningEffort} max_tokens=$maxTokens '
           'chars=${r.text.length} tools=${r.toolCalls.length} '
           '${sw.elapsedMilliseconds}ms');
     } else {
       debugPrint('[llm] 失败 kind=${r.failure?.name} model=${config.normalizedModel} '
-          'effort=${config.reasoningEffort} ${sw.elapsedMilliseconds}ms '
+          'effort=${reasoningEffort ?? config.reasoningEffort} ${sw.elapsedMilliseconds}ms '
           'detail=${r.detail}');
     }
     return r;
@@ -332,10 +362,13 @@ class LlmClient {
     List<LlmTool>? tools,
     double? temperature,
     int? maxTokens,
+    String? reasoningEffort,
   }) async {
     if (config.apiKey.trim().isEmpty) {
       return const LlmReply.failure(LlmFailure.noKey, '未配置 API Key');
     }
+    // 本发实际用的思考档位：调用点覆盖 > 配置（设置页「思考档位」）
+    final String effort = (reasoningEffort ?? config.reasoningEffort).trim();
     final Uri uri = Uri.parse(config.endpoint);
     final Map<String, String> headers = <String, String>{
       'Content-Type': 'application/json',
@@ -348,9 +381,8 @@ class LlmClient {
       ],
       if (tools != null && tools.isNotEmpty)
         'tools': <Map<String, dynamic>>[for (final LlmTool t in tools) t.toJson()],
-      // 推理档位：端点是推理模型，档位越高正文越容易空（docs/22 R1）
-      if (config.reasoningEffort.trim().isNotEmpty)
-        'reasoning_effort': config.reasoningEffort.trim(),
+      // 推理档位：按调用覆盖优先（台词走 `none`，拆解/工具循环走配置档位）
+      if (effort.trim().isNotEmpty) 'reasoning_effort': effort,
       'temperature': ?temperature,
       'max_tokens': ?maxTokens,
     });

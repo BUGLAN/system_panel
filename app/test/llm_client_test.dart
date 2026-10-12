@@ -167,6 +167,44 @@ void main() {
       expect(c.model, 'deepseek-v4.1flash');
     });
 
+    test('按调用覆盖思考档位：覆盖 > 配置（台词关思考，拆解留思考）', () async {
+      final List<Map<String, dynamic>> sent = <Map<String, dynamic>>[];
+      LlmClient withConfig(String? effort) => LlmClient(
+        config: LlmConfig(apiKey: 'k', reasoningEffort: effort ?? ''),
+        httpClient: MockClient((http.Request r) async {
+          sent.add(jsonDecode(r.body) as Map<String, dynamic>);
+          return okBody('ok');
+        }),
+      );
+
+      // ① 配置 low + 调用点传 none → 以调用点为准（台词链路就是这么走的）
+      await withConfig('low').chat(
+        messages: <LlmMessage>[LlmMessage.user('hi')],
+        maxTokens: 1024,
+        reasoningEffort: 'none',
+      );
+      expect(sent.last['reasoning_effort'], 'none');
+      expect(sent.last['max_tokens'], 1024);
+
+      // ② 不传覆盖 → 用配置（拆解 / 工具循环走这条）
+      await withConfig('low').chat(
+        messages: <LlmMessage>[LlmMessage.user('hi')],
+        maxTokens: 2048,
+      );
+      expect(sent.last['reasoning_effort'], 'low');
+
+      // ③ 配置为空 + 不传覆盖 → 整个字段不发（端点自己决定）
+      await withConfig(null).chat(messages: <LlmMessage>[LlmMessage.user('hi')]);
+      expect(sent.last.containsKey('reasoning_effort'), isFalse);
+
+      // ④ 配置为空但调用点指定 → 照样发得出去
+      await withConfig(null).chat(
+        messages: <LlmMessage>[LlmMessage.user('hi')],
+        reasoningEffort: 'none',
+      );
+      expect(sent.last['reasoning_effort'], 'none');
+    });
+
     test('端点拼接：base / 尾斜杠 / v1 / 写全 三种填法', () {
       expect(
         const LlmConfig(baseUrl: 'https://api.deepseek.com').endpoint,

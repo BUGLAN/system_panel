@@ -692,13 +692,14 @@ void main() {
 
       // 上限必须真的抬上去了（200 → 1024），推理档位默认 low
       final List<ChatMessage> strictOut = await svc(strict: true).respond('你好');
-      expect(sent.first['max_tokens'], 1024);
+      expect(sent.first['max_tokens'], kToolLoopMaxTokens);
       expect(sent.first['reasoning_effort'], 'low');
       // 2026-10-12：`finish_reason == length` + 正文空 = 思考吃光预算 ——
       // 客户端会**抬预算重来一次**（strict 模式也重来：这不是失败重试，
       // 是「话没说完就断了」，不重来必然静默退回模板）。
       expect(sent, hasLength(2), reason: '思考吃光 → 抬预算重来一次');
-      expect(sent.last['max_tokens'], 3072, reason: '重来那一发预算是 1024 × 3');
+      // 8192 × 3 = 24576 会被封顶到 kMaxEscalatedTokens
+      expect(sent.last['max_tokens'], kMaxEscalatedTokens, reason: '抬预算且封顶');
       // 严格模式：直接报错，不产假台词
       expectDiagText(strictOut.last.text);
       expect(strictOut.last.text, contains('正文为空'));
@@ -1003,6 +1004,7 @@ class _FakeGateway implements CopyLlmGateway {
     double? temperature,
     int? maxTokens,
     Duration? timeout,
+    String? reasoningEffort,
   }) async => reply;
 }
 
@@ -1019,6 +1021,7 @@ class _NullGateway implements CopyLlmGateway {
     double? temperature,
     int? maxTokens,
     Duration? timeout,
+    String? reasoningEffort,
   }) async => null;
 }
 
@@ -1038,6 +1041,7 @@ class _RecordingGateway implements CopyLlmGateway {
     double? temperature,
     int? maxTokens,
     Duration? timeout,
+    String? reasoningEffort,
   }) async {
     onMessages?.call(messages.toString());
     return reply;

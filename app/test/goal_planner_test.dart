@@ -261,6 +261,7 @@ class _FakeGateway implements CopyLlmGateway {
     double? temperature,
     int? maxTokens,
     Duration? timeout,
+    String? reasoningEffort,
   }) async {
     calls++;
     return reply;
@@ -277,5 +278,6 @@ class _ThrowingGateway implements CopyLlmGateway {
     double? temperature,
     int? maxTokens,
     Duration? timeout,
+    String? reasoningEffort,
   }) async => throw StateError('boom');
 }

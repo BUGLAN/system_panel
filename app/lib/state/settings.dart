@@ -58,7 +58,12 @@ class AppSettings {
   ];
 
   /// 那一行「思考档位」的三个选项（docs/22 §R1-2；默认停在 low）
+  /// 「思考档位」四档。宿主 2026-10-12 定调「不用为省 token 做取舍」，
+  /// 所以默认仍停在 `low`（会思考、台词更活）；`关` 是给"想让她说话更快"
+  /// 时用的开关 —— 注意它**只影响台词/聊天**，拆解与工具循环有
+  /// `kPlanReasoningEffort` 兜住下限（见 llm_client.dart）。
   static const List<List<String>> reasoningOptions = <List<String>>[
+    <String>['none', '关'],
     <String>['low', '低'],
     <String>['high', '高'],
     <String>['max', '最高'],

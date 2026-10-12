@@ -26,6 +26,20 @@ import '../state/result.dart';
 import 'memory.dart';
 import 'persona.dart';
 
+/// 「一句话」的补全上限 —— 台词链路（发布/结算/毒舌/追问）与聊天的一次性
+/// 回复共用。
+///
+/// ⚠️ 历史（docs/22 R1）：最早 120，被推理模型的 `reasoning_content` 吃光 →
+///    正文空 → 永远回退模板，于是抬到 512。512 同样是拍出来的数字：真机实测
+///    同一句 38 字台词，思考量在 **68~2067** 之间乱跳 —— 任何"刚好够"的预算
+///    都是抛硬币。宿主 2026-10-12 定调「不用那么省」，所以这里直接给足，
+///    并保留 `llm_client` 的抬预算兜底网。
+///
+/// 思考档位**跟随设置页**（不再是硬编码 `none`）：宿主想要她台词更快，
+/// 就把「思考档位」调成「关」；预算给足之后，思考只剩"值不值"的问题，
+/// 不再是"会不会空正文"的问题。
+const int kLineMaxTokens = 4096;
+
 /// copy.dart 需要的最小 LLM 面。真实现（t9 的 LlmClient）适配此接口；
 /// `configured=false` 或 `complete` 返回 null 都表示「走模板兜底」。
 abstract interface class CopyLlmGateway {
@@ -39,6 +53,10 @@ abstract interface class CopyLlmGateway {
     double? temperature,
     int? maxTokens,
     Duration? timeout,
+    /// 本发的思考档位覆盖：`null` = 用配置（设置页）。台词链路传
+    /// [kLineReasoningEffort]（`none`）—— 一句话不需要推理，把它关掉
+    /// 比拿一个小 max_tokens 硬扛稳得多也快得多。
+    String? reasoningEffort,
   });
 }
 
@@ -339,9 +357,8 @@ class SystemCopyProvider {
           scenario: '${Persona.tones[toneKey] ?? ''} 只输出一句她的台词本身，不要任何解释。',
         ),
         temperature: 0.8,
-        // 端点是推理模型：max_tokens 同时算思考与正文，120 必然被思考吃光
-        // → 正文空 → 永远回退模板（docs/22 R1）。抬到 512。
-        maxTokens: 512,
+        // 预算给足 + 档位跟随设置页（宿主可在设置里把思考关掉换速度）
+        maxTokens: kLineMaxTokens,
         timeout: llmTimeout,
       );
       final String text = (raw ?? '').trim();

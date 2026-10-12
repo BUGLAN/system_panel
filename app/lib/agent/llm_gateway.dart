@@ -36,6 +36,7 @@ class LlmGateway implements CopyLlmGateway {
     double? temperature,
     int? maxTokens,
     Duration? timeout,
+    String? reasoningEffort,
   }) async {
     if (!configured) {
       // 短路也要记账：无 Key 是最常见的一类「她哑了」，不能从遥测里消失
@@ -51,6 +52,7 @@ class LlmGateway implements CopyLlmGateway {
         ],
         temperature: temperature,
         maxTokens: maxTokens,
+        reasoningEffort: reasoningEffort,
       );
       // 客户端内部有自己的 12s 超时；调用方（copy 用 8s）给得更短就听调用方的
       final LlmReply r =

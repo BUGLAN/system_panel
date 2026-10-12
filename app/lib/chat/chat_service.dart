@@ -136,8 +136,8 @@ class ChatService {
           scenario: scenario,
         ),
         temperature: 0.8,
-        // 端点是推理模型：max_tokens 同时算思考与正文，给太紧正文必空（docs/22 R1）
-        maxTokens: 1024,
+        // 一次性回复（无工具）：档位跟随设置页，预算给足
+        maxTokens: kLineMaxTokens,
         timeout: const Duration(seconds: 12),
       );
       if (raw == null) {
@@ -204,8 +204,12 @@ class ChatService {
           ],
           tools: defs,
           temperature: 0.8,
-          // 端点是推理模型：思考与正文共用这个预算（docs/22 R1）
-          maxTokens: 1024,
+          // 工具循环**要**思考（挑哪个工具、怎么解释回执）：预算是
+          // 「思考 + 工具调用 + 终答」共用的，给足（宿主定调：不用省）。
+          // 档位跟随设置页，但**至少 low** —— 别让"她说话快点"的档位把
+          // 拆解/参谋的质量一起砍掉。
+          maxTokens: kToolLoopMaxTokens,
+          reasoningEffort: planReasoningEffort(cli.config.reasoningEffort),
         );
         if (!r.ok) {
           out.add(_failure(

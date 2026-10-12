@@ -68,18 +68,23 @@ class _FakeLlm implements CopyLlmGateway {
   int? lastMaxTokens;
   Duration? lastTimeout;
 
+  /// 台词链路要求「关掉思考」（`none`）—— 记下来让用例盯住这条策略
+  String? lastReasoningEffort;
+
   @override
   Future<String?> complete({
     required List<Map<String, dynamic>> messages,
     double? temperature,
     int? maxTokens,
     Duration? timeout,
+    String? reasoningEffort,
   }) async {
     calls++;
     lastMessages = messages;
     lastTemperature = temperature;
     lastMaxTokens = maxTokens;
     lastTimeout = timeout;
+    lastReasoningEffort = reasoningEffort;
     if (throwing) {
       throw StateError('模拟网络炸了');
     }
@@ -587,8 +592,11 @@ void main() {
       expect(line.emotion, 'smug');
       expect(line.text, '行吧，这单算你过关。明天继续。');
       expect(llm.lastTemperature, 0.8);
-      // 120 → 512：端点是推理模型，120 会被思考吃光、正文永远为空（docs/22 R1）
-      expect(llm.lastMaxTokens, 512);
+      // 台词链路：预算给足 + **档位跟随设置页**（不再硬编码关思考）。
+      // 历史是 120 → 512，都是「拿一个小 max_tokens 硬扛思考」；宿主
+      // 2026-10-12 定调不用为省 token 做取舍，于是给足 + 保留抬预算兜底网。
+      expect(llm.lastMaxTokens, kLineMaxTokens);
+      expect(llm.lastReasoningEffort, isNull, reason: '不覆盖 = 用设置页的档位');
       expect(llm.lastTimeout, p.llmTimeout);
       expect(llm.lastMessages!.first['role'], 'system');
     });
