@@ -362,6 +362,9 @@ class _CardTableState extends State<CardTable> with TickerProviderStateMixin {
       width: dims.w,
       height: dims.h,
       child: _PressFeedback(
+        // 每张牌一个稳定 key（`table.card.<id>`）：牌桌是所有"选一个"场景的
+        // 公共落点（补给 / 称号 / 道具 / 取景），没有它就只能靠坐标猜是哪张。
+        key: Key('table.card.${c.id}'),
         onTap: () => _tapCard(i),
         // RepaintBoundary 不裁切（它是**重绘隔离**，不是裁剪层）——
         // 牌面那圈 boxShadow 照旧溢出到牌外，观感不变；见 _PressFeedback 的说明
@@ -410,7 +413,7 @@ const double kPressDim = .86;
 /// ⚠️ 缩放仍走 `Transform`（不改布局、不重排），与旧版一致；
 ///    RepaintBoundary **不裁切**（它只建独立图层），牌面那圈阴影照旧溢出。
 class _PressFeedback extends StatefulWidget {
-  const _PressFeedback({required this.onTap, required this.child});
+  const _PressFeedback({super.key, required this.onTap, required this.child});
 
   final VoidCallback onTap;
 

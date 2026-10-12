@@ -39,6 +39,7 @@ class TableOverlay extends StatefulWidget {
     this.onEquip,
     this.onPick,
     this.onClose,
+    this.initialLead,
   });
 
   final TableScene scene;
@@ -56,6 +57,11 @@ class TableOverlay extends StatefulWidget {
   final ValueChanged<int>? onPick;
 
   final VoidCallback? onClose;
+
+  /// 开局把哪一张放在**领位**。不传时：称号场景落在**当前佩戴的那张**
+  /// （打开名牒册，手指正好在她给你戴着的那张上），其余场景用牌桌的
+  /// 默认（正中那张）。测试也用它把某张牌精确送到领位。
+  final int? initialLead;
 
   @override
   State<TableOverlay> createState() => _TableOverlayState();
@@ -193,6 +199,17 @@ class _TableOverlayState extends State<TableOverlay>
     }
   }
 
+  /// 领位落在第几张：显式给了就用它；称号场景默认落在**当前佩戴的那张**
+  /// （打开名牒册时她给你戴着的那张牌就在手指下，不用先滑过去找）。
+  int? _leadIndex() {
+    final int? forced = widget.initialLead;
+    if (forced != null) return forced;
+    final HostState? h = _host;
+    if (h == null || widget.scene != TableScene.titles) return null;
+    final int i = HostTitle.all.indexWhere((HostTitle t) => t.id == h.title);
+    return i >= 0 ? i : null;
+  }
+
   void _pick(int i) {
     switch (widget.scene) {
       case TableScene.supply:
@@ -295,6 +312,7 @@ class _TableOverlayState extends State<TableOverlay>
                   skin: _skin,
                   size: _size,
                   onPick: _pick,
+                  initialLead: _leadIndex(),
                 ),
               ),
             ],
