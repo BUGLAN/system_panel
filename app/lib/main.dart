@@ -9,6 +9,7 @@ import 'package:flutter/services.dart';
 
 import 'agent/copy.dart';
 import 'agent/context_adapter.dart';
+import 'agent/goal_planner.dart';
 import 'agent/llm_client.dart';
 import 'agent/llm_gateway.dart';
 import 'agent/memory.dart';
@@ -362,12 +363,20 @@ class _AppShellState extends State<AppShell>
   String? _probeLine; // 追问（绑定仪式）
   String? _dispatchLine; // 发布（派单板）
 
+  /// 目标拆解的预取态：[_planFor] 是它对应的那句话（换目标/重绑会换句，
+  /// 只有对得上才采用，免得把上一句话的链安到新目标头上）。
+  String? _planFor;
+  Future<GoalPlan?>? _planFuture;
+
   /// 聊天消息 id（会话内唯一即可）
   int _chatSeq = 0;
   String _chatId() => 'm${DateTime.now().microsecondsSinceEpoch}_${_chatSeq++}';
 
   /// LLM 网关 + 文案/聊天服务（initState 异步装配；没配 Key 也能跑，全走兜底）
   SystemCopyProvider? _copy;
+
+  /// 目标拆解（docs/06）：宿主那句话 → 环链内容。没配 Key / 失败 → 类别模板兜底
+  GoalPlanner? _planner;
   ChatService? _chatService;
 
   /// 当前 LLM 客户端（TODO-07 网关热更：设置变更时关旧建新，连接池不泄漏）
@@ -457,6 +466,7 @@ class _AppShellState extends State<AppShell>
       _llmClient = client;
       _memory = mem;
       _copy = SystemCopyProvider(llm: gw, memory: mem);
+      _planner = GoalPlanner(llm: gw);
       _agentTools = reg;
       _chatService = ChatService(
         gateway: gw,
@@ -649,10 +659,19 @@ class _AppShellState extends State<AppShell>
   /// 换目标输入框里那颗「先问小祥」的暗号（她接管追问，落库仍走 [newGoal]）
   static const String _kAskXiangPreset = '先问小祥';
 
+  /// 走到「该铸环了」时最多再等多久拆解结果 —— 预取通常已经好了，
+  /// 这个上限只用于兜住「模型特别慢」。到点就按类别模板铸，绝不吊着宿主。
+  static const Duration kPlanWaitOnConsume = Duration(seconds: 4);
+
+  /// 换目标时的等待上限：这里是**冷启动**（没有访谈时间来掩盖网络），
+  /// 宿主刚说完那句话、正看着「让我把这条拆开」，所以给得宽一点；
+  /// 超时则退回类别模板 —— 迟到的好链不如准时的链。
+  static const Duration kPlanWaitOnChangeGoal = Duration(seconds: 15);
+
   /// 新目标提交（第 0 幕的空泛判定复用 `isVagueGoal`）：
   /// 具体 → `buildNextGoal`（按新那句话的时长词重铸 5~8 环）→ `flow.newGoal`
   /// 落库（旧主线单移除、新主线钉队首）→ 存盘 → 回主线页。
-  void _onGoalChangeSubmitted() {
+  Future<void> _onGoalChangeSubmitted() async {
     FocusScope.of(context).unfocus();
     final String typed = _goalAsk.text.trim();
     // 「先问小祥」不是目标，是入口：带场合上下文开对话（D5 的入口保留）
@@ -666,6 +685,27 @@ class _AppShellState extends State<AppShell>
       return;
     }
     final Goal prev = _flow.goal;
+    // 环数先按规则算（时长词 + 完成度提档）—— 拆解要照这个条数要，
+    // 免得「半年」要 8 环而模型只给 5 环。
+    final int n = (goalRingCountFor(typed) +
+            completionRingBoost(
+              cleared: prev.doneCount,
+              total: prev.rings.length,
+              level: _host.lv,
+            ))
+        .clamp(kNextGoalMinRings, kNextGoalMaxRings)
+        .toInt();
+    // 她先想一下：拆解是真网络请求，不能让界面看着像卡住
+    setState(() => _goalChangeOn = false);
+    _sayAside('……行，让我把这条拆开。', holdMs: 1400);
+    _prefetchPlan(typed, detectCategory(typed), ringCount: n);
+    final List<RingSpec>? planned = await _takePlan(
+      typed,
+      ringCount: n,
+      wait: kPlanWaitOnChangeGoal,
+    );
+    // 等待期间宿主可能又换了目标 / 重置了存档 —— 对不上就整件事作废
+    if (!mounted || !identical(_flow.goal, prev)) return;
     final Goal next = buildNextGoal(
       prev: prev,
       // 换目标是宿主**主动**换（不是走完的）——按已走过的环数算完成度
@@ -675,6 +715,8 @@ class _AppShellState extends State<AppShell>
       text: typed,
       // 同上 O-2：主动换目标也沿用原「立目标时刻」
       at: prev.at,
+      // 内容来自 LLM 拆解；取不到就是 null → 类别模板兜底
+      planned: planned,
     );
     final Quest? ring = _flow.newGoal(next);
     if (ring == null) return; // 新目标没铸出环（不该发生）：不动任何状态
@@ -1760,13 +1802,55 @@ class _AppShellState extends State<AppShell>
       _interviewCat = detectCategory(typed);
     });
     _takeProbeLine(typed);
+    // 趁她在答访谈卡（几秒到几十秒），**先把拆解跑起来** ——
+    // 等访谈答完再发请求就白等一轮网络；这里预取，`_completeOnboarding`
+    // 里直接取（答案通常是现成的，取不到才等 [kPlanWaitOnConsume]）。
+    _prefetchPlan(typed, _interviewCat!, ringCount: kFirstGoalDays);
+  }
+
+  /// 预取「这句话的拆解」。失败静默（null）—— 组装时自然退回类别模板。
+  void _prefetchPlan(String text, GoalCategory cat, {required int ringCount}) {
+    final GoalPlanner? planner = _planner;
+    _planFor = text;
+    _planFuture =
+        planner?.plan(goalText: text, ringCount: ringCount, cat: cat);
+  }
+
+  /// 取预取的拆解结果。**最多等 [kPlanWaitOnConsume]** —— 宿主已经走到
+  /// 「该铸环了」，不能为了好听让她多等一个 20s 超时。
+  Future<List<RingSpec>?> _takePlan(
+    String text, {
+    int? ringCount,
+    Duration wait = kPlanWaitOnConsume,
+  }) async {
+    if (_planFor != text || _planFuture == null) return null;
+    try {
+      final GoalPlan? plan = await _planFuture!.timeout(wait);
+      if (plan == null) return null;
+      if (ringCount != null && plan.rings.length != ringCount) return null;
+      return plan.rings;
+    } catch (_) {
+      // 超时 / 失败：当没说（调用方走模板）
+      return null;
+    }
   }
 
   /// 绑定 · 第 1 幕收卷（原型 `Store.bind(name, plan)` 的新政版）：
   /// 访谈答案 → 3 天 3 环 E/D/C 落档 → 队列 = 首环钉队首 + 当日日常 1~2
   /// → 见面礼双倍卡 ×1 → 大厅（首单已在队列）。
   void _completeOnboarding(Map<String, String> answers) {
+    unawaited(_bindWithPlan(answers));
+  }
+
+  /// 绑定收卷（异步）：先取预取的 LLM 拆解（通常已就绪），取不到就用类别模板。
+  /// 内容（拆成哪几环）听拆解；**档位仍是 E/D/C 三天阶梯**（docs/05 锁定）。
+  Future<void> _bindWithPlan(Map<String, String> answers) async {
     final GoalCategory cat = _interviewCat!;
+    final List<RingSpec>? planned = await _takePlan(
+      _pendingGoalText,
+      ringCount: kFirstGoalDays,
+    );
+    if (!mounted || _interviewCat != cat) return; // 这中间被重置/换目标了
     // ⚠️ 重置存档会冻结存储（原型靠随后的 location.reload() 解冻，我们没有重载），
     //    所以重新绑定这一刻要显式解冻，否则这次存盘会被静默跳过。
     _save.unfreeze();
@@ -1775,6 +1859,7 @@ class _AppShellState extends State<AppShell>
         text: _pendingGoalText,
         cat: cat,
         answers: answers,
+        planned: planned,
       );
       _flow = QuestFlow(host: _host, goal: _goal);
       _wireFlow(_flow);

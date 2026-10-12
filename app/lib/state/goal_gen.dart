@@ -1525,6 +1525,50 @@ List<NextRingSpec> nextRingSpecs(
   ];
 }
 
+/// 长链环参数表（**计划版**）—— 内容来自 LLM 拆解（[GoalPlanner]），
+/// 阶梯仍按规则收口：
+///
+///  ① **内容**（short / title / proof）整条听计划的 —— 这才是「真的拆了那句话」。
+///     [planned] 有几环就用几环（末环也用它自己那条：模型给的收尾通常是
+///     「复称对比」这类**具体验证动作**，比通用「兑现它」有用得多）。
+///  ② **档位**按位置走 [kNextGoalRankSeq]，末环强制 S ——「低开高走、收在 S」
+///     是锁定规则，不让模型自己决定。
+///  ③ **时限**采纳计划的分钟数，只夹在该档上限内（[rankCapMinutes]）。
+///     ⚠️ 这里**不做**「末环最重」的单调强制（模板路径才做）：模型的收尾
+///     常常是一步**短的验证**（复称/对表/回看），强行拉到 120 分钟就成了
+///     「花两小时称一次体重」。
+List<NextRingSpec> nextRingSpecsFromPlan(
+  List<RingSpec> planned, {
+  required int n,
+  required String goalText,
+}) {
+  final int count = n.clamp(kNextGoalMinRings, kNextGoalMaxRings).toInt();
+  if (planned.isEmpty) return const <NextRingSpec>[];
+  final List<RingSpec> specs = <RingSpec>[];
+  for (int i = 0; i < count; i++) {
+    final bool last = i == count - 1;
+    final RingSpec seed = planned[i % planned.length];
+    final String rank = last
+        ? 'S'
+        : kNextGoalRankSeq[i.clamp(0, kNextGoalRankSeq.length - 1)];
+    final int cap = rankCapMinutes(rank);
+    final int wanted = seed.minutes <= 0 ? 10 : seed.minutes;
+    specs.add(
+      RingSpec(
+        short: seed.short,
+        title: seed.title,
+        proof: seed.proof,
+        minutes: wanted.clamp(5, cap).toInt(),
+        rank: rank,
+      ),
+    );
+  }
+  return <NextRingSpec>[
+    for (int i = 0; i < specs.length; i++)
+      NextRingSpec(spec: specs[i], index: i, last: i == specs.length - 1),
+  ];
+}
+
 /// 第二目标：finale 之后自动续主线（TODO-01）——
 /// 环数 = 时长词规则（5~8）+ 上一目标完成度提档，档位低开高走收在 S。
 ///
@@ -1549,6 +1593,7 @@ Goal buildNextGoal({
   String? text,
   GoalCategory? cat,
   DateTime? at,
+  List<RingSpec>? planned,
 }) {
   final String clean = (text == null || text.trim().isEmpty)
       ? prev.text
@@ -1566,11 +1611,12 @@ Goal buildNextGoal({
   final int n = (base + boost)
       .clamp(kNextGoalMinRings, kNextGoalMaxRings)
       .toInt();
-  final List<NextRingSpec> specs = nextRingSpecs(
-    category.firstRings,
-    n: n,
-    goalText: clean,
-  );
+  // 有 LLM 拆解产物就用它（内容真拆了那句话），否则退回「类别模板 + 加码环」。
+  // 两条路的档位/时限阶梯完全一致 —— 换的只是内容。
+  final List<NextRingSpec> specs =
+      (planned != null && planned.isNotEmpty)
+          ? nextRingSpecsFromPlan(planned, n: n, goalText: clean)
+          : nextRingSpecs(category.firstRings, n: n, goalText: clean);
   return Goal(
     text: clean,
     short: shortOfGoal(clean, category),
@@ -1715,10 +1761,16 @@ Goal buildFirstGoal({
   required GoalCategory cat,
   Map<String, String> answers = const <String, String>{},
   DateTime? at,
+  List<RingSpec>? planned,
 }) {
   final String clean = text.trim();
   final bool light = interviewIndicatesHeavyBurden(cat, answers);
-  final List<RingSpec> specs = cat.firstRings;
+  // 首目标固定 **3 天 3 环**（docs/05 锁定）—— 计划环必须正好这个数才采用，
+  // 否则 `kFirstGoalRanks[i]` / `days` 会与实际环数对不上，退回模板。
+  final List<RingSpec> specs = (planned != null &&
+          planned.length == cat.firstRings.length)
+      ? planned
+      : cat.firstRings;
   final List<GoalRing> rings = <GoalRing>[];
   for (int i = 0; i < specs.length; i++) {
     // 负担重 → 第 1 环换成更轻的起步环（docs/18 §2.1 的 sleep 示例）
