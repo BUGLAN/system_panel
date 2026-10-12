@@ -12,16 +12,16 @@ void main() {
   Quest q({
     String kind = 'daily',
     bool hinted = false,
-    int ring = 4,
-    int ringTotal = 8,
+    int planIndex = 4,
+    int planTotal = 8,
     Map<String, int> attrs = const <String, int>{'体': 1, '力': 1},
   }) => Quest(
     serial: 41,
     kind: kind,
-    ring: ring,
-    ringTotal: ringTotal,
+    planIndex: planIndex,
+    planTotal: planTotal,
     name: '跑完 5 公里',
-    reason: '上一环你用了 38 分 46 秒。',
+    reason: '上一单你用了 38 分 46 秒。',
     proof: '跑步 App 截图',
     minutes: 45,
     rank: 'C',
@@ -30,8 +30,8 @@ void main() {
   );
 
   group('kindLabel 四档（ui.js L196）', () {
-    test('主线：`主线 · 第 N 环 / M`（环号 1 基）', () {
-      expect(q(kind: 'main').kindLabel, '主线 · 第 5 环 / 8');
+    test('主线：`主线 · 第 N 单 / M`（序号 1 基）', () {
+      expect(q(kind: 'main').kindLabel, '主线 · 第 5 单 / 8');
     });
 
     test('补救：`补救 · 24 小时内有效`', () {
@@ -47,7 +47,7 @@ void main() {
     });
 
     test('hinted 只影响日常那一档，不会盖掉主线/补救', () {
-      expect(q(kind: 'main', hinted: true).kindLabel, '主线 · 第 5 环 / 8');
+      expect(q(kind: 'main', hinted: true).kindLabel, '主线 · 第 5 单 / 8');
       expect(q(kind: 'remedy', hinted: true).kindLabel, '补救 · 24 小时内有效');
     });
   });
@@ -87,8 +87,8 @@ void main() {
         final Quest byRank = Quest(
           serial: 41,
           kind: 'daily',
-          ring: -1,
-          ringTotal: 0,
+          planIndex: -1,
+          planTotal: 0,
           name: 'x',
           reason: '',
           proof: 'y',

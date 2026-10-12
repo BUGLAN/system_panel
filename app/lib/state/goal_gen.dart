@@ -53,9 +53,9 @@ class InterviewCard {
   final List<String> options;
 }
 
-/// 首目标的环参数（生成 `GoalRing` 的原料）。
-class RingSpec {
-  const RingSpec({
+/// 首目标的环参数（生成 `PlanTask` 的原料）。
+class TaskSpec {
+  const TaskSpec({
     required this.short,
     required this.title,
     required this.proof,
@@ -97,9 +97,9 @@ class GoalCategory {
     required this.pattern,
     required this.tilt,
     required this.cards,
-    required this.firstRings,
+    required this.firstTasks,
     required this.daily,
-    this.lightRing,
+    this.lightTask,
   });
 
   final String id;
@@ -118,13 +118,13 @@ class GoalCategory {
   final List<InterviewCard> cards;
 
   /// 首目标 3 环基准参数（顺序 = E/D/C，天数控到 §2.3 建议时限内）
-  final List<RingSpec> firstRings;
+  final List<TaskSpec> firstTasks;
 
   /// 该类日常池
   final List<DailyTemplate> daily;
 
   /// 访谈显示「负担重」时替换第 1 环的更轻版本（sleep 示例见 docs/18 §2.1）
-  final RingSpec? lightRing;
+  final TaskSpec? lightTask;
 }
 
 // ── 十类全表（content.js L34-220 逐类移植；首环档位按 E/D/C 重排） ──
@@ -152,22 +152,22 @@ final GoalCategory _catRun = GoalCategory(
       options: <String>['2 个', '3~4 个', '5 个以上'],
     ),
   ],
-  firstRings: const <RingSpec>[
-    RingSpec(
+  firstTasks: const <TaskSpec>[
+    TaskSpec(
       short: '穿上跑鞋',
       title: '换上跑鞋，出门快走 15 分钟',
       proof: '运动 App 记录或出门自拍',
       minutes: 15,
       rank: 'E',
     ),
-    RingSpec(
+    TaskSpec(
       short: '第一公里',
       title: '慢跑 1 公里。可以慢，不许停',
       proof: '跑步 App 截图',
       minutes: 20,
       rank: 'D',
     ),
-    RingSpec(
+    TaskSpec(
       short: '两公里不停',
       title: '慢跑 2 公里，中途不走路',
       proof: '跑步 App 截图',
@@ -258,22 +258,22 @@ final GoalCategory _catSlim = GoalCategory(
       options: <String>['基本不动', '偶尔走走', '每周有运动习惯'],
     ),
   ],
-  firstRings: const <RingSpec>[
-    RingSpec(
+  firstTasks: const <TaskSpec>[
+    TaskSpec(
       short: '称重',
       title: '早上空腹称一次体重，记下来',
       proof: '体重秤照片',
       minutes: 5,
       rank: 'E',
     ),
-    RingSpec(
+    TaskSpec(
       short: '少一杯',
       title: '今天不喝含糖饮料，一杯都不',
       proof: '晚上拍一张今天喝过的东西',
       minutes: 10,
       rank: 'D',
     ),
-    RingSpec(
+    TaskSpec(
       short: '走路',
       title: '走满 8000 步',
       proof: '步数截图',
@@ -364,22 +364,22 @@ final GoalCategory _catFit = GoalCategory(
       options: <String>['家里徒手', '健身房', '都行'],
     ),
   ],
-  firstRings: const <RingSpec>[
-    RingSpec(
+  firstTasks: const <TaskSpec>[
+    TaskSpec(
       short: '第一组',
       title: '做 10 个俯卧撑（跪姿也算）',
       proof: '自拍或计数截图',
       minutes: 10,
       rank: 'E',
     ),
-    RingSpec(
+    TaskSpec(
       short: '三组成型',
       title: '俯卧撑 3 组 × 10，组间休息 60 秒',
       proof: '计数截图',
       minutes: 15,
       rank: 'D',
     ),
-    RingSpec(
+    TaskSpec(
       short: '核心',
       title: '平板支撑累计 3 分钟',
       proof: '计时截图',
@@ -470,22 +470,22 @@ final GoalCategory _catLang = GoalCategory(
       options: <String>['20 个', '50 个', '量翻倍也要冲'],
     ),
   ],
-  firstRings: const <RingSpec>[
-    RingSpec(
+  firstTasks: const <TaskSpec>[
+    TaskSpec(
       short: '第一页',
       title: '背 20 个新词',
       proof: '背词 App 截图',
       minutes: 15,
       rank: 'E',
     ),
-    RingSpec(
+    TaskSpec(
       short: '跟读',
       title: '跟读一段 3 分钟的音频',
       proof: '录音截图',
       minutes: 15,
       rank: 'D',
     ),
-    RingSpec(
+    TaskSpec(
       short: '五十词',
       title: '一天背完 50 个新词并复习昨天的',
       proof: '背词 App 截图',
@@ -576,22 +576,22 @@ final GoalCategory _catExam = GoalCategory(
       options: <String>['专业课', '英语', '政治 / 公共课'],
     ),
   ],
-  firstRings: const <RingSpec>[
-    RingSpec(
+  firstTasks: const <TaskSpec>[
+    TaskSpec(
       short: '清桌',
       title: '清空书桌，只留下要用的一本书',
       proof: '书桌照片',
       minutes: 10,
       rank: 'E',
     ),
-    RingSpec(
+    TaskSpec(
       short: '第一个番茄',
       title: '专注学习 25 分钟，手机扣在桌上',
       proof: '计时截图 + 书页照片',
       minutes: 20,
       rank: 'D',
     ),
-    RingSpec(
+    TaskSpec(
       short: '一章',
       title: '啃完一章，写出 5 条要点',
       proof: '笔记照片',
@@ -683,22 +683,22 @@ final GoalCategory _catSleep = GoalCategory(
       options: <String>['每天早睡 15 分钟', '固定起床闹钟', '午休不超 30 分钟', '睡前不碰手机'],
     ),
   ],
-  firstRings: const <RingSpec>[
-    RingSpec(
+  firstTasks: const <TaskSpec>[
+    TaskSpec(
       short: '定闹钟',
       title: '定好明早的闹钟，手机放到够不着的地方',
       proof: '闹钟截图 + 手机位置照片',
       minutes: 5,
       rank: 'E',
     ),
-    RingSpec(
+    TaskSpec(
       short: '23:30',
       title: '今晚 23:30 前放下手机上床',
       proof: '屏幕使用时间截图',
       minutes: 20,
       rank: 'D',
     ),
-    RingSpec(
+    TaskSpec(
       short: '不赖床',
       title: '闹钟响后 5 分钟内起床',
       proof: '起床时间截图',
@@ -707,7 +707,7 @@ final GoalCategory _catSleep = GoalCategory(
     ),
   ],
   // 「天天熬夜」这类答案 → 第 1 环从更轻的 E 级起步（docs/18 §2.1）
-  lightRing: const RingSpec(
+  lightTask: const TaskSpec(
     short: '先早一点',
     title: '比昨天早睡 15 分钟',
     proof: '屏幕使用时间截图',
@@ -797,22 +797,22 @@ final GoalCategory _catMake = GoalCategory(
       options: <String>['一件完整小作品', '先养成日常习惯', '能给人看'],
     ),
   ],
-  firstRings: const <RingSpec>[
-    RingSpec(
+  firstTasks: const <TaskSpec>[
+    TaskSpec(
       short: '打开工具',
       title: '打开工具，随便做 10 分钟',
       proof: '过程截图',
       minutes: 15,
       rank: 'E',
     ),
-    RingSpec(
+    TaskSpec(
       short: '临摹',
       title: '临摹一个你喜欢的作品 30 分钟',
       proof: '作品照片',
       minutes: 20,
       rank: 'D',
     ),
-    RingSpec(
+    TaskSpec(
       short: '小练习',
       title: '完成一个 45 分钟的小练习',
       proof: '作品照片',
@@ -903,22 +903,22 @@ final GoalCategory _catCode = GoalCategory(
       options: <String>['30 分钟', '1~2 小时', '3 小时以上'],
     ),
   ],
-  firstRings: const <RingSpec>[
-    RingSpec(
+  firstTasks: const <TaskSpec>[
+    TaskSpec(
       short: '环境',
       title: '把开发环境跑起来，输出一行 Hello',
       proof: '终端截图',
       minutes: 15,
       rank: 'E',
     ),
-    RingSpec(
+    TaskSpec(
       short: '一题',
       title: '做出一道算法题',
       proof: '提交通过截图',
       minutes: 20,
       rank: 'D',
     ),
-    RingSpec(
+    TaskSpec(
       short: '一个功能',
       title: '写完一个能跑的小功能',
       proof: '运行截图',
@@ -1009,22 +1009,22 @@ final GoalCategory _catBold = GoalCategory(
       options: <String>['打招呼就行', '主动开口一次', '直接挑战演讲'],
     ),
   ],
-  firstRings: const <RingSpec>[
-    RingSpec(
+  firstTasks: const <TaskSpec>[
+    TaskSpec(
       short: '对镜子',
       title: '对着镜子大声说一段 1 分钟的自我介绍',
       proof: '录音截图',
       minutes: 8,
       rank: 'E',
     ),
-    RingSpec(
+    TaskSpec(
       short: '先开口',
       title: '今天主动和一个人打招呼',
       proof: '写一句发生了什么',
       minutes: 10,
       rank: 'D',
     ),
-    RingSpec(
+    TaskSpec(
       short: '问一个问题',
       title: '主动问店员 / 同事一个问题',
       proof: '写一句发生了什么',
@@ -1115,22 +1115,22 @@ final GoalCategory _catGen = GoalCategory(
       options: <String>['每天固定 20 分钟', '一周试 3 次', '先做一次看看'],
     ),
   ],
-  firstRings: const <RingSpec>[
-    RingSpec(
+  firstTasks: const <TaskSpec>[
+    TaskSpec(
       short: '写下来',
       title: '把目标写在纸上，拍照',
       proof: '纸条照片',
       minutes: 5,
       rank: 'E',
     ),
-    RingSpec(
+    TaskSpec(
       short: '第一步',
       title: '花 20 分钟做目标的第一件具体的事',
       proof: '过程截图',
       minutes: 20,
       rank: 'D',
     ),
-    RingSpec(
+    TaskSpec(
       short: '拆解',
       title: '把目标拆成 10 个小步骤写下来',
       proof: '照片',
@@ -1391,12 +1391,16 @@ const List<DailyTemplate> kDailyCommon = <DailyTemplate>[
 // 日常池同时按「模板半批」扩充（[kDailyCommon] ≥30、各类专属池 ≥8），
 // 把内容重样期从 ~D9 后移（docs/20 §7.2 批次二）。
 
-/// 长链环数兜底区间（docs/19 P1-3 / TODO-06：5~8 环）
-const int kNextGoalMinRings = 5;
-const int kNextGoalMaxRings = 8;
+/// 计划条数区间（docs/33：条数由期限算 = 天数）。
+/// 下限 2 = 至少「一张推进单 + 一张兑现单」；上限只是防呆（一年也就 366）。
+const int kPlanMinTasks = 2;
+const int kPlanMaxTasks = 400;
 
-/// 长链档位阶梯 —— 原型 `RING_SEQ` 的并集，低开高走、收在 S。
-const List<String> kNextGoalRankSeq = <String>[
+/// 没有时长词的目标（"我想变强"这种）默认规划多少天。
+const int kPlanDefaultDays = 21;
+
+/// 档位阶梯 —— 低开高走、收在 S。
+const List<String> kPlanRankSeq = <String>[
   'E',
   'D',
   'C',
@@ -1417,175 +1421,248 @@ int rankCapMinutes(String rank) => switch (rank) {
   _ => 180,
 };
 
-/// 长链末环的时限（原型 `makeGoal` 尾部那句 `m: 120`）
-const int kNextGoalFinalMinutes = 120;
+/// 兑现单的时限下限（原型 `makeGoal` 尾部那句 `m: 120`）
+const int kPlanFinalMinutes = 120;
 
-/// 时长词 → 环数（原型 `makeGoal` L147-150 逐条移植；默认 6）：
-///   一年/半年/三四五六七八九十个月/百天/100 天 → 8
-///   两二个月/60 天/八周                        → 7
-///   一周/7 天/七天/两周/14 天/十天              → 5
-///
-/// ⚠️ 「一个月」不在表里（原型默认 6）——所以「三个月」只能由 `[三-十]个月`
-/// 命中，绝不能让 `[两二]个月` 把「一个月」也吞掉（负向先行断言挡住）。
-int goalRingCountFor(String text) {
-  if (RegExp(r'一年|半年|[三四五六七八九十]个月|百天|100\s*天').hasMatch(text)) {
-    return 8;
+/// 计划条数 = 期限天数（最后一张是兑现单）。
+int planTaskCountFor(int days) =>
+    days.clamp(kPlanMinTasks, kPlanMaxTasks).toInt();
+
+/// 让模型交几张任务：短计划交满（一天一张），长计划交一个**任务池**
+/// （8 张）由周期计划循环排 —— 不该让模型替宿主把一整年逐日编出来。
+int planDraftCountFor(int days) =>
+    planTaskCountFor(days) <= 14 ? planTaskCountFor(days) : 8;
+
+/// 时长词 → **期限天数**（docs/33 起没有「环数」这个词了）。
+///   一年 → 365 · 半年 → 180 · N 个月 → N×30 · 百天/100 天 → 100
+///   八周 → 56 · 两周/14 天 → 14 · 十天 → 10 · 一周/7 天 → 7
+///   一个都没命中 → [kPlanDefaultDays]（不再猜"6 环"）
+int goalDaysFor(String text) {
+  if (RegExp(r'一年|1\s*年').hasMatch(text)) return 365;
+  if (RegExp(r'半年').hasMatch(text)) return 180;
+  final RegExpMatch? m = RegExp(
+    r'([一二三四五六七八九十两]|\d+)\s*个月',
+  ).firstMatch(text);
+  if (m != null) {
+    final int? n = _cnNum(m[1]!);
+    if (n != null && n > 0) return (n * 30).clamp(7, 365).toInt();
   }
-  if (RegExp(r'[两二]个月|60\s*天|八周').hasMatch(text)) return 7;
-  if (RegExp(r'一周|7\s*天|七天|两周|14\s*天|十天').hasMatch(text)) return 5;
-  return 6;
+  if (RegExp(r'百天|100\s*天').hasMatch(text)) return 100;
+  if (RegExp(r'八周|8\s*周').hasMatch(text)) return 56;
+  if (RegExp(r'一个月').hasMatch(text)) return 30;
+  if (RegExp(r'两周|14\s*天|半个月').hasMatch(text)) return 14;
+  if (RegExp(r'十天|10\s*天').hasMatch(text)) return 10;
+  if (RegExp(r'一周|7\s*天|七天').hasMatch(text)) return 7;
+  return kPlanDefaultDays;
 }
 
-/// 上一目标的完成度提档：全部走完 **且等级到 4** 再多给一环。
-/// 只做**上限内的**提档，不给低等级用户硬塞长链（docs/19 P1-3 的「认真用户」）。
-int completionRingBoost({
+/// 中文数字 → int（"三" → 3、"十" → 10、"十二" → 12）；认不出来回 null。
+int? _cnNum(String s) {
+  final int? plain = int.tryParse(s);
+  if (plain != null) return plain;
+  const Map<String, int> map = <String, int>{
+    '一': 1, '两': 2, '二': 2, '三': 3, '四': 4, '五': 5,
+    '六': 6, '七': 7, '八': 8, '九': 9, '十': 10,
+  };
+  if (s == '十') return 10;
+  if (s.length == 2 && s[0] == '十') return 10 + (map[s[1]] ?? 0);
+  if (s.length == 2 && s[1] == '十') return (map[s[0]] ?? 1) * 10;
+  return map[s];
+}
+
+/// 上一目标完成度提档：全部走完 **且等级到 4** 再多给一周。
+/// 只做温和提档，不给低等级用户硬塞长计划（docs/19 P1-3 的「认真用户」）。
+int completionDayBoost({
   required int cleared,
   required int total,
   required int level,
 }) {
   if (total <= 0 || cleared < total) return 0;
-  return level >= 4 ? 1 : 0;
+  return level >= 4 ? 7 : 0;
 }
 
-/// 新主线的一条环（[RingSpec] 的公共字段全保留，另带环号与收尾标记）
-class NextRingSpec {
-  const NextRingSpec({required this.spec, required this.index, required this.last});
-
-  final RingSpec spec;
-  final int index;
-  final bool last;
+/// 计划里第 [i] 张（共 [n] 张）的档位：低开高走，兑现单永远 S。
+/// 首目标（[kFirstGoalDays] 天）仍走锁定阶梯 E/D/C（docs/05）。
+String planRankAt(int i, int n) {
+  if (n <= kFirstGoalDays) {
+    return kFirstGoalRanks[i.clamp(0, kFirstGoalRanks.length - 1)];
+  }
+  if (i >= n - 1) return 'S';
+  final double p = i / (n - 1) * (kPlanRankSeq.length - 1);
+  return kPlanRankSeq[p.round().clamp(0, kPlanRankSeq.length - 1)];
 }
 
-/// 长链环参数表：首目标 3 环原样接上，再按原型阶梯的**升档 + 加时**
-/// 逐环加码，末环永远钉成「兑现它」（原型 `makeGoal` 尾环）。
+/// 期限内任务清单（纯函数）—— 内容 + 档位阶梯 + 时限收口。
 ///
-/// [n] 为总环数（5~8），[firstRings] 是类别自带的 3 条起步环。
-List<NextRingSpec> nextRingSpecs(
-  List<RingSpec> firstRings, {
-  required int n,
+/// 内容两条路：
+///  ① [planned] 非空 = LLM 交上来的**任务池**（阶段 6：拆计划，不再拆环）。
+///     池子有几张就循环用几张 —— 周期性计划本来就是"同一件事做 N 次"，
+///     所以「半年健身」是 6 个动作循环 90 次，而不是让模型硬编 180 条。
+///  ② 模板路 = 类别自带的起步任务 + 加码（时长单调不减）。
+/// 兑现单（最后一张）两条路都由规则收口：S 级、整条计划里最重的一张。
+List<TaskSpec> planSpecsFor({
+  required GoalCategory cat,
+  required int count,
   required String goalText,
+  List<TaskSpec>? planned,
+  bool lightFirst = false,
 }) {
-  final int count = n.clamp(kNextGoalMinRings, kNextGoalMaxRings).toInt();
-  if (firstRings.isEmpty) return const <NextRingSpec>[];
-  final List<RingSpec> base = List<RingSpec>.of(firstRings);
-  final int mid = count - 1; // 末环是目标本身
-  final List<RingSpec> specs = <RingSpec>[];
-  // 到此为止最重的一环 —— 起步环是人工编排的，分钟数**不是**单调的
-  //（sleep 是 5/20/10），所以加码必须按「最大值」而不是「上一环」加码。
+  final List<TaskSpec> base = cat.firstTasks;
+  final bool usePlan = planned != null && planned.isNotEmpty;
+  final List<TaskSpec> pool = (planned != null && planned.isNotEmpty) ? planned : base;
+  if (pool.isEmpty) return const <TaskSpec>[];
+  final List<TaskSpec> out = <TaskSpec>[];
   int runningMax = 0;
-  for (int i = 0; i < mid; i++) {
-    if (i < base.length) {
-      specs.add(base[i]);
-      runningMax = math.max(runningMax, base[i].minutes);
-      continue;
+
+  /// 起步任务（负担重 → 第 1 张换成类别自带更轻那条）
+  TaskSpec seedAt(int i) {
+    if (i == 0 && lightFirst && cat.lightTask != null) return cat.lightTask!;
+    return pool[i % pool.length];
+  }
+
+  // 短计划（首目标 3 天）：逐张照抄起步任务，档位走锁定阶梯 E/D/C，
+  // 末张也是普通一张 —— 首目标不摆"兑现"这道门（docs/05）。
+  if (count <= kFirstGoalDays) {
+    for (int i = 0; i < count; i++) {
+      final TaskSpec seed = seedAt(i);
+      final String rank = planRankAt(i, count);
+      out.add(
+        TaskSpec(
+          short: seed.short,
+          title: seed.title,
+          proof: seed.proof,
+          minutes: _clampMin(seed.minutes, rank),
+          rank: rank,
+        ),
+      );
     }
-    // ── 加码环 ────────────────────────────────────────────────
-    // 档位：从起步环之后**接着往上走，不绕回**。
-    // ⚠️ 原实现是 `i % seq.length`：8 环链会绕回 'E'，于是
-    //    「加码 3 = S · 41 分钟」后面接「加码 4 = E · 7 分钟」——
-    //    档位与时长一起倒退，长链最后一段比开头还轻。
-    //    （宿主 2026-10-12 存档里实测到：兑现在 120 分钟之前先掉回 7 分钟。）
-    final int k = i - base.length;
-    final RingSpec seed = base[k % base.length];
-    final String rank = kNextGoalRankSeq[
-        (base.length + k).clamp(0, kNextGoalRankSeq.length - 1)];
+    return out;
+  }
+
+  final int mid = math.max(1, count - 1); // 前 mid 张推进单，最后一张兑现单
+  for (int i = 0; i < mid; i++) {
+    final TaskSpec seed = seedAt(i);
+    final String rank = planRankAt(i, count);
     final int cap = rankCapMinutes(rank);
-    // 时长：`seed × 1.35^(k+1)` 与「到此为止最重环 +5 分钟」取大者 —— 加码段
-    // **单调不减**，且从一开始就压在全部起步环之上（不会出现「加码比第一环还轻」）。
-    final int grew = (seed.minutes * math.pow(1.35, k + 1)).round();
-    final int want = math.max(grew, runningMax + 5);
-    // 档位上限内取整；万一上限低于「最重环 +5」也**宁可保持单调**（不回退）。
-    final int minutes = math.max(want.clamp(5, cap).toInt(), runningMax);
-    runningMax = minutes;
-    specs.add(
-      RingSpec(
-        short: '加码 ${k + 1}',
-        title: '${seed.title}——加码到 $minutes 分钟',
+    int minutes = seed.minutes <= 0 ? 10 : seed.minutes;
+    if (!usePlan && i >= base.length) {
+      // 模板加码段：`seed × 1.35^k` 与「到此为止最重 +5」取大 —— 单调不减
+      final int k = i - base.length;
+      minutes = math.max(
+        (seed.minutes * math.pow(1.35, k + 1)).round(),
+        runningMax + 5,
+      );
+    }
+    minutes = minutes.clamp(5, cap).toInt();
+    runningMax = math.max(runningMax, minutes);
+    out.add(
+      TaskSpec(
+        short: seed.short,
+        title: seed.title,
         proof: seed.proof,
         minutes: minutes,
         rank: rank,
       ),
     );
   }
-  // 末环（兑现它）：S 级、必是整条链最重的一环 —— 加码环可能顶到 180 分钟，
-  // 所以不能只写死 120，否则「兑现」会比重活还轻。
-  final int finaleMinutes = math.max(kNextGoalFinalMinutes, runningMax + 20);
-  specs.add(
-    RingSpec(
-      short: '兑现',
-      title: '$goalText——兑现它',
-      proof: '能证明你做到了的截图',
-      minutes: finaleMinutes,
+
+  // 兑现单：内容听计划的（模型给的收尾通常是「复称对比」这类具体验证），
+  // 没有就用「<目标>——兑现它」兜底；档位/时限仍由规则收口。
+  final TaskSpec? tail = usePlan ? planned.last : null;
+  final int finaleMinutes = math.max(kPlanFinalMinutes, runningMax + 20);
+  out.add(
+    TaskSpec(
+      short: (tail != null && tail.short.isNotEmpty)
+          ? tail.short
+          : shortOfGoal(goalText, cat),
+      title: (tail != null && tail.title.isNotEmpty)
+          ? tail.title
+          : '$goalText——兑现它',
+      proof: (tail != null && tail.proof.isNotEmpty)
+          ? tail.proof
+          : '能证明你做到了的截图',
+      minutes: finaleMinutes.clamp(5, rankCapMinutes('S')).toInt(),
       rank: 'S',
     ),
   );
-  return <NextRingSpec>[
-    for (int i = 0; i < specs.length; i++)
-      NextRingSpec(spec: specs[i], index: i, last: i == specs.length - 1),
-  ];
+  return out;
 }
 
-/// 长链环参数表（**计划版**）—— 内容来自 LLM 拆解（agent 循环里她调
-/// `set_mainline` 交上来的环，见 `agent/mainline_tool.dart`），
-/// 阶梯仍按规则收口：
-///
-///  ① **内容**（short / title / proof）整条听计划的 —— 这才是「真的拆了那句话」。
-///     [planned] 有几环就用几环（末环也用它自己那条：模型给的收尾通常是
-///     「复称对比」这类**具体验证动作**，比通用「兑现它」有用得多）。
-///  ② **档位**按位置走 [kNextGoalRankSeq]，末环强制 S ——「低开高走、收在 S」
-///     是锁定规则，不让模型自己决定。
-///  ③ **时限**采纳计划的分钟数，只夹在该档上限内（[rankCapMinutes]）。
-///     ⚠️ 这里**不做**「末环最重」的单调强制（模板路径才做）：模型的收尾
-///     常常是一步**短的验证**（复称/对表/回看），强行拉到 120 分钟就成了
-///     「花两小时称一次体重」。
-List<NextRingSpec> nextRingSpecsFromPlan(
-  List<RingSpec> planned, {
-  required int n,
+/// 清单 → [PlanTask]：加上六维分配、下标与兑现标记。
+List<PlanTask> buildPlanTasks({
   required String goalText,
+  required GoalCategory cat,
+  required int days,
+  List<TaskSpec>? planned,
+  bool lightFirst = false,
 }) {
-  final int count = n.clamp(kNextGoalMinRings, kNextGoalMaxRings).toInt();
-  if (planned.isEmpty) return const <NextRingSpec>[];
-  final List<RingSpec> specs = <RingSpec>[];
-  for (int i = 0; i < count; i++) {
-    final bool last = i == count - 1;
-    final RingSpec seed = planned[i % planned.length];
-    final String rank = last
-        ? 'S'
-        : kNextGoalRankSeq[i.clamp(0, kNextGoalRankSeq.length - 1)];
-    final int cap = rankCapMinutes(rank);
-    final int wanted = seed.minutes <= 0 ? 10 : seed.minutes;
-    specs.add(
-      RingSpec(
-        short: seed.short,
-        title: seed.title,
-        proof: seed.proof,
-        minutes: wanted.clamp(5, cap).toInt(),
-        rank: rank,
-      ),
-    );
-  }
-  return <NextRingSpec>[
+  final int count = planTaskCountFor(days);
+  final List<TaskSpec> specs = planSpecsFor(
+    cat: cat,
+    count: count,
+    goalText: goalText,
+    planned: planned,
+    lightFirst: lightFirst,
+  );
+  return <PlanTask>[
     for (int i = 0; i < specs.length; i++)
-      NextRingSpec(spec: specs[i], index: i, last: i == specs.length - 1),
+      PlanTask(
+        index: i,
+        short: specs[i].short,
+        title: specs[i].title,
+        proof: specs[i].proof,
+        minutes: specs[i].minutes,
+        rank: specs[i].rank,
+        attrs: QuestFlow.splitAttrs(cat.tilt, Rarity.of(specs[i].rank).pt),
+        finalTask: i == specs.length - 1,
+      ),
   ];
 }
 
-/// 第二目标：finale 之后自动续主线（TODO-01）——
-/// 环数 = 时长词规则（5~8）+ 上一目标完成度提档，档位低开高走收在 S。
+/// 首次新目标：**3 天 3 张（E/D/C）**，一天一张，先验证「能坚持」再展开长计划。
+/// 访谈答案随 Goal 入档（`interview` 字段），答案显示负担重则第 1 张换轻档。
+Goal buildFirstGoal({
+  required String text,
+  required GoalCategory cat,
+  Map<String, String> answers = const <String, String>{},
+  DateTime? at,
+  List<TaskSpec>? planned,
+}) {
+  final String clean = text.trim();
+  final bool light = interviewIndicatesHeavyBurden(cat, answers);
+  // 首目标固定 3 张（docs/05 锁定）—— 计划必须正好这个数才采用，否则退回模板
+  final List<TaskSpec>? use = (planned != null && planned.length == kFirstGoalDays)
+      ? planned
+      : null;
+  return Goal(
+    text: clean,
+    short: shortOfGoal(clean, cat),
+    at: at ?? DateTime.now(),
+    plan: buildPlanTasks(
+      goalText: clean,
+      cat: cat,
+      days: kFirstGoalDays,
+      planned: use,
+      lightFirst: light,
+    ),
+    cat: cat.id,
+    days: kFirstGoalDays,
+    interview: Map<String, String>.of(answers),
+  );
+}
+
+/// 第二目标：finale 之后自动续目标（TODO-01）——
+/// **期限** = 时长词规则（`goalDaysFor`）+ 上一目标完成度提档；
+/// 清单条数 = 期限天数，档位低开高走收在 S。
 ///
 /// [prev] 上一目标（文本/类型/访谈答案沿用，保证「换一条路，还是她」
-/// 的连续性）；[cleared]/[total] 是上一目标走过的环数；
-/// [level] 用结算后的等级（提档只看满环完成）。
+/// 的连续性）；[cleared]/[total] 是上一目标走过的单数；
+/// [level] 用结算后的等级（提档只看满额完成）。
 /// [text]/[cat] 只在「换目标」（宿主另立一句话）时传，不传就沿上一目标。
 ///
 /// ⚠️ **[at] 立目标时刻：宿主 2026-10-10 裁决为「沿用」**（O-2）——
-/// `main.dart` 的两处调用（`_wireFlow` 收官钩子与 `_onGoalChangeSubmitted`
-/// 主动换目标）现在都传 `at: prev.at`；`goal.at` 语义 =「这条主线是什么时候
-/// 立的」，延续它才不会让「主线已立 N 天」跳变。形参默认值仍是
-/// `DateTime.now()`，只服务于"没有上一目标可沿用"的调用方。
-/// 历史：旧注释曾写「全部沿用」而实现没沿用（两处调用都没传），
-/// `goal_gen_test` 也跟着一条"只在同毫秒才绿"的断言——2026-10-10 由批次①
-/// 验收 F-6/§4 抓出，同日宿主拍板沿用并已改齐。
+/// `main.dart` 的两处调用现在都传 `at: prev.at`；`goal.at` 语义 =「这个目标是
+/// 什么时候立的」，延续它才不会让「已过 N 天」跳变。
 Goal buildNextGoal({
   required Goal prev,
   required int cleared,
@@ -1594,7 +1671,7 @@ Goal buildNextGoal({
   String? text,
   GoalCategory? cat,
   DateTime? at,
-  List<RingSpec>? planned,
+  List<TaskSpec>? planned,
 }) {
   final String clean = (text == null || text.trim().isEmpty)
       ? prev.text
@@ -1603,40 +1680,22 @@ Goal buildNextGoal({
       (clean == prev.text
           ? (goalCats[prev.cat] ?? detectCategory(clean))
           : detectCategory(clean));
-  final int base = goalRingCountFor(clean);
-  final int boost = completionRingBoost(
-    cleared: cleared,
-    total: total,
-    level: level,
-  );
-  final int n = (base + boost)
-      .clamp(kNextGoalMinRings, kNextGoalMaxRings)
-      .toInt();
-  // 有 LLM 拆解产物就用它（内容真拆了那句话），否则退回「类别模板 + 加码环」。
-  // 两条路的档位/时限阶梯完全一致 —— 换的只是内容。
-  final List<NextRingSpec> specs =
-      (planned != null && planned.isNotEmpty)
-          ? nextRingSpecsFromPlan(planned, n: n, goalText: clean)
-          : nextRingSpecs(category.firstRings, n: n, goalText: clean);
+  final int days =
+      goalDaysFor(clean) +
+      completionDayBoost(cleared: cleared, total: total, level: level);
   return Goal(
     text: clean,
     short: shortOfGoal(clean, category),
     at: at ?? DateTime.now(),
+    plan: buildPlanTasks(
+      goalText: clean,
+      cat: category,
+      days: days,
+      planned: planned,
+    ),
     cat: category.id,
-    days: n,
+    days: days,
     interview: Map<String, String>.of(prev.interview),
-    rings: <GoalRing>[
-      for (final NextRingSpec s in specs)
-        GoalRing(
-          short: s.spec.short,
-          title: s.spec.title,
-          proof: s.spec.proof,
-          minutes: s.spec.minutes,
-          rank: s.spec.rank,
-          state: s.index == 0 ? RingState.cur : RingState.lock,
-          finalRing: s.last,
-        ),
-    ],
   );
 }
 
@@ -1732,18 +1791,16 @@ List<InterviewCard> interviewCardsFor(GoalCategory cat, {int level = 1}) {
 }
 
 /// 访谈答案是否显示「负担重」——出现熬夜 / 作息不固定这类信号时，
-/// 首目标第 1 环换成 [GoalCategory.lightRing]（docs/18 §2.1：
-/// 「天天熬夜」则第 1 环从 E 级「比昨天早睡 15 分钟」起）。
+/// 首目标第 1 张换成 [GoalCategory.lightTask]（docs/18 §2.1：
+/// 「天天熬夜」则第 1 张从 E 级「比昨天早睡 15 分钟」起）。
 bool interviewIndicatesHeavyBurden(
   GoalCategory cat,
   Map<String, String> answers,
 ) {
-  if (cat.lightRing == null) return false;
+  if (cat.lightTask == null) return false;
   final String joined = answers.values.join(' ');
   return joined.contains('熬夜') || joined.contains('没有固定');
 }
-
-// ── 首目标生成 ────────────────────────────────────────────────
 
 /// E/D/C 的建议时限上限（docs/18 §2.3「建议时限」列；下限 5 分钟兜底）。
 int _clampMin(int minutes, String rank) {
@@ -1753,51 +1810,6 @@ int _clampMin(int minutes, String rank) {
     _ => 30,
   };
   return minutes.clamp(5, cap).toInt();
-}
-
-/// 首次新目标：**3 天 3 环（E/D/C）**，每天一环，第 3 环即「她头顶那一环」。
-/// 访谈答案随 Goal 入档（`interview` 字段），答案显示负担重则第 1 环换轻档。
-Goal buildFirstGoal({
-  required String text,
-  required GoalCategory cat,
-  Map<String, String> answers = const <String, String>{},
-  DateTime? at,
-  List<RingSpec>? planned,
-}) {
-  final String clean = text.trim();
-  final bool light = interviewIndicatesHeavyBurden(cat, answers);
-  // 首目标固定 **3 天 3 环**（docs/05 锁定）—— 计划环必须正好这个数才采用，
-  // 否则 `kFirstGoalRanks[i]` / `days` 会与实际环数对不上，退回模板。
-  final List<RingSpec> specs = (planned != null &&
-          planned.length == cat.firstRings.length)
-      ? planned
-      : cat.firstRings;
-  final List<GoalRing> rings = <GoalRing>[];
-  for (int i = 0; i < specs.length; i++) {
-    // 负担重 → 第 1 环换成更轻的起步环（docs/18 §2.1 的 sleep 示例）
-    final RingSpec spec =
-        (i == 0 && light && cat.lightRing != null) ? cat.lightRing! : specs[i];
-    rings.add(
-      GoalRing(
-        short: spec.short,
-        title: spec.title,
-        proof: spec.proof,
-        minutes: _clampMin(spec.minutes, spec.rank),
-        rank: kFirstGoalRanks[i],
-        state: i == 0 ? RingState.cur : RingState.lock,
-        finalRing: i == specs.length - 1,
-      ),
-    );
-  }
-  return Goal(
-    text: clean,
-    short: shortOfGoal(clean, cat),
-    at: at ?? DateTime.now(),
-    rings: rings,
-    cat: cat.id,
-    days: kFirstGoalDays,
-    interview: Map<String, String>.of(answers),
-  );
 }
 
 // ── 答案三用 · ② 日常池 ───────────────────────────────────────
@@ -1957,8 +1969,6 @@ Quest dailyQuestFrom(
   return Quest(
     serial: serial,
     kind: 'daily',
-    ring: -1,
-    ringTotal: 0,
     name: t.title,
     reason: '',
     proof: t.proof,

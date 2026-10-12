@@ -213,39 +213,3 @@ class CamSpring {
     _sy.x / _size.height,
   );
 }
-
-/// 某个环的右/左端点（原型 `Stage.ringPoint`）
-class RingGeom {
-  const RingGeom({required this.rx, required this.ry, required this.ryy});
-
-  /// 横向半径（世界单位）
-  final double rx;
-
-  /// 所在高度
-  final double ry;
-
-  /// 纵向半径（透视压扁后的）
-  final double ryy;
-
-  static double _lerp(double a, double b, double t) => a + (b - a) * t;
-
-  /// `i` 是环序（0 基），`n` 是总环数，`finalRing` 是「她头顶那一环」
-  static RingGeom of(int i, int n, {required bool finalRing}) {
-    if (finalRing) {
-      return const RingGeom(rx: .42, ry: StageAnchors.hair + .20, ryy: .055);
-    }
-    final double m = math.max(1, n - 2).toDouble();
-    final double f = i / m;
-    final double rx = _lerp(.30, .25, f);
-    return RingGeom(
-      rx: rx,
-      ry: _lerp(StageAnchors.feet + .20, StageAnchors.shoulder - .06, f),
-      ryy: rx * _lerp(.22, .15, f),
-    );
-  }
-
-  /// 环的右/左端点（`Stage.ringPoint`）—— DOM 标签就挂在这儿
-  Offset point(String cam, Size size, {double side = 1, double scaleMul = 1}) {
-    return Cam.byName(cam).toScreen(side * rx * scaleMul, ry, size);
-  }
-}

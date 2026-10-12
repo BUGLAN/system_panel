@@ -26,8 +26,8 @@ void main() {
   const Quest eQuest = Quest(
     serial: 900,
     kind: 'daily',
-    ring: -1,
-    ringTotal: 0,
+    planIndex: -1,
+    planTotal: 0,
     name: '出门走 3000 步',
     reason: '',
     proof: '步数截图',
@@ -40,8 +40,8 @@ void main() {
   const Quest dRemedy = Quest(
     serial: 901,
     kind: 'remedy',
-    ring: -1,
-    ringTotal: 0,
+    planIndex: -1,
+    planTotal: 0,
     name: '做一半',
     reason: '',
     proof: '',
@@ -54,8 +54,8 @@ void main() {
   const Quest dQuest = Quest(
     serial: 911,
     kind: 'daily',
-    ring: -1,
-    ringTotal: 0,
+    planIndex: -1,
+    planTotal: 0,
     name: '把一件拖了一周的小事做完',
     reason: '',
     proof: '完成截图',
@@ -68,8 +68,8 @@ void main() {
   const Quest cQuest = Quest(
     serial: 912,
     kind: 'daily',
-    ring: -1,
-    ringTotal: 0,
+    planIndex: -1,
+    planTotal: 0,
     name: '做一顿饭',
     reason: '',
     proof: '饭菜照片',
@@ -82,8 +82,8 @@ void main() {
   const Quest fQuest = Quest(
     serial: 913,
     kind: 'daily',
-    ring: -1,
-    ringTotal: 0,
+    planIndex: -1,
+    planTotal: 0,
     name: '发呆 10 分钟，不碰手机',
     reason: '',
     proof: '计时截图',
@@ -413,11 +413,11 @@ void main() {
       );
       final QuestFlow f = freshFlow(host: lv1near);
       f.accept(
-        const Quest(
+        Quest(
           serial: 902,
           kind: 'daily',
-          ring: -1,
-          ringTotal: 0,
+          planIndex: -1,
+          planTotal: 0,
           name: 's',
           reason: '',
           proof: '',
@@ -444,11 +444,11 @@ void main() {
         ),
       );
       f.accept(
-        const Quest(
+        Quest(
           serial: 903,
           kind: 'daily',
-          ring: -1,
-          ringTotal: 0,
+          planIndex: -1,
+          planTotal: 0,
           name: 's2',
           reason: '',
           proof: '',
@@ -485,26 +485,29 @@ void main() {
     });
   });
 
-  group('主线环（提交后点亮 + 队首补下一环）', () {
-    test('清一环：state=done、held/doneAt 落档、下一环 cur 且补单', () {
+  group('主线单（提交后划掉 + 补到在手窗口）', () {
+    test('清一张：state=done、held/doneAt 落档、补到在手窗口（3 张）', () {
       final QuestFlow f = QuestFlow.demo();
       final Quest head = f.head!;
-      expect(head.ring, 4);
+      expect(head.planIndex, 4);
       f.accept(head, now: DateTime(2026, 1, 1, 10));
       final QuestResult? r = f.settle(
         now: DateTime(2026, 1, 1, 10, 45),
         forceCrit: false,
       );
-      expect(r!.ringClear, 4);
+      expect(r!.planClear, 4);
       expect(r.finale, isFalse);
-      final List<GoalRing> rings = f.goal.rings;
-      expect(rings[4].state, RingState.done);
-      expect(rings[4].held, const Duration(minutes: 45));
-      expect(rings[4].doneAt, DateTime(2026, 1, 1, 10, 45));
-      expect(rings[5].state, RingState.cur);
-      // 队首是新的第 6 环（0 基 5）
-      expect(f.head?.kind, 'main');
-      expect(f.head?.ring, 5);
+      final List<PlanTask> plan = f.goal.plan;
+      expect(plan[4].state, PlanState.done);
+      expect(plan[4].held, const Duration(minutes: 45));
+      expect(plan[4].doneAt, DateTime(2026, 1, 1, 10, 45));
+      // docs/33：清单里那张回到 todo（「在手」是队列的事，不是清单状态）
+      expect(plan[5].state, PlanState.todo);
+      // 补发到「在手窗口」：第 6/7/8 张（0 基 5/6/7）一次都进了队列
+      final List<Quest> mains = f.queue
+          .where((Quest q) => q.kind == 'main')
+          .toList();
+      expect(mains.map((Quest q) => q.planIndex).toList(), <int>[5, 6, 7]);
       expect(f.queueEmpty, isFalse);
       expect(r.empty, isFalse);
     });
@@ -514,14 +517,15 @@ void main() {
         text: '测试目标',
         short: '测试',
         at: DateTime(2026, 1, 1),
-        rings: const <GoalRing>[
-          GoalRing(
+        plan: const <PlanTask>[
+          PlanTask(
+            index: 0,
             short: '一环',
             title: '唯一的一环',
             proof: '截图',
             minutes: 15,
             rank: 'E',
-            state: RingState.cur,
+            state: PlanState.todo,
           ),
         ],
       );
@@ -534,11 +538,13 @@ void main() {
             level: level,
           );
       f.accept(
-        const Quest(
+        Quest(
           serial: 905,
           kind: 'main',
-          ring: 0,
-          ringTotal: 1,
+          planIndex: 0,
+          planTotal: 1,
+          // ⚠️ docs/33：主线单必须认领自己的目标（goalId），否则不许动清单
+          goalId: oneRing.id,
           name: '唯一的一环',
           reason: '',
           proof: '截图',
@@ -548,7 +554,7 @@ void main() {
         ),
       );
       final QuestResult? r = f.settle(forceCrit: false);
-      expect(r!.ringClear, 0);
+      expect(r!.planClear, 0);
       expect(r.finale, isTrue);
       expect(r.titles, contains('finale'));
 
@@ -559,16 +565,18 @@ void main() {
       expect(o.cleared, 1);
       expect(o.total, 1);
       expect(o.newGoalText, '测试目标'); // 沿用上一目标那句话
-      expect(o.goal!.rings.length, 6); // 默认时长词 6 环
-      expect(o.goal!.rings.first.state, RingState.cur);
-      expect(o.goal!.rings.last.finalRing, isTrue);
+      // 「测试目标」没有时长词 → kPlanDefaultDays（21 天）→ 21 张
+      expect(o.goal!.plan.length, 21);
+      expect(o.goal!.plan.first.state, PlanState.todo);
+      expect(o.goal!.firstOpenIndex, 0);
+      expect(o.goal!.plan.last.finalTask, isTrue);
 
       expect(f.goal, same(o.goal));
       expect(f.queueEmpty, isFalse);
       expect(f.head?.kind, 'main');
-      expect(f.head?.ring, 0);
-      expect(f.head?.ringTotal, 6);
-      expect(f.head?.name, o.goal!.rings.first.title);
+      expect(f.head?.planIndex, 0);
+      expect(f.head?.planTotal, 21);
+      expect(f.head?.name, o.goal!.plan.first.title);
       expect(r.empty, isFalse); // 结算页不该弹【收工。】
     });
 
@@ -577,24 +585,27 @@ void main() {
         text: '测试目标',
         short: '测试',
         at: DateTime(2026, 1, 1),
-        rings: const <GoalRing>[
-          GoalRing(
+        plan: const <PlanTask>[
+          PlanTask(
+            index: 0,
             short: '一环',
             title: '唯一的一环',
             proof: '截图',
             minutes: 15,
             rank: 'E',
-            state: RingState.cur,
+            state: PlanState.todo,
           ),
         ],
       );
       final QuestFlow f = freshFlow(goal: oneRing);
       f.accept(
-        const Quest(
+        Quest(
           serial: 906,
           kind: 'main',
-          ring: 0,
-          ringTotal: 1,
+          planIndex: 0,
+          planTotal: 1,
+          // ⚠️ docs/33：主线单必须认领自己的目标（goalId），否则不许动清单
+          goalId: oneRing.id,
           name: '唯一的一环',
           reason: '',
           proof: '截图',
@@ -615,25 +626,28 @@ void main() {
         text: '测试目标',
         short: '测试',
         at: DateTime(2026, 1, 1),
-        rings: const <GoalRing>[
-          GoalRing(
+        plan: const <PlanTask>[
+          PlanTask(
+            index: 0,
             short: '一环',
             title: '唯一的一环',
             proof: '截图',
             minutes: 15,
             rank: 'E',
-            state: RingState.cur,
+            state: PlanState.todo,
           ),
         ],
       );
       final QuestFlow f = freshFlow(goal: oneRing);
       f.nextGoalHook = (Goal _, int _, int _, int _) => null;
       f.accept(
-        const Quest(
+        Quest(
           serial: 907,
           kind: 'main',
-          ring: 0,
-          ringTotal: 1,
+          planIndex: 0,
+          planTotal: 1,
+          // ⚠️ docs/33：主线单必须认领自己的目标（goalId），否则不许动清单
+          goalId: oneRing.id,
           name: '唯一的一环',
           reason: '',
           proof: '截图',
@@ -654,14 +668,15 @@ void main() {
         text: '测试目标',
         short: '测试',
         at: DateTime(2026, 1, 1),
-        rings: const <GoalRing>[
-          GoalRing(
+        plan: const <PlanTask>[
+          PlanTask(
+            index: 0,
             short: '一环',
             title: '唯一的一环',
             proof: '截图',
             minutes: 15,
             rank: 'E',
-            state: RingState.cur,
+            state: PlanState.todo,
           ),
         ],
       );
@@ -676,11 +691,13 @@ void main() {
       final Quest daily = f.genDaily(1).single;
       f.queue.add(daily);
       f.accept(
-        const Quest(
+        Quest(
           serial: 908,
           kind: 'main',
-          ring: 0,
-          ringTotal: 1,
+          planIndex: 0,
+          planTotal: 1,
+          // ⚠️ docs/33：主线单必须认领自己的目标（goalId），否则不许动清单
+          goalId: oneRing.id,
           name: '唯一的一环',
           reason: '',
           proof: '截图',
@@ -690,9 +707,13 @@ void main() {
         ),
       );
       f.settle(forceCrit: false);
-      expect(f.queue.where((Quest q) => q.kind == 'main').length, 1);
+      // 新主线的在手窗口（3 张）铺满；日常单一张不少
+      final List<Quest> mains = f.queue
+          .where((Quest q) => q.kind == 'main')
+          .toList();
+      expect(mains.length, QuestFlow.kPlanPublishWindow);
+      expect(mains.map((Quest q) => q.planIndex).toList(), <int>[0, 1, 2]);
       expect(f.queue.where((Quest q) => q.kind == 'daily').length, 1);
-      expect(f.head?.kind, 'main'); // 首环钉队首，日常还在后面
       expect(f.host.queue, f.queue.length); // 读数同步
     });
 
@@ -701,14 +722,15 @@ void main() {
         text: '测试目标',
         short: '测试',
         at: DateTime(2026, 1, 1),
-        rings: const <GoalRing>[
-          GoalRing(
+        plan: const <PlanTask>[
+          PlanTask(
+            index: 0,
             short: '一环',
             title: '唯一的一环',
             proof: '截图',
             minutes: 15,
             rank: 'E',
-            state: RingState.cur,
+            state: PlanState.todo,
           ),
         ],
       );
@@ -721,11 +743,13 @@ void main() {
             level: level,
           );
       f.accept(
-        const Quest(
+        Quest(
           serial: 909,
           kind: 'main',
-          ring: 0,
-          ringTotal: 1,
+          planIndex: 0,
+          planTotal: 1,
+          // ⚠️ docs/33：主线单必须认领自己的目标（goalId），否则不许动清单
+          goalId: oneRing.id,
           name: '唯一的一环',
           reason: '',
           proof: '截图',
@@ -736,9 +760,12 @@ void main() {
       );
       f.settle(forceCrit: false);
       final int before = f.queue.length;
-      expect(f.applyFinaleOutcome(), isFalse); // 已经钉过了
+      expect(f.applyFinaleOutcome(), isFalse); // 已经发过了
       expect(f.queue.length, before);
-      expect(f.queue.where((Quest q) => q.kind == 'main').length, 1);
+      expect(
+        f.queue.where((Quest q) => q.kind == 'main').length,
+        QuestFlow.kPlanPublishWindow,
+      );
     });
 
     test('applyFinaleOutcome：首环被清掉后能补回来（老档读回时首环不在队列）', () {
@@ -746,14 +773,15 @@ void main() {
         text: '测试目标',
         short: '测试',
         at: DateTime(2026, 1, 1),
-        rings: const <GoalRing>[
-          GoalRing(
+        plan: const <PlanTask>[
+          PlanTask(
+            index: 0,
             short: '一环',
             title: '唯一的一环',
             proof: '截图',
             minutes: 15,
             rank: 'E',
-            state: RingState.cur,
+            state: PlanState.todo,
           ),
         ],
       );
@@ -766,11 +794,13 @@ void main() {
             level: level,
           );
       f.accept(
-        const Quest(
+        Quest(
           serial: 910,
           kind: 'main',
-          ring: 0,
-          ringTotal: 1,
+          planIndex: 0,
+          planTotal: 1,
+          // ⚠️ docs/33：主线单必须认领自己的目标（goalId），否则不许动清单
+          goalId: oneRing.id,
           name: '唯一的一环',
           reason: '',
           proof: '截图',
@@ -784,8 +814,8 @@ void main() {
       expect(f.queueEmpty, isTrue);
       expect(f.applyFinaleOutcome(), isTrue);
       expect(f.head?.kind, 'main');
-      expect(f.head?.ring, 0);
-      expect(f.head?.ringTotal, 6);
+      expect(f.head?.planIndex, 0);
+      expect(f.head?.planTotal, 21);
     });
     test('applyFinaleOutcome：老档读回时「主线已走完」→ 补铸下一条并钉队首（TODO-01 兜底）', () {
       // 收官发生在本功能之前的老存档：环全 done、队列里没有主线单
@@ -795,31 +825,34 @@ void main() {
         at: DateTime(2026, 1, 1),
         cat: 'sleep',
         days: 3,
-        rings: const <GoalRing>[
-          GoalRing(
+        plan: const <PlanTask>[
+          PlanTask(
+            index: 0,
             short: '定闹钟',
             title: '定好明早的闹钟',
             proof: '闹钟截图',
             minutes: 5,
             rank: 'E',
-            state: RingState.done,
+            state: PlanState.done,
           ),
-          GoalRing(
+          PlanTask(
+            index: 1,
             short: '23:30',
             title: '今晚 23:30 前上床',
             proof: '屏幕使用时间截图',
             minutes: 20,
             rank: 'D',
-            state: RingState.done,
+            state: PlanState.done,
           ),
-          GoalRing(
+          PlanTask(
+            index: 2,
             short: '不赖床',
             title: '闹钟响后 5 分钟内起床',
             proof: '起床时间截图',
             minutes: 10,
             rank: 'C',
-            state: RingState.done,
-            finalRing: true,
+            state: PlanState.done,
+            finalTask: true,
           ),
         ],
       );
@@ -837,16 +870,20 @@ void main() {
             total: total,
             level: level,
           );
-      expect(f.goal.currentIndex, -1); // 没有「脚下那一环」
+      expect(f.goal.firstOpenIndex, -1); // 没有「脚下那一张」
       expect(f.queueEmpty, isTrue); // 老档队列里没有主线单
 
       expect(f.applyFinaleOutcome(), isTrue);
       expect(f.goal.text, '一个月早睡早起');
-      expect(f.goal.rings.length, 7); // 默认 6 + lv≥4 满环提档 1
-      expect(f.goal.rings.first.state, RingState.cur);
+      // 「一个月早睡早起」= 30 天 + lv5 满额提档 7 天 = 37 天 → 37 张
+      expect(f.goal.plan.length, 37);
+      expect(f.goal.plan.first.state, PlanState.todo);
       expect(f.head?.kind, 'main');
-      expect(f.head?.ring, 0);
-      expect(f.queue.where((Quest q) => q.kind == 'main').length, 1);
+      expect(f.head?.planIndex, 0);
+      expect(
+        f.queue.where((Quest q) => q.kind == 'main').length,
+        QuestFlow.kPlanPublishWindow,
+      );
       expect(f.lastFinale?.goal, isNotNull);
       // 再调一次不动（幂等）
       expect(f.applyFinaleOutcome(), isFalse);
@@ -875,14 +912,14 @@ void main() {
             total: total,
             level: level,
           );
-      expect(f.goal.currentIndex, 4);
+      expect(f.goal.firstOpenIndex, 4);
       expect(f.applyFinaleOutcome(), isFalse);
-      expect(f.goal.rings.length, 8);
+      expect(f.goal.plan.length, 8);
     });
   });
 
-  group('换目标 newGoal（TODO-01：旧主线单移除、新主线钉队首）', () {
-    test('落库语义：main 全撤、新主线钉队首、日常保留、档案换成新目标', () {
+  group('换目标 newGoal（TODO-01：旧主线单移除、新主线进在手窗口）', () {
+    test('落库语义：main 全撤、新主线进在手窗口、日常保留、档案换成新目标', () {
       final QuestFlow f = QuestFlow.demo(); // 队列 = 主线首环 + 3 日常
       final int dailyBefore =
           f.queue.where((Quest q) => q.kind == 'daily').length;
@@ -891,22 +928,25 @@ void main() {
       final Goal next = buildNextGoal(
         prev: f.goal,
         cleared: f.goal.doneCount,
-        total: f.goal.rings.length,
+        total: f.goal.plan.length,
         level: f.host.lv,
         text: '半年减重 10 斤',
       );
-      final Quest? ring = f.newGoal(next);
+      final Quest? inserted = f.newGoal(next);
 
-      expect(ring, isNotNull);
+      expect(inserted, isNotNull);
       expect(f.goal, same(next));
       expect(f.goal.text, '半年减重 10 斤');
       expect(f.goal.cat, 'slim');
-      expect(f.goal.rings.length, 8);
-      expect(f.queue.first.serial, ring!.serial);
-      expect(f.queue.first.kind, 'main');
-      expect(f.queue.first.ring, 0);
-      expect(f.queue.first.ringTotal, 8);
-      expect(f.queue.where((Quest q) => q.kind == 'main').length, 1);
+      // 「半年」→ 180 天 → 180 张（上一目标没走完，不提档）
+      expect(f.goal.plan.length, 180);
+      // 新主线的在手窗口铺满 3 张，序号从 0 起；返回的就是第一张
+      final List<Quest> mains =
+          f.queue.where((Quest q) => q.kind == 'main').toList();
+      expect(mains.length, QuestFlow.kPlanPublishWindow);
+      expect(mains.map((Quest q) => q.planIndex).toList(), <int>[0, 1, 2]);
+      expect(mains.first.serial, inserted!.serial);
+      expect(mains.first.planTotal, 180);
       expect(
         f.queue.where((Quest q) => q.kind == 'daily').length,
         dailyBefore,
@@ -916,7 +956,7 @@ void main() {
       expect(f.queue.any((Quest q) => q.name == '跑完 5 公里'), isFalse);
     });
 
-    test('新主线可整链走完（换目标后还能一环一环清到 finale）', () {
+    test('新主线可整链走完（换目标后还能一张一张清到 finale）', () {
       final QuestFlow f = QuestFlow.demo();
       f.nextGoalHook = (Goal prev, int cleared, int total, int level) =>
           buildNextGoal(
@@ -928,41 +968,53 @@ void main() {
       final Goal next = buildNextGoal(
         prev: f.goal,
         cleared: 0,
-        total: f.goal.rings.length,
+        total: f.goal.plan.length,
         level: f.host.lv,
         text: '半年减重 10 斤',
       );
       f.newGoal(next);
-      final int total = f.goal.rings.length;
-      expect(total, 8);
+      // 「半年」→ 180 天 → 180 张
+      final int total = f.goal.plan.length;
+      expect(total, 180);
       for (int i = 0; i < total; i++) {
-        final Quest? head = f.head;
-        expect(head, isNotNull, reason: '第 $i 环没有单可接');
-        expect(head!.kind, 'main', reason: '第 $i 环队首不是主线单');
-        expect(head.ring, i, reason: '第 $i 环的环号不对');
+        // 在手窗口里按**计划序号**认这一张（队列首张可能是日常单）
+        Quest? head;
+        for (final Quest q in f.queue) {
+          if (q.kind == 'main' && q.planIndex == i) {
+            head = q;
+            break;
+          }
+        }
+        expect(head, isNotNull, reason: '第 $i 张没有单可接');
+        expect(head!.kind, 'main', reason: '第 $i 张不在队列里');
+        expect(head.planIndex, i, reason: '第 $i 张的序号不对');
         f.accept(head, now: DateTime(2026, 1, 1 + i, 10));
         final QuestResult? r = f.settle(
           now: DateTime(2026, 1, 1 + i, 10, 30),
           forceCrit: false,
         );
-        expect(r, isNotNull, reason: '第 $i 环结算失败');
-        expect(r!.ringClear, i);
+        expect(r, isNotNull, reason: '第 $i 张结算失败');
+        expect(r!.planClear, i);
         if (i < total - 1) {
           expect(r.finale, isFalse);
-          expect(f.goal.rings[i].state, RingState.done);
-          expect(f.goal.rings[i + 1].state, RingState.cur);
+          expect(f.goal.plan[i].state, PlanState.done);
+          expect(f.goal.plan[i + 1].state, PlanState.todo);
         } else {
           // 第二轮的收官：又自动接上一条（叙事没有终点）
           expect(r.finale, isTrue);
           expect(f.lastFinale?.goal, isNotNull);
-          expect(f.head?.kind, 'main');
-          expect(f.head?.ring, 0);
+          expect(f.goal, same(f.lastFinale!.goal));
+          // 新主线的在手窗口同样铺满（序号从 0 起）
+          final List<Quest> fresh =
+              f.queue.where((Quest q) => q.kind == 'main').toList();
+          expect(fresh.length, QuestFlow.kPlanPublishWindow);
+          expect(fresh.map((Quest q) => q.planIndex).toList(), <int>[0, 1, 2]);
           expect(f.queueEmpty, isFalse);
         }
       }
     });
 
-    test('空目标不动任何状态（不给环就不换）', () {
+    test('空目标不动任何状态（不给清单就不换）', () {
       final QuestFlow f = QuestFlow.demo();
       final Goal before = f.goal;
       final int qLen = f.queue.length;
@@ -1053,8 +1105,8 @@ void main() {
       ).queue.single;
       expect(back.serial, source.serial);
       expect(back.kind, source.kind);
-      expect(back.ring, source.ring);
-      expect(back.ringTotal, source.ringTotal);
+      expect(back.planIndex, source.planIndex);
+      expect(back.planTotal, source.planTotal);
       expect(back.name, source.name);
       expect(back.reason, source.reason);
       expect(back.proof, source.proof);

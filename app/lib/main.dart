@@ -26,7 +26,7 @@ import 'data/format.dart';
 import 'data/items.dart';
 import 'design/tokens.dart';
 import 'screens/boot_screen.dart';
-import 'stage/ring_painter.dart';
+import 'stage/progress_band.dart';
 import 'state/host_state.dart';
 import 'state/goal.dart';
 import 'state/goal_gen.dart';
@@ -63,8 +63,7 @@ import 'widgets/perf_debug.dart';
 import 'widgets/plate.dart';
 import 'widgets/plate_timeline.dart';
 import 'widgets/result_panel.dart';
-import 'widgets/ring_labels.dart';
-import 'widgets/ring_tag.dart';
+import 'widgets/plan_tag.dart';
 import 'widgets/sheet.dart';
 import 'widgets/table_overlay.dart';
 
@@ -254,7 +253,7 @@ class _AppShellState extends State<AppShell>
   final VoiceEnvelope _voice = VoiceEnvelope();
 
   /// 主线全景里展开的是哪一环（null = 没展开，只有抬头）
-  int? _pickedRing;
+  int? _pickedTask;
 
   /// 绑定仪式的输入框
   final TextEditingController _ask = TextEditingController();
@@ -303,7 +302,7 @@ class _AppShellState extends State<AppShell>
   );
 
   /// 环场亮度：开机 34% → 唤醒后 100%，**顺着 [_wakeFade] 推**（原来硬跳）
-  double get _ringWakeDim => .34 + .66 * Curves.easeOut.transform(_wakeFade.value);
+  double get _bandWakeDim => .34 + .66 * Curves.easeOut.transform(_wakeFade.value);
 
   /// 屏幕空间特效（#fx 画布）
   final FxController _fx = FxController();
@@ -526,8 +525,8 @@ class _AppShellState extends State<AppShell>
         queue: _host.queue,
         goalShort: _goal.short,
         // 环进度喂给她（验收 F-3）：不喂她会从旧工具回执里捡过期数字
-        ringDone: _goal.doneCount,
-        ringTotal: _goal.rings.length,
+        planDone: _goal.doneCount,
+        planTotal: _goal.plan.length,
       ),
     );
     if (!mounted) return;
@@ -641,7 +640,7 @@ class _AppShellState extends State<AppShell>
   /// 带上当前主线与进度 —— 她追问「为什么换」时要引用真实数据。
   String get _newGoalScenario =>
       '换目标：宿主在主线页按了「换目标」。他现在的目标是「${_goal.text}」'
-      '（${_goal.doneCount}/${_goal.rings.length} 环）。先追问为什么换、'
+      '（${_goal.doneCount}/${_goal.plan.length} 单）。先追问为什么换、'
       '新目标是什么；提醒他：旧主线环会清空、队列里的主线单会撤下，想清楚再动。';
 
   /// ── 换目标（TODO-01 · 主线页入口）──────────────────────────────
@@ -671,8 +670,8 @@ class _AppShellState extends State<AppShell>
   static const Duration kPlanWaitOnChangeGoal = Duration(seconds: 15);
 
   /// 新目标提交（第 0 幕的空泛判定复用 `isVagueGoal`）：
-  /// 具体 → `buildNextGoal`（按新那句话的时长词重铸 5~8 环）→ `flow.newGoal`
-  /// 落库（旧主线单移除、新主线钉队首）→ 存盘 → 回主线页。
+  /// 具体 → `buildNextGoal`（按新那句话的时长词算**期限**、排出任务清单）
+  /// → `flow.newGoal` 落库（旧主线单移除、新计划单补进队列）→ 存盘 → 回主线页。
   Future<void> _onGoalChangeSubmitted() async {
     FocusScope.of(context).unfocus();
     final String typed = _goalAsk.text.trim();
@@ -687,28 +686,30 @@ class _AppShellState extends State<AppShell>
       return;
     }
     final Goal prev = _flow.goal;
-    // 环数先按规则算（时长词 + 完成度提档）—— 拆解要照这个条数要，
-    // 免得「半年」要 8 环而模型只给 5 环。
-    final int n = (goalRingCountFor(typed) +
-            completionRingBoost(
+    // 期限先按规则算（时长词 + 完成度提档）—— 拆解照这个期限要任务，
+    // 免得「半年」只要 8 张而计划其实是 180 天。
+    final int n = (goalDaysFor(typed) +
+            completionDayBoost(
               cleared: prev.doneCount,
-              total: prev.rings.length,
+              total: prev.plan.length,
               level: _host.lv,
             ))
-        .clamp(kNextGoalMinRings, kNextGoalMaxRings)
+        .clamp(kPlanMinTasks, kPlanMaxTasks)
         .toInt();
+    final int need = planDraftCountFor(n);
     // 她先想一下：拆解是真网络请求，不能让界面看着像卡住
     setState(() => _goalChangeOn = false);
     _sayAside('……行，让我把这条拆开。', holdMs: 1400);
     _prefetchPlan(
       typed,
       detectCategory(typed),
-      ringCount: n,
+      taskCount: need,
+      days: n,
       withStatus: true, // 换目标时状态是真的：让她先看清再拆
     );
-    final List<RingSpec>? planned = await _takePlan(
+    final List<TaskSpec>? planned = await _takePlan(
       typed,
-      ringCount: n,
+      taskCount: need,
       wait: kPlanWaitOnChangeGoal,
     );
     // 等待期间宿主可能又换了目标 / 重置了存档 —— 对不上就整件事作废
@@ -717,7 +718,7 @@ class _AppShellState extends State<AppShell>
       prev: prev,
       // 换目标是宿主**主动**换（不是走完的）——按已走过的环数算完成度
       cleared: prev.doneCount,
-      total: prev.rings.length,
+      total: prev.plan.length,
       level: _host.lv,
       text: typed,
       // 同上 O-2：主动换目标也沿用原「立目标时刻」
@@ -725,20 +726,20 @@ class _AppShellState extends State<AppShell>
       // 内容来自 LLM 拆解；取不到就是 null → 类别模板兜底
       planned: planned,
     );
-    final Quest? ring = _flow.newGoal(next);
-    if (ring == null) return; // 新目标没铸出环（不该发生）：不动任何状态
+    final Quest? first = _flow.newGoal(next);
+    if (first == null) return; // 新目标没排出单（不该发生）：不动任何状态
     setState(() {
       _host = _flow.host;
       _goal = _flow.goal;
       _goalChangeOn = false;
-      _pickedRing = null;
+      _pickedTask = null;
       _moment = Moment.main;
     });
     _persist();
     // docs/24 #17 换目标落库：正色点头（nod + exp_serious02）
     _stagePort?.act('nod');
     _sayAside(
-      '行。旧的撤了，新的 [[${_goal.rings.length} 环]] 钉在队首。'
+      '行。旧的撤了，新清单 [[${_goal.plan.length} 单]] 已经在你手上。'
       '「$typed」——别又三天热度。',
       holdMs: 3000,
     );
@@ -1237,12 +1238,13 @@ class _AppShellState extends State<AppShell>
                 // 8 个环全部 showRing，所以之后一直可见。
                 ValueListenableBuilder<Cam>(
                   valueListenable: _cam,
-                  builder: (BuildContext _, Cam camNow, Widget? _) => RingField(
-                    goal: _goal,
+                  builder: (BuildContext _, Cam camNow, Widget? _) => ProgressBand(
+                    done: _goal.doneCount,
+                    total: _goal.totalTasks,
                     cam: camOf,
                     camObj: camNow, // 弹簧推出来的那一帧（切页是"推镜头"不是瞬移）
                     t: 0,
-                    ringMul: _ringsMulNow(),
+                    lit: _bandLitNow(),
                     dim: boot
                         ? .34 // 开机态的全息参数
                         // 唤醒过场：34% → 100% 顺着 _wakeFade 推上去（原来是硬跳）
@@ -1251,7 +1253,7 @@ class _AppShellState extends State<AppShell>
                               .4 *
                                   _ringDim
                                       .value // flows.js L530：holoTo({bright:.6}) 缓动过去
-                        : _ringWakeDim,
+                        : _bandWakeDim,
                     scan: .2, // settings.holo → Stage.scanT
                   ),
                 ),
@@ -1299,7 +1301,7 @@ class _AppShellState extends State<AppShell>
                   onSide: (int i) {
                     if (i == 0) {
                       setState(() {
-                        _pickedRing = null;
+                        _pickedTask = null;
                         _moment = Moment.main;
                       });
                     } else if (i == 1) {
@@ -1549,7 +1551,7 @@ class _AppShellState extends State<AppShell>
                               '[[明天 ${_hhmm(_flow.remedyDeadline ?? _failAt)}]]',
                             )
                           : main
-                          ? LINES.mainline(_goal.doneCount, _goal.rings.length)
+                          ? LINES.mainline(_goal.doneCount, _goal.plan.length)
                           : onboard
                           // 访谈进行中换一句幕词；第 0 幕保持追问接管（兜底=askGoal 原句）
                           ? _interviewCat != null
@@ -1586,7 +1588,7 @@ class _AppShellState extends State<AppShell>
                       fail ||
                       onboard ||
                       (result && (_aside != null || _resultChoicesOn)) ||
-                      (main && _pickedRing == null),
+                      (main && _pickedTask == null),
                 ),
                 // 回应：结算收尾【再来一单。/先歇会儿。|收工。】
                 // 失败页【……接。/今天算了。】（原型的 choose()，此前没接 onPick
@@ -1712,12 +1714,12 @@ class _AppShellState extends State<AppShell>
                   },
                 ),
                 // 当前环的挂签（大厅里挂在她脚下那一环的右端）
-                RingTag(
+                PlanTag(
                   goal: _goal,
                   visible: lobby,
                   dimmed: true, // 字幕在 → 原型把它压到 18%
                   onTap: () => setState(() {
-                    _pickedRing = null;
+                    _pickedTask = null;
                     _moment = Moment.main;
                   }),
                 ),
@@ -1727,20 +1729,21 @@ class _AppShellState extends State<AppShell>
                 //    正好压在底部的【让她派这一环】【换目标】上、字幕压在预设词上
                 //    —— 宿主截图里的"UI 重合"就是这两处（原型 `MainV.hide()`
                 //    也是整层收掉，只留她说话 + 输入）。
-                RingLabels(
-                  goal: _goal,
-                  visible: main && !_goalChangeOn,
-                  onPick: (int i) => setState(() => _pickedRing = i),
-                ),
                 MainView(
                   goal: _goal,
-                  selected: main ? _pickedRing : null,
-                  // 原型 `canGo = !S.active && cur >= 0 && 队列里有主线单`——
-                  // veteran 档三条都成立，所以那颗蓝色主按钮是显示的
+                  published: _publishedPlanIndices(),
+                  activeIndex: _activePlanIndex(),
+                  selected: main ? _pickedTask : null,
+                  elapsed: _active
+                      ? _clockText(_execReadout().elapsed)
+                      : null,
                   canDispatch: main && !_flow.queueEmpty,
                   visible: main && !_goalChangeOn,
                   onClose: () => setState(() => _moment = Moment.lobby),
                   onDispatch: _enterDispatchOrRest,
+                  onSelect: (int i) =>
+                      setState(() => _pickedTask = i < 0 ? null : i),
+                  onAccept: _acceptPlanTask,
                   // D5：换目标 → 问一句新目标 → `newGoal` 落库（TODO-01；
                   // 「先问小祥」那颗暗号仍带场合上下文开对话）
                   onNewGoal: _beginGoalChange,
@@ -1815,19 +1818,21 @@ class _AppShellState extends State<AppShell>
     _prefetchPlan(
       typed,
       _interviewCat!,
-      ringCount: kFirstGoalDays,
+      taskCount: kFirstGoalDays,
+      days: kFirstGoalDays,
       withStatus: false, // 绑定期还没有真档案，别让她读演示档
     );
   }
 
-  /// 预取「这一句话的主线」。失败静默（`hasRings=false`）—— 组装时自然退回类别模板。
+  /// 预取「这一句话的计划」。失败静默（`hasPlan=false`）—— 组装时自然退回类别模板。
   ///
   /// [withStatus]：绑定仪式**不给** `get_status` —— 那一刻 `_flow` 还是演示档，
   /// 让她读会读出一份假档案；换目标时才给（那时状态是真的）。
   void _prefetchPlan(
     String text,
     GoalCategory cat, {
-    required int ringCount,
+    required int taskCount,
+    int? days,
     bool withStatus = false,
   }) {
     final MainlineAgent? agent = _mainlineAgent;
@@ -1836,13 +1841,15 @@ class _AppShellState extends State<AppShell>
       _planFuture = null;
       return;
     }
-    final MainlineDraft draft = MainlineDraft();
+    final int d = days ?? goalDaysFor(text);
+    final PlanDraft draft = PlanDraft();
     _planFuture = agent.run(
       goalText: text,
-      ringCount: ringCount,
+      taskCount: taskCount,
       tools: _mainlineTools(
         goalText: text,
-        ringCount: ringCount,
+        taskCount: taskCount,
+        days: d,
         draft: draft,
         withStatus: withStatus,
       ),
@@ -1858,8 +1865,9 @@ class _AppShellState extends State<AppShell>
   ///    让她同一轮里既换主线又动队列会打架（而且拉长这一轮的往返）。
   AgentToolRegistry _mainlineTools({
     required String goalText,
-    required int ringCount,
-    required MainlineDraft draft,
+    required int taskCount,
+    required int days,
+    required PlanDraft draft,
     required bool withStatus,
   }) {
     final AgentToolRegistry reg = AgentToolRegistry();
@@ -1871,7 +1879,12 @@ class _AppShellState extends State<AppShell>
       }
     }
     reg.register(
-      setMainlineTool(goalText: goalText, ringCount: ringCount, draft: draft),
+      setPlanTool(
+        goalText: goalText,
+        taskCount: taskCount,
+        days: days,
+        draft: draft,
+      ),
     );
     return reg;
   }
@@ -1882,23 +1895,23 @@ class _AppShellState extends State<AppShell>
     return '${_host.name} · LV${_host.lv} · 连击 ${_host.streak}（最好 ${_host.bestStreak}）· '
         '◈${_host.coins} · 完成 ${_host.doneCount} · 战败 ${_host.failCount} · '
         '最弱维 ${_host.weakest.key}${_host.weakest.value}\n'
-        '现主线：${g.text.isEmpty ? '（无）' : '「${g.text}」第 ${g.rings.isEmpty ? 0 : g.currentIndex + 1}/${g.rings.length} 环'}';
+        '现主线：${g.text.isEmpty ? '（无）' : '「${g.text}」完成 ${g.doneCount}/${g.plan.length} 单'}';
   }
 
   /// 取预取的主线环。**最多等 [wait]** —— 宿主已经走到「该铸环了」，
   /// 不能为了好听让她多等一整轮工具循环的超时。
-  Future<List<RingSpec>?> _takePlan(
+  Future<List<TaskSpec>?> _takePlan(
     String text, {
-    int? ringCount,
+    int? taskCount,
     Duration wait = kPlanWaitOnConsume,
   }) async {
     if (_planFor != text || _planFuture == null) return null;
     try {
       final MainlineResult r = await _planFuture!.timeout(wait);
-      final List<RingSpec>? rings = r.rings;
-      if (rings == null || rings.isEmpty) return null;
-      if (ringCount != null && rings.length != ringCount) return null;
-      return rings;
+      final List<TaskSpec>? tasks = r.tasks;
+      if (tasks == null || tasks.isEmpty) return null;
+      if (taskCount != null && tasks.length != taskCount) return null;
+      return tasks;
     } catch (_) {
       // 超时 / 失败：当没说（调用方走模板）
       return null;
@@ -1906,7 +1919,7 @@ class _AppShellState extends State<AppShell>
   }
 
   /// 绑定 · 第 1 幕收卷（原型 `Store.bind(name, plan)` 的新政版）：
-  /// 访谈答案 → 3 天 3 环 E/D/C 落档 → 队列 = 首环钉队首 + 当日日常 1~2
+  /// 访谈答案 → 3 天 3 张 E/D/C 落档 → 队列 = 计划前几张 + 当日日常 1~2
   /// → 见面礼双倍卡 ×1 → 大厅（首单已在队列）。
   void _completeOnboarding(Map<String, String> answers) {
     unawaited(_bindWithPlan(answers));
@@ -1916,9 +1929,9 @@ class _AppShellState extends State<AppShell>
   /// 内容（拆成哪几环）听拆解；**档位仍是 E/D/C 三天阶梯**（docs/05 锁定）。
   Future<void> _bindWithPlan(Map<String, String> answers) async {
     final GoalCategory cat = _interviewCat!;
-    final List<RingSpec>? planned = await _takePlan(
+    final List<TaskSpec>? planned = await _takePlan(
       _pendingGoalText,
-      ringCount: kFirstGoalDays,
+      taskCount: kFirstGoalDays,
     );
     if (!mounted || _interviewCat != cat) return; // 这中间被重置/换目标了
     // ⚠️ 重置存档会冻结存储（原型靠随后的 location.reload() 解冻，我们没有重载），
@@ -1935,7 +1948,7 @@ class _AppShellState extends State<AppShell>
       _wireFlow(_flow);
       // 绑定即建队列：首环 + 当日日常（store.js bind() 的 L165-167；
       // 每日 1~2 个走 §2.2 新政，不再用 seedForCurrentGoal 的固定 3 张）
-      _flow.queue.add(_flow.ringTask(0));
+      _flow.publishPlanTasks(); // 计划前几张（在手窗口）
       _flow.queue.addAll(_genTodaysDailies());
       _resyncQueueCount();
       // 见面礼：双倍卡 ×1（原型 bind() 的 `S.items.dbl += 1`，
@@ -1952,7 +1965,7 @@ class _AppShellState extends State<AppShell>
     });
     _persist();
     _rememberInterview(cat, answers);
-    _sayAside('排好了。三天，每天一环。', holdMs: 2200);
+    _sayAside('排好了。三天，一天一张。', holdMs: 2200);
     Future<void>.delayed(const Duration(milliseconds: 2200), () {
       if (mounted) setState(() => _banner = false);
     });
@@ -2025,10 +2038,8 @@ class _AppShellState extends State<AppShell>
     final List<Quest> next = rollDayQueue(
       overnight: _flow.queue,
       fresh: _genTodaysDailies(),
-      mainTask: () {
-        final int ci = _goal.currentIndex;
-        return ci >= 0 ? _flow.ringTask(ci) : null;
-      },
+      // 主线单统一由 publishPlanTasks 补发（保持"在手窗口"那几张）
+      mainTask: null,
       activeIsMain: _flow.active?.task.kind == 'main',
       remedyDeadline: _flow.remedyDeadline,
       now: t0,
@@ -2037,6 +2048,7 @@ class _AppShellState extends State<AppShell>
       _flow.queue
         ..clear()
         ..addAll(next);
+      _flow.publishPlanTasks(); // 换日重钉计划单（幂等）
       _resyncQueueCount();
       _lastRollDay = startOfDay(t0);
     });
@@ -2154,11 +2166,14 @@ class _AppShellState extends State<AppShell>
     }
   }
 
-  /// 失败时把当前那一环掐暗（原型 `Stage.dimRing(ci, …)` 三下：0 / 90 / 200ms）
-  List<double>? _ringMul;
+  /// 失败时把进度带掐暗（原型 `Stage.dimRing` 三下：0 / 90 / 200ms）
+  double? _bandMul;
 
-  /// 唤醒时"逐个点亮"用的逐环亮度系数（见 [_igniteRings]）；null = 这一路不参与
-  List<double>? _litMul;
+  /// 唤醒时"点亮"进度带用的亮度系数（见 [_igniteBand]）；null = 这一路不参与
+  double? _bandLit;
+
+  /// 进度带亮度：**失败变暗** × **唤醒点亮**（两路相乘）
+  double _bandLitNow() => (_bandMul ?? 1) * (_bandLit ?? 1);
 
   /// 道具抽屉开着没（原型 `#exDrawer.on`）；再点一次「道具」收起
   bool _drawerOn = false;
@@ -2263,14 +2278,14 @@ class _AppShellState extends State<AppShell>
       _host = _flow.host;
       _goal = _flow.goal;
     });
+    // 进度带掐暗三下（原型 `Stage.dimRing` 的节奏：0 / 90 / 200ms）
     _ringDim.forward(from: 0);
-    final int ci = _goal.currentIndex;
-    _setRingMul(ci, .2);
+    _setBandMul(.2);
     Future<void>.delayed(const Duration(milliseconds: 90), () {
-      if (mounted) _setRingMul(ci, .6);
+      if (mounted) _setBandMul(.6);
     });
     Future<void>.delayed(const Duration(milliseconds: 200), () {
-      if (mounted) _setRingMul(ci, .15);
+      if (mounted) _setBandMul(.15);
     });
   }
 
@@ -2439,12 +2454,12 @@ class _AppShellState extends State<AppShell>
     setState(() {
       _host = _flow.host;
       _goal = _flow.goal;
-      _pickedRing = null;
+      _pickedTask = null;
     });
     _persist();
-    final int n = o.goal!.rings.length;
+    final int n = o.goal!.plan.length;
     _sayAside(
-      '${o.total} 环走完了。下一条主线 [[$n 环]]，已经钉在你手上——'
+      '${o.total} 单走完了。下一份计划 [[$n 单]]，已经在你手上——'
       '「${o.newGoalText}」。别以为能歇。',
       holdMs: 3200,
     );
@@ -2486,22 +2501,54 @@ class _AppShellState extends State<AppShell>
     _takeDispatchLine(); // 发布文案接管：LLM 回了顶掉「接不接？」
   }
 
+  /// 执行中那张的计时读数（`12:04`）
+  static String _clockText(Duration d) {
+    final int m = d.inMinutes;
+    final String ss = (d.inSeconds % 60).toString().padLeft(2, '0');
+    return '$m:$ss';
+  }
+
   /// 原型 `hhmm(Clock.now())`
   static String _hhmm(DateTime d) =>
       '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
 
-  void _setRingMul(int i, double v) {
-    if (i < 0) return;
+  void _setBandMul(double v) => setState(() => _bandMul = v);
+
+  /// 队列里已经有单的计划序号（主线页据此区分「可接 / 待发布」）
+  Set<int> _publishedPlanIndices() => <int>{
+    for (final Quest q in _flow.queue)
+      if (q.kind == 'main' && q.goalId == _goal.id && q.planIndex >= 0)
+        q.planIndex,
+  };
+
+  /// 正在执行的那张在清单里的序号（null = 没有）
+  int? _activePlanIndex() {
+    final Quest? a = _flow.active?.task;
+    if (a == null || a.kind != 'main' || a.goalId != _goal.id) return null;
+    return a.planIndex;
+  }
+
+  /// 主线页上按住那条 = 接这张（沿用「拔单 = 开始执行」的手感）：
+  /// 先在队列里找出这张单（没派就现派一张），再走 [ _beginExec ] 那条老路。
+  void _acceptPlanTask(int i) {
+    if (_busy) return;
+    if (_flow.active != null) {
+      _sayAside('手上还有一张没交。先把它了了。', holdMs: 1800);
+      return;
+    }
+    // 没派就现派这一张（「待发布」那条也能直接接 —— 宿主想先做哪张就做哪张）
+    final Quest? q = _flow.publishPlanTask(i);
+    if (q == null) return;
+    // ⚠️ **只把这张挪到队首**，接单仍由 `_beginExec()` 那一条老路做（它 accept 的是
+    //    队首）—— 这里若先 `accept` 一次，_beginExec 会再 accept 一张别的，
+    //    刚点的那张就从队列里凭空消失（踩过）。
+    _flow.queue.removeWhere((Quest t) => t.serial == q.serial);
+    _flow.queue.insert(0, q);
     setState(() {
-      final List<double> m = List<double>.filled(_goal.rings.length, 1);
-      if (_ringMul != null) {
-        for (int k = 0; k < m.length && k < _ringMul!.length; k++) {
-          m[k] = _ringMul![k];
-        }
-      }
-      if (i < m.length) m[i] = v;
-      _ringMul = m;
+      _pickedTask = null;
+      _host = _flow.host;
     });
+    _beginExec();
   }
 
   /// 什么时候被切到后台的（原型 `App.hiddenAt`）
@@ -2562,7 +2609,7 @@ class _AppShellState extends State<AppShell>
     setState(() => _moment = _resumedExec ? Moment.exec : Moment.lobby);
 
     // 逐环点亮（原型在这段之后还有 500ms 留白，才轮到 greet）
-    await _igniteRings();
+    await _igniteBand();
 
     final DateTime? seen = _prevSeen;
     final Duration away = seen == null
@@ -2580,54 +2627,24 @@ class _AppShellState extends State<AppShell>
     _sayAside(AwayGreeting.text(k, away), holdMs: 3200, busy: true);
   }
 
-  /// 唤醒时逐环点亮的调度（原型 `flows.js:87-93`）。
-  /// 环场本身一直画着（没有 per-ring 显隐），所以"点亮"用 [RingField.ringMul]
-  /// （每环亮度系数）表达：`_litMul[i]` 从 0 爬到 1 = 亮起；lock 环不点。
-  static const int _kIgniteStep = 140; // 非 lock 环的停拍（原型 sleep(140)）
-  static const int _kIgniteLockStep = 50; // lock 环的停拍（原型 sleep(50)）
-  static const int _kIgniteRamp = 120; // 单环 0→1 的耗时（比停拍短，不叠拍）
-  static const int _kIgniteTail = 500; // 亮完到开口之间的留白（原型 sleep(500)）
+  /// 唤醒时点亮进度带的调度（原型 `flows.js:87-93` 的逐环点亮）。
+  /// 环没了、只剩**一条**进度带，于是那 8 拍收敛成一拍：
+  /// 0→1 爬 420ms，起手一声 `ignite` + 一次震动（原来每环各一次）。
+  static const int _kIgniteRampMs = 420;
 
-  /// 唤醒逐环点亮的驱动器（懒建：没被唤醒过就不白占一个 ticker）
+  /// 唤醒点亮的驱动器（懒建：没被唤醒过就不白占一个 ticker）
   AnimationController? _igniteC;
 
-  Future<void> _igniteRings() async {
-    final List<GoalRing> rings = _goal.rings;
-    if (rings.isEmpty) return;
-    final List<double> at = <double>[];
-    int ms = 0;
-    for (final GoalRing r in rings) {
-      at.add(ms.toDouble());
-      ms += r.state == RingState.lock ? _kIgniteLockStep : _kIgniteStep;
-    }
-    final int total = ms + _kIgniteTail;
+  Future<void> _igniteBand() async {
+    if (_goal.plan.isEmpty) return;
     final AnimationController c = _igniteC ??= AnimationController(vsync: this);
-    c.duration = Duration(milliseconds: total);
-    final List<double> startAt = at
-        .map((double v) => v / total)
-        .toList(growable: false);
-    final double ramp = _kIgniteRamp / total;
-    // 每环只响一次（原型 `flows.js:90`：`Sound.play('ignite', i)` + `buzz(6)`）
-    final List<bool> fired = List<bool>.filled(rings.length, false);
+    c.duration = const Duration(milliseconds: _kIgniteRampMs);
+    unawaited(Sfx.play('ignite'));
+    unawaited(Haptics.buzz('ignite'));
 
-    void tick() {
-      final double v = c.value;
-      final List<double> next = List<double>.generate(rings.length, (int i) {
-        if (rings[i].state == RingState.lock) {
-          return 1; // lock 环不点（原型只 showRing）
-        }
-        return ((v - startAt[i]) / ramp).clamp(0.0, 1.0);
-      });
-      // 发声/震动放在 setState 外面（setState 里只改状态）
-      for (int i = 0; i < rings.length; i++) {
-        if (!fired[i] && next[i] > 0) {
-          fired[i] = true;
-          unawaited(Sfx.play('ignite', variant: i));
-          unawaited(Haptics.buzz('ignite'));
-        }
-      }
-      setState(() => _litMul = next);
-    }
+    void tick() => setState(
+      () => _bandLit = Curves.easeOutCubic.transform(c.value),
+    );
 
     c.addListener(tick);
     tick();
@@ -2637,20 +2654,7 @@ class _AppShellState extends State<AppShell>
       // 演出被切断（页面销毁/连续唤醒）：安静收场，别把异常抛给调用方
     }
     c.removeListener(tick);
-    if (mounted) setState(() => _litMul = null);
-  }
-
-  /// 环亮度系数：**失败变暗**（`_ringMul`，原型 `Stage.dimRing`）与
-  /// **唤醒点亮**（`_litMul`）两路按位相乘后一起交给 [RingField]。
-  List<double>? _ringsMulNow() {
-    if (_ringMul == null && _litMul == null) return null;
-    final int n = _goal.rings.length;
-    final List<double> m = List<double>.filled(n, 1);
-    for (int i = 0; i < n; i++) {
-      if (_ringMul != null && i < _ringMul!.length) m[i] *= _ringMul![i];
-      if (_litMul != null && i < _litMul!.length) m[i] *= _litMul![i];
-    }
-    return m;
+    if (mounted) setState(() => _bandLit = null);
   }
 
   /// 读档（store.js L34）—— 没有档就用**空白档**（t19/A1：真新档直达绑定仪式，

@@ -16,8 +16,8 @@ class HostState {
     required this.streak,
     required this.title,
     required this.queue,
-    required this.ringIndex,
-    required this.ringTotal,
+    required this.doneIndex,
+    required this.planTotal,
     required this.attrs,
     required this.doneCount,
     required this.critCount,
@@ -40,8 +40,9 @@ class HostState {
   final int queue;
 
   /// 主线：脚下第几环（0 基）与总环数
-  final int ringIndex;
-  final int ringTotal;
+  /// 已完成单数（老档的 `ringIndex` —— 「第几环」那一套已废除）
+  final int doneIndex;
+  final int planTotal;
 
   /// 六维，键是单字（力/敏/体/智/知/魅）
   final Map<String, int> attrs;
@@ -89,8 +90,8 @@ class HostState {
     streak: 6,
     title: 'done15',
     queue: 4, // veteran() 的 S.queue.length
-    ringIndex: 4,
-    ringTotal: 8,
+    doneIndex: 4,
+    planTotal: 8,
     attrs: <String, int>{'力': 9, '敏': 12, '体': 17, '智': 6, '知': 8, '魅': 4},
     doneCount: 31,
     critCount: 6,
@@ -116,8 +117,8 @@ class HostState {
     streak: 0,
     title: 'bind',
     queue: 0,
-    ringIndex: -1,
-    ringTotal: 0,
+    doneIndex: -1,
+    planTotal: 0,
     attrs: <String, int>{'力': 0, '敏': 0, '体': 0, '智': 0, '知': 0, '魅': 0},
     doneCount: 0,
     critCount: 0,
@@ -155,8 +156,8 @@ class HostState {
       streak: pick<int>('streak', fallback.streak),
       title: pick<String>('title', fallback.title),
       queue: pick<int>('queue', fallback.queue),
-      ringIndex: pick<int>('ringIndex', fallback.ringIndex),
-      ringTotal: pick<int>('ringTotal', fallback.ringTotal),
+      doneIndex: pick<int>('doneIndex', pick<int>('ringIndex', fallback.doneIndex)),
+      planTotal: pick<int>('planTotal', fallback.planTotal),
       attrs: attrsOf('attrs', fallback.attrs),
       doneCount: pick<int>('doneCount', fallback.doneCount),
       critCount: pick<int>('critCount', fallback.critCount),
@@ -180,8 +181,8 @@ class HostState {
     'streak': streak,
     'title': title,
     'queue': queue,
-    'ringIndex': ringIndex,
-    'ringTotal': ringTotal,
+    'doneIndex': doneIndex,
+    'planTotal': planTotal,
     'attrs': attrs,
     'doneCount': doneCount,
     'critCount': critCount,
@@ -199,8 +200,8 @@ class HostState {
     int? streak,
     String? title,
     int? queue,
-    int? ringIndex,
-    int? ringTotal,
+    int? doneIndex,
+    int? planTotal,
     Map<String, int>? attrs,
     int? doneCount,
     int? critCount,
@@ -216,8 +217,8 @@ class HostState {
     streak: streak ?? this.streak,
     title: title ?? this.title,
     queue: queue ?? this.queue,
-    ringIndex: ringIndex ?? this.ringIndex,
-    ringTotal: ringTotal ?? this.ringTotal,
+    doneIndex: doneIndex ?? this.doneIndex,
+    planTotal: planTotal ?? this.planTotal,
     attrs: attrs ?? this.attrs,
     doneCount: doneCount ?? this.doneCount,
     critCount: critCount ?? this.critCount,

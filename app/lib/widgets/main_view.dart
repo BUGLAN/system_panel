@@ -1,43 +1,122 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../data/format.dart';
+import '../data/rarity.dart';
+import '../data/rewards.dart';
 import '../design/tokens.dart';
 import '../state/goal.dart';
+import 'card_skins.dart';
 
 /// ═══════════════════════════════════════════════════════════
-///  主线全景（app.css L419-435 `#mainv` + ui.js `MainV`）
-///  抬头写目标与进度、右上角一个 ×、底部一张环详情卡 + 「换目标」。
-///  环本身套在她身上（WebGL），这里只做**面板**部分；
-///  挂在环上的那些标签见 `ring_labels.dart`。
+///  主线页（docs/33 §3）—— 卡片式新视图
 ///
-///  实测盒模型（390×844）：
-///    mv-top [20,22,350,79] · kick [20,27,107,13] · h3 [20,49,186,28] · p [20,83,186,18]
-///    × [332,22,38,38] · detail [20,631,350,121] · low [20,764,350,54] · 换目标 [20,764,88,54]
+///  旧形态（抬头 + 8 条环挂签 + 一张环详情卡）已随「环」一起废除：
+///  宿主原话「点击主线时需要类似卡片式的新卡片，需要新的设计」。
+///
+///  现在这一页 = 抬头（目标一句 + 期限内进度）+ **委托轨**（第 4 套皮肤
+///  [CardSkin.duty] 的横条铭牌，一屏 5~6 张、可滑）+ 底排两颗。
+///    · 点一条 → 展开 L 大牌（审视态，九区）
+///    · 按住一条 → 接单（沿用「拔单=开始执行」的手感）
+///    · 待发布 / 可接 / 执行中 / 已完成 / 已放弃 —— 五态用**状态线**表达
 /// ═══════════════════════════════════════════════════════════
 class MainView extends StatelessWidget {
   const MainView({
     super.key,
     required this.goal,
+    this.published = const <int>{},
+    this.activeIndex,
     this.selected,
+    this.elapsed,
     this.canDispatch = false,
     this.visible = true,
+    this.now,
     this.onClose,
     this.onDispatch,
     this.onNewGoal,
+    this.onSelect,
+    this.onAccept,
   });
 
   final Goal goal;
 
-  /// 当前展开的环序（null = 没展开，只有抬头）
+  /// 队列里已经有单的计划序号（可接）；不在里面的未完成单 = 待发布
+  final Set<int> published;
+
+  /// 正在执行的那一张（null = 没有）
+  final int? activeIndex;
+
+  /// 展开的那一张（审视态）
   final int? selected;
 
-  /// 是否给「让她派这一环」（原型 `canGo`：没有执行中的任务 + 有主线单）
+  /// 执行中那张的计时读数（`12:04`），由 main 侧每秒推进
+  final String? elapsed;
+
+  /// 是否给「去执行」那颗主按钮
   final bool canDispatch;
 
   final bool visible;
+
+  final DateTime? now;
   final VoidCallback? onClose;
   final VoidCallback? onDispatch;
   final VoidCallback? onNewGoal;
+  final ValueChanged<int>? onSelect;
+  final ValueChanged<int>? onAccept;
+
+  /// 轨上同时显示几张（一屏 5~6 条）
+  static const int kRailMax = 6;
+
+  /// 轨上显示的序号：从第一张没做完的往前带一张（给点上下文），
+  /// 往后最多 [kRailMax] 张 —— 清单一长（半年 = 180 张）也不会铺满屏。
+  List<int> railIndices() {
+    final int n = goal.plan.length;
+    if (n == 0) return const <int>[];
+    final int open = goal.firstOpenIndex;
+    final int first = open < 0 ? n - 1 : open;
+    final int start = math.max(0, first - 1);
+    final int end = math.min(n, start + kRailMax);
+    return <int>[for (int i = start; i < end; i++) i];
+  }
+
+  DutyState stateOf(int i) {
+    final PlanTask t = goal.plan[i];
+    if (t.state == PlanState.done) return DutyState.done;
+    if (t.state == PlanState.abandoned) return DutyState.abandoned;
+    if (activeIndex == i || t.state == PlanState.active) return DutyState.active;
+    return published.contains(i) ? DutyState.open : DutyState.sealed;
+  }
+
+  TableCard cardOf(int i, {bool lead = false}) {
+    final PlanTask t = goal.plan[i];
+    final DutyState st = stateOf(i);
+    return TableCard(
+      id: 'duty.$i',
+      kicker: 'MAIN · ${(i + 1).toString().padLeft(2, '0')}',
+      title: t.title,
+      glyph: t.attrs.isEmpty ? null : t.attrs.keys.first,
+      rank: t.rank,
+      accent: Rarity.of(t.rank).color,
+      loot: lootOf(t),
+      dutyState: st,
+      dutyMeta: '${fmtMin(t.minutes)} · ${t.proof}',
+      elapsed: st == DutyState.active ? elapsed : null,
+      sealWord: st == DutyState.done ? '已完成' : null,
+      enabled: st == DutyState.open,
+      locked: st == DutyState.sealed,
+      index: i + 1,
+    );
+  }
+
+  static List<String> lootOf(PlanTask t) {
+    final Payout p = Rewards.payout(rank: t.rank, crit: false, dbl: false);
+    return <String>[
+      'EXP ${p.exp}',
+      '◈ ${p.coin}',
+      for (final MapEntry<String, int> e in t.attrs.entries) '${e.key}+${e.value}',
+    ];
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -50,7 +129,12 @@ class MainView extends StatelessWidget {
           child: Stack(
             children: <Widget>[
               _top(),
-              if (selected != null) _detail(goal.rings[selected!]),
+              if (goal.plan.isEmpty)
+                _empty()
+              else if (selected != null && goal.taskAt(selected!) != null)
+                _detail(selected!)
+              else
+                _rail(),
               _low(),
             ],
           ),
@@ -59,8 +143,9 @@ class MainView extends StatelessWidget {
     );
   }
 
-  /// .mv-top
+  /// 抬头：目标一句 + 期限内进度
   Widget _top() {
+    final DateTime t0 = now ?? DateTime.now();
     return Positioned(
       left: 20,
       right: 20,
@@ -73,7 +158,6 @@ class MainView extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
-                // `.kick` 是 inline，被父级 16px strut 撑出的行框里下沉 5px
                 SizedBox(
                   height: 19.2,
                   child: Padding(
@@ -108,31 +192,18 @@ class MainView extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 6),
-                Text.rich(
+                // 读数口径：`已过 N/M 天 · 完成 X 单`（docs/33 §7.5）
+                Text(
+                  goal.days <= 0
+                      ? '完成 ${goal.doneCount} 单'
+                      : goal.progressText(t0),
                   key: const Key('main.progress'),
-                  TextSpan(
-                    children: <InlineSpan>[
-                      TextSpan(
-                        text: '${goal.doneCount}',
-                        style: fs(
-                          family: F.num,
-                          size: 14,
-                          wght: 800,
-                          color: C.ice,
-                        ),
-                      ),
-                      TextSpan(
-                        text:
-                            ' / ${goal.rings.length} 环 · 起于 ${goal.startedText}',
-                      ),
-                    ],
-                    style: fs(
-                      family: F.mono,
-                      size: 11,
-                      wght: 600,
-                      ls: 1.1,
-                      color: C.mist,
-                    ),
+                  style: fs(
+                    family: F.mono,
+                    size: 11,
+                    wght: 600,
+                    ls: 1.1,
+                    color: C.mist,
                   ),
                 ),
               ],
@@ -148,7 +219,7 @@ class MainView extends StatelessWidget {
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: const Color(0x99040E20), // rgba(4,14,32,.6)
+                color: const Color(0x99040E20),
                 border: Border.all(color: C.line, width: 1),
               ),
               child: Text(
@@ -168,90 +239,135 @@ class MainView extends StatelessWidget {
     );
   }
 
-  /// .mv-detail
-  Widget _detail(GoalRing ring) {
+  /// 委托轨：横条铭牌一叠（可滑）
+  Widget _rail() {
+    final List<int> idx = railIndices();
     return Positioned(
       left: 20,
       right: 20,
-      bottom: 92,
-      child: Container(
-        key: const Key('main.detail'),
-        padding: const EdgeInsets.fromLTRB(
-          15,
-          13,
-          15,
-          13,
-        ), // CSS 14/16，Border 占 1
-        decoration: BoxDecoration(
-          color: const Color(0xE6040C1C), // rgba(4,12,28,.9)
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: C.line, width: 1),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            Text(
-              ring.finalRing
-                  ? '终点 · 我头顶那一环'
-                  : 'RING ${(selected ?? 0) + 1} · ${ring.rank} 级',
-              style: fs(
-                family: F.mono,
-                size: 10,
-                wght: 400,
-                ls: 1.6,
-                color: C.blue,
+      top: 150,
+      bottom: 110,
+      child: ListView.separated(
+        key: const Key('main.rail'),
+        padding: EdgeInsets.zero,
+        physics: const BouncingScrollPhysics(),
+        itemCount: idx.length,
+        separatorBuilder: (BuildContext _, int _) => const SizedBox(height: 10),
+        itemBuilder: (BuildContext _, int k) {
+          final int i = idx[k];
+          final DutyState st = stateOf(i);
+          return GestureDetector(
+            key: Key('main.card.$i'),
+            behavior: HitTestBehavior.opaque,
+            onTap: () => onSelect?.call(i),
+            onLongPress: st == DutyState.open ? () => onAccept?.call(i) : null,
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: CardFace(
+                skin: CardSkin.duty,
+                card: cardOf(i, lead: st == DutyState.open),
+                size: CardTableSize.m,
+                lead: st == DutyState.open,
               ),
             ),
-            const SizedBox(height: 6),
-            Text(
-              ring.title,
-              style: fs(
-                family: F.hd,
-                size: 17,
-                wght: 400,
-                height: 1.3,
-                color: C.ice,
-              ),
-            ),
-            const SizedBox(height: 6),
-            Text.rich(
-              TextSpan(
-                children: <InlineSpan>[
-                  TextSpan(
-                    text: ring.statusText().split(' · 用时').first,
-                    style: ring.state == RingState.cur
-                        ? fs(
-                            family: F.cn,
-                            size: 12.5,
-                            wght: 600,
-                            height: 1.6,
-                            color: C.ice,
-                          )
-                        : null,
-                  ),
-                  if (ring.held != null)
-                    TextSpan(text: ' · 用时 ${fmtDur(ring.held!)}'),
-                  TextSpan(
-                    text: '\n证明：${ring.proof} · 时限 ${fmtMin(ring.minutes)}',
-                  ),
-                ],
-                style: fs(
-                  family: F.cn,
-                  size: 12.5,
-                  wght: 400,
-                  height: 1.6,
-                  color: C.mist,
-                ),
-              ),
-            ),
-          ],
-        ),
+          );
+        },
       ),
     );
   }
 
-  /// .mv-low
+  /// L 大牌（审视态）：翻开来看来龙去脉
+  Widget _detail(int i) {
+    final PlanTask t = goal.plan[i];
+    final DutyState st = stateOf(i);
+    return Positioned(
+      left: 0,
+      right: 0,
+      top: 130,
+      child: Column(
+        children: <Widget>[
+          CardFace(
+            key: const Key('main.detail'),
+            skin: CardSkin.duty,
+            card: cardOf(i, lead: true),
+            size: CardTableSize.l,
+            lead: true,
+          ),
+          const SizedBox(height: 14),
+          if (st == DutyState.open)
+            GestureDetector(
+              key: const Key('main.take'),
+              onTap: () => onAccept?.call(i),
+              behavior: HitTestBehavior.opaque,
+              child: Container(
+                height: 46,
+                width: 190,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: C.blue,
+                  borderRadius: BorderRadius.circular(23),
+                  boxShadow: <BoxShadow>[
+                    BoxShadow(color: C.blue.withAlpha(102), blurRadius: 24),
+                  ],
+                ),
+                child: Text(
+                  '接这张',
+                  style: fs(
+                    family: F.cn,
+                    size: 15,
+                    wght: 600,
+                    ls: .9,
+                    height: 1,
+                    color: C.deep,
+                  ),
+                ),
+              ),
+            )
+          else
+            Text(
+              t.statusText(),
+              style: fs(
+                family: F.cn,
+                size: 12.5,
+                wght: 500,
+                height: 1.4,
+                color: C.mist,
+              ),
+            ),
+          const SizedBox(height: 10),
+          GestureDetector(
+            key: const Key('main.back'),
+            onTap: () => onSelect?.call(-1),
+            behavior: HitTestBehavior.opaque,
+            child: Text(
+              '收起',
+              style: fs(
+                family: F.cn,
+                size: 12.5,
+                wght: 500,
+                height: 1,
+                color: C.mist,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _empty() {
+    return Positioned(
+      left: 20,
+      right: 20,
+      top: 200,
+      child: Text(
+        '还没有计划。说一句你想变成什么样。',
+        style: fs(family: F.cn, size: 13, wght: 400, height: 1.6, color: C.mist),
+      ),
+    );
+  }
+
+  /// 底排：拇指区（下 40%）
   Widget _low() {
     return Positioned(
       left: 20,
@@ -287,7 +403,6 @@ class MainView extends StatelessWidget {
         ),
         child: Stack(
           children: <Widget>[
-            // inset 0 1px 0 rgba(255,255,255,.6)
             Positioned(
               left: 0,
               right: 0,
@@ -298,7 +413,7 @@ class MainView extends StatelessWidget {
               ),
             ),
             Text(
-              '让她派这一环',
+              '去执行',
               style: fs(
                 family: F.cn,
                 size: 15,
@@ -321,11 +436,10 @@ class MainView extends StatelessWidget {
       child: Container(
         key: const Key('main.newGoal'),
         height: 54,
-        // Border 占布局、CSS 的 inset 阴影不占 → padding 各减 1px
         padding: const EdgeInsets.symmetric(horizontal: 19),
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: const Color(0xB3040E20), // rgba(4,14,32,.7)
+          color: const Color(0xB3040E20),
           borderRadius: BorderRadius.circular(27),
           border: Border.all(color: C.line, width: 1),
         ),

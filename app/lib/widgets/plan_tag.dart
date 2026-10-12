@@ -1,24 +1,19 @@
 import 'package:flutter/material.dart';
 
 import '../design/tokens.dart';
-import '../stage/camera.dart';
+import '../stage/progress_band.dart';
 import '../state/goal.dart';
 
 /// ═══════════════════════════════════════════════════════════
-///  当前环的挂签（app.css L128-138 `.ringtag`）
-///  大厅里挂在她**脚下那一环**右端的标签：主线 / R5/8 / 五公里。
-///  点它展开主线全景（`main.js` L61 → `App.mainline()`）。
+///  进度挂签（原 `ringtag` —— 「R5/8」那套已随环一起废除）
+///  大厅里挂在**进度带**右端的小标签：主线 / 4/8 单 / 目标短字。
+///  点它展开主线页（`docs/33` 的卡片式新视图）。
 ///
-///  落点由 `Flow.place()` 给出：`translate(round(p.x+4), round(p.y-14))`，
-///  `p = Stage.ringPoint(curRing, 1)` —— 用的是**大厅相机**，不是全景那套。
-///  实测（390×844）：tag [305,387,69,44] · lead [305,409,24,1]
-///    rt-k [335,387,21,9] · b [335,399,30,15] · em [335,417,35,14]
-///
-///  ⚠️ `#ui:has(#line.on) .ringtag.on { opacity: .18 }` ——
-///  字幕一出来它就暗到 18%。（大厅里字幕是一直在的，所以平时就是暗的。）
+///  落点 = `ProgressBand.point('lobby') + (4, -14)`（用的是大厅相机）。
+///  ⚠️ 字幕一出来它就暗到 18%（`#ui:has(#line.on)` 的既有纪律）。
 /// ═══════════════════════════════════════════════════════════
-class RingTag extends StatelessWidget {
-  const RingTag({
+class PlanTag extends StatelessWidget {
+  const PlanTag({
     super.key,
     required this.goal,
     this.cam = 'lobby',
@@ -29,7 +24,7 @@ class RingTag extends StatelessWidget {
 
   final Goal goal;
 
-  /// 挂签跟着相机走 —— 大厅用 `lobby`，全景用 `full`
+  /// 挂签跟着相机走 —— 大厅用 `lobby`，主线页用 `full`
   final String cam;
 
   final bool visible;
@@ -41,19 +36,13 @@ class RingTag extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final int ci = goal.currentIndex;
-    if (ci < 0) return const SizedBox.shrink();
-
-    final GoalRing ring = goal.rings[ci];
+    if (goal.plan.isEmpty) return const SizedBox.shrink();
     final Size size = MediaQuery.sizeOf(context);
-    final Offset p = RingGeom.of(
-      ci,
-      goal.rings.length,
-      finalRing: ring.finalRing,
-    ).point(cam, size);
+    final Offset p = ProgressBand.point(cam, size);
+    final int total = goal.totalTasks;
+    final int done = goal.doneCount;
 
     return Positioned(
-      // 原型是 Math.round，不是截断
       left: (p.dx + 4).roundToDouble(),
       top: (p.dy - 14).roundToDouble(),
       child: IgnorePointer(
@@ -65,17 +54,11 @@ class RingTag extends StatelessWidget {
             onTap: onTap,
             behavior: HitTestBehavior.opaque,
             child: SizedBox(
-              // `#ringTag` 指的是**外层整块**（含 padding-left 30），宽 69
-              key: const Key('ringTag'),
-              // `.lead` 是绝对定位的、不占内容宽度；内容从 padding-left 30 起
+              key: const Key('planTag'),
               child: Stack(
                 clipBehavior: Clip.none,
                 children: <Widget>[
-                  Positioned(
-                    left: 0,
-                    top: 22, // 整块 44 高，50%
-                    child: _lead(),
-                  ),
+                  Positioned(left: 0, top: 22, child: _lead()),
                   Padding(
                     padding: const EdgeInsets.only(left: 30, right: 4),
                     child: Column(
@@ -88,7 +71,7 @@ class RingTag extends StatelessWidget {
                             family: F.mono,
                             size: 8.5,
                             wght: 500,
-                            ls: 1.87, // .22em
+                            ls: 1.87,
                             height: 1,
                             color: C.mist,
                           ),
@@ -98,7 +81,7 @@ class RingTag extends StatelessWidget {
                           TextSpan(
                             children: <InlineSpan>[
                               TextSpan(
-                                text: 'R${ci + 1}',
+                                text: '$done',
                                 style: fs(
                                   family: F.num,
                                   size: 15,
@@ -114,7 +97,7 @@ class RingTag extends StatelessWidget {
                                 ),
                               ),
                               TextSpan(
-                                text: '/${goal.rings.length}',
+                                text: '/$total',
                                 style: fs(
                                   family: F.num,
                                   size: 10,
@@ -130,7 +113,7 @@ class RingTag extends StatelessWidget {
                         ConstrainedBox(
                           constraints: const BoxConstraints(maxWidth: 74),
                           child: Text(
-                            ring.finalRing ? goal.short : ring.short,
+                            goal.short,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: fs(

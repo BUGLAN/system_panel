@@ -87,7 +87,7 @@ class ChatService {
 
   /// 宿主档案一行（system prompt 的【宿主档案】段）。
   ///
-  /// [ringDone]/[ringTotal] 是主线环进度——**必须喂**（验收 F-3）：
+  /// [planDone]/[planTotal] 是计划进度——**必须喂**（验收 F-3）：
   /// 不喂，模型就会从聊天历史里那条旧 `〔工具〕get_status` 回执里捡数字，
   /// 于是出现「主线还挂着 6 环没动」这种过期读数，直接违背「引用真实数据」。
   static String statusLineOf({
@@ -96,12 +96,12 @@ class ChatService {
     required int streak,
     required int queue,
     required String goalShort,
-    int? ringDone,
-    int? ringTotal,
+    int? planDone,
+    int? planTotal,
   }) =>
       '$name · LV$lv · 连击 $streak · 手里 $queue 单'
       '${goalShort.isEmpty ? '' : ' · 主线「$goalShort」'}'
-      '${ringTotal == null || ringTotal == 0 ? '' : ' · 主线进度 ${ringDone ?? 0}/$ringTotal 环'}';
+      '${planTotal == null || planTotal == 0 ? '' : ' · 主线进度 ${planDone ?? 0}/$planTotal 单'}';
 
   /// 回一句。失败/无 LLM → 兜底毒舌（emotion=annoyed）。
   /// [scenario] 传「找小祥说说 / 换目标」等场合上下文（docs/18 §2.7）。

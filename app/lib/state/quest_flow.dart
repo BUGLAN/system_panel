@@ -136,10 +136,10 @@ class FinaleOutcome {
     required this.level,
     required this.newGoalText,
     this.goal,
-    this.insertedRing,
+    this.insertedPlan,
   });
 
-  /// 已走过的环数（不是环号 —— 环号是 0 基的 `ringClear`）
+  /// 已走过的环数（不是环号 —— 环号是 0 基的 `planClear`）
   final int cleared;
 
   final int total;
@@ -152,7 +152,7 @@ class FinaleOutcome {
   final Goal? goal;
 
   /// 这次往队首钉进去的首环单（幂等：已经在队列里就是 null）
-  final Quest? insertedRing;
+  final Quest? insertedPlan;
 }
 
 /// 收官时生成下一条主线的钩子。
@@ -191,8 +191,9 @@ class QuestFlow {
   static Map<String, dynamic> questToJson(Quest q) => <String, dynamic>{
     'serial': q.serial,
     'kind': q.kind,
-    'ring': q.ring,
-    'ringTotal': q.ringTotal,
+    'planIndex': q.planIndex,
+    'planTotal': q.planTotal,
+    if (q.goalId.isNotEmpty) 'goalId': q.goalId,
     'name': q.name,
     'reason': q.reason,
     'proof': q.proof,
@@ -206,8 +207,14 @@ class QuestFlow {
   static Quest questFromJson(Map<String, dynamic> j) => Quest(
     serial: j['serial'] is int ? j['serial'] as int : 0,
     kind: j['kind'] is String ? j['kind'] as String : 'daily',
-    ring: j['ring'] is int ? j['ring'] as int : -1,
-    ringTotal: j['ringTotal'] is int ? j['ringTotal'] as int : 0,
+    // 老档兼容：`rings` 时代的单存的是 'ring' / 'ringTotal'
+    planIndex: j['planIndex'] is int
+        ? j['planIndex'] as int
+        : (j['ring'] is int ? j['ring'] as int : -1),
+    planTotal: j['planTotal'] is int
+        ? j['planTotal'] as int
+        : (j['ringTotal'] is int ? j['ringTotal'] as int : 0),
+    goalId: j['goalId'] is String ? j['goalId'] as String : '',
     name: j['name'] is String ? j['name'] as String : '',
     reason: j['reason'] is String ? j['reason'] as String : '',
     proof: j['proof'] is String ? j['proof'] as String : '',
@@ -391,17 +398,72 @@ class QuestFlow {
     return f;
   }
 
-  /// 当前主线脚下那一环补回队首 + 三张日常。
-  /// ⚠️ t19/A1：**空目标（无环 = 未绑定）什么都不种**——真新档在绑定仪式
+  /// 队列里同时挂几张**还没做完的计划单**（其余的在主线页上显示「待发布」）。
+  /// 宿主原话：「任务却能做不同的」——所以不再一次只钉一张。
+  static const int kPlanPublishWindow = 3;
+
+  /// 计划单补发：把清单里还没发布的补到手上（保持 [kPlanPublishWindow] 张）。
+  /// 幂等 —— 已经在队列里 / 正在执行的那张不会重复发。
+  List<Quest> publishPlanTasks({int window = kPlanPublishWindow}) {
+    // ⚠️ 只数**当前这份清单**的单：换过目标的老单不算在手（否则收官补发会少一张）
+    final List<Quest> out = <Quest>[];
+    int inHand = queue
+        .where((Quest q) => q.kind == 'main' && q.goalId == goal.id)
+        .length;
+    final Quest? act = _active?.task;
+    if (act != null && act.kind == 'main' && act.goalId == goal.id) inHand++;
+    for (final PlanTask t in goal.plan) {
+      if (inHand >= window) break;
+      if (t.state != PlanState.todo) continue;
+      if (queue.any(
+        (Quest q) =>
+            q.kind == 'main' && q.goalId == goal.id && q.planIndex == t.index,
+      )) {
+        continue;
+      }
+      final Quest q = planTask(t.index);
+      queue.add(q);
+      out.add(q);
+      inHand++;
+    }
+    if (out.isNotEmpty) {
+      // 主线单排到队首、且**按清单顺序**（`queue.add` 会把它们甩到日常后面，
+      // 那 `head` 就成了日常 —— 派单板/「去执行」读的都是队首）。
+      final List<Quest> mains = queue
+          .where((Quest q) => q.kind == 'main' && q.goalId == goal.id)
+          .toList()
+        ..sort((Quest a, Quest b) => a.planIndex.compareTo(b.planIndex));
+      queue.removeWhere((q) => q.kind == 'main' && q.goalId == goal.id);
+      queue.insertAll(0, mains);
+      _syncQueueCount();
+    }
+    return out;
+  }
+
+  /// 单独把清单第 i 张派出来（主线页按住「待发布」那条也能直接接）。
+  /// 已经在队列里就返回那一张（不重发、不撞号）。
+  Quest? publishPlanTask(int i) {
+    final PlanTask? t = goal.taskAt(i);
+    if (t == null || t.state != PlanState.todo) return null;
+    for (final Quest q in queue) {
+      if (q.kind == 'main' && q.goalId == goal.id && q.planIndex == i) return q;
+    }
+    final Quest q = planTask(i);
+    queue.add(q);
+    _syncQueueCount();
+    return q;
+  }
+
+  /// 当前目标的计划补回手上 + 三张日常。
+  /// ⚠️ t19/A1：**空目标（没有清单 = 未绑定）什么都不种**——真新档在绑定仪式
   /// 之前不该有主线单也不该有日常（绑定/访谈完成后再由 main 侧播种），
   /// 否则真新用户一进大厅就背三张"别人的"日常。
   void seedForCurrentGoal() {
-    if (goal.rings.isEmpty) {
+    if (goal.plan.isEmpty) {
       _syncQueueCount();
       return;
     }
-    final int ci = goal.currentIndex;
-    if (ci >= 0) queue.add(ringTask(ci));
+    publishPlanTasks();
     _seedDailies(3);
   }
 
@@ -416,8 +478,9 @@ class QuestFlow {
 
   Quest _mk({
     required String kind,
-    int ring = -1,
-    int ringTotal = 0,
+    int planIndex = -1,
+    int planTotal = 0,
+    String goalId = '',
     required String name,
     required String proof,
     required int minutes,
@@ -428,8 +491,9 @@ class QuestFlow {
   }) => Quest(
     serial: _serial++,
     kind: kind,
-    ring: ring,
-    ringTotal: ringTotal,
+    planIndex: planIndex,
+    planTotal: planTotal,
+    goalId: goalId,
     name: name,
     reason: reason,
     proof: proof,
@@ -466,20 +530,22 @@ class QuestFlow {
     return out;
   }
 
-  /// 主线第 i 环 → 一张单（store.js `ringTask`）。
-  /// ⚠️ GoalRing 暂无基准维（Flutter 侧模型没有 `a` 字段），先全押「体」；
-  ///    T6 给 goal.dart 补 plan 元数据时一并迁移。
-  Quest ringTask(int i) {
-    final GoalRing g = goal.rings[i];
+  /// 清单第 i 张 → 一张主线单（`ringTask` 的接任者）。
+  /// 六维直接读清单里那张的分配（`goal_gen.buildPlanTasks` 已按类别倾向算好）。
+  Quest planTask(int i) {
+    final PlanTask t = goal.plan[i];
     return _mk(
       kind: 'main',
-      ring: i,
-      ringTotal: goal.rings.length,
-      name: g.title,
-      proof: g.proof,
-      minutes: g.minutes,
-      rank: g.rank,
-      attrs: splitAttrs(const <String, int>{'体': 1}, Rarity.of(g.rank).pt),
+      planIndex: i,
+      planTotal: goal.plan.length,
+      goalId: goal.id,
+      name: t.title,
+      proof: t.proof,
+      minutes: t.minutes,
+      rank: t.rank,
+      attrs: t.attrs.isEmpty
+          ? splitAttrs(const <String, int>{'体': 1}, Rarity.of(t.rank).pt)
+          : t.attrs,
       reason: reasonForMain(i),
     );
   }
@@ -515,7 +581,7 @@ class QuestFlow {
       return true;
     }
 
-    // 一单专治短板，其余随缘（store.js L108 的 plan；贴主线由 ringTask 承担）
+    // 一单专治短板，其余随缘（store.js L108 的 plan；贴主线由 planTask 承担）
     for (int i = 0; i < n; i++) {
       if (!(take((DailyTpl d) => (d.a[weak] ?? 0) > 0) || take((_) => true))) {
         break;
@@ -527,17 +593,17 @@ class QuestFlow {
   // ── 派单前的上下文：给单子写一句"为什么是你"（store.js `reasonFor`）──
 
   String reasonForMain(int i) {
-    if (i > 0 && i < goal.rings.length) {
-      final Duration? held = goal.rings[i - 1].held;
+    if (i > 0 && i < goal.plan.length) {
+      final Duration? held = goal.plan[i - 1].held;
       if (held != null) {
-        return '上一环你用了 ${fmtDur(held)}。这一环，我加了点码。';
+        return '上一张你用了 ${fmtDur(held)}。这一张，我加了点码。';
       }
     }
     return '你说要「${goal.text}」。那就从这一步开始。';
   }
 
   String reasonFor(Quest t) {
-    if (t.kind == 'main') return reasonForMain(t.ring);
+    if (t.kind == 'main') return reasonForMain(t.planIndex);
     if (t.kind == 'remedy') return reasonForRemedy();
     if (t.hinted) return '昨天说好的那张。我替你留着呢。';
     final MapEntry<String, int> w = host.weakest;
@@ -730,54 +796,37 @@ class QuestFlow {
       critCount: host.critCount + (crit ? 1 : 0),
     );
 
-    // 主线：这一环点亮，下一环补单（store.js L297-303）
-    int ringClear = -1;
+    // 计划：把交掉的这张在清单上划掉（顺序锁早已不存在 —— 交哪张都行），
+    // 然后补下一张到手上。兑现单交掉 = 这个目标完成（里程碑结算）。
+    int planClear = -1;
     bool finale = false;
     if (task.kind == 'main' &&
-        task.ring >= 0 &&
-        task.ring < goal.rings.length) {
-      final List<GoalRing> rings = <GoalRing>[...goal.rings];
-      final GoalRing g = rings[task.ring];
-      rings[task.ring] = GoalRing(
-        short: g.short,
-        title: g.title,
-        proof: g.proof,
-        minutes: g.minutes,
-        rank: g.rank,
-        state: RingState.done,
-        finalRing: g.finalRing,
-        held: held,
-        doneAt: t0,
-      );
-      final int nx = task.ring + 1;
-      if (nx < rings.length) {
-        final GoalRing n = rings[nx];
-        rings[nx] = GoalRing(
-          short: n.short,
-          title: n.title,
-          proof: n.proof,
-          minutes: n.minutes,
-          rank: n.rank,
-          state: RingState.cur,
-          finalRing: n.finalRing,
+        task.planIndex >= 0 &&
+        task.goalId == goal.id &&
+        goal.taskAt(task.planIndex) != null) {
+      final List<PlanTask> plan = <PlanTask>[...goal.plan];
+      final PlanTask g = plan[task.planIndex];
+      if (g.state != PlanState.done) {
+        plan[task.planIndex] = g.copyWith(
+          state: PlanState.done,
+          held: held,
+          doneAt: t0,
         );
-        queue.insert(0, ringTask(nx));
-      } else {
-        finale = true;
+        goal = goal.copyWith(plan: plan);
+        planClear = task.planIndex;
+        finale = plan[task.planIndex].finalTask ||
+            plan.every((PlanTask x) => x.state == PlanState.done);
       }
-      goal = goal.copyWith(rings: rings);
-      ringClear = task.ring;
     }
 
     // 收官 → 第二目标闭环（TODO-01）：铸下一条主线、撤旧主线单、首环钉队首。
     // 结算**当场落库**（不是等界面点一下）——否则结算页读到的 `empty` 是错的，
     // 宿主会看到【收工。】而其实新主线已经在手上。
     if (finale) {
+      // 提档读的是「走过了几张 / 一共几张」——兑现单交掉时就是全部
       _applyFinale(
-        // ⚠️ 传的是**环数**不是环号：ringClear 是 0 基索引，收官时
-        //    已走过 = 全部 = 索引 + 1（提档条件读的就是这个数）
-        cleared: ringClear + 1,
-        total: goal.rings.length,
+        cleared: goal.doneCount,
+        total: goal.plan.length,
         level: host.lv,
       );
     }
@@ -811,6 +860,10 @@ class QuestFlow {
 
     _active = null;
 
+    // 交掉一张就补一张（保持在手窗口）。⚠️ 必须放在 `_active = null` **之后**：
+    // 窗口把"正在执行的那张"也算在内，早一步补发就会每交一张少一格。
+    if (!finale && task.kind == 'main') publishPlanTasks();
+
     // A6：写入执行历史（fire-and-forget——写盘失败不阻塞结算演出）
     historyLog.append(
       HistoryEntry(
@@ -843,7 +896,7 @@ class QuestFlow {
       near: near,
       ups: ups,
       titles: titles,
-      ringClear: ringClear,
+      planClear: planClear,
       finale: finale,
       redeemed: redeemed,
       empty: empty,
@@ -861,7 +914,7 @@ class QuestFlow {
   ///
   /// 语义 = 原型 `Store.newGoal(plan)`（store.js L170-176）：
   ///   · 旧主线的单全部撤下（`queue.filter(t => t.kind !== 'main')`）
-  ///   · 新主线首环**钉在队首**（`queue.unshift(ringTask(0))`）
+  ///   · 新主线首环**钉在队首**（`queue.unshift(planTask(0))`）
   ///   · 档案里的 `goal` 换成新主线
   ///
   /// 与原型唯一的不同：**日常单保留**（原型 `newGoal` 也保留），
@@ -874,7 +927,7 @@ class QuestFlow {
   }) {
     final Goal prev = goal;
     final Goal? next = nextGoalHook?.call(prev, cleared, total, level);
-    if (next == null || next.rings.isEmpty) {
+    if (next == null || next.plan.isEmpty) {
       final FinaleOutcome stop = FinaleOutcome(
         cleared: cleared,
         total: total,
@@ -886,8 +939,7 @@ class QuestFlow {
     }
     queue.removeWhere((Quest q) => q.kind == 'main');
     goal = next;
-    final Quest ring = ringTask(0);
-    queue.insert(0, ring);
+    final List<Quest> pub = publishPlanTasks();
     _syncQueueCount();
     final FinaleOutcome out = FinaleOutcome(
       cleared: cleared,
@@ -895,7 +947,7 @@ class QuestFlow {
       level: level,
       newGoalText: next.text,
       goal: next,
-      insertedRing: ring,
+      insertedPlan: pub.isEmpty ? null : pub.first,
     );
     _finaleOutcome = out;
     return out;
@@ -911,26 +963,24 @@ class QuestFlow {
     // ① 上一轮收官铸好的新主线，首环没钉上（老档读回 / 上次落盘发生在钉环之前）
     final FinaleOutcome? o = _finaleOutcome;
     final Goal? g = o?.goal;
-    if (o != null && g != null && g.rings.isNotEmpty) {
+    if (o != null && g != null && g.plan.isNotEmpty) {
       // 幂等口径：settle 里钉的那张首环单还在队列里 → 什么都不用做。
-      // ⚠️ 按 **serial** 认，不按题面 —— `ringTask` 每次都发新单号，
+      // ⚠️ 按 **serial** 认，不按题面 —— `planTask` 每次都发新单号，
       //    按名字判会以为「没有」然后钉进第二张重号单。
-      final int? pinned = o.insertedRing?.serial;
+      final int? pinned = o.insertedPlan?.serial;
       if (pinned != null &&
           queue.any((Quest q) => q.serial == pinned && q.kind == 'main')) {
         return false;
       }
       queue.removeWhere((Quest q) => q.kind == 'main');
-      final Quest ring = ringTask(0);
-      queue.insert(0, ring);
-      _syncQueueCount();
+      final List<Quest> pub = publishPlanTasks();
       _finaleOutcome = FinaleOutcome(
         cleared: o.cleared,
         total: o.total,
         level: o.level,
         newGoalText: o.newGoalText,
         goal: g,
-        insertedRing: ring,
+        insertedPlan: pub.isEmpty ? null : pub.first,
       );
       return true;
     }
@@ -938,12 +988,11 @@ class QuestFlow {
     //    叙事不该停在终点，补一次「铸下一条 + 钉队首」。
     //    ⚠️ 空目标（未绑定）不在此列：`Goal.empty()` 没有环，不进这个分支。
     if (nextGoalHook != null &&
-        goal.rings.isNotEmpty &&
-        goal.currentIndex < 0 &&
-        goal.doneCount == goal.rings.length) {
+        goal.plan.isNotEmpty &&
+        goal.firstOpenIndex < 0) {
       _applyFinale(
         cleared: goal.doneCount,
-        total: goal.rings.length,
+        total: goal.plan.length,
         level: host.lv,
       );
       return _finaleOutcome?.goal != null;
@@ -957,14 +1006,13 @@ class QuestFlow {
   ///
   /// 返回被钉上队首的那张首环单；[next] 没有环 → null（不动任何状态）。
   Quest? newGoal(Goal next) {
-    if (next.rings.isEmpty) return null;
+    if (next.plan.isEmpty) return null;
     queue.removeWhere((Quest q) => q.kind == 'main');
     goal = next;
-    final Quest ring = ringTask(0);
-    queue.insert(0, ring);
+    final List<Quest> pub = publishPlanTasks();
     _syncQueueCount();
     _notify();
-    return ring;
+    return pub.isEmpty ? null : pub.first;
   }
 
   List<String> _checkTitles({
@@ -1015,7 +1063,7 @@ class QuestFlow {
         proof: task.proof,
         minutes: math.max(5, (task.minutes / 2).ceil()),
         rank: rr,
-        // 用原单的分配结果当权重再分一次（原单基准维没落库，见 ringTask 注）
+        // 用原单的分配结果当权重再分一次（原单基准维没落库，见 planTask 注）
         attrs: splitAttrs(task.attrs, Rarity.of(rr).pt),
         reason: reasonForRemedy(),
       );
@@ -1170,8 +1218,9 @@ class QuestFlow {
   Quest _reRank(Quest q, String rank, {String? reason}) => Quest(
     serial: q.serial,
     kind: q.kind,
-    ring: q.ring,
-    ringTotal: q.ringTotal,
+    planIndex: q.planIndex,
+    planTotal: q.planTotal,
+    goalId: q.goalId,
     name: q.name,
     reason: reason ?? q.reason,
     proof: q.proof,

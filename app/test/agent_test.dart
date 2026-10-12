@@ -43,8 +43,9 @@ Quest _q({
 }) => Quest(
   serial: serial,
   kind: kind,
-  ring: 0,
-  ringTotal: 0,
+  // 默认造的是日常单（不缺任何一张计划）→ planIndex = -1
+  planIndex: -1,
+  planTotal: 0,
   name: name,
   reason: '',
   proof: '跑步 App 截图',
@@ -308,7 +309,7 @@ void main() {
       expect(out.message, contains('LV7'));
       expect(out.message, contains('◈340'));
       expect(out.message, contains('连击 6'));
-      expect(out.message, contains('「三个月跑完半马」第 5/8 环'));
+      expect(out.message, contains('「三个月跑完半马」完成 4/8 单'));
       expect(out.data?['weakest'], '魅');
     });
 
@@ -330,7 +331,7 @@ void main() {
       expect(actions, contains('swap_quest'));
     });
 
-    test('swap_quest：主线当前环直接拒绝（docs/18 §2.7 钳制）', () async {
+    test('swap_quest：主线当前那张直接拒绝（docs/18 §2.7 钳制）', () async {
       final MockAgentContext ctx = MockAgentContext(
         queue: <Quest>[Quest.demo],
         nextCandidate: () => _q(),
@@ -379,7 +380,7 @@ void main() {
       expect(ctx.queue.first.rank, 'B'); // 非法档位保持原样
     });
 
-    test('adjust_plan：主线环拒调', () async {
+    test('adjust_plan：主线单拒调', () async {
       final MockAgentContext ctx = MockAgentContext(queue: <Quest>[Quest.demo]);
       final AgentToolRegistry reg = defaultAgentTools(context: ctx, memory: MemoryStore());
       final ToolOutcome out = await reg.execute('adjust_plan', <String, dynamic>{
@@ -676,8 +677,8 @@ void main() {
       expect(s['expNeed'], QuestFlow.needFor(7));
       expect(s['queue'], 4); // Quest.demo 主线 + 3 日常
       expect(s['goal'], '三个月跑完半马');
-      expect(s['ringCurrent'], 5);
-      expect(s['ringTotal'], 8);
+      expect(s['planDone'], 4);
+      expect(s['planTotal'], 8);
       expect(s['weakest'], '魅');
     });
 
@@ -694,7 +695,7 @@ void main() {
       expect(a.statusSummary()['lv'], 1);
     });
 
-    test('swap_quest：主线当前环直接拒绝（docs/18 §2.7 钳制在真实流上保持）', () {
+    test('swap_quest：主线当前那张直接拒绝（docs/18 §2.7 钳制在真实流上保持）', () {
       final QuestFlow f = QuestFlow.demo(); // 队首 = Quest.demo（C 级主线）
       final ToolOutcome out = adapterOf(f).swapQuest();
       expect(out.ok, isFalse);
@@ -764,7 +765,7 @@ void main() {
       expect(f.host.queue, 1); // 每次手术后读数都对齐
     });
 
-    test('adjust_plan：主线环拒调；空队列拒绝', () {
+    test('adjust_plan：主线单拒调；空队列拒绝', () {
       final QuestFlow withMain = QuestFlow.demo();
       final ToolOutcome main = adapterOf(withMain).adjustQuestPlan(minutes: 10);
       expect(main.ok, isFalse);

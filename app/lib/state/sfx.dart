@@ -66,7 +66,7 @@ class Sfx {
       'audio/rank_5.wav',
       'audio/rank_6.wav',
     ],
-    'ignite': <String>[ // 点环（唤醒时逐个点亮主线环）：原型 `audio.js:88-91` 按环序号 x 变调
+    'ignite': <String>[ // 点亮进度带（唤醒时）：原型 `audio.js:88-91` 分三档变调
       'audio/ignite_0.wav',
       'audio/ignite_1.wav',
       'audio/ignite_2.wav',

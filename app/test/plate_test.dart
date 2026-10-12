@@ -43,10 +43,10 @@ void main() {
   });
 
   group('委托数据', () {
-    test('单号 / 环数 / 时限 / 报酬文案（ui.js + util.js）', () {
+    test('单号 / 计划序号 / 时限 / 报酬文案（ui.js + util.js）', () {
       const Quest q = Quest.demo;
       expect(q.serialText, '№ 0041');
-      expect(q.kindLabel, '主线 · 第 5 环 / 8');
+      expect(q.kindLabel, '主线 · 第 5 单 / 8');
       expect(q.minutesText, '45 分钟');
       // t15：loot 面板切结算经济口径（Rewards 表，与 QuestFlow.settle 同源）
       expect(q.lootText, 'EXP 4 · ◈ 5体+1 力+1');
@@ -58,8 +58,8 @@ void main() {
         Quest(
           serial: 1,
           kind: 'daily',
-          ring: 0,
-          ringTotal: 1,
+          planIndex: 0,
+          planTotal: 1,
           name: 'x',
           reason: '',
           proof: 'y',
@@ -73,8 +73,8 @@ void main() {
         Quest(
           serial: 1,
           kind: 'daily',
-          ring: 0,
-          ringTotal: 1,
+          planIndex: 0,
+          planTotal: 1,
           name: 'x',
           reason: '',
           proof: 'y',
@@ -89,7 +89,7 @@ void main() {
   });
 
   group('玻璃板', () {
-    testWidgets('文案齐全：单号 / 环数 / 标题 / 附言 / 规格 / 按住', (
+    testWidgets('文案齐全：单号 / 计划序号 / 标题 / 附言 / 规格 / 按住', (
       WidgetTester tester,
     ) async {
       await _mount(
@@ -101,7 +101,7 @@ void main() {
         ),
       );
       expect(find.text('№ 0041'), findsOneWidget);
-      expect(find.text('主线 · 第 5 环 / 8'), findsOneWidget);
+      expect(find.text('主线 · 第 5 单 / 8'), findsOneWidget);
       expect(find.text('跑完 5 公里'), findsOneWidget);
       expect(find.text('附言'), findsOneWidget);
       expect(find.text('证明'), findsOneWidget);
@@ -250,8 +250,8 @@ void main() {
     }) => Quest(
       serial: 41,
       kind: kind,
-      ring: -1,
-      ringTotal: 0,
+      planIndex: -1,
+      planTotal: 0,
       name: 'x',
       reason: '',
       proof: 'y',
@@ -391,9 +391,9 @@ void main() {
       const Quest q = Quest.demo;
       expect(q.serial, 41);
       expect(q.kind, 'main');
-      expect(q.ring, 4);
+      expect(q.planIndex, 4);
       expect(q.name, '跑完 5 公里');
-      expect(q.reason, '上一环你用了 38 分 46 秒。这一环，我加了点码。');
+      expect(q.reason, '上一张你用了 38 分 46 秒。这一张，我加了点码。');
       expect(q.proof, '跑步 App 截图');
       expect(q.minutes, 45);
       expect(q.rank, 'C');
@@ -412,8 +412,8 @@ void main() {
     Quest mk(String rank, {int serial = 41}) => Quest(
       serial: serial,
       kind: 'daily',
-      ring: -1,
-      ringTotal: 0,
+      planIndex: -1,
+      planTotal: 0,
       name: 'x',
       reason: '',
       proof: 'y',

@@ -84,8 +84,8 @@ class CopyContext {
     this.streak = 0,
     this.bestStreak = 0,
     this.queue = 0,
-    this.ringIndex = -1,
-    this.ringTotal = 0,
+    this.doneIndex = -1,
+    this.planTotal = 0,
     this.goalShort = '',
     this.weakestAttr = '',
     this.failCount = 0,
@@ -112,8 +112,8 @@ class CopyContext {
     streak: host.streak,
     bestStreak: host.bestStreak,
     queue: host.queue,
-    ringIndex: goal?.currentIndex ?? host.ringIndex,
-    ringTotal: goal?.rings.length ?? host.ringTotal,
+    doneIndex: goal?.doneCount ?? host.doneIndex,
+    planTotal: goal?.plan.length ?? host.planTotal,
     goalShort: goal?.short ?? '',
     weakestAttr: host.weakest.key,
     failCount: host.failCount,
@@ -132,8 +132,9 @@ class CopyContext {
   final int streak;
   final int bestStreak;
   final int queue;
-  final int ringIndex;
-  final int ringTotal;
+  /// 已完成单数
+  final int doneIndex;
+  final int planTotal;
   final String goalShort;
   final String weakestAttr;
   final int failCount;
@@ -152,8 +153,8 @@ class CopyContext {
     int? streak,
     int? bestStreak,
     int? queue,
-    int? ringIndex,
-    int? ringTotal,
+    int? doneIndex,
+    int? planTotal,
     String? goalShort,
     String? weakestAttr,
     int? failCount,
@@ -171,8 +172,8 @@ class CopyContext {
     streak: streak ?? this.streak,
     bestStreak: bestStreak ?? this.bestStreak,
     queue: queue ?? this.queue,
-    ringIndex: ringIndex ?? this.ringIndex,
-    ringTotal: ringTotal ?? this.ringTotal,
+    doneIndex: doneIndex ?? this.doneIndex,
+    planTotal: planTotal ?? this.planTotal,
     goalShort: goalShort ?? this.goalShort,
     weakestAttr: weakestAttr ?? this.weakestAttr,
     failCount: failCount ?? this.failCount,
@@ -189,7 +190,7 @@ class CopyContext {
 
   /// 确定性选句的种子（同现场稳定，不同现场有变化）
   String get seedToken =>
-      'lv$lv|st$streak|q$queue|ring$ringIndex|fail$failCount|$questName|$exp|$coin|$topic';
+      'lv$lv|st$streak|q$queue|done$doneIndex|fail$failCount|$questName|$exp|$coin|$topic';
 }
 
 /// 内置兜底文案池。`[[…]]` 是高亮标记（与 LINES 同一约定，LineLayer 会点亮）；
@@ -388,7 +389,7 @@ class SystemCopyProvider {
               '${ctx.questProof.isEmpty ? '' : ' · 证据：${ctx.questProof}'}）。';
     final String goal = ctx.goalShort.isEmpty ? '未立目标' : '主线「${ctx.goalShort}」';
     return '现场事实：宿主 LV${ctx.lv}，连击 ${ctx.streak}（最好 ${ctx.bestStreak}），'
-        '手里 ${ctx.queue} 单，$goal（第 ${ctx.ringIndex + 1}/${ctx.ringTotal} 环），'
+        '手里 ${ctx.queue} 单，$goal（${ctx.doneIndex}/${ctx.planTotal} 单），'
         '最弱维 ${ctx.weakestAttr}，连败 ${ctx.failCount} 次。$quest'
         '${extraFacts.isEmpty ? '' : ' $extraFacts'}\n'
         '要求：${toneKey == '追问' ? '只输出一个问题，不超过 30 字' : '只输出一句台词，不超过 40 字'}，'
@@ -417,8 +418,9 @@ class SystemCopyProvider {
       'exp': '${ctx.exp}',
       'coin': '${ctx.coin}',
       'photos': '${ctx.photos}',
-      'ring': '${ctx.ringIndex < 0 ? 1 : ctx.ringIndex + 1}',
-      'total': '${ctx.ringTotal}',
+      'done': '${ctx.doneIndex < 0 ? 0 : ctx.doneIndex}',
+      'left': '${(ctx.planTotal - ctx.doneIndex) < 0 ? 0 : ctx.planTotal - ctx.doneIndex}',
+      'total': '${ctx.planTotal}',
       'goal': ctx.goalShort.isEmpty ? '你的目标' : ctx.goalShort,
       'attr': ctx.weakestAttr,
       'topic': ctx.topic.isEmpty ? '目标与计划' : ctx.topic,

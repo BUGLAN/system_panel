@@ -390,7 +390,7 @@ class _ResultPanelState extends State<ResultPanel>
   /// .rs-head —— CLEAR 抬头 + 任务名
   Widget _head(Color rk) {
     final String kick = result.quest.kind == 'main'
-        ? 'CLEAR · 主线第 ${result.quest.ring + 1} 环'
+        ? 'CLEAR · 主线第 ${result.quest.planIndex + 1} 单'
         : result.quest.kind == 'remedy'
         ? 'CLEAR · 补救'
         : 'CLEAR · 日常';

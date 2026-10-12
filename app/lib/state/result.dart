@@ -24,7 +24,7 @@ class QuestResult {
     // ── T2 补全：真实结算（store.js settle() 返回值）的其余字段 ──
     this.ups = const <int>[],
     this.titles = const <String>[],
-    this.ringClear = -1,
+    this.planClear = -1,
     this.finale = false,
     this.redeemed = false,
     this.empty = false,
@@ -81,8 +81,8 @@ class QuestResult {
   /// 本次解锁的称号 id（原型 `res.titles`）
   final List<String> titles;
 
-  /// 点亮的主线环（-1 = 非主线单或主线未推进；原型 `res.ringClear`）
-  final int ringClear;
+  /// 点亮的主线环（-1 = 非主线单或主线未推进；原型 `res.planClear`）
+  final int planClear;
 
   /// 主线收官（最后一环也清了）
   final bool finale;

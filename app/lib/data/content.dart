@@ -31,10 +31,10 @@ class LINES {
 
   // ── 她主动开口（content.js L306-356，flows.js L693-706 调度）──
 
-  /// 大厅待机碎碎念；`{ring}` 是当前环号
+  /// 大厅待机碎碎念；`{left}` 是清单上还没做完的单数
   static const List<String> idle = <String>[
     '盯着我看能变强吗？不能。',
-    '第 [[{ring}]] 环还亮着。它不会自己灭。',
+    '还差 [[{left}]] 单。清单不会自己变短。',
     '我手里的单不会过期——你的耐心会。',
     '系统在待机。宿主也在待机。这不对吧。',
     '手指别在我身上画圈。我看得见。',
@@ -95,7 +95,7 @@ class LINES {
   static const String askGoal = '说吧。你想变成什么样？[[一句话]]。';
 
   /// 主线全景（content.js L397）
-  static String mainline(int d, int n) => '[[$d/$n]] 环。顶上那个，是你的目标。';
+  static String mainline(int d, int n) => '[[$d/$n]] 单。清单不会自己变短。';
 
   /// 认输后那句补救（content.js L397）—— 与失败页的补救**单**（`#fvRem`）不是一回事
   static const String remedyLine = '补救的路，我给你留着：[[{dl}]]前，做一半。做到了，这次不算。';

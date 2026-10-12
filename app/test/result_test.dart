@@ -35,7 +35,7 @@ void main() {
       const QuestResult r = QuestResult.demo;
       expect(r.ups, isEmpty);
       expect(r.titles, isEmpty);
-      expect(r.ringClear, -1);
+      expect(r.planClear, -1);
       expect(r.finale, isFalse);
       expect(r.redeemed, isFalse);
       expect(r.empty, isFalse);
@@ -77,7 +77,7 @@ void main() {
         const ResultPanel(result: QuestResult.demo, animate: false),
       );
       expect(find.text('保存战报'), findsOneWidget);
-      expect(find.text('CLEAR · 主线第 5 环'), findsOneWidget);
+      expect(find.text('CLEAR · 主线第 5 单'), findsOneWidget);
       expect(find.text('跑完 5 公里'), findsOneWidget);
       expect(find.text('EXP'), findsOneWidget);
       expect(find.textContaining('+50'), findsWidgets);

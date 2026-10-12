@@ -113,7 +113,7 @@ abstract interface class AgentContext {
   Map<String, dynamic> statusSummary();
 
   /// 换任务：换单券语义（retreat/newGoal 的对话形态）。
-  /// 主线当前环**必须拒绝**（docs/18 §2.7，原型 store.js:254 语义）。
+  /// 主线单**必须拒绝**（docs/18 §2.7，原型 store.js:254 语义）。
   ToolOutcome swapQuest({String? rank, String? note});
 
   /// 调整计划：改时限/降档/顺延——只许动队列里的日常/补救单。
@@ -171,8 +171,8 @@ class MockAgentContext implements AgentContext {
       'bestStreak': host.bestStreak,
       'queue': queue.length,
       'goal': g?.text ?? '',
-      'ringCurrent': g == null || g.currentIndex < 0 ? 0 : g.currentIndex + 1,
-      'ringTotal': g?.rings.length ?? 0,
+      'planDone': g?.doneCount ?? 0,
+      'planTotal': g?.plan.length ?? 0,
       'weakest': weakest.key,
       'weakestValue': weakest.value,
       'doneCount': host.doneCount,
@@ -188,8 +188,8 @@ class MockAgentContext implements AgentContext {
     }
     final Quest head = queue.first;
     if (head.kind == 'main') {
-      // docs/18 §2.7：主线当前环不可换——她直接拒绝
-      return ToolOutcome.fail('主线的当前环不能换。这是你自己选的目标，要么做完，要么认输重来。');
+      // docs/18 §2.7：主线单不可换——她直接拒绝
+      return ToolOutcome.fail('主线上的单不能换。这是你自己选的目标，要么做完，要么认输重来。');
     }
     final Quest? candidate = nextCandidate?.call();
     if (candidate == null) {
@@ -222,7 +222,7 @@ class MockAgentContext implements AgentContext {
     }
     final Quest head = queue.first;
     if (head.kind == 'main') {
-      return ToolOutcome.fail('主线环的规格不动。要改的是你自己，不是目标。');
+      return ToolOutcome.fail('主线单的规格不动。要改的是你自己，不是目标。');
     }
     int newMinutes = head.minutes;
     if (minutes != null) {
@@ -266,8 +266,9 @@ class MockAgentContext implements AgentContext {
 Quest _questWith(Quest q, {int? minutes, String? rank}) => Quest(
   serial: q.serial,
   kind: q.kind,
-  ring: q.ring,
-  ringTotal: q.ringTotal,
+  planIndex: q.planIndex,
+  planTotal: q.planTotal,
+  goalId: q.goalId,
   name: q.name,
   reason: q.reason,
   proof: q.proof,
@@ -311,7 +312,7 @@ AgentToolRegistry defaultAgentTools({
         final Map<String, dynamic> s = context.statusSummary();
         final String goalLine = (s['goal'] as String? ?? '').isEmpty
             ? '未立目标'
-            : '「${s['goal']}」第 ${s['ringCurrent']}/${s['ringTotal']} 环';
+            : '「${s['goal']}」完成 ${s['planDone']}/${s['planTotal']} 单';
         return ToolOutcome.ok(
           'LV${s['lv']} · EXP ${s['exp']}/${s['expNeed']} · ◈${s['coins']} · '
           '连击 ${s['streak']}（最好 ${s['bestStreak']}）\n'
@@ -324,7 +325,7 @@ AgentToolRegistry defaultAgentTools({
     ),
     AgentTool(
       name: 'swap_quest',
-      description: '换掉队首的日常/补救单（主线当前环不可换）。',
+      description: '换掉队首的日常/补救单（主线单不可换）。',
       parameters: _schema(<String, dynamic>{
         'rank': <String, dynamic>{'type': 'string', 'description': '期望档位 F~S，可省略'},
         'note': <String, dynamic>{'type': 'string', 'description': '换单理由，可省略'},
@@ -336,7 +337,7 @@ AgentToolRegistry defaultAgentTools({
     ),
     AgentTool(
       name: 'adjust_plan',
-      description: '调整队首日常/补救单的计划：改时限（分钟）、改档位、顺延。主线环不可调。',
+      description: '调整队首日常/补救单的计划：改时限（分钟）、改档位、顺延。主线单不可调。',
       parameters: _schema(<String, dynamic>{
         'minutes': <String, dynamic>{'type': 'integer', 'description': '新时限（分钟 5~180）'},
         'rank': <String, dynamic>{'type': 'string', 'description': '目标档位 F~S'},

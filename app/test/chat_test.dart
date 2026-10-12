@@ -139,28 +139,28 @@ void main() {
       expect(b.text, contains('LLM 失败'));
     });
 
-    test('statusLineOf 带主线环进度（验收 F-3：不喂她会从旧工具回执里捡过期数字）', () {
-      final String withRings = ChatService.statusLineOf(
+    test('statusLineOf 带主线单进度（验收 F-3：不喂她会从旧工具回执里捡过期数字）', () {
+      final String withPlan = ChatService.statusLineOf(
         name: '宿主',
         lv: 3,
         streak: 2,
         queue: 1,
         goalShort: '早起',
-        ringDone: 1,
-        ringTotal: 3,
+        planDone: 1,
+        planTotal: 3,
       );
-      expect(withRings, contains('主线「早起」'));
-      expect(withRings, contains('主线进度 1/3 环'));
+      expect(withPlan, contains('主线「早起」'));
+      expect(withPlan, contains('主线进度 1/3 单'));
 
-      final String noRings = ChatService.statusLineOf(
+      final String noPlan = ChatService.statusLineOf(
         name: '宿主',
         lv: 1,
         streak: 0,
         queue: 2,
         goalShort: '',
       );
-      expect(noRings, isNot(contains('主线进度')));
-      expect(noRings, isNot(contains('主线「')));
+      expect(noPlan, isNot(contains('主线进度')));
+      expect(noPlan, isNot(contains('主线「')));
     });
 
     test('LLM 回复：剥 [情绪] 标签，正文进气泡', () async {
@@ -459,8 +459,8 @@ void main() {
     Quest daily({int serial = 77, String rank = 'D', int minutes = 30}) => Quest(
       serial: serial,
       kind: 'daily',
-      ring: 0,
-      ringTotal: 0,
+      planIndex: -1,
+      planTotal: 0,
       name: '夜跑 3 公里',
       reason: '',
       proof: '跑步 App 截图',
@@ -540,8 +540,8 @@ void main() {
         nextCandidate: () => Quest(
           serial: 88,
           kind: 'daily',
-          ring: 0,
-          ringTotal: 0,
+          planIndex: -1,
+          planTotal: 0,
           name: '拉伸 15 分钟',
           reason: '',
           proof: '照片',

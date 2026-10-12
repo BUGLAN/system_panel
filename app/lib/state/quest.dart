@@ -9,8 +9,9 @@ class Quest {
   const Quest({
     required this.serial,
     required this.kind,
-    required this.ring,
-    required this.ringTotal,
+    this.planIndex = -1,
+    this.planTotal = 0,
+    this.goalId = '',
     required this.name,
     required this.reason,
     required this.proof,
@@ -29,9 +30,13 @@ class Quest {
   /// 她替你留的（原型 `T.hinted`）—— 只影响 `kindLabel` 的第四档文案
   final bool hinted;
 
-  /// 主线第几环（0 基）与总环数
-  final int ring;
-  final int ringTotal;
+  /// 计划里第几张单（0 基；日常/补救 = -1）与计划总条数
+  final int planIndex;
+  final int planTotal;
+
+  /// 这张单属于哪个目标（`Goal.id`；日常/补救 = 空串）。
+  /// 主线单只对**同一个**目标的清单起作用 —— 换过目标的老单不许再动新清单。
+  final String goalId;
 
   final String name;
 
@@ -55,7 +60,7 @@ class Quest {
 
   /// ui.js L196 的 kind 文案 —— **四档**，不是三档
   String get kindLabel {
-    if (kind == 'main') return '主线 · 第 ${ring + 1} 环 / $ringTotal';
+    if (kind == 'main') return '主线 · 第 ${planIndex + 1} 单 / $planTotal';
     if (kind == 'remedy') return '补救 · 24 小时内有效';
     if (hinted) return '日常 · 她替你留的';
     return '日常委托';
@@ -115,17 +120,18 @@ class Quest {
   }
 
   /// 与原型 `Store.veteran()` 的 `Store.head()` 逐字段一致的那一单
-  /// （C 级主线第 5 环）。
+  /// （C 级主线第 5 张）。
   /// ⚠️ `serial` 与 `reason` 一开始是我按印象写的（80 / 「38 分」），
   /// 与 veteran 档（41 / 「38 分 46 秒」）对不上 —— 这种小字差异在区域均值里
   /// 几乎看不出来，是换成干净存档后才核对出来的。
   static const Quest demo = Quest(
     serial: 41,
     kind: 'main',
-    ring: 4,
-    ringTotal: 8,
+    planIndex: 4,
+    planTotal: 8,
+    goalId: 'demo',
     name: '跑完 5 公里',
-    reason: '上一环你用了 38 分 46 秒。这一环，我加了点码。',
+    reason: '上一张你用了 38 分 46 秒。这一张，我加了点码。',
     proof: '跑步 App 截图',
     minutes: 45,
     rank: 'C',

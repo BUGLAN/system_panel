@@ -55,7 +55,7 @@ void main() {
           evidenceCount: 0,
         ),
       );
-      expect(find.text('执行中 · RING 5/8'), findsOneWidget);
+      expect(find.text('执行中 · MAIN 5/8'), findsOneWidget);
       expect(find.text('跑完 5 公里'), findsOneWidget);
       expect(find.text('07:00'), findsOneWidget);
       expect(find.text('/ 45:00'), findsOneWidget);

@@ -164,7 +164,7 @@ void main() {
   });
 
   group('绑定流组件链（目标 → 访谈 → 建立主线）', () {
-    testWidgets('早睡早起：3 张卡答完 → 首目标 3 天 3 环 E/D/C 入档', (
+    testWidgets('早睡早起：3 张卡答完 → 首目标 3 天 3 张 E/D/C 入档', (
       WidgetTester tester,
     ) async {
       // ① 宿主输入目标（装配层把输入喂给识别与卡组）
@@ -202,15 +202,16 @@ void main() {
       );
       expect(goal.days, 3);
       expect(goal.cat, 'sleep');
-      expect(goal.rings.length, 3);
-      expect(goal.rings.map((GoalRing r) => r.rank).toList(), <String>[
+      expect(goal.plan.length, 3);
+      expect(goal.plan.map((PlanTask r) => r.rank).toList(), <String>[
         'E',
         'D',
         'C',
       ]);
-      expect(goal.rings.first.state, RingState.cur);
-      // 「天天熬夜」 → 第 1 环从轻档起步
-      expect(goal.rings.first.title, '比昨天早睡 15 分钟');
+      expect(goal.plan.first.state, PlanState.todo);
+      expect(goal.firstOpenIndex, 0);
+      // 「天天熬夜」 → 第 1 张从轻档起步
+      expect(goal.plan.first.title, '比昨天早睡 15 分钟');
       expect(goal.interview.length, 3);
       expect(shouldOnboard(goal), isFalse); // 主线已立，不再触发绑定流
 
@@ -253,8 +254,8 @@ void main() {
       );
       expect(goal.days, 3);
       expect(goal.short, '上岸');
-      expect(goal.rings.first.title, '清空书桌，只留下要用的一本书');
-      expect(goal.rings.first.title, isNot('比昨天早睡 15 分钟')); // 无轻档环类别
+      expect(goal.plan.first.title, '清空书桌，只留下要用的一本书');
+      expect(goal.plan.first.title, isNot('比昨天早睡 15 分钟')); // 无轻档类别
     });
   });
 }

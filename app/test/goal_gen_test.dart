@@ -12,8 +12,10 @@ import 'package:system_panel/state/host_state.dart';
 import 'package:system_panel/state/save_file.dart';
 
 /// ═══════════════════════════════════════════════════════════
-///  目标生成（goal_gen.dart）—— 类型识别 · 访谈卡组 · 首目标 3 天 3 环
+///  目标生成（goal_gen.dart）—— 类型识别 · 访谈卡组 · 首目标 3 天 3 张
 ///  · 答案三用 · 老存档兼容（docs/18 §2.1 / §2.8，T6-1）
+///  · docs/33：环（Ring）已废除 —— `rings`→`plan`、`GoalRing`→`PlanTask`、
+///    环数→期限天数（`goalDaysFor`）、`currentIndex`→`firstOpenIndex`
 /// ═══════════════════════════════════════════════════════════
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -185,7 +187,7 @@ void main() {
     });
   });
 
-  group('首目标：3 天 3 环（E/D/C）', () {
+  group('首目标：3 天 3 张（E/D/C）', () {
     final GoalCategory sleep = goalCats['sleep']!;
     final Goal goal = buildFirstGoal(text: '一个月早睡早起', cat: sleep);
 
@@ -194,28 +196,34 @@ void main() {
       expect(goal.cat, 'sleep');
       expect(goal.text, '一个月早睡早起');
       expect(goal.short, '早起'); // 原型 shortOf：早起 规则在 早睡 之前
-      expect(goal.rings.length, 3);
+      expect(goal.plan.length, 3);
       expect(kFirstGoalDays, 3);
     });
 
-    test('档位 E/D/C、状态与头顶环', () {
-      expect(goal.rings.map((GoalRing r) => r.rank).toList(), <String>[
+    test('档位 E/D/C、计划内序号与状态（顺序锁已废除，全部待开工）', () {
+      expect(goal.plan.map((PlanTask r) => r.rank).toList(), <String>[
         'E',
         'D',
         'C',
       ]);
-      expect(goal.rings.first.state, RingState.cur);
-      expect(goal.rings[1].state, RingState.lock);
-      expect(goal.rings[2].state, RingState.lock);
-      expect(goal.rings[2].finalRing, isTrue);
-      expect(goal.rings.first.finalRing, isFalse);
+      // docs/33：没有 cur/lock 的「顺序锁」了 —— 清单里每张都从 todo 起步，
+      // 「第几张在脚下」由 firstOpenIndex 推导。
+      expect(
+        goal.plan.map((PlanTask r) => r.state).toList(),
+        <PlanState>[PlanState.todo, PlanState.todo, PlanState.todo],
+      );
+      expect(goal.firstOpenIndex, 0);
+      expect(goal.doneCount, 0);
+      expect(goal.plan.map((PlanTask r) => r.index).toList(), <int>[0, 1, 2]);
+      expect(goal.plan[2].finalTask, isTrue);
+      expect(goal.plan.first.finalTask, isFalse);
     });
 
     test('时限落在 docs/18 §2.3 建议档内（E≤15 / D≤20 / C≤30，下限 5）', () {
-      expect(goal.rings[0].minutes, lessThanOrEqualTo(15));
-      expect(goal.rings[1].minutes, lessThanOrEqualTo(20));
-      expect(goal.rings[2].minutes, lessThanOrEqualTo(30));
-      for (final GoalRing r in goal.rings) {
+      expect(goal.plan[0].minutes, lessThanOrEqualTo(15));
+      expect(goal.plan[1].minutes, lessThanOrEqualTo(20));
+      expect(goal.plan[2].minutes, lessThanOrEqualTo(30));
+      for (final PlanTask r in goal.plan) {
         expect(r.minutes, greaterThanOrEqualTo(5));
       }
     });
@@ -234,7 +242,7 @@ void main() {
       expect(g.interview['sleep.schedule'], '0-1 点睡 8 点起');
     });
 
-    test('负担重 → 第 1 环换「比昨天早睡 15 分钟」（docs/18 §2.1 示例）', () {
+    test('负担重 → 第 1 张换「比昨天早睡 15 分钟」（docs/18 §2.1 示例）', () {
       final Goal heavy = buildFirstGoal(
         text: '一个月早睡早起',
         cat: sleep,
@@ -243,43 +251,43 @@ void main() {
           'sleep.recent': '天天熬夜',
         },
       );
-      expect(heavy.rings.first.title, '比昨天早睡 15 分钟');
-      expect(heavy.rings.first.rank, 'E');
-      // 其余环不受影响
-      expect(heavy.rings[1].title, '今晚 23:30 前放下手机上床');
+      expect(heavy.plan.first.title, '比昨天早睡 15 分钟');
+      expect(heavy.plan.first.rank, 'E');
+      // 其余张不受影响
+      expect(heavy.plan[1].title, '今晚 23:30 前放下手机上床');
 
       final Goal unset = buildFirstGoal(
         text: '一个月早睡早起',
         cat: sleep,
         answers: const <String, String>{'sleep.schedule': '没有固定'},
       );
-      expect(unset.rings.first.title, '比昨天早睡 15 分钟');
+      expect(unset.plan.first.title, '比昨天早睡 15 分钟');
 
       final Goal light = buildFirstGoal(
         text: '一个月早睡早起',
         cat: sleep,
         answers: const <String, String>{'sleep.recent': '基本规律'},
       );
-      expect(light.rings.first.title, '定好明早的闹钟，手机放到够不着的地方');
+      expect(light.plan.first.title, '定好明早的闹钟，手机放到够不着的地方');
     });
 
-    test('没有轻档环的类别不受「负担重」影响', () {
+    test('没有轻档张的类别不受「负担重」影响', () {
       final Goal g = buildFirstGoal(
         text: '三个月跑完半马',
         cat: goalCats['run']!,
         answers: const <String, String>{'run.now': '没跑过，天天熬夜'},
       );
-      expect(g.rings.first.title, '换上跑鞋，出门快走 15 分钟');
+      expect(g.plan.first.title, '换上跑鞋，出门快走 15 分钟');
       expect(g.days, 3);
     });
 
     test('十类都能铸出合规首目标', () {
       for (final GoalCategory cat in kGoalCatOrder) {
         final Goal g = buildFirstGoal(text: '随便一个${cat.label}目标', cat: cat);
-        expect(g.rings.length, 3, reason: cat.id);
-        expect(g.rings.map((GoalRing r) => r.rank), <String>['E', 'D', 'C']);
+        expect(g.plan.length, 3, reason: cat.id);
+        expect(g.plan.map((PlanTask r) => r.rank), <String>['E', 'D', 'C']);
         expect(g.days, 3, reason: cat.id);
-        expect(g.rings.last.finalRing, isTrue, reason: cat.id);
+        expect(g.plan.last.finalTask, isTrue, reason: cat.id);
       }
     });
   });
@@ -435,11 +443,14 @@ void main() {
               as Map<String, dynamic>;
       final Goal g = Goal.fromJson(raw, fallback: Goal.empty());
       expect(g.cat, '');
-      expect(g.days, 0);
+      // docs/33 迁移：老档的 `days` 存的是环数（5~8），当期限用是错的 ——
+      // 缺 `days` 时按**清单条数**兜底（这条老档只有 1 张）。
+      expect(g.days, 1);
       expect(g.interview, isEmpty);
       expect(g.text, '三个月跑完半马'); // 老字段照常读回
-      expect(g.rings, isNotEmpty);
-      expect(shouldOnboard(g), isFalse); // 环非空 = 已有主线 = 不触发
+      expect(g.plan, isNotEmpty);
+      expect(g.plan.first.state, PlanState.done); // 老 state 'done' 照常读回
+      expect(shouldOnboard(g), isFalse); // 清单非空 = 已有主线 = 不触发
     });
 
     test('goal 元数据 toJson/fromJson 往返一致', () {
@@ -452,8 +463,10 @@ void main() {
       expect(back.cat, 'sleep');
       expect(back.days, 3);
       expect(back.interview['sleep.recent'], '偶尔熬夜');
-      expect(back.rings.length, 3);
-      expect(back.rings.first.state, RingState.cur);
+      expect(back.plan.length, 3);
+      // 首目标刚铸出来还没开工 → 三张都是 todo，序号原样读回
+      expect(back.plan.first.state, PlanState.todo);
+      expect(back.plan.map((PlanTask r) => r.index).toList(), <int>[0, 1, 2]);
     });
 
     test('存档整链：访谈答案持久化，重启（重新 load）仍在', () async {
@@ -475,7 +488,8 @@ void main() {
       expect(back.goal.cat, 'sleep');
       expect(back.goal.interview.length, 3);
       expect(back.goal.interview['sleep.persist'], '睡前不碰手机');
-      expect(back.goal.rings.map((GoalRing r) => r.rank).toList(), <String>[
+      expect(back.goal.plan, isNotEmpty);
+      expect(back.goal.plan.map((PlanTask r) => r.rank).toList(), <String>[
         'E',
         'D',
         'C',
@@ -485,7 +499,7 @@ void main() {
   });
 
   group('第二目标闭环（TODO-01 + TODO-06 模板半）：finale → 下一条主线', () {
-    /// 上一目标（走完 3 环的 sleep 首目标）
+    /// 上一目标（走完 3 张的 sleep 首目标）
     Goal finishedFirst() {
       final Goal g = buildFirstGoal(
         text: '一个月早睡早起',
@@ -493,16 +507,18 @@ void main() {
         answers: const <String, String>{'sleep.schedule': '0 点前睡 7 点前起'},
       );
       return g.copyWith(
-        rings: <GoalRing>[
-          for (final GoalRing r in g.rings)
-            GoalRing(
+        plan: <PlanTask>[
+          for (final PlanTask r in g.plan)
+            PlanTask(
+              index: r.index,
               short: r.short,
               title: r.title,
               proof: r.proof,
               minutes: r.minutes,
               rank: r.rank,
-              state: RingState.done,
-              finalRing: r.finalRing,
+              attrs: r.attrs,
+              state: PlanState.done,
+              finalTask: r.finalTask,
               held: const Duration(minutes: 12),
               doneAt: DateTime(2026, 1, 3),
             ),
@@ -513,78 +529,114 @@ void main() {
     Goal next(Goal prev, {int? cleared, int? total, int level = 1, String? text}) =>
         buildNextGoal(
           prev: prev,
-          cleared: cleared ?? prev.rings.length,
-          total: total ?? prev.rings.length,
+          cleared: cleared ?? prev.plan.length,
+          total: total ?? prev.plan.length,
           level: level,
           text: text,
           // 镜像生产调用（main.dart 两处都传 `at: prev.at`，O-2 裁决）
           at: prev.at,
         );
 
-    test('时长词 → 环数（原型 makeGoal L147-150 逐条）', () {
-      // ⚠️ 「一个月」不在原型表里（落默认 6），但「三个月」命中 [三四五六七八九十]个月 → 8。
-      //    这两条必须一起钉住，否则 `[两二]个月` 会把「一个月」也吞成 7。
-      expect(goalRingCountFor('三个月跑完半马'), 8);
-      expect(goalRingCountFor('一个月早睡早起'), 6);
-      expect(goalRingCountFor('半年减重 10 斤'), 8);
-      expect(goalRingCountFor('一年读完 50 本书'), 8);
-      expect(goalRingCountFor('100 天打卡'), 8);
-      expect(goalRingCountFor('两个月练出腹肌'), 7);
-      expect(goalRingCountFor('二个月冲一次'), 7);
-      expect(goalRingCountFor('60 天早起'), 7);
-      expect(goalRingCountFor('八周跑完 10K'), 7);
-      expect(goalRingCountFor('一周读完一本书'), 5);
-      expect(goalRingCountFor('7 天早睡'), 5);
-      expect(goalRingCountFor('两周背完 500 词'), 5);
-      expect(goalRingCountFor('随便一个目标'), 6);
+    test('时长词 → 期限天数（+ 计划条数 == 天数）', () {
+      // docs/33：`goalDaysFor` 返回的是**期限天数**，不再是环数。
+      //   一年 365 / 半年 180 / N 个月 N×30 / 百天 100 / 八周 56
+      //   / 一个月 30 / 两周 14 / 十天 10 / 一周 7 / 没命中 21
+      // 计划条数 = 期限天数（夹在 [kPlanMinTasks, kPlanMaxTasks] 内）。
+      const Map<String, int> cases = <String, int>{
+        '三个月跑完半马': 90,
+        '一个月早睡早起': 30,
+        '半年减重 10 斤': 180,
+        '一年读完 50 本书': 365,
+        '100 天打卡': 100,
+        '两个月练出腹肌': 60,
+        '二个月冲一次': 60,
+        '60 天早起': 21, // 没命中任何时长词 → 默认 21 天
+        '八周跑完 10K': 56,
+        '一周读完一本书': 7,
+        '7 天早睡': 7,
+        '两周背完 500 词': 14,
+        '随便一个目标': 21,
+      };
+      cases.forEach((String text, int days) {
+        expect(goalDaysFor(text), days, reason: text);
+        expect(planTaskCountFor(days), days, reason: text);
+      });
+      // 条数两头封口（防呆；正常时长词够不到上限）
+      expect(planTaskCountFor(1), kPlanMinTasks);
+      expect(planTaskCountFor(10000), kPlanMaxTasks);
     });
 
-    test('环数永远落在 5~8，且末环是「兑现它」的 S 环', () {
+    test('计划条数 == 期限天数，且末张是「兑现它」的 S 级兑现单', () {
       for (final GoalCategory cat in kGoalCatOrder) {
         final Goal g = next(
           buildFirstGoal(text: '随便一个${cat.label}目标', cat: cat),
           text: '半年${cat.label}进阶',
         );
-        expect(g.rings.length, inInclusiveRange(5, 8), reason: cat.id);
-        expect(g.days, g.rings.length, reason: cat.id);
-        expect(g.rings.first.state, RingState.cur, reason: cat.id);
-        expect(g.rings.last.state, RingState.lock, reason: cat.id);
-        expect(g.rings.last.finalRing, isTrue, reason: cat.id);
-        expect(g.rings.last.rank, 'S', reason: cat.id);
-        expect(g.rings.last.title, endsWith('——兑现它'), reason: cat.id);
-        expect(g.rings.last.minutes, kNextGoalFinalMinutes, reason: cat.id);
-        // 只有末环带 finalRing；中间环不越界
+        expect(g.days, 180, reason: cat.id); // 「半年」→ 180 天
+        expect(g.plan.length, g.days, reason: cat.id);
         expect(
-          g.rings.where((GoalRing r) => r.finalRing).length,
+          g.plan.length,
+          inInclusiveRange(kPlanMinTasks, kPlanMaxTasks),
+          reason: cat.id,
+        );
+        // 新铸出来的清单还没开工：全部 todo，第一张就是脚下那张
+        expect(
+          g.plan.every((PlanTask r) => r.state == PlanState.todo),
+          isTrue,
+          reason: cat.id,
+        );
+        expect(g.firstOpenIndex, 0, reason: cat.id);
+        expect(g.plan.last.finalTask, isTrue, reason: cat.id);
+        expect(g.plan.last.rank, 'S', reason: cat.id);
+        expect(g.plan.last.title, endsWith('——兑现它'), reason: cat.id);
+        // 兑现单时限由规则收口：不低于 kPlanFinalMinutes、不超过 S 档上限
+        expect(
+          g.plan.last.minutes,
+          greaterThanOrEqualTo(kPlanFinalMinutes),
+          reason: cat.id,
+        );
+        expect(
+          g.plan.last.minutes,
+          lessThanOrEqualTo(rankCapMinutes('S')),
+          reason: cat.id,
+        );
+        // 只有末张带 finalTask；中间张不越界
+        expect(
+          g.plan.where((PlanTask r) => r.finalTask).length,
           1,
           reason: cat.id,
         );
       }
     });
 
-    test('档位低开高走：首环 E、含 S、末环 S，全部是合法档位', () {
+    test('档位低开高走：首张 E、含 S、末张 S，全部是合法档位', () {
       final Goal g = next(finishedFirst(), text: '半年减重 10 斤');
-      expect(g.rings.first.rank, 'E');
-      expect(g.rings.map((GoalRing r) => r.rank), contains('S'));
-      expect(g.rings.last.rank, 'S');
-      for (final GoalRing r in g.rings) {
+      expect(g.plan.first.rank, 'E');
+      expect(g.plan.map((PlanTask r) => r.rank), contains('S'));
+      expect(g.plan.last.rank, 'S');
+      for (final PlanTask r in g.plan) {
         expect(Rarity.ranks, contains(r.rank));
       }
     });
 
-    test('完成度提档：满环 + lv≥4 多一环；没满环不提档；封顶 8', () {
+    test('完成度提档：满额 + lv≥4 多 7 天；没满额不提档；条数封顶 400', () {
       final Goal prev = finishedFirst();
-      expect(completionRingBoost(cleared: 3, total: 3, level: 3), 0);
-      expect(completionRingBoost(cleared: 3, total: 3, level: 4), 1);
-      expect(completionRingBoost(cleared: 2, total: 3, level: 9), 0);
-      expect(completionRingBoost(cleared: 0, total: 0, level: 9), 0);
+      expect(completionDayBoost(cleared: 3, total: 3, level: 3), 0);
+      expect(completionDayBoost(cleared: 3, total: 3, level: 4), 7);
+      expect(completionDayBoost(cleared: 2, total: 3, level: 9), 0);
+      expect(completionDayBoost(cleared: 0, total: 0, level: 9), 0);
 
-      final Goal low = next(prev, level: 3); // 默认 6 环
-      final Goal high = next(prev, level: 5); // 6 + 1 = 7 环
-      expect(low.rings.length, 6);
-      expect(high.rings.length, 7);
-      // 8 环目标 + 提档 → 还是 8（封顶）
-      expect(next(prev, level: 5, text: '半年减重 10 斤').rings.length, 8);
+      // 上一句「一个月早睡早起」→ 30 天；提档只加天数（清单条数跟着走）
+      final Goal low = next(prev, level: 3); // 30 天（lv<4 不提档）
+      final Goal high = next(prev, level: 5); // 30 + 7 = 37 天
+      expect(low.days, 30);
+      expect(low.plan.length, 30);
+      expect(high.days, 37);
+      expect(high.plan.length, 37);
+      // 换一句更长的：「一年」365 + 提档 7 = 372 天（仍在上限 400 之内）
+      final Goal year = next(prev, level: 5, text: '一年读完 50 本书');
+      expect(year.days, 372);
+      expect(year.plan.length, 372);
     });
 
     test('沿用上一目标的文本/类型/访谈答案/立目标时刻（O-2 裁决：沿用）', () {
@@ -608,110 +660,149 @@ void main() {
       expect(g.text, '半年减重 10 斤');
       expect(g.cat, 'slim');
       expect(g.short, '−10斤');
-      expect(g.rings.length, 8);
+      expect(g.days, 180);
+      expect(g.plan.length, 180);
       expect(g.interview['sleep.schedule'], '0 点前睡 7 点前起');
     });
 
-    test('加码环：时限递增且落在档位上限内，题面不空', () {
+    test('加码段：时限落在档位上限内、题面不空、第一条加码比起步段更重', () {
       final Goal g = next(finishedFirst(), text: '半年减重 10 斤');
-      final List<GoalRing> mids = g.rings.sublist(0, g.rings.length - 1);
-      expect(mids.length, 7);
-      for (int i = 3; i < mids.length; i++) {
+      final GoalCategory slim = goalCats['slim']!;
+      final List<PlanTask> mids = g.plan.sublist(0, g.plan.length - 1);
+      expect(mids.length, 179);
+      // 前 3 张是类别自带的起步模板，第 4 张起才是按 1.35^k 加码的生成段
+      final int firstBoost = slim.firstTasks.length;
+      for (int i = firstBoost; i < mids.length; i++) {
         expect(mids[i].title.trim(), isNotEmpty);
         expect(mids[i].proof.trim(), isNotEmpty);
         expect(mids[i].minutes, inInclusiveRange(5, 180));
       }
-      // 第 4 环（0 基 3，第一条加码环）比它的底样更长
-      expect(mids[3].minutes, greaterThan(mids[0].minutes));
+      final int baseMax = mids
+          .sublist(0, firstBoost)
+          .map((PlanTask r) => r.minutes)
+          .reduce((int a, int b) => a > b ? a : b);
+      // ⚠️ 第一张加码任务可能**刚好等于**起步段最长那张：新档位上限表里
+      //    E 档就是 30 分钟（`rankCapMinutes`），而起步段最长的模板正好 30，
+      //    所以阶梯还没抬档之前 `到此为止最重 + 5` 会被上限压回去。
+      //    真正要钉的是「加码段确实比起步段重」——整段的最大值必须超过它。
+      final int boostMax = mids
+          .sublist(firstBoost)
+          .map((PlanTask r) => r.minutes)
+          .reduce((int a, int b) => a > b ? a : b);
+      expect(boostMax, greaterThan(baseMax));
     });
 
     test('⚠️ 整条链单调不减：档位与时长都不许倒退（2026-10-12 宿主存档回归）', () {
       // 真机存档实测到的坏链：… 加码3 = S · 41 分钟 → 加码4 = **E · 7 分钟**
       // → 兑现 = S · 120 分钟。档位与时长一起绕回，长链最后一段比开头还轻。
-      // 根因：档位取 `i % kNextGoalRankSeq.length`、时长取 `seed × 1.35` 单级
-      //（不参考上一环），8 环时正好绕回 'E'。
+      // 根因：档位取 `i % kPlanRankSeq.length`、时长取 `seed × 1.35` 单级
+      //（不参考上一张），8 环时正好绕回 'E'。
       //
-      // 口径：**档位**约束全链（起步环 E/D/C 本来就是升的）；
-      //       **时长**只约束生成段（起步环是人工编排的模板，可以「核心」比
-      //       「三组成型」短 —— 难度轴是档位，不是分钟数）。
+      // 口径（docs/33 不变）：**档位**约束全链（起步张 E/D/C 本来就是升的）；
+      //   **时长**只约束生成段（起步张是人工编排的模板，可以「核心」比
+      //   「三组成型」短 —— 难度轴是档位，不是分钟数）。
       for (final GoalCategory cat in kGoalCatOrder) {
         final Goal prev = buildFirstGoal(text: '起步', cat: cat);
         for (final String t in <String>['一周试试', '两个月加码', '半年冲一次']) {
           final Goal g = next(prev, text: '${cat.label}·$t');
-          final List<GoalRing> rings = g.rings;
+          final List<PlanTask> plan = g.plan;
+          final int firstBoost = cat.firstTasks.length;
 
           // ① 档位全链不倒退
-          for (int i = 1; i < rings.length; i++) {
+          for (int i = 1; i < plan.length; i++) {
             expect(
-              Rarity.ranks.indexOf(rings[i].rank),
-              greaterThanOrEqualTo(Rarity.ranks.indexOf(rings[i - 1].rank)),
-              reason: '${cat.id}/$t 第 ${i + 1} 环档位倒退了：'
-                  '${rings[i - 1].rank} → ${rings[i].rank}',
+              Rarity.ranks.indexOf(plan[i].rank),
+              greaterThanOrEqualTo(Rarity.ranks.indexOf(plan[i - 1].rank)),
+              reason: '${cat.id}/$t 第 ${i + 1} 张档位倒退了：'
+                  '${plan[i - 1].rank} → ${plan[i].rank}',
             );
           }
 
-          // ② 加码段起，时长不倒退（这里才是绕回 bug 的现场）
-          final int firstBoost =
-              rings.indexWhere((GoalRing r) => r.short.startsWith('加码'));
-          expect(firstBoost, greaterThan(0), reason: '${cat.id}/$t 没有加码环');
-          for (int i = firstBoost + 1; i < rings.length; i++) {
+          // ② 生成段起，时长不倒退（这里才是绕回 bug 的现场）
+          for (int i = firstBoost + 1; i < plan.length; i++) {
             expect(
-              rings[i].minutes,
-              greaterThanOrEqualTo(rings[i - 1].minutes),
-              reason: '${cat.id}/$t 第 ${i + 1} 环时长倒退了：'
-                  '${rings[i - 1].minutes} → ${rings[i].minutes} 分钟',
+              plan[i].minutes,
+              greaterThanOrEqualTo(plan[i - 1].minutes),
+              reason: '${cat.id}/$t 第 ${i + 1} 张时长倒退了：'
+                  '${plan[i - 1].minutes} → ${plan[i].minutes} 分钟',
             );
           }
 
-          // ③ 加码从「起步环里最长的那一环」之上起步，末环永远最重
-          final int baseMax = rings
+          // ③ 加码段确实比起步张重（第一张可能被档位上限压平，见上一条用例），
+          //    且兑现单不轻于任何一张
+          final int baseMax = plan
               .sublist(0, firstBoost)
-              .map((GoalRing r) => r.minutes)
+              .map((PlanTask r) => r.minutes)
+              .reduce((int a, int b) => a > b ? a : b);
+          final int boostMax = plan
+              .sublist(firstBoost, plan.length - 1)
+              .map((PlanTask r) => r.minutes)
               .reduce((int a, int b) => a > b ? a : b);
           expect(
-            rings[firstBoost].minutes,
+            boostMax,
             greaterThan(baseMax),
-            reason: '${cat.id}/$t 第一条加码环比起步环还轻',
+            reason: '${cat.id}/$t 加码段没比起步张更重',
           );
+          final int midMax = plan
+              .sublist(0, plan.length - 1)
+              .map((PlanTask r) => r.minutes)
+              .reduce((int a, int b) => a > b ? a : b);
           expect(
-            rings.last.minutes,
-            greaterThan(rings[rings.length - 2].minutes),
-            reason: '${cat.id}/$t 末环不是最重的',
+            plan.last.minutes,
+            greaterThanOrEqualTo(midMax),
+            reason: '${cat.id}/$t 兑现单比前面的任务还轻',
           );
+          expect(plan.last.finalTask, isTrue, reason: '${cat.id}/$t 末张不是兑现单');
         }
       }
     });
 
-    test('十类 × 5~8 环 × 任意等级：环数/档位/时限/状态全合规（穷举）', () {
+    test('十类 × 3 种时长词 × 任意等级：条数/档位/时限/状态全合规（穷举）', () {
+      // 三种时长词的期限天数（`goalDaysFor` 真值，不含提档）
+      const Map<String, int> baseDays = <String, int>{
+        '一周试试': 7,
+        '两个月加码': 60,
+        '半年冲一次': 180,
+      };
       for (final GoalCategory cat in kGoalCatOrder) {
         final Goal prev = buildFirstGoal(text: '随便一个${cat.label}目标', cat: cat);
-        for (final String t in <String>['一周试试', '两个月加码', '半年冲一次']) {
+        baseDays.forEach((String t, int days) {
           for (final int lv in <int>[1, 4, 9]) {
             final Goal g = next(prev, level: lv, text: '${cat.label}·$t');
-            expect(g.rings.length, inInclusiveRange(5, 8), reason: '${cat.id}/$t/$lv');
-            expect(g.days, g.rings.length);
-            expect(g.rings.first.state, RingState.cur);
+            // 满额完成（上一目标 3/3）+ lv≥4 → 提档 +7 天
+            final int want = days + (lv >= 4 ? 7 : 0);
+            expect(g.days, want, reason: '${cat.id}/$t/$lv');
+            expect(g.plan.length, g.days, reason: '${cat.id}/$t/$lv');
             expect(
-              g.rings.skip(1).every((GoalRing r) => r.state == RingState.lock),
-              isTrue,
+              g.plan.length,
+              inInclusiveRange(kPlanMinTasks, kPlanMaxTasks),
+              reason: '${cat.id}/$t/$lv',
             );
-            for (final GoalRing r in g.rings) {
+            // 新铸的清单一张都还没开工（顺序锁已废除，不做 cur/lock 区分）
+            expect(
+              g.plan.every((PlanTask r) => r.state == PlanState.todo),
+              isTrue,
+              reason: '${cat.id}/$t/$lv',
+            );
+            expect(g.doneCount, 0, reason: '${cat.id}/$t/$lv');
+            expect(g.firstOpenIndex, 0, reason: '${cat.id}/$t/$lv');
+            for (final PlanTask r in g.plan) {
               expect(r.minutes, greaterThanOrEqualTo(5), reason: '${cat.id}/$t/$lv');
               expect(Rarity.ranks, contains(r.rank));
             }
           }
-        }
+        });
       }
     });
 
-    test('新主线可整链存档往返（days/环数/末环标记都不丢）', () {
+    test('新主线可整链存档往返（days/条数/兑现标记都不丢）', () {
       final Goal g = next(finishedFirst(), text: '半年减重 10 斤');
       final Goal back = Goal.fromJson(g.toJson(), fallback: Goal.empty());
-      expect(back.rings.length, g.rings.length);
+      expect(back.plan.length, g.plan.length);
       expect(back.days, g.days);
       expect(back.cat, 'slim');
-      expect(back.rings.last.finalRing, isTrue);
-      expect(back.rings.first.state, RingState.cur);
+      expect(back.plan.last.finalTask, isTrue);
+      expect(back.plan.first.state, PlanState.todo);
       expect(back.interview['sleep.schedule'], '0 点前睡 7 点前起');
     });
   });

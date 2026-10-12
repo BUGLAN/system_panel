@@ -15,14 +15,14 @@ import 'package:system_panel/state/quest.dart';
 /// 要点：
 ///  · 拆解走 **function calling 的结构化输出**（不是"求它输出 JSON 再手抠"）
 ///  · 形状不合格 → 工具返回 fail → **她看得见原因并重来**（guardrail 在工具层）
-///  · 没配 Key / 她没交主线 / 循环用尽 → `hasRings == false`，调用方退回类别模板
+///  · 没配 Key / 她没交主线 / 循环用尽 → `hasPlan == false`，调用方退回类别模板
 void main() {
-  /// 8 环的合法参数（内容不重要，形状对就行）
-  Map<String, dynamic> goodRings([int n = 8]) => <String, dynamic>{
-    'rings': <Map<String, dynamic>>[
+  /// 8 张的合法参数（内容不重要，形状对就行）
+  Map<String, dynamic> goodPlan([int n = 8]) => <String, dynamic>{
+    'tasks': <Map<String, dynamic>>[
       for (int i = 0; i < n; i++)
         <String, dynamic>{
-          'short': '环${i + 1}',
+          'short': '任务${i + 1}',
           'title': '第 ${i + 1} 步做什么',
           'proof': '证据${i + 1}',
           'minutes': 10 + i,
@@ -53,7 +53,7 @@ void main() {
         );
       });
 
-  AgentToolRegistry registryWith(MainlineDraft draft, {int ringCount = 8}) {
+  AgentToolRegistry registryWith(PlanDraft draft, {int taskCount = 8}) {
     final AgentToolRegistry reg = AgentToolRegistry();
     reg.registerAll(
       defaultAgentTools(
@@ -62,57 +62,59 @@ void main() {
       ).all,
     );
     reg.register(
-      setMainlineTool(
+      setPlanTool(
         goalText: '半年减重 10 斤',
-        ringCount: ringCount,
+        taskCount: taskCount,
+        // 「半年」→ goalDaysFor == 180（工具描述里要写清期限）
+        days: 180,
         draft: draft,
       ),
     );
     return reg;
   }
 
-  group('set_mainline 工具 · 形状校验（guardrail 在工具执行层）', () {
-    test('合法 8 环 → ok，草案写入，回执给首尾环', () async {
-      final MainlineDraft draft = MainlineDraft();
+  group('set_plan 工具 · 形状校验（guardrail 在工具执行层）', () {
+    test('合法 8 张 → ok，草案写入，回执给首尾张', () async {
+      final PlanDraft draft = PlanDraft();
       final AgentToolRegistry reg = registryWith(draft);
-      final ToolOutcome oc = await reg.execute('set_mainline', goodRings());
+      final ToolOutcome oc = await reg.execute('set_plan', goodPlan());
       expect(oc.ok, isTrue);
-      expect(draft.rings, hasLength(8));
-      expect(draft.rings!.first.short, '环1');
-      expect(oc.message, contains('8 环'));
-      expect((oc.data!['rings'] as List<dynamic>), hasLength(8));
+      expect(draft.tasks, hasLength(8));
+      expect(draft.tasks!.first.short, '任务1');
+      expect(oc.message, contains('8 张'));
+      expect((oc.data!['tasks'] as List<dynamic>), hasLength(8));
     });
 
     test('⚠️ 条数不对 → fail 且**不写入草案**（她必须重来，不能截断或补齐）', () async {
       for (final int n in <int>[6, 7, 9]) {
-        final MainlineDraft draft = MainlineDraft();
+        final PlanDraft draft = PlanDraft();
         final AgentToolRegistry reg = registryWith(draft);
-        final ToolOutcome oc = await reg.execute('set_mainline', goodRings(n));
-        expect(oc.ok, isFalse, reason: '给了 $n 环');
-        expect(oc.message, contains('正好 8 环'), reason: '要说清差在哪');
-        expect(oc.message, contains('$n 环'), reason: '要把实际条数报给她');
-        expect(draft.rings, isNull, reason: '不合格的一律不落草案');
+        final ToolOutcome oc = await reg.execute('set_plan', goodPlan(n));
+        expect(oc.ok, isFalse, reason: '给了 $n 张');
+        expect(oc.message, contains('正好 8 张'), reason: '要说清差在哪');
+        expect(oc.message, contains('$n 张'), reason: '要把实际条数报给她');
+        expect(draft.tasks, isNull, reason: '不合格的一律不落草案');
       }
     });
 
-    test('rings 缺失 / 不是数组 / 是空数组 → fail', () async {
+    test('tasks 缺失 / 不是数组 / 是空数组 → fail', () async {
       for (final Object? raw in <Object?>[
         null,
         'notalist',
         <dynamic>[],
         <String, dynamic>{},
       ]) {
-        final MainlineDraft draft = MainlineDraft();
+        final PlanDraft draft = PlanDraft();
         final AgentToolRegistry reg = registryWith(draft);
-        final ToolOutcome oc = await reg.execute('set_mainline', <String, dynamic>{
-          'rings': raw,
+        final ToolOutcome oc = await reg.execute('set_plan', <String, dynamic>{
+          'tasks': raw,
         });
-        expect(oc.ok, isFalse, reason: 'rings=$raw');
-        expect(draft.rings, isNull);
+        expect(oc.ok, isFalse, reason: 'tasks=$raw');
+        expect(draft.tasks, isNull);
       }
     });
 
-    test('字段空 / 档位非法 / 分钟数非正 → fail，并指明是第几环', () async {
+    test('字段空 / 档位非法 / 分钟数非正 → fail，并指明是第几张', () async {
       final List<Map<String, dynamic>> bad = <Map<String, dynamic>>[
         <String, dynamic>{'short': '', 'title': 't', 'proof': 'p', 'minutes': 10, 'rank': 'E'},
         <String, dynamic>{'short': 's', 'title': '  ', 'proof': 'p', 'minutes': 10, 'rank': 'E'},
@@ -122,28 +124,28 @@ void main() {
         <String, dynamic>{'short': 's', 'title': 't', 'proof': 'p', 'rank': 'E'},
       ];
       for (final Map<String, dynamic> one in bad) {
-        final MainlineDraft draft = MainlineDraft();
-        final AgentToolRegistry reg = registryWith(draft, ringCount: 1);
-        final ToolOutcome oc = await reg.execute('set_mainline', <String, dynamic>{
-          'rings': <Map<String, dynamic>>[one],
+        final PlanDraft draft = PlanDraft();
+        final AgentToolRegistry reg = registryWith(draft, taskCount: 1);
+        final ToolOutcome oc = await reg.execute('set_plan', <String, dynamic>{
+          'tasks': <Map<String, dynamic>>[one],
         });
         expect(oc.ok, isFalse, reason: '$one');
-        expect(oc.message, contains('第 1 环'), reason: '要指出是哪一环坏了：$one');
-        expect(draft.rings, isNull);
+        expect(oc.message, contains('第 1 张'), reason: '要指出是哪一张坏了：$one');
+        expect(draft.tasks, isNull);
       }
     });
 
-    test('schema 把环数写进描述（模型据此知道要几条）', () {
-      final Map<String, dynamic> schema = setMainlineSchema(5);
-      final Map<String, dynamic> rings =
-          (schema['properties'] as Map<String, dynamic>)['rings'] as Map<String, dynamic>;
-      expect(rings['minItems'], 5);
-      expect(rings['maxItems'], 5);
-      expect('${rings['description']}', contains('正好 5 环'));
+    test('schema 把条数写进描述（模型据此知道要几条）', () {
+      final Map<String, dynamic> schema = setPlanSchema(5);
+      final Map<String, dynamic> tasks =
+          (schema['properties'] as Map<String, dynamic>)['tasks'] as Map<String, dynamic>;
+      expect(tasks['minItems'], 5);
+      expect(tasks['maxItems'], 5);
+      expect('${tasks['description']}', contains('正好 5 张'));
       final Map<String, dynamic> item =
-          ((rings['items'] as Map<String, dynamic>)['properties'] as Map<String, dynamic>);
+          ((tasks['items'] as Map<String, dynamic>)['properties'] as Map<String, dynamic>);
       expect((item['rank'] as Map<String, dynamic>)['enum'], contains('S'));
-      expect((rings['items'] as Map<String, dynamic>)['required'],
+      expect((tasks['items'] as Map<String, dynamic>)['required'],
           containsAll(<String>['short', 'title', 'proof', 'minutes', 'rank']));
     });
   });
@@ -163,9 +165,9 @@ void main() {
   });
 
   group('MainlineAgent.run · 真正的 agent 循环', () {
-    test('get_status → set_mainline → 她解释（两轮收敛）', () async {
+    test('get_status → set_plan → 她解释（两轮收敛）', () async {
       final List<String> bodies = <String>[];
-      final MainlineDraft draft = MainlineDraft();
+      final PlanDraft draft = PlanDraft();
       final AgentToolRegistry reg = registryWith(draft);
       final MainlineAgent agent = MainlineAgent(
         client: LlmClient(
@@ -174,31 +176,31 @@ void main() {
             // 第 1 轮：她先查状态、同轮把主线交上来
             '{"choices":[{"message":{"content":"","tool_calls":['
                 '{"id":"c1","type":"function","function":{"name":"get_status","arguments":"{}"}},'
-                '{"id":"c2","type":"function","function":{"name":"set_mainline","arguments":'
-                '${jsonEncode(jsonEncode(goodRings()))}}}]}}]}',
+                '{"id":"c2","type":"function","function":{"name":"set_plan","arguments":'
+                '${jsonEncode(jsonEncode(goodPlan()))}}}]}}]}',
             // 第 2 轮：她解释
-            says('[smug]你连败两次，第一环我给你压到 10 分钟。八环，别再断。'),
+            says('[smug]你连败两次，第一张我给你压到 10 分钟。八张，别再断。'),
           ]),
         ),
       );
       final MainlineResult r = await agent.run(
         goalText: '半年减重 10 斤',
-        ringCount: 8,
+        taskCount: 8,
         tools: reg,
         draft: draft,
         statusLine: 'LV1 · 连败 2 次',
       );
       expect(r.rounds, 2);
       expect(r.failure, isNull);
-      expect(r.hasRings, isTrue);
-      expect(r.rings, hasLength(8));
-      expect(r.line, '你连败两次，第一环我给你压到 10 分钟。八环，别再断。');
+      expect(r.hasPlan, isTrue);
+      expect(r.tasks, hasLength(8));
+      expect(r.line, '你连败两次，第一张我给你压到 10 分钟。八张，别再断。');
       expect(r.emotion, 'smug', reason: '情绪标签要剥出来给舞台用');
       expect(r.receipts, hasLength(2));
       expect(r.receipts.first, contains('get_status'));
-      expect(r.receipts.last, contains('set_mainline'));
+      expect(r.receipts.last, contains('set_plan'));
       // 请求里真的带上了工具的 JSON Schema（结构化输出，不是让她自由写 JSON）
-      expect(bodies.first, contains('"set_mainline"'));
+      expect(bodies.first, contains('"set_plan"'));
       expect(bodies.first, contains('"parameters"'));
       // 立主线**要**思考：预算给足（宿主定调不用省），档位走"至少 low"
       expect(bodies.first, contains('"max_tokens":$kPlanMaxTokens'));
@@ -207,30 +209,30 @@ void main() {
 
     test('⚠️ 交错了条数 → 工具 fail → 她看见原因重来 → 最终成功', () async {
       final List<String> bodies = <String>[];
-      final MainlineDraft draft = MainlineDraft();
+      final PlanDraft draft = PlanDraft();
       final AgentToolRegistry reg = registryWith(draft);
       final MainlineAgent agent = MainlineAgent(
         client: LlmClient(
           config: const LlmConfig(apiKey: 'sk-test'),
           httpClient: scripted(bodies, <String>[
-            toolCall('set_mainline', goodRings(6)), // 错了：要 8 环
-            toolCall('set_mainline', goodRings(8)), // 看见回执后改对
-            says('[cold]行。八环钉上了。'),
+            toolCall('set_plan', goodPlan(6)), // 错了：要 8 张
+            toolCall('set_plan', goodPlan(8)), // 看见回执后改对
+            says('[cold]行。八张钉上了。'),
           ]),
         ),
       );
       final MainlineResult r = await agent.run(
         goalText: '半年减重 10 斤',
-        ringCount: 8,
+        taskCount: 8,
         tools: reg,
         draft: draft,
       );
       expect(r.rounds, 3);
       expect(r.failure, isNull);
-      expect(r.rings, hasLength(8));
-      expect(r.line, '行。八环钉上了。');
+      expect(r.tasks, hasLength(8));
+      expect(r.line, '行。八张钉上了。');
       // 第一次的失败回执必须回填给她（否则她没法知道差在哪）
-      expect(r.receipts.first, contains('正好 8 环'));
+      expect(r.receipts.first, contains('正好 8 张'));
       // 回填的第二条里明确提示她「主线还没交上来」
       expect(bodies[1], contains('主线还没交上来'));
 
@@ -240,8 +242,8 @@ void main() {
       expect(bodies.last, contains('不要再调用任何工具'));
     });
 
-    test('她聊完却没调用 set_mainline → hasRings=false（调用方退回模板）', () async {
-      final MainlineDraft draft = MainlineDraft();
+    test('她聊完却没调用 set_plan → hasPlan=false（调用方退回模板）', () async {
+      final PlanDraft draft = PlanDraft();
       final AgentToolRegistry reg = registryWith(draft);
       final MainlineAgent agent = MainlineAgent(
         client: LlmClient(
@@ -251,18 +253,18 @@ void main() {
       );
       final MainlineResult r = await agent.run(
         goalText: '半年减重 10 斤',
-        ringCount: 8,
+        taskCount: 8,
         tools: reg,
         draft: draft,
       );
-      expect(r.hasRings, isFalse);
-      expect(r.failure, contains('没调用 set_mainline'));
+      expect(r.hasPlan, isFalse);
+      expect(r.failure, contains('没调用 set_plan'));
       expect(r.line, '这个目标挺好的，加油。');
     });
 
-    test('没配 Key → 一个请求都不发，hasRings=false', () async {
+    test('没配 Key → 一个请求都不发，hasPlan=false', () async {
       final List<String> bodies = <String>[];
-      final MainlineDraft draft = MainlineDraft();
+      final PlanDraft draft = PlanDraft();
       final MainlineAgent agent = MainlineAgent(
         client: LlmClient(
           config: const LlmConfig(),
@@ -271,7 +273,7 @@ void main() {
       );
       final MainlineResult r = await agent.run(
         goalText: '半年减重 10 斤',
-        ringCount: 8,
+        taskCount: 8,
         tools: registryWith(draft),
         draft: draft,
       );
@@ -280,27 +282,27 @@ void main() {
       expect(r.rounds, 0);
     });
 
-    test('循环用尽仍有主线 → hasRings 为真（她交上来的东西不许丢）', () async {
-      final MainlineDraft draft = MainlineDraft();
+    test('循环用尽仍有主线 → hasPlan 为真（她交上来的东西不许丢）', () async {
+      final PlanDraft draft = PlanDraft();
       final AgentToolRegistry reg = registryWith(draft);
       final MainlineAgent agent = MainlineAgent(
         maxRounds: 2,
         client: LlmClient(
           config: const LlmConfig(apiKey: 'sk-test'),
           httpClient: scripted(<String>[], <String>[
-            toolCall('set_mainline', goodRings(8)),
+            toolCall('set_plan', goodPlan(8)),
             toolCall('get_status'), // 她一直调工具，不给终答
           ]),
         ),
       );
       final MainlineResult r = await agent.run(
         goalText: '半年减重 10 斤',
-        ringCount: 8,
+        taskCount: 8,
         tools: reg,
         draft: draft,
       );
       expect(r.failure, contains('用尽'));
-      expect(r.hasRings, isTrue, reason: '主线已经交上来了，不能因为没终答就丢');
+      expect(r.hasPlan, isTrue, reason: '主线已经交上来了，不能因为没终答就丢');
     });
   });
 }

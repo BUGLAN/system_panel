@@ -26,7 +26,7 @@ class Haptics {
   /// main.js:48 · ui.js:126/238/265/313/346
   static const Map<String, List<int>> patterns = <String, List<int>>{
     'boot': <int>[10, 60, 20], // 启动（flows.js:73）
-    'ignite': <int>[6], // 点环（flows.js:155）
+    'ignite': <int>[6], // 点亮进度带（flows.js:155）
     'publish': <int>[12], // 发布钉单（flows.js:237）
     'shutter': <int>[10], // 拍照（flows.js:355）
     'impact': <int>[40, 30, 60], // 结算砸印·重（flows.js:387，稀有度 ≥4）

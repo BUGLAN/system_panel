@@ -45,19 +45,19 @@ void main() {
       expect(back.host.ownedTitles, HostState.demo.ownedTitles);
       expect(back.goal.text, '一个月早睡早起');
       expect(back.goal.short, '早睡早起');
-      expect(back.goal.rings.length, 8);
-      expect(back.goal.currentIndex, 4);
+      expect(back.goal.plan.length, 8);
+      expect(back.goal.firstOpenIndex, 4);
     });
 
-    test('环的三种状态与用时都能回来', () async {
+    test('计划单的状态与用时都能回来', () async {
       await SaveFile().save(sample());
       final SaveData back = await SaveFile().load();
-      final List<GoalRing> r = back.goal.rings;
-      expect(r[0].state, RingState.done);
+      final List<PlanTask> r = back.goal.plan;
+      expect(r[0].state, PlanState.done);
       expect(r[0].held, const Duration(minutes: 11, seconds: 56));
-      expect(r[4].state, RingState.cur);
-      expect(r[7].state, RingState.lock);
-      expect(r[7].finalRing, isTrue);
+      expect(r[4].state, PlanState.active);
+      expect(r[7].state, PlanState.todo);
+      expect(r[7].finalTask, isTrue);
     });
 
     test('没有档就给默认（首次启动）', () async {
@@ -65,7 +65,7 @@ void main() {
         fallback: SaveData(host: HostState.demo, goal: Goal.demo()),
       );
       expect(d.host.name, HostState.demo.name);
-      expect(d.goal.rings.length, 8);
+      expect(d.goal.plan.length, 8);
     });
   });
 
@@ -133,11 +133,11 @@ void main() {
       expect(back.host.name, HostState.empty.name);
     });
 
-    test('未绑定 = 没有目标也没有环', () {
+    test('未绑定 = 没有目标也没有计划单', () {
       final SaveData d = SaveData.fresh();
       expect(d.host.lv, 1);
       expect(d.goal.isEmpty, isTrue);
-      expect(d.goal.rings, isEmpty);
+      expect(d.goal.plan, isEmpty);
     });
   });
 

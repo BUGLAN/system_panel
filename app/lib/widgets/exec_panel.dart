@@ -206,10 +206,10 @@ class ExecPanel extends StatelessWidget {
     );
   }
 
-  /// .ex-k —— 稀有度章 + 「执行中 · RING 5/8」
+  /// .ex-k —— 稀有度章 + 「执行中 · MAIN 5/8」
   Widget _kindRow(Color rk) {
     final String kindTxt = quest.kind == 'main'
-        ? 'RING ${quest.ring + 1}/${quest.ringTotal}'
+        ? 'MAIN ${quest.planIndex + 1}/${quest.planTotal}'
         : quest.kind == 'remedy'
         ? 'REMEDY'
         : 'DAILY';

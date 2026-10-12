@@ -37,7 +37,6 @@ class QuestFlowAdapter implements AgentContext {
     final HostState h = f.host;
     final Goal g = f.goal;
     final MapEntry<String, int> weakest = h.weakest;
-    final int cur = g.currentIndex;
     return <String, dynamic>{
       'name': h.name,
       'lv': h.lv,
@@ -48,8 +47,8 @@ class QuestFlowAdapter implements AgentContext {
       'bestStreak': h.bestStreak,
       'queue': f.queue.length,
       'goal': g.text,
-      'ringCurrent': cur < 0 ? 0 : cur + 1,
-      'ringTotal': g.rings.length,
+      'planDone': g.doneCount,
+      'planTotal': g.plan.length,
       'weakest': weakest.key,
       'weakestValue': weakest.value,
       'doneCount': h.doneCount,
@@ -67,8 +66,8 @@ class QuestFlowAdapter implements AgentContext {
     }
     final Quest head = f.head!;
     if (head.kind == 'main') {
-      // docs/18 §2.7：主线当前环不可换——她直接拒绝（原型 store.js:254 语义）
-      return ToolOutcome.fail('主线的当前环不能换。这是你自己选的目标，要么做完，要么认输重来。');
+      // docs/18 §2.7：主线单不可换——她直接拒绝（原型 store.js:254 语义）
+      return ToolOutcome.fail('主线上的单不能换。这是你自己选的目标，要么做完，要么认输重来。');
     }
     // D4「换一个」语义：非 F 降一档重刻（单号不变）；F 级还退=换一张别的 F
     final RetreatOutcome? out = f.retreat(head);
@@ -108,7 +107,7 @@ class QuestFlowAdapter implements AgentContext {
     }
     final Quest head = f.head!;
     if (head.kind == 'main') {
-      return ToolOutcome.fail('主线环的规格不动。要改的是你自己，不是目标。');
+      return ToolOutcome.fail('主线单的规格不动。要改的是你自己，不是目标。');
     }
     int newMinutes = head.minutes;
     if (minutes != null) {
@@ -127,8 +126,9 @@ class QuestFlowAdapter implements AgentContext {
     f.queue[0] = Quest(
       serial: head.serial,
       kind: head.kind,
-      ring: head.ring,
-      ringTotal: head.ringTotal,
+      planIndex: head.planIndex,
+      planTotal: head.planTotal,
+      goalId: head.goalId,
       name: head.name,
       reason: head.reason,
       proof: head.proof,
