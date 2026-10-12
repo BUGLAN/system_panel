@@ -1625,31 +1625,49 @@ class _SystemPaneState extends State<_SystemPane> {
   @override
   Widget build(BuildContext context) {
     final _SetCat? c = _cat;
-    // ⚠️ 这里**不能**用「所有进出都从右侧滑入」那种写法：旧的一级清单还留在屏幕上
-    //    往右滑走，视觉上就是「中间闪过一张清单，然后才进二级」——宿主 2026-10-11 报的
-    //    那个「十分突兀的 bug」就是它。
-    //    正确做法是**有向滑动**：进二级时一级往左退、二级从右来；返回时反过来。
-    //    同一时刻只有一条边在动，中间不会闪出第三样东西。
+
+    // ── 一级 ↔ 二级的切换（宿主 2026-10-12 报「点进去中间闪一下、十分突兀」）──
+    //
+    // ⚠️ 病灶在 `AnimatedSwitcher` 的**默认 layoutBuilder**：它把新老两个子节点
+    //    放进一个 Stack，**按最大的那个定高、并让子节点互相居中** —— Flutter
+    //    源码原话 "The children are centered on each other"
+    //    （`widgets/animated_switcher.dart` 的 `defaultLayoutBuilder`）。
+    //    一级清单（5 行 + 品牌块）比二级面板高得多，于是**二级会被垂直居中**
+    //    在那块高盒子里：先出现在中间偏下，等清单被摘掉整块塌缩，它再"跳"回顶部；
+    //    这一段时间里两张脸还叠在一起。宿主看到的"中间闪过一下"就是它。
+    //    （前一轮只改了水平方向 + `_toTop()`，没碰这个垂直根因，所以没治好。）
+    //
+    // 两处一起改：
+    //   ① **顶端对齐**：二级从第一帧就落在它最终的位置上，末尾不再有塌缩跳动；
+    //   ② **把两段淡入淡出错开**（Interval）：旧的先退干净、新的再上来，
+    //      不再出现「新的压在旧的上」那一下叠影。总时长仍是 260ms。
+    final int curDepth = c == null ? 0 : 1; // 一级 = 0，二级 = 1
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 260),
-      switchInCurve: kOut,
-      switchOutCurve: kOut.flipped,
+      // 旧的：到 45% 时已经退干净（Interval(.55,1) 在反向动画上作用在 t 上）
+      switchOutCurve: const Interval(.55, 1, curve: kOut),
+      // 新的：30% 才开始上来 → 两段只重叠约 15%（≈39ms），是"交接"不是"叠影"
+      switchInCurve: const Interval(.30, 1, curve: kOut),
+      layoutBuilder: (Widget? current, List<Widget> previous) => Stack(
+        alignment: Alignment.topCenter,
+        children: <Widget>[...previous, ?current],
+      ),
       transitionBuilder: (Widget child, Animation<double> a) {
-        final Animation<double> e = CurvedAnimation(
-          parent: a,
-          curve: Curves.easeOut,
-        );
-        final bool entering = a.status == AnimationStatus.reverse;
+        // 有向滑动：往深处走 = 内容整体左移（新的从右边来），返回时反过来。
+        // 方向 = 「这个子节点是不是当前这一层」×「现在是进还是退」。
+        // ⚠️ 别再用 `a.status` 猜进出：两条分支会算成同一边（旧写法就是这样，
+        //    于是新旧一起往左跑）。
         final bool isMenu = (child.key as ValueKey<String>?)?.value == 'menu';
-        final double from = entering
-            ? (isMenu ? -.08 : .12)
-            : (isMenu ? .12 : -.08);
+        final bool incoming = (isMenu ? 0 : 1) == curDepth;
+        final bool deeper = curDepth == 1;
+        final double from =
+            (incoming ? .12 : .08) * (incoming == deeper ? 1 : -1);
         return SlideTransition(
           position: Tween<Offset>(
             begin: Offset(from, 0),
             end: Offset.zero,
-          ).animate(e),
-          child: FadeTransition(opacity: e, child: child),
+          ).animate(a),
+          child: FadeTransition(opacity: a, child: child),
         );
       },
       child: c == null
