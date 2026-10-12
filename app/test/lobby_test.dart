@@ -93,15 +93,36 @@ void main() {
   });
 
   group('HUD', () {
-    testWidgets('名字 / 称号 / 连击 / 金币 / 等级都渲染', (WidgetTester tester) async {
+    testWidgets('名字 / 称号 / 金币 / 等级都渲染', (WidgetTester tester) async {
       await _mount(tester, const Hud(state: HostState.demo));
       expect(find.text('林深'), findsOneWidget);
       expect(find.text('「惯犯」'), findsOneWidget);
       expect(find.text('340'), findsOneWidget);
       expect(find.text('7'), findsOneWidget);
       expect(find.text('LV'), findsOneWidget);
-      expect(find.textContaining('连击'), findsWidgets);
+      // ⚠️ 「连击」已**摘出** `.hud-who`，成了独立的 [StreakPill]（宿主 2026-10-11
+      //    「给它换个位置」；main.dart 里以 `visible:false` 挂载）——它不再属于
+      //    `Hud`，所以断言搬到了下面那条 StreakPill 用例里，这里不要它。
       expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('连击药丸（已摘出 Hud）：读数照旧，visible 只管透明度不管存在', (
+      WidgetTester tester,
+    ) async {
+      await _mount(tester, const StreakPill(streak: 12));
+      // ⚠️ 读数走 `Text.rich`（数字要单独换字体），所以断言必须开 findRichText ——
+      //    `find.text` 只认 `Text.data`，span 里的字它看不见。
+      expect(find.textContaining('连击', findRichText: true), findsOneWidget);
+      expect(find.textContaining('12', findRichText: true), findsOneWidget);
+
+      // 0 连击 → 破折号，不冒数字
+      await _mount(tester, const StreakPill(streak: 0));
+      expect(find.textContaining('连击 —', findRichText: true), findsOneWidget);
+
+      // visible:false 是「淡出」不是「移除」（main.dart 现在就是这个状态）——
+      // 文字仍在树里，靠 AnimatedOpacity 压到 0
+      await _mount(tester, const StreakPill(streak: 5, visible: false));
+      expect(find.textContaining('连击', findRichText: true), findsOneWidget);
     });
 
     testWidgets('各件落在原型实测坐标上', (WidgetTester tester) async {

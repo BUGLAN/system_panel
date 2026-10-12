@@ -16,8 +16,11 @@ import 'package:system_panel/data/rewards.dart';
 import 'package:system_panel/data/titles.dart';
 import 'package:system_panel/state/host_state.dart';
 import 'package:system_panel/state/quest_flow.dart';
+import 'package:system_panel/state/goal.dart';
+import 'package:system_panel/widgets/card_table.dart';
 import 'package:system_panel/widgets/radar.dart';
 import 'package:system_panel/widgets/sheet.dart';
+import 'package:system_panel/widgets/table_overlay.dart';
 
 /// 投影面板 · 档案（面板外壳 / 六维雷达 / 战绩 / 称号）与系统页二级菜单。
 /// 坐标断言来自运行中原型的实测值。
@@ -561,7 +564,9 @@ void main() {
       expect(texts.any((String s) => s.contains('/ 340')), isFalse);
     });
 
-    testWidgets('四格战绩 + 12 个称号 + 4 件道具都在', (WidgetTester tester) async {
+    testWidgets('四格战绩 + 称号入口（名牒册）；道具段与就地 chip 都已按宿主指定撤掉', (
+      WidgetTester tester,
+    ) async {
       await _mount(tester, const Sheet(host: HostState.demo));
       for (final String t in <String>['31', '6', '4']) {
         expect(find.text(t), findsWidgets);
@@ -569,14 +574,31 @@ void main() {
       for (final String t in <String>['完成', '暴击', '认输', '最长连击']) {
         expect(find.text(t), findsOneWidget);
       }
-      // 称号是**就地挂**的名牒 chip（D6）：拿到的实心、没拿到的写「？？？ · 提示」
-      expect(find.text('惯犯'), findsOneWidget);
-      expect(find.textContaining('？？？ · 完成一张 S 级'), findsWidgets);
-      expect(find.byKey(const Key('sheet.title.crit')), findsOneWidget);
-      // ⚠️ 「道具」那一段**已按宿主指定删除**（2026-10-11：主页面已有，显示冗余）——
-      //    四件道具的持有数在补给货架（sheet.shop）上都有，所以这里不再断言道具名。
+      // ⚠️ 2026-10-11 宿主裁定：「这两个是同一个东西，保留下面的，重命名为称号」——
+      //    就地挂的 12 枚 chip（`sheet.title.<id>`）改成**一枚名牒册入口**，
+      //    点它拉起悬浮牌桌（`TableOverlay(TableScene.titles)`）。
+      //    称号内容本体（惯犯 / ？？？）的断言搬到下面 D6 组，那里才有牌。
+      expect(find.byKey(const Key('sheet.titles')), findsOneWidget);
+      expect(find.text('名牒册'), findsOneWidget);
+      expect(find.text('7/12 张'), findsOneWidget, reason: '入口要回显已得张数');
+      expect(find.byKey(const Key('sheet.title.crit')), findsNothing);
+      // 「道具」那一段**已按宿主指定删除**（主页面已有，显示冗余）——
+      // 四件道具的持有数在补给货架（`TableOverlay` 的 `持有 ×N`）上都有。
       expect(find.byKey(const Key('sheet.inv')), findsNothing);
       expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('名牒册入口点得动 → 回调到宿主（拉起悬浮牌桌）', (WidgetTester tester) async {
+      int opened = 0;
+      await _mount(
+        tester,
+        Sheet(host: HostState.demo, onOpenTitles: () => opened++),
+      );
+      final Finder entry = find.byKey(const Key('sheet.titles'));
+      await tester.ensureVisible(entry);
+      await tester.pumpAndSettle();
+      await tester.tap(entry);
+      expect(opened, 1);
     });
 
     testWidgets('最弱那一维的轴名在雷达里（不抛异常）', (WidgetTester tester) async {
@@ -600,78 +622,132 @@ void main() {
   });
 
   group('D6 · 称号佩戴（store.js equip 语义）', () {
-    testWidgets('点已解锁称号 → 触发佩戴回调', (WidgetTester tester) async {
+    testWidgets('名牒册牌桌：点已解锁称号的领位 → onEquip 收到正确 id', (WidgetTester tester) async {
       _mockPrefs();
       String? equipped;
+      // `crit` 在 HostTitle.all 里是第 3 张（0 基 2）—— 把它送到领位再点，
+      // 牌桌的语义是「点领位 = 落定」。
       await _mount(
         tester,
-        Sheet(
+        TableOverlay(
+          scene: TableScene.titles,
           host: HostState.demo,
-          onEquipTitle: (String id) => equipped = id,
+          initialLead: 2,
+          onEquip: (String id) {
+            equipped = id;
+            return null; // 换档由宿主决定，这里只看回调有没有带对 id
+          },
         ),
       );
-      // 称号区在雷达/战绩下面，先把目标 chip 滚进视口再点
-      await tester.ensureVisible(find.byKey(const Key('sheet.title.crit')));
       await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const Key('sheet.title.crit')));
+      await tester.tapAt(tester.getCenter(find.byType(CardTable)));
+      await tester.pumpAndSettle();
       expect(equipped, 'crit');
     });
 
-    testWidgets('口头巨人生效中：换挂全部禁止（耻辱章摘不掉）', (WidgetTester tester) async {
+    testWidgets('未解锁的称号点不动（领位落在「？？？」上也不回调）', (WidgetTester tester) async {
       _mockPrefs();
       String? equipped;
+      // rankS 未在 demo 的 ownedTitles 里 → 牌上写「？？？」，enabled:false
       await _mount(
         tester,
-        Sheet(
-          host: HostState.demo.copyWith(title: 'mouth'),
-          onEquipTitle: (String id) => equipped = id,
-        ),
-      );
-      await tester.ensureVisible(find.byKey(const Key('sheet.title.first')));
-      await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const Key('sheet.title.first')));
-      await tester.tap(find.byKey(const Key('sheet.title.mouth')));
-      expect(equipped, isNull);
-    });
-
-    testWidgets('未解锁的称号点不动', (WidgetTester tester) async {
-      _mockPrefs();
-      String? equipped;
-      await _mount(
-        tester,
-        Sheet(
+        TableOverlay(
+          scene: TableScene.titles,
           host: HostState.demo,
-          onEquipTitle: (String id) => equipped = id,
+          initialLead: 9,
+          onEquip: (String id) {
+            equipped = id;
+            return null;
+          },
         ),
       );
-      await tester.ensureVisible(find.byKey(const Key('sheet.title.rankS')));
       await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const Key('sheet.title.rankS')));
+      expect(find.text('？？？'), findsWidgets);
+      await tester.tapAt(tester.getCenter(find.byType(CardTable)));
+      await tester.pumpAndSettle();
       expect(equipped, isNull);
+      expect(tester.takeException(), isNull);
     });
 
-    testWidgets('佩戴回调链路全程：宿主侧换档重挂 → 档案头称号跟随', (WidgetTester tester) async {
+    testWidgets('未解锁的不显示真名，只给提示（不剧透）', (WidgetTester tester) async {
       _mockPrefs();
-      HostState host = HostState.demo;
-      Sheet build() => Sheet(
-            host: host,
-            onEquipTitle: (String id) {
-              // 宿主侧（T2 接 QuestFlow.equip）的语义：owned && title!=='mouth'
-              if (host.ownedTitles.contains(id) && host.title != 'mouth') {
-                host = host.copyWith(title: id);
-              }
-            },
-          );
-      await _mount(tester, build());
-      await tester.ensureVisible(find.byKey(const Key('sheet.title.crit')));
-      await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const Key('sheet.title.crit')));
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(body: Stack(children: <Widget>[build()])),
+      await _mount(
+        tester,
+        TableOverlay(
+          scene: TableScene.titles,
+          host: HostState.demo,
+          initialLead: 9,
         ),
       );
-      expect(find.text('「被暴击眷顾」'), findsOneWidget); // arTop 的称号行
+      await tester.pumpAndSettle();
+      // ⚠️ 牌桌把 12 张全铺出来（领位两侧都露边），所以「惯犯」在树上是对的
+      //    —— 要断言的是**未解锁那张**有没有漏真名。
+      expect(find.text('？？？'), findsWidgets);
+      expect(find.text('S 级幸存者'), findsNothing, reason: 'rankS 未解锁 → 不许漏真名');
+      expect(find.textContaining('完成一张 S 级'), findsWidgets, reason: '给提示，不给名字');
+      // 已拥有的照常显示真名（对照组，免得「全藏起来」也算过）
+      expect(find.text('惯犯'), findsWidgets);
+    });
+
+    testWidgets('领位默认落在**当前佩戴**的那张（打开册子手指就在戴着的牌上）', (
+      WidgetTester tester,
+    ) async {
+      _mockPrefs();
+      await _mount(
+        tester,
+        const TableOverlay(scene: TableScene.titles, host: HostState.demo),
+      );
+      await tester.pumpAndSettle();
+      // demo.title = done15（惯犯）→ 领位应当是它，牌面上带「已佩戴」角标
+      expect(find.text('惯犯'), findsWidgets);
+      expect(find.text('已佩戴'), findsWidgets);
+    });
+  });
+
+  group('D6 · 佩戴语义本体（QuestFlow.equip，store.js equip L385）', () {
+    QuestFlow flowWith(HostState h) => QuestFlow(host: h, goal: Goal.empty());
+
+    test('已解锁 → 换挂成功，host.title 真的变了', () {
+      final QuestFlow f = flowWith(HostState.demo);
+      expect(f.equip('crit'), isTrue);
+      expect(f.host.title, 'crit');
+    });
+
+    test('未解锁 → false，且 title 一动不动', () {
+      final QuestFlow f = flowWith(HostState.demo);
+      expect(f.host.ownedTitles.contains('rankS'), isFalse, reason: '前提：demo 没有 rankS');
+      expect(f.equip('rankS'), isFalse);
+      expect(f.host.title, HostState.demo.title);
+    });
+
+    test('「口头巨人」生效中：换挂全部禁止 —— 耻辱章摘不掉', () {
+      // 先把 mouth 塞进已解锁，确保拦住它的是**强制期**而不是「未解锁」
+      final HostState shame = HostState.demo.copyWith(
+        title: 'mouth',
+        ownedTitles: <String>[...HostState.demo.ownedTitles, 'mouth'],
+      );
+      final QuestFlow f = flowWith(shame);
+      expect(f.equip('crit'), isFalse, reason: '强制期不许换下去');
+      expect(f.equip('mouth'), isFalse);
+      expect(f.host.title, 'mouth', reason: '耻辱章必须还戴在身上');
+    });
+
+    test('换挂成功会通知存档（_notify → 宿主侧落盘）', () {
+      final QuestFlow f = flowWith(HostState.demo);
+      int notified = 0;
+      f.onChanged = () => notified++;
+      expect(f.equip('crit'), isTrue);
+      expect(notified, 1);
+      // 被拦下的两次不该产生任何存盘通知
+      final HostState shame = HostState.demo.copyWith(
+        title: 'mouth',
+        ownedTitles: <String>[...HostState.demo.ownedTitles, 'mouth'],
+      );
+      final QuestFlow g = flowWith(shame);
+      int notified2 = 0;
+      g.onChanged = () => notified2++;
+      expect(g.equip('crit'), isFalse);
+      expect(notified2, 0);
     });
   });
 
