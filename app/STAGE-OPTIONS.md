@@ -746,3 +746,215 @@ Flutter 里键盘不会像 web 那样"点空白自然失焦"，必须显式 unfo
 复现受限说明：远程 `requestFocus` 在 iOS 上**不保证弹出软键盘**
 （诊断日志确认焦点已生效但键盘未出现）⇒ 键盘弹起态的复现需要真手点输入框。
 修好的行为（点空白收键盘）已并入 `_onStageDown`。
+
+---
+
+## Android（MuMu）· 「比原始数据网页模糊」逐层排查（2026-10-12）
+
+> 宿主原话：「为啥我感觉这个比较模糊，右边是原始数据的网页」——对照图是
+> MuMu 窗口里的 App（全身）vs 模型浏览网页里的人脸特写。
+> 证据留档：`.verify/l2d-clarity/`（对照图、A/B、量测脚本产物，不入库）。
+
+### 一、先把"她是不是本来就该这么大"钉死（尺寸账）
+
+| 量的是什么 | App（MuMu 780×1688 物理） | 原始播放器（同屏同尺寸复刻） |
+|---|---|---|
+| 她占屏高 | 1318 px（78%） | 1376 px（81.5%） |
+| 两眼间距 | **68.3 px** | ≈ 82 px（同款播放器、同一份数据） |
+| 参考网页里两眼间距 | — | **386 px ≈ App 的 5.7×** |
+
+⇒ 参考网页是**人脸特写**：那边把她放大 5.7 倍显示。**尺寸差占了"觉得糊"的一大半**，
+这一条不是 bug（她在手机上就该是全身构图）。
+
+### 二、真正的渲染差异：缩小采样 + mip 预模糊
+
+| 环 | 事实 | 证据 |
+|---|---|---|
+| ① 素材没被压 | App 两张贴图 vs `sakiko_orig/` 原始 PNG | **sha256 完全一致** |
+| ② 贴图被缩小采样 | 贴图里虹膜 ≈ 60~77 px，App 里 ≈ 30 px | 缩小 **≈ 2×** |
+| ③ 插件强制 mipmap 过滤 | `MIN_FILTER = GL_LINEAR_MIPMAP_LINEAR` | Android 两处：`Live2DTextureManager.cpp:44` + `CubismShader_OpenGLES2.cpp:1113`（**绘制时每张 drawable 重设**，只改前者会纹理不完整→黑剪影） |
+| ④ 原始数据自己的采样配置 | `mipCount: 1` / `m_FilterMode: 1`（= LINEAR，**没有 mip 链**） | `sakiko_orig` prefab 的贴图节点 |
+| ⑤ 于是缩小 2× 时 GPU 选到 **mip1**（1024²） | 等于先把贴图糊一半再采样 | ①②③ 的直接推论 |
+
+**同机 A/B（只改这两处，其余不动）**：
+
+| | 静态面膜窗口高频能量 | 运动中 8 帧均值 | 观感 |
+|---|---|---|---|
+| 现状（mipmap） | 23.96 | 11.2（13.9→8.9） | 柔和、无锯齿 |
+| 关 mipmap（LINEAR） | **30.94（+29%）** | **16.3（+45%）** | 明显更利，细线（睫毛/发丝）有轻微锯齿 |
+
+（运动对照产物：`.verify/l2d-clarity/motion_strip_mip_vs_linear.png`、
+`motion_ab.gif`；两段都是「戳一下 → 连拍 8 帧」，帧号对齐并排，不是同一段动作，
+看的是**质感**不是逐帧对齐。）
+
+⇒ 这就是"我们的原生路径 vs 原始播放器"的**唯一实质差异**：原始数据本来就没开 mip 链，
+我们这条路径开了；在**缩小**场景下 mip1 会把笔触吃掉。**放大**场景（例如宿主参考的
+那个网页、或把她推近的 `talk` 机位）两边都不选 mip，所以那时看不出差别。
+
+### 三、怎么切（一条命令）
+
+`tools/l2d/patch_plugin.py` 现在两端都能打（默认 `--target all`）：
+
+```bash
+python tools/l2d/patch_plugin.py --target android   # 关 mipmap → 更利（当前状态）
+python tools/l2d/patch_plugin.py --revert           # 还原原版 → 更柔、更稳
+```
+
+- 只改本机 pub 缓存，**不入库**（版权红线同模型数据）；`flutter pub cache repair`
+  后要重跑。
+- 改完 `flutter build apk --debug --target-platform android-x64` + 安装即可（增量约十几秒）。
+
+### 四、取舍（待宿主定）
+
+- **LINEAR（当前）**：与游戏原始数据一致、明显更利；代价是**缩小 2× 时细线会走样**，
+  运动（呼吸/转头）时可能有轻微蠕动感 —— 2026-10-11 iOS 上宿主曾判过「变差了」，
+  彼时 iOS 渲染尺寸更接近 1:1，走样更刺眼；Android 这边还被 1.14× 超采样摊薄了一点。
+- **mipmap（原版）**：稳、不闪，但比原始数据软一档。
+- ⚠️ 这条**不是"哪个对"的技术题，是观感取舍** —— 交给宿主在真机上看运动中的表现再定。
+
+**同段编排的录屏对照（2026-10-12 补，产物 `.verify/l2d-clarity/`）**：
+`record.sh` 录同一段「唤醒 → 待机 → 【委托】推近(talk) → 【等会儿】拉回」，
+只换过滤、其余（数据 v9 / 编排 / 机位）完全一致：
+
+| 产物 | 看什么 |
+|---|---|
+| `face_zoom_ab.mp4` | 待机段**脸部 2× 并排**：左=mipmap、右=LINEAR → 差别最清楚的地方 |
+| `full_ab.mp4` | 整段编排**原生分辨率并排**（1560×1688）：看推近/拉回时各自的稳定度 |
+| `closeup_ab.png` | talk 机位（推近）定格并排 → **两边几乎一样** |
+
+⇒ 结论坐实：**差别只在"她小的时候"**（缩小采样）；推近到 talk 机位时贴图在放大，
+mip 链不参与，两种设置**看不出区别**（格纹裙线条的锐度完全一致）。所以取舍的本质是
+"大厅全身那一档，你要利还是要稳"。
+
+### 五、顺带查实：blend-mode 离屏 FBO 那条**对本模型不成立**（已排除）
+
+原怀疑：SDK 在 `model.IsBlendModeEnabled()` 为真时会把整个模型先画进
+`_modelRenderTargets[0]`，而那张 FBO 的尺寸来自 `CreateRenderer(w,h)`
+（= **加载那一刻的视图尺寸**）；插件 `nativeOnSurfaceChanged` 只改 viewport/投影/
+模型矩阵、**不调 `SetRenderTargetSize`** —— 若成立，切族（1.05↔1.70）后模型就是
+用旧尺寸 FBO 放大贴上去的（越推越糊）。
+
+**实测（2026-10-12 · MuMu）：在 `CubismRenderer_OpenGLES2::BeforeDrawModelRenderTarget`
+里打一次性日志（打完即撤，不留痕）：**
+
+```
+SysL2DProbe: [probe] viewport=1181x1772 target=1181x1772 fboCount=0 blendMode=0 offscreenCount=0
+```
+
+- `blendMode=0` ⇒ `IsBlendModeEnabled()` 为假，`fboCount=0` ⇒ **离屏 FBO 路径根本没走**，
+  模型直接画进平台视图 ⇒ 这条隐患对 sakiko **不成立**（那条"FBO 尺寸不更新"仍是真的
+  代码事实，只是没触发；将来换用带 blend mode 的模型要重验）。
+- 顺带钉死了几何账：**平台视图 = 1181×1772 物理像素**（= 逻辑 590.5×885.8 × DPR 2），
+  与 `family 1.05` 的推算**完全一致**；`Transform.scale(0.876)` 之后她占屏 1552 px。
+  即整条链路只有**一次**重采样（贴图→视图），合成那一步是超采样缩小、不是放大。
+  ⇒ 「糊」这件事**只可能来自贴图缩小采样**，与合成/FBO 无关（这也解释了为什么
+  1.14× 超采样没能救回细节：mip1 已经把细节吃掉了）。
+
+---
+
+## 六、「默认这张脸不对 / 眼睛弄错了」—— 表情 Blend 枚举映射错位（2026-10-12 已修）
+
+> 宿主原话：「我认为默认的这个眼睛好像弄错了」，并给出数据来源
+> <https://github.com/StarMoe-org/moenotes>。
+
+### 根因（一句话）
+
+`tools/l2d/convert.py` 把 prefab 的 `Blend` 整数**当成与 exp3.json 同序**直接搬，
+但两者**不是同一套枚举**：
+
+| 语义 | prefab（Unity `CubismParameterBlendMode`） | exp3.json（SDK `csmExpressionBlendType`） |
+|---|---|---|
+| Override / Overwrite | **0** | 2 |
+| Add | **1** | 0 |
+| Multiply | **2** | 1 |
+
+**证据不是推断**——上游播放器自己的实现就在仓库里
+（`app/assets/live2d/vendor/ournotes-live2d.element.min.js`）：
+
+```js
+if (m && (m.blend===1 ? d=m.v : m.blend===2 ? y=m.v : _=m.v)) …   // d=add, y=mul, _=ov
+… e.override(i.i, (add + override) * multiply, weight)
+```
+
+即 prefab 的 `1→Add`、`2→Multiply`、其余`→Override`，最终值 `(add + override) × multiply`。
+prefab 里 28 个表情共 2018 条参数，Blend 整数只有 `{1: 1962, 2: 56}`。
+
+### 错位之后发生了什么
+
+- prefab 的 **`Additive 0`**（1962 条，语义 = "加 0" = 什么都不做）被写成
+  **`Multiply 0`** ⇒ **参数被清零**。而 `exp_idle01` 正是大厅待机那张脸：
+  `ParamCheek=0`（**腮红没了**）、`ParamEyeLHighlight/RHighlight=0`（**瞳孔高光没了**）、
+  `ParameyelidL/R=0`（眼皮形变参数钉死）、`ParamMouthForm=0`（嘴形）……
+  ⇒ 默认这张脸与原数据**不是同一张脸**（宿主一眼看出"眼睛不对"）。
+- prefab 的 **`Multiply 1.0`**（`ParamEyeLOpen/ROpen`）被写成 **`Overwrite 1.0`**
+  ⇒ 表情每帧覆写眼睑 ⇒ **眨眼被盖死** —— 这正是 v8「剥掉眼睑 = 1.0 的 Overwrite
+  钉死」补丁的由来；映射修正后同一条变成 `Multiply 1.0`（乘 1 = 空操作），
+  **眨眼天然恢复，补丁作废并已删除**。
+
+### 修复
+
+1. `convert.py`：`BLEND = {0:"Overwrite", 1:"Add", 2:"Multiply"}` + 长注释留证据链；
+   删掉 v8 的剥参数逻辑（**不要再删任何参数**，删了就与原数据不一致）。
+2. 重跑 `python tools/l2d/convert.py`（64 动作 / 32 表情 / 18 组，产物一致）。
+3. `app/lib/stage/live2d_stage.dart`：`modelDataVersion` **8 → 9**（触发重新解压，
+   绕开插件那份无内容指纹的资产缓存）。
+4. 代码级检查：`flutter analyze` 无问题、`flutter test test/stage_port_test.dart` 26/26 通过。
+
+### 验收（MuMu，与原始播放器同屏同尺寸、按眼距归一后对照）
+
+- `exp_idle01` 条目：72 条 = **70 个 `Add 0` + 2 个 `Multiply 1.0`**（全是空操作，
+  不再清零任何参数）；对照旧版是 70 条 `Multiply 0`（清零）。
+- 截图对照 `.verify/l2d-clarity/v9_default_vs_web.png`：**腮红、瞳孔高光、眼皮/嘴形
+  全部回来了**，与原始播放器的默认脸一致。
+- 眨眼回归：连拍 16 帧，「金色虹膜」像素数 `[…, 0, …]` —— 有整帧全闭 ⇒ **眨眼正常**
+  （证明删掉 v8 补丁没有副作用）。
+
+### 教训（写给下一次）
+
+**"枚举同序"是一种假设，不是事实。** 两份数据之间的任何整数枚举，都要拿**对方的
+实现**（仓库里的 vendor JS / 官方 SDK 头）对照，而不是凭名字猜。这次错的代价是：
+每个表情的所有参数都在悄悄走错分支，而**画面看起来"只是有点不对"**，很容易被
+归到"糊""渲染问题"上去 —— 宿主两次都先怀疑渲染，直到拿原始网页并排才暴露。
+
+---
+
+## 七、删除 WebView 降级路线（2026-10-12 · 宿主拍板）
+
+**宿主原话**：「既然我们已经能够切换到原生了, webview的逻辑就可以删除了吧」；
+触发这句的是上一轮实测：「现在点击和拖动 没有动作了」——那正是切到 WebView
+路线（`kNativeStage=false`）之后的现象。
+
+### 为什么这条路线该删（两条硬理由）
+
+1. **它触摸是断的**（就是宿主踩到的那个）。`live2d_web.dart` 里 WebView 包在
+   `IgnorePointer` 内（"平台视图会吃掉触摸，交给上面那层 Flutter UI"），而
+   `assets/stage/stage.js` **从来没有把指针事件转发给播放器**（只有
+   `error/unhandledrejection/progress/ready/error` 四个监听）。
+   于是"她的眼睛/头跟着手指"和拖动反馈在这条路线上**根本不存在**。
+   原生那条能拿到触摸：`Live2DStage` 里 `IgnorePointer(ignoring: false)`，
+   插件的平台视图自带 DragManager（2026-10-11 宿主验收"主界面像死人一样"时改的）。
+2. **当初保留它的归因已被推翻**。留降级路线的理由是「MuMu 的 emugl 转译层与插件
+   不兼容」→ 真因是 `flutter_live2d` 不打包 Android shader 资产（`docs/35`、
+   本文件「2026-10-12 复盘」）。shader 已由 `build.gradle.kts` 的 `syncLive2dShaders`
+   在构建期补包并 `check()`，漏了会**构建失败**而不是"静默黑屏"。
+
+### 删了什么 / 留了什么
+
+| 处置 | 内容 |
+|---|---|
+| **删** | `lib/stage/live2d_web.dart`；`stage_port.dart` 里的 `WebStagePort`；`main.dart` 的 `import`、`kNativeStage`、`_stageFallback`、`Live2DWeb(...)` 分支 |
+| **不再打包** | `pubspec.yaml` 里 `assets/stage/`、`assets/live2d/vendor/`、`assets/live2d/sakiko_orig/{models,assets}/` 四条声明（APK 少 ~6.2 MB） |
+| **文件留在磁盘** | `app/assets/live2d/sakiko_orig/` = **`tools/l2d/convert.py` 的输入**（删了就没法重新生成 `sakiko/`）；`vendor/` + `stage/` = 原始播放器与舞台页，作为"原始渲染长什么样"的**参照真源**（Blend 枚举那条结论就是从 vendor 里读出来的） |
+| **失败降级改成** | `Live2DStage` 自己收掉平台视图 → 露出天幕下的**全息剪影**（`onFailed` 只打日志，不再切路线） |
+
+### 验证
+
+- `flutter analyze`：无 error（3 条 info 在别人未提交的 `main_view.dart` / `terminal_ui.dart` 里）。
+- `flutter test`：**+653 -3**；那 3 条是 `onboard_test.dart` 的输入框布局用例
+  （期望 810 / 实际 822），**把本轮改动 stash 掉后同样失败** ⇒ 存量问题，与本轮无关。
+- 装到 MuMu 实测：原生上屏、`舞台按下 … 命中她=true`、戳她有反应（宿主可直接复看）。
+
+### 代价（宿主已知情）
+
+没有第二条渲染路线兜底了：若某台设备上原生加载失败，她只剩全息剪影。
+原生侧此前已知的失败模式都已被构建期 `check()` 或加载重试覆盖。
