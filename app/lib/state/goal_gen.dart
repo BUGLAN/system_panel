@@ -1525,7 +1525,8 @@ List<NextRingSpec> nextRingSpecs(
   ];
 }
 
-/// 长链环参数表（**计划版**）—— 内容来自 LLM 拆解（[GoalPlanner]），
+/// 长链环参数表（**计划版**）—— 内容来自 LLM 拆解（agent 循环里她调
+/// `set_mainline` 交上来的环，见 `agent/mainline_tool.dart`），
 /// 阶梯仍按规则收口：
 ///
 ///  ① **内容**（short / title / proof）整条听计划的 —— 这才是「真的拆了那句话」。

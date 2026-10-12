@@ -9,7 +9,8 @@ import 'package:flutter/services.dart';
 
 import 'agent/copy.dart';
 import 'agent/context_adapter.dart';
-import 'agent/goal_planner.dart';
+import 'agent/mainline_agent.dart';
+import 'agent/mainline_tool.dart';
 import 'agent/llm_client.dart';
 import 'agent/llm_gateway.dart';
 import 'agent/memory.dart';
@@ -363,10 +364,10 @@ class _AppShellState extends State<AppShell>
   String? _probeLine; // 追问（绑定仪式）
   String? _dispatchLine; // 发布（派单板）
 
-  /// 目标拆解的预取态：[_planFor] 是它对应的那句话（换目标/重绑会换句，
+  /// 立主线的预取态：[_planFor] 是它对应的那句话（换目标/重绑会换句，
   /// 只有对得上才采用，免得把上一句话的链安到新目标头上）。
   String? _planFor;
-  Future<GoalPlan?>? _planFuture;
+  Future<MainlineResult>? _planFuture;
 
   /// 聊天消息 id（会话内唯一即可）
   int _chatSeq = 0;
@@ -375,8 +376,9 @@ class _AppShellState extends State<AppShell>
   /// LLM 网关 + 文案/聊天服务（initState 异步装配；没配 Key 也能跑，全走兜底）
   SystemCopyProvider? _copy;
 
-  /// 目标拆解（docs/06）：宿主那句话 → 环链内容。没配 Key / 失败 → 类别模板兜底
-  GoalPlanner? _planner;
+  /// 立主线的 agent 循环（docs/06）：她 get_status → set_mainline → 解释。
+  /// 没配 Key / 她没交 / 循环用尽 → 类别模板兜底
+  MainlineAgent? _mainlineAgent;
   ChatService? _chatService;
 
   /// 当前 LLM 客户端（TODO-07 网关热更：设置变更时关旧建新，连接池不泄漏）
@@ -466,7 +468,7 @@ class _AppShellState extends State<AppShell>
       _llmClient = client;
       _memory = mem;
       _copy = SystemCopyProvider(llm: gw, memory: mem);
-      _planner = GoalPlanner(llm: gw);
+      _mainlineAgent = MainlineAgent(client: client, memory: mem);
       _agentTools = reg;
       _chatService = ChatService(
         gateway: gw,
@@ -698,7 +700,12 @@ class _AppShellState extends State<AppShell>
     // 她先想一下：拆解是真网络请求，不能让界面看着像卡住
     setState(() => _goalChangeOn = false);
     _sayAside('……行，让我把这条拆开。', holdMs: 1400);
-    _prefetchPlan(typed, detectCategory(typed), ringCount: n);
+    _prefetchPlan(
+      typed,
+      detectCategory(typed),
+      ringCount: n,
+      withStatus: true, // 换目标时状态是真的：让她先看清再拆
+    );
     final List<RingSpec>? planned = await _takePlan(
       typed,
       ringCount: n,
@@ -1805,19 +1812,81 @@ class _AppShellState extends State<AppShell>
     // 趁她在答访谈卡（几秒到几十秒），**先把拆解跑起来** ——
     // 等访谈答完再发请求就白等一轮网络；这里预取，`_completeOnboarding`
     // 里直接取（答案通常是现成的，取不到才等 [kPlanWaitOnConsume]）。
-    _prefetchPlan(typed, _interviewCat!, ringCount: kFirstGoalDays);
+    _prefetchPlan(
+      typed,
+      _interviewCat!,
+      ringCount: kFirstGoalDays,
+      withStatus: false, // 绑定期还没有真档案，别让她读演示档
+    );
   }
 
-  /// 预取「这句话的拆解」。失败静默（null）—— 组装时自然退回类别模板。
-  void _prefetchPlan(String text, GoalCategory cat, {required int ringCount}) {
-    final GoalPlanner? planner = _planner;
+  /// 预取「这一句话的主线」。失败静默（`hasRings=false`）—— 组装时自然退回类别模板。
+  ///
+  /// [withStatus]：绑定仪式**不给** `get_status` —— 那一刻 `_flow` 还是演示档，
+  /// 让她读会读出一份假档案；换目标时才给（那时状态是真的）。
+  void _prefetchPlan(
+    String text,
+    GoalCategory cat, {
+    required int ringCount,
+    bool withStatus = false,
+  }) {
+    final MainlineAgent? agent = _mainlineAgent;
     _planFor = text;
-    _planFuture =
-        planner?.plan(goalText: text, ringCount: ringCount, cat: cat);
+    if (agent == null) {
+      _planFuture = null;
+      return;
+    }
+    final MainlineDraft draft = MainlineDraft();
+    _planFuture = agent.run(
+      goalText: text,
+      ringCount: ringCount,
+      tools: _mainlineTools(
+        goalText: text,
+        ringCount: ringCount,
+        draft: draft,
+        withStatus: withStatus,
+      ),
+      draft: draft,
+      statusLine: withStatus ? _statusLineForAgent() : null,
+    );
   }
 
-  /// 取预取的拆解结果。**最多等 [kPlanWaitOnConsume]** —— 宿主已经走到
-  /// 「该铸环了」，不能为了好听让她多等一个 20s 超时。
+  /// 立主线这一轮给她哪些工具。
+  ///
+  /// ⚠️ 只给「读状态 / 翻记忆 / 交主线」——**不给** `swap_quest` /
+  ///    `adjust_plan`：换主线时的队列手术由 `_onGoalChangeSubmitted` 自己做，
+  ///    让她同一轮里既换主线又动队列会打架（而且拉长这一轮的往返）。
+  AgentToolRegistry _mainlineTools({
+    required String goalText,
+    required int ringCount,
+    required MainlineDraft draft,
+    required bool withStatus,
+  }) {
+    final AgentToolRegistry reg = AgentToolRegistry();
+    final AgentToolRegistry? base = _agentTools;
+    if (withStatus && base != null) {
+      for (final String name in <String>['get_status', 'recall', 'remember']) {
+        final AgentTool? t = base.tool(name);
+        if (t != null) reg.register(t);
+      }
+    }
+    reg.register(
+      setMainlineTool(goalText: goalText, ringCount: ringCount, draft: draft),
+    );
+    return reg;
+  }
+
+  /// 给她的「宿主档案」一行（`Persona.buildConversation` 的 statusLine 位）
+  String _statusLineForAgent() {
+    final Goal g = _goal;
+    return '${_host.name} · LV${_host.lv} · 连击 ${_host.streak}（最好 ${_host.bestStreak}）· '
+        '◈${_host.coins} · 完成 ${_host.doneCount} · 战败 ${_host.failCount} · '
+        '最弱维 ${_host.weakest.key}${_host.weakest.value}\n'
+        '现主线：${g.text.isEmpty ? '（无）' : '「${g.text}」第 ${g.rings.isEmpty ? 0 : g.currentIndex + 1}/${g.rings.length} 环'}';
+  }
+
+  /// 取预取的主线环。**最多等 [wait]** —— 宿主已经走到「该铸环了」，
+  /// 不能为了好听让她多等一整轮工具循环的超时。
   Future<List<RingSpec>?> _takePlan(
     String text, {
     int? ringCount,
@@ -1825,10 +1894,11 @@ class _AppShellState extends State<AppShell>
   }) async {
     if (_planFor != text || _planFuture == null) return null;
     try {
-      final GoalPlan? plan = await _planFuture!.timeout(wait);
-      if (plan == null) return null;
-      if (ringCount != null && plan.rings.length != ringCount) return null;
-      return plan.rings;
+      final MainlineResult r = await _planFuture!.timeout(wait);
+      final List<RingSpec>? rings = r.rings;
+      if (rings == null || rings.isEmpty) return null;
+      if (ringCount != null && rings.length != ringCount) return null;
+      return rings;
     } catch (_) {
       // 超时 / 失败：当没说（调用方走模板）
       return null;
