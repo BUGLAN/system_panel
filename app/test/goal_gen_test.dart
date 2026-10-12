@@ -625,6 +625,63 @@ void main() {
       expect(mids[3].minutes, greaterThan(mids[0].minutes));
     });
 
+    test('⚠️ 整条链单调不减：档位与时长都不许倒退（2026-10-12 宿主存档回归）', () {
+      // 真机存档实测到的坏链：… 加码3 = S · 41 分钟 → 加码4 = **E · 7 分钟**
+      // → 兑现 = S · 120 分钟。档位与时长一起绕回，长链最后一段比开头还轻。
+      // 根因：档位取 `i % kNextGoalRankSeq.length`、时长取 `seed × 1.35` 单级
+      //（不参考上一环），8 环时正好绕回 'E'。
+      //
+      // 口径：**档位**约束全链（起步环 E/D/C 本来就是升的）；
+      //       **时长**只约束生成段（起步环是人工编排的模板，可以「核心」比
+      //       「三组成型」短 —— 难度轴是档位，不是分钟数）。
+      for (final GoalCategory cat in kGoalCatOrder) {
+        final Goal prev = buildFirstGoal(text: '起步', cat: cat);
+        for (final String t in <String>['一周试试', '两个月加码', '半年冲一次']) {
+          final Goal g = next(prev, text: '${cat.label}·$t');
+          final List<GoalRing> rings = g.rings;
+
+          // ① 档位全链不倒退
+          for (int i = 1; i < rings.length; i++) {
+            expect(
+              Rarity.ranks.indexOf(rings[i].rank),
+              greaterThanOrEqualTo(Rarity.ranks.indexOf(rings[i - 1].rank)),
+              reason: '${cat.id}/$t 第 ${i + 1} 环档位倒退了：'
+                  '${rings[i - 1].rank} → ${rings[i].rank}',
+            );
+          }
+
+          // ② 加码段起，时长不倒退（这里才是绕回 bug 的现场）
+          final int firstBoost =
+              rings.indexWhere((GoalRing r) => r.short.startsWith('加码'));
+          expect(firstBoost, greaterThan(0), reason: '${cat.id}/$t 没有加码环');
+          for (int i = firstBoost + 1; i < rings.length; i++) {
+            expect(
+              rings[i].minutes,
+              greaterThanOrEqualTo(rings[i - 1].minutes),
+              reason: '${cat.id}/$t 第 ${i + 1} 环时长倒退了：'
+                  '${rings[i - 1].minutes} → ${rings[i].minutes} 分钟',
+            );
+          }
+
+          // ③ 加码从「起步环里最长的那一环」之上起步，末环永远最重
+          final int baseMax = rings
+              .sublist(0, firstBoost)
+              .map((GoalRing r) => r.minutes)
+              .reduce((int a, int b) => a > b ? a : b);
+          expect(
+            rings[firstBoost].minutes,
+            greaterThan(baseMax),
+            reason: '${cat.id}/$t 第一条加码环比起步环还轻',
+          );
+          expect(
+            rings.last.minutes,
+            greaterThan(rings[rings.length - 2].minutes),
+            reason: '${cat.id}/$t 末环不是最重的',
+          );
+        }
+      }
+    });
+
     test('十类 × 5~8 环 × 任意等级：环数/档位/时限/状态全合规（穷举）', () {
       for (final GoalCategory cat in kGoalCatOrder) {
         final Goal prev = buildFirstGoal(text: '随便一个${cat.label}目标', cat: cat);

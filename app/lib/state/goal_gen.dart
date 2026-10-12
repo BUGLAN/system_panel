@@ -1405,6 +1405,18 @@ const List<String> kNextGoalRankSeq = <String>[
   'S',
 ];
 
+/// 各档位的建议时限上限（分钟）。**阶梯是规则**，所以模板生成与 LLM 拆解
+/// 两条路都用它收口，别各写一份 switch（漏改一处就会有两种口径）。
+int rankCapMinutes(String rank) => switch (rank) {
+  'F' => 20,
+  'E' => 30,
+  'D' => 40,
+  'C' => 60,
+  'B' => 90,
+  'A' => 120,
+  _ => 180,
+};
+
 /// 长链末环的时限（原型 `makeGoal` 尾部那句 `m: 120`）
 const int kNextGoalFinalMinutes = 120;
 
@@ -1458,40 +1470,52 @@ List<NextRingSpec> nextRingSpecs(
   final List<RingSpec> base = List<RingSpec>.of(firstRings);
   final int mid = count - 1; // 末环是目标本身
   final List<RingSpec> specs = <RingSpec>[];
+  // 到此为止最重的一环 —— 起步环是人工编排的，分钟数**不是**单调的
+  //（sleep 是 5/20/10），所以加码必须按「最大值」而不是「上一环」加码。
+  int runningMax = 0;
   for (int i = 0; i < mid; i++) {
     if (i < base.length) {
       specs.add(base[i]);
+      runningMax = math.max(runningMax, base[i].minutes);
       continue;
     }
-    // 加码环：底样按序循环，档位走 [kNextGoalRankSeq]，时限每级 ×1.35
-    final RingSpec seed = base[i % base.length];
+    // ── 加码环 ────────────────────────────────────────────────
+    // 档位：从起步环之后**接着往上走，不绕回**。
+    // ⚠️ 原实现是 `i % seq.length`：8 环链会绕回 'E'，于是
+    //    「加码 3 = S · 41 分钟」后面接「加码 4 = E · 7 分钟」——
+    //    档位与时长一起倒退，长链最后一段比开头还轻。
+    //    （宿主 2026-10-12 存档里实测到：兑现在 120 分钟之前先掉回 7 分钟。）
+    final int k = i - base.length;
+    final RingSpec seed = base[k % base.length];
     final String rank = kNextGoalRankSeq[
-        (i % kNextGoalRankSeq.length).clamp(0, kNextGoalRankSeq.length - 1)];
-    final int cap = switch (rank) {
-      'E' => 30,
-      'D' => 40,
-      'C' => 60,
-      'B' => 90,
-      'A' => 120,
-      _ => 180,
-    };
-    final int grew = (seed.minutes * 1.35).round();
+        (base.length + k).clamp(0, kNextGoalRankSeq.length - 1)];
+    final int cap = rankCapMinutes(rank);
+    // 时长：`seed × 1.35^(k+1)` 与「到此为止最重环 +5 分钟」取大者 —— 加码段
+    // **单调不减**，且从一开始就压在全部起步环之上（不会出现「加码比第一环还轻」）。
+    final int grew = (seed.minutes * math.pow(1.35, k + 1)).round();
+    final int want = math.max(grew, runningMax + 5);
+    // 档位上限内取整；万一上限低于「最重环 +5」也**宁可保持单调**（不回退）。
+    final int minutes = math.max(want.clamp(5, cap).toInt(), runningMax);
+    runningMax = minutes;
     specs.add(
       RingSpec(
-        short: '加码 ${i - base.length + 1}',
-        title: '${seed.title}——加码到 ${grew.clamp(5, cap)} 分钟',
+        short: '加码 ${k + 1}',
+        title: '${seed.title}——加码到 $minutes 分钟',
         proof: seed.proof,
-        minutes: grew.clamp(5, cap).toInt(),
+        minutes: minutes,
         rank: rank,
       ),
     );
   }
+  // 末环（兑现它）：S 级、必是整条链最重的一环 —— 加码环可能顶到 180 分钟，
+  // 所以不能只写死 120，否则「兑现」会比重活还轻。
+  final int finaleMinutes = math.max(kNextGoalFinalMinutes, runningMax + 20);
   specs.add(
     RingSpec(
       short: '兑现',
       title: '$goalText——兑现它',
       proof: '能证明你做到了的截图',
-      minutes: kNextGoalFinalMinutes,
+      minutes: finaleMinutes,
       rank: 'S',
     ),
   );
