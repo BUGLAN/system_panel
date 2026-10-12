@@ -32,7 +32,6 @@ import 'state/goal.dart';
 import 'state/goal_gen.dart';
 import 'stage/camera.dart';
 import 'stage/live2d_stage.dart';
-import 'stage/live2d_web.dart';
 import 'stage/stage_port.dart';
 import 'state/app_clock.dart';
 import 'state/away.dart';
@@ -160,40 +159,37 @@ class _AppShellState extends State<AppShell>
         with
         TickerProviderStateMixin,
         WidgetsBindingObserver {
-  /// ── 舞台渲染路线（docs/18 §1.5；HANDOFF-LIVE2D-IOS）──────────────
+  /// ── 舞台渲染路线（docs/18 §1.5）────────────────────────────────
   ///
-  /// ⚠️ **2026-10-12 复盘：MuMu 上原生是可以跑的，之前的止损归因是错的。**
-  /// 旧结论（2026-10-09）把「loadModel=true 但不上屏 + 每帧 GL 0x501」判成
-  /// MuMu 的 emugl 转译层与插件不兼容。**真因在我们这边**：`flutter_live2d`
-  /// 1.0.2 不打包 Android shader 资产，原生加载器要的
-  /// `assets/FrameworkShaders/*` 根本不在 APK 里 → shader program = 0 →
-  /// attribute location 查询失败（负值）→ `glVertexAttribPointer` /
-  /// `glEnableVertexAttribArray` 每帧报 GL_INVALID_VALUE。
-  /// 补包见 `app/android/app/build.gradle.kts` 的 `syncLive2dShaders`；
-  /// 同一台 MuMu 修复后原生正常上屏（证据 `.verify/native-mumu/`、
-  /// 结论 `app/STAGE-OPTIONS.md`「2026-10-12 复盘」节）。
+  /// **只有一条路线：原生 `flutter_live2d`**（[Live2DStage]，几何相机 = 布局
+  /// 矩形复刻 `Cam`）。2026-10-12 宿主拍板删掉 WebView 降级路线（`live2d_web.dart`
+  /// 及其 `WebStagePort`、`assets/stage/` 与 `vendor/` 的打包声明），原因见下。
   ///
-  /// 教训：插件把 SDK 日志回调设成空函数（`live2d_flutter.cpp` 的
-  /// `LogFunction`），shader 加载失败**不会打日志**；`loadModel=true` 也只
-  /// 代表模型配置解析成功，不校验 shader 编译/链接。别再把「无日志 + 有 GL
-  /// 报错」当成驱动不兼容的证据。
+  /// 为什么当年留了 WebView 兜底、现在又删掉：
+  ///  · 旧结论（2026-10-09）把「loadModel=true 但不上屏 + 每帧 GL 0x501」判成
+  ///    MuMu 的 emugl 转译层与插件不兼容 —— **这个归因是错的**。真因是
+  ///    `flutter_live2d` 1.0.2 不打包 Android shader 资产，原生加载器要的
+  ///    `assets/FrameworkShaders/*` 根本不在 APK 里 → shader program = 0 →
+  ///    attribute location 查负值 → 每帧 GL_INVALID_VALUE。
+  ///    补包见 `app/android/app/build.gradle.kts` 的 `syncLive2dShaders`
+  ///    （构建期缺文件会直接报错，不会再退化成"静默黑屏"）。
+  ///    结论留档 `app/STAGE-OPTIONS.md`「2026-10-12 复盘」、`docs/35`。
+  ///  · 另一条删除理由：WebView 那条路线**触摸是断的** —— `Live2DWeb` 里
+  ///    WebView 包在 `IgnorePointer` 内（免得它吃掉 UI 的手势），而
+  ///    `assets/stage/stage.js` 从来没有把指针事件转发给播放器。于是"戳她"
+  ///    没有跟随、拖动也没有反应 —— 2026-10-12 宿主实测发现。原生这条
+  ///    （`Live2DStage` 里 `IgnorePointer(ignoring: false)`）才拿得到触摸：
+  ///    插件的平台视图自带"眼睛/头跟着手指"。
   ///
-  /// **翻回 WebView 的条件**：原生加载失败（`_stageFallback` 会自动切），
-  /// 或真机上出现插件侧渲染异常。桥接层（StagePort）两条路线都就绪。
+  /// 加载失败时的降级：`Live2DStage` 自己收掉平台视图，露出天幕下的**全息剪影**
+  /// （`onFailed` 只打日志、不再切任何路线）。
   ///
-  /// 运行期原生加载失败也会自动落到 WebView（`_stageFallback`）——
-  /// WebView 版保留作降级与验收参照（HANDOFF 明示）。
-  ///
-  /// **2026-10-10 iOS 真机轮（宿主指示）**：Mac 侧首次在真机（iPhone 15 Pro
-  /// Max，真实 GPU 非 emugl 转译）上验证原生路线 —— MuMu 的止损结论只对
-  /// 模拟器 GL 栈成立，真机是「翻回原生的条件 2」。本轮保持 true。
-  static const bool kNativeStage = true;
+  /// ⚠️ 模型加载失败最常见的原因是「没跑转换器」：`app/assets/live2d/sakiko/`
+  /// 不在仓库时（该目录在 `assets/live2d/.gitignore` 的旧规则里被屏蔽过），
+  /// 跑 `python tools/l2d/convert.py` 重新生成即可。
 
-  /// 她的把手（emote/motion 桥）；原生失败落 WebView 后换成 WebStagePort
+  /// 她的把手（emote/motion 桥）
   StagePort? _stagePort;
-
-  /// 原生舞台加载失败 → 运行期降级到 WebView
-  bool _stageFallback = false;
 
   /// t16/B3：读档恢复了执行中单据 → 唤醒后直接回执行页（计时按 startAt 推导）
   bool _resumedExec = false;
@@ -1168,46 +1164,30 @@ class _AppShellState extends State<AppShell>
                 //    （字幕/环/HUD 都压在她之上，见 `.verify/_stageback.png`）。
                 //
                 // ── 渲染路线（docs/18 §1.5）────────────────────────────
-                // 默认走**原生 flutter_live2d**（Live2DStage，几何相机=布局矩形
-                // 复刻 Cam）；原生加载失败自动落到 WebView 降级（保留作验收参照）。
-                // kNativeStage=false 可整条切回 WebView（A/B 对照开关）。
+                // **只有原生一条**（`Live2DStage`，几何相机 = 布局矩形复刻 Cam）。
+                // WebView 降级路线 2026-10-12 已按宿主拍板删除（理由见
+                // `_stagePort` 上方那段注释：触摸是断的 + 当年保留它的归因是错的）。
                 // 相机随弹簧推镜头逐帧刷新（与下方环场同一数据源 _cam）。
                 ValueListenableBuilder<Cam>(
                   valueListenable: _cam,
-                  builder: (BuildContext _, Cam camNow, Widget? _) =>
-                      kNativeStage && !_stageFallback
-                      ? Live2DStage(
-                          visible: true,
-                          cam: camNow,
-                          onReady: (Live2DStageHandle handle) {
-                            _stagePort = NativeStagePort(handle);
-                            debugPrint('[stage] 原生舞台就绪（flutter_live2d）');
-                            // 开机睡姿（docs/22 R5「Mac 轮验收项」）：boot 全程
-                            // 闭眼低头睡着，等宿主触碰唤醒。舞台加载晚于唤醒
-                            // （罕见）就跳过 —— 她已经醒了不必再睡。
-                            if (_moment == Moment.boot) {
-                              unawaited(_stagePort!.sleep());
-                            }
-                          },
-                          onFailed: () {
-                            debugPrint('[stage] 原生舞台加载失败 → WebView 降级');
-                            if (mounted) setState(() => _stageFallback = true);
-                          },
-                        )
-                      : Live2DWeb(
-                          visible: true,
-                          // ── 相机（大厅）─────────────────────────────
-                          // WebView 路线的标定史（.verify/probe_cal.py / 大厅
-                          // 92%）→ scale 1.132；只作降级，不再维护。
-                          scale: 1.132,
-                          offset: Offset.zero,
-                          onReady: (Live2DWebState s) {
-                            _stagePort = WebStagePort(s);
-                            debugPrint('[stage-web] 播放器就绪（降级路线）');
-                          },
-                          onFailed: (String why) =>
-                              debugPrint('[stage-web] 失败：$why'),
-                        ),
+                  builder: (BuildContext _, Cam camNow, Widget? _) => Live2DStage(
+                    visible: true,
+                    cam: camNow,
+                    onReady: (Live2DStageHandle handle) {
+                      _stagePort = NativeStagePort(handle);
+                      debugPrint('[stage] 原生舞台就绪（flutter_live2d）');
+                      // 开机睡姿（docs/22 R5「Mac 轮验收项」）：boot 全程
+                      // 闭眼低头睡着，等宿主触碰唤醒。舞台加载晚于唤醒
+                      // （罕见）就跳过 —— 她已经醒了不必再睡。
+                      if (_moment == Moment.boot) {
+                        unawaited(_stagePort!.sleep());
+                      }
+                    },
+                    // 加载失败：舞台自己收掉平台视图，下面是全息剪影。
+                    // （不再切任何路线 —— 降级路线已删除。）
+                    onFailed: () =>
+                        debugPrint('[stage] 原生舞台加载失败 → 全息剪影'),
+                  ),
                 ),
                 // 「戳她」的命中层（原型 `main.js` L42-44：`#stage` 的 pointerdown
                 // → `Stage.hit(x,y)` → `App.poke()`）。放在她**之上**、环场/UI **之下**：

@@ -124,6 +124,15 @@ app/
 
 ### 1.5 live2d_web（WebView 基线）→ live2d_stage（原生）切换方案
 
+> ▸ **2026-10-12 收尾（后话）**：本节作为历史方案保留，但它要的"双实现 + `kNativeStage`
+> 编译期开关"已经**结束**——宿主拍板把 WebView 这一整条路线删掉（`live2d_web.dart`、
+> `WebStagePort`、`kNativeStage`、`pubspec` 里 `assets/stage/` 与 `assets/live2d/vendor/`、
+> `sakiko_orig` 的打包声明全删；文件仍留在磁盘上作参照，`sakiko_orig` 还是转换器的输入）。
+> 两条理由：① 下面这套"止损线"依据的归因**已被推翻**（真因是 shader 资产没打进 APK，
+> 见 `app/STAGE-OPTIONS.md`「2026-10-12 复盘」、`docs/35`）；② 那条路线在 App 里
+> **触摸是断的**（WebView 包在 `IgnorePointer` 里、`stage.js` 不转发指针），
+> 宿主实测"点击和拖动没有动作"。现在的舞台只剩原生一条，加载失败就退回全息剪影。
+
 背景事实（STAGE-OPTIONS 结案 + HANDOFF）：路线① 在旧 AVD 上「`loadModel=true`、渲染线程在跑、视图树里全屏可见，但屏幕上什么都没有」→ 搁置；路线② WebView 已上屏但代价大（多 225MB 沙箱进程、中位帧 89ms≈11FPS）。宿主指令：**在 MuMu 上重试①，替换②**。`live2d_stage.dart` 已存在且完整（5 次加载重试、28 表情名表、idle 组），main.dart 只在 `import`（L19）与挂载点（L434-466）引用 `Live2DWeb`。
 
 #### 1.5.1 切换步骤（按序，每步有验证）

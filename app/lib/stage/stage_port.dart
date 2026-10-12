@@ -1,14 +1,14 @@
 import 'live2d_stage.dart';
 import 'perf_presets.dart';
-import 'live2d_web.dart';
 
 /// ═══════════════════════════════════════════════════════════
 ///  舞台端口（T3/T7）—— main.dart 只认这个抽象，不认具体实现。
 ///
-///  双实现等价（docs/18 §1.5.4）：
-///   · 原生 `Live2DStage`：表情/动作走插件 API，桥接表在 Dart 侧查
-///   · WebView `Live2DWeb`：转发给原型播放器自己的 `Stage.emote/motion`
-///     （stage.js L27-77 本来就有 FACES/MOVE/EMO_EXP 表）
+///  ⚠️ 2026-10-12：**只剩原生一条实现**（`NativeStagePort`）。原 WebView 降级
+///     路线（`Live2DWeb` / `WebStagePort`）已按宿主拍板删除 —— 它在 App 里
+///     触摸是断的（WebView 包在 IgnorePointer 里、stage.js 也不转发指针），
+///     而当初保留它的"MuMu 与插件不兼容"归因已被推翻（真因是 shader 资产没打进
+///     APK，见 `main.dart` 的舞台注释与 `app/STAGE-OPTIONS.md`）。
 ///
 ///  桥接表真源 = prototype/opus-v2-dir/js/stage.js：
 ///   · 情绪（12）→ 表情文件（EMO_EXP，L73-77）
@@ -269,26 +269,4 @@ class NativeStagePort implements StagePort {
 
   @override
   Future<void> undoze() => _handle.undoze();
-}
-
-/// WebView 实现：转发给原型播放器的 `Stage.emote/motion`（stage.js 自带同名表）。
-///
-/// sleep/wakeEyes 走 [StagePort] 的默认 no-op：降级路线保留原型播放器自身的
-/// 待机行为即可，开机编排不实现（STAGE-OPTIONS「表演补完」节留档）。
-/// ⚠️ 用 `extends`（不是 `implements`）—— 要继承基类的默认 no-op 实现。
-class WebStagePort extends StagePort {
-  WebStagePort(this._state);
-
-  final Live2DWebState _state;
-
-  @override
-  void mood(String name) => _state.emote(name);
-
-  @override
-  void act(String verb) => _state.motion(verb);
-
-  @override
-  void idleMood(String mood) {
-    // 播放器内部本来就有 IDLE_POOL 待机调度，无需外部喂
-  }
 }

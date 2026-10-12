@@ -58,14 +58,14 @@ flutter:
     - assets/live2d/hiyori/
     - assets/live2d/hiyori/motions/
     - assets/live2d/hiyori/Hiyori.2048/
-    # ── 路线 ②（WebView 跑原型自己的播放器）要的三份 ──
-    # 舞台页：**我自己的代码，入库**
-    - assets/stage/
-    # 原型那个播放器 + Cubism Core（版权，不入库）
-    - assets/live2d/vendor/
-    # 原始 prefab 数据（那个播放器只认这个格式；版权，不入库）
-    - assets/live2d/sakiko_orig/models/
-    - assets/live2d/sakiko_orig/assets/
+    # ── 已停止打包：WebView 降级路线 2026-10-12 删除（宿主拍板）──
+    # 下面三个目录**仍然留在磁盘上**，但不再进包：
+    #   · assets/live2d/sakiko_orig/ —— `tools/l2d/convert.py` 的**输入**
+    #     （原始 prefab + moc3 + 两张贴图），删了就没法重新生成 sakiko/；
+    #   · assets/live2d/vendor/ + assets/stage/ —— 原型那份播放器（含 Cubism Core）
+    #     与舞台页，作为"原始渲染长什么样"的参照真源留着（Blend 枚举映射那条
+    #     结论就是从 vendor 里读出来的），需要做对照实验时还能用。
+    # 理由与验收见 app/STAGE-OPTIONS.md、main.dart 的舞台注释。
 
   # 字体四件套 —— 真源：prototype/opus-v2-dir/css/app.css 的 @font-face
   # 四个都是可变字体，字重/字宽必须在代码里用 fontVariations 指定：
