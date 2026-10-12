@@ -29,12 +29,13 @@ void main() {
     });
 
     test('只有一条带（不是 8 条等宽虚线）', () {
-      expect(ProgressBand.kRx, .30);
+      expect(ProgressBand.kRx, .34);
       // 世界坐标：脚在负值区，带子在脚上方、发际线下方
       expect(ProgressBand.kRy, lessThan(0));
       expect(ProgressBand.kRy, greaterThan(StageAnchors.feet));
       expect(ProgressBand.kRy, lessThan(StageAnchors.hair));
       // 透视压扁后的纵向半径 = 横向半径 × .22（原「未走」环同款比例）
+      // ⚠️ 高度是照「看得见」定的：放到胯/腰那一档会被裙子整圈吃掉
       expect(ProgressBand.kRyy, closeTo(ProgressBand.kRx * .22, 1e-9));
     });
   });

@@ -61,11 +61,15 @@ class ProgressBand extends StatelessWidget {
 
   final bool visible;
 
-  /// 腰上那圈的几何（世界单位）：横向半径与所在高度。
-  /// 原来是 8 条从脚踝排到肩的椭圆，现在只有**腰间这一条**。
-  static const double kRx = .30;
-  static const double kRy = StageAnchors.feet + .36;
-  static const double kRyy = .066;
+  /// 那一圈的几何（世界单位）：横向半径与所在高度。
+  /// 原来是 8 条从脚踝排到肩的椭圆（进度=当前环的高度），现在只有这一条。
+  ///
+  /// ⚠️ 高度是**照着"看得见"定的**，别按"腰"想当然：她那条裙子很宽
+  ///   （腰际轮廓 ≈ ±90px），放到 `feet + .90`（胯）整圈就被裙子吃掉了，
+  ///   模拟器实测完全看不见；落到膝上（`feet + .52` ≈ −0.99）两侧才露出来。
+  static const double kRx = .34;
+  static const double kRy = StageAnchors.feet + .52;
+  static const double kRyy = kRx * .22;
 
   /// 挂签用：这一圈的右端点
   static Offset point(String cam, Size size, {double side = 1}) =>
