@@ -32,6 +32,7 @@ import 'state/goal.dart';
 import 'state/goal_gen.dart';
 import 'stage/camera.dart';
 import 'stage/live2d_stage.dart';
+import 'stage/redraw_veil.dart';
 import 'stage/stage_port.dart';
 import 'state/app_clock.dart';
 import 'state/away.dart';
@@ -307,7 +308,8 @@ class _AppShellState extends State<AppShell>
   );
 
   /// 环场亮度：开机 34% → 唤醒后 100%，**顺着 [_wakeFade] 推**（原来硬跳）
-  double get _bandWakeDim => .34 + .66 * Curves.easeOut.transform(_wakeFade.value);
+  double get _bandWakeDim =>
+      .34 + .66 * Curves.easeOut.transform(_wakeFade.value);
 
   /// 屏幕空间特效（#fx 画布）
   final FxController _fx = FxController();
@@ -674,6 +676,12 @@ class _AppShellState extends State<AppShell>
   /// 超时则退回类别模板 —— 迟到的好链不如准时的链。
   static const Duration kPlanWaitOnChangeGoal = Duration(seconds: 15);
 
+  /// 入口牌「先问小祥」：带场合上下文开对话（**不填输入框、不落库**）
+  void _enterAskXiang() {
+    setState(() => _goalChangeOn = false);
+    _openChat(scenario: _newGoalScenario);
+  }
+
   /// 新目标提交（第 0 幕的空泛判定复用 `isVagueGoal`）：
   /// 具体 → `buildNextGoal`（按新那句话的时长词算**期限**、排出任务清单）
   /// → `flow.newGoal` 落库（旧主线单移除、新计划单补进队列）→ 存盘 → 回主线页。
@@ -693,14 +701,15 @@ class _AppShellState extends State<AppShell>
     final Goal prev = _flow.goal;
     // 期限先按规则算（时长词 + 完成度提档）—— 拆解照这个期限要任务，
     // 免得「半年」只要 8 张而计划其实是 180 天。
-    final int n = (goalDaysFor(typed) +
-            completionDayBoost(
-              cleared: prev.doneCount,
-              total: prev.plan.length,
-              level: _host.lv,
-            ))
-        .clamp(kPlanMinTasks, kPlanMaxTasks)
-        .toInt();
+    final int n =
+        (goalDaysFor(typed) +
+                completionDayBoost(
+                  cleared: prev.doneCount,
+                  total: prev.plan.length,
+                  level: _host.lv,
+                ))
+            .clamp(kPlanMinTasks, kPlanMaxTasks)
+            .toInt();
     final int need = planDraftCountFor(n);
     // 她先想一下：拆解是真网络请求，不能让界面看着像卡住
     setState(() => _goalChangeOn = false);
@@ -897,8 +906,10 @@ class _AppShellState extends State<AppShell>
     //    （宿主验收：「换出键盘之后, 点击系统内应用, 键盘无法正常收缩回去」）
     FocusScope.of(context).unfocus();
     final bool hit = Live2DStage.hitHer(global, rect);
-    debugPrint('[stage] 舞台按下 (${global.dx.toStringAsFixed(0)},'
-        '${global.dy.toStringAsFixed(0)}) 命中她=$hit');
+    debugPrint(
+      '[stage] 舞台按下 (${global.dx.toStringAsFixed(0)},'
+      '${global.dy.toStringAsFixed(0)}) 命中她=$hit',
+    );
     if (hit) _poke();
   }
 
@@ -1155,6 +1166,8 @@ class _AppShellState extends State<AppShell>
                   ),
                 ),
                 // 投影光束（在面板之下、天幕之上）
+                // 2026-10-13 宿主裁定：「此页面名牒册悬浮在档案上就行哦」——
+                // **不做让位**，牌桌就浮在投影面板之上（原来那版让面板退场是过度设计）
                 SheetBeam(visible: sheet),
                 // 她本人（`#stage`）—— 必须放在 Flutter UI **下面**：
                 // 平台视图是 opaque 的，会吃掉触摸；更靠上的组件先命中，
@@ -1170,24 +1183,24 @@ class _AppShellState extends State<AppShell>
                 // 相机随弹簧推镜头逐帧刷新（与下方环场同一数据源 _cam）。
                 ValueListenableBuilder<Cam>(
                   valueListenable: _cam,
-                  builder: (BuildContext _, Cam camNow, Widget? _) => Live2DStage(
-                    visible: true,
-                    cam: camNow,
-                    onReady: (Live2DStageHandle handle) {
-                      _stagePort = NativeStagePort(handle);
-                      debugPrint('[stage] 原生舞台就绪（flutter_live2d）');
-                      // 开机睡姿（docs/22 R5「Mac 轮验收项」）：boot 全程
-                      // 闭眼低头睡着，等宿主触碰唤醒。舞台加载晚于唤醒
-                      // （罕见）就跳过 —— 她已经醒了不必再睡。
-                      if (_moment == Moment.boot) {
-                        unawaited(_stagePort!.sleep());
-                      }
-                    },
-                    // 加载失败：舞台自己收掉平台视图，下面是全息剪影。
-                    // （不再切任何路线 —— 降级路线已删除。）
-                    onFailed: () =>
-                        debugPrint('[stage] 原生舞台加载失败 → 全息剪影'),
-                  ),
+                  builder: (BuildContext _, Cam camNow, Widget? _) =>
+                      Live2DStage(
+                        visible: true,
+                        cam: camNow,
+                        onReady: (Live2DStageHandle handle) {
+                          _stagePort = NativeStagePort(handle);
+                          debugPrint('[stage] 原生舞台就绪（flutter_live2d）');
+                          // 开机睡姿（docs/22 R5「Mac 轮验收项」）：boot 全程
+                          // 闭眼低头睡着，等宿主触碰唤醒。舞台加载晚于唤醒
+                          // （罕见）就跳过 —— 她已经醒了不必再睡。
+                          if (_moment == Moment.boot) {
+                            unawaited(_stagePort!.sleep());
+                          }
+                        },
+                        // 加载失败：舞台自己收掉平台视图，下面是全息剪影。
+                        // （不再切任何路线 —— 降级路线已删除。）
+                        onFailed: () => debugPrint('[stage] 原生舞台加载失败 → 全息剪影'),
+                      ),
                 ),
                 // 「戳她」的命中层（原型 `main.js` L42-44：`#stage` 的 pointerdown
                 // → `Stage.hit(x,y)` → `App.poke()`）。放在她**之上**、环场/UI **之下**：
@@ -1222,29 +1235,42 @@ class _AppShellState extends State<AppShell>
                     );
                   },
                 ),
+                // 换族「重绘」过场（docs/37 §3.5）：平台视图改布局尺寸的那一帧起
+                // （只有派单 talk 用 1.70 族），她有 2~3 帧是"小号/错位"渲染，用一层
+                // 遮罩 + 一道扫线吃掉。
+                // ⚠️ 层级：在**她之上、环场之下** —— 只把她压下去，环场/进度带/HUD/
+                //    台词/底栏都留着，观感是"她重绘一拍"而不是"整屏黑一下"。
+                ValueListenableBuilder<Cam>(
+                  valueListenable: _cam,
+                  builder: (BuildContext _, Cam camNow, Widget? _) =>
+                      StageRedrawVeil(
+                        family: Live2DStage.viewFamilyS(camNow.s),
+                      ),
+                ),
                 // 环场：她脚下到头顶那 8 个环。**画在独立画布上，与 Live2D 无关**
                 // （`stage.js` L127 `cv.id='ringCv'`），启动时 `App.boot()` 会把
                 // 8 个环全部 showRing，所以之后一直可见。
                 ValueListenableBuilder<Cam>(
                   valueListenable: _cam,
-                  builder: (BuildContext _, Cam camNow, Widget? _) => ProgressBand(
-                    done: _goal.doneCount,
-                    total: _goal.totalTasks,
-                    cam: camOf,
-                    camObj: camNow, // 弹簧推出来的那一帧（切页是"推镜头"不是瞬移）
-                    t: 0,
-                    lit: _bandLitNow(),
-                    dim: boot
-                        ? .34 // 开机态的全息参数
-                        // 唤醒过场：34% → 100% 顺着 _wakeFade 推上去（原来是硬跳）
-                        : fail
-                        ? 1 -
-                              .4 *
-                                  _ringDim
-                                      .value // flows.js L530：holoTo({bright:.6}) 缓动过去
-                        : _bandWakeDim,
-                    scan: .2, // settings.holo → Stage.scanT
-                  ),
+                  builder: (BuildContext _, Cam camNow, Widget? _) =>
+                      ProgressBand(
+                        done: _goal.doneCount,
+                        total: _goal.totalTasks,
+                        cam: camOf,
+                        camObj: camNow, // 弹簧推出来的那一帧（切页是"推镜头"不是瞬移）
+                        t: 0,
+                        lit: _bandLitNow(),
+                        dim: boot
+                            ? .34 // 开机态的全息参数
+                            // 唤醒过场：34% → 100% 顺着 _wakeFade 推上去（原来是硬跳）
+                            : fail
+                            ? 1 -
+                                  .4 *
+                                      _ringDim
+                                          .value // flows.js L530：holoTo({bright:.6}) 缓动过去
+                            : _bandWakeDim,
+                        scan: .2, // settings.holo → Stage.scanT
+                      ),
                 ),
                 // TODO(step8+): 1 · 舞台 —— Live2D 角色 + 套在她身上的主线环 + 环挂签/环标签
                 // 2 · 界面
@@ -1278,7 +1304,10 @@ class _AppShellState extends State<AppShell>
                     bottom: 150,
                     child: _WakeFade(
                       t: _wakeFade,
-                      child: ChatEntryButton(onTap: () => _openChat(), size: 56),
+                      child: ChatEntryButton(
+                        onTap: () => _openChat(),
+                        size: 56,
+                      ),
                     ),
                   ),
                 Dock(
@@ -1618,7 +1647,6 @@ class _AppShellState extends State<AppShell>
                     '三个月跑完半马',
                     '一个月早睡早起',
                     '考研上岸',
-                    _kAskXiangPreset,
                   ],
                   controller: _goalAsk,
                   focusNode: _goalAskFocus,
@@ -1626,38 +1654,11 @@ class _AppShellState extends State<AppShell>
                   bottomInset: MediaQuery.viewInsetsOf(context).bottom,
                   onPreset: (String v) => _goalAsk.text = v,
                   onSubmit: _onGoalChangeSubmitted,
+                  // 「算了，不换」并入牌列末尾（§4.B.3）—— 不再单独浮一颗胶囊
+                  onCancel: _cancelGoalChange,
+                  // 「先问小祥」是**入口牌**：开对话、不填输入框（§4.B.2）
+                  onEntry: _enterAskXiang,
                 ),
-                // 「算了」——换目标不强制：什么都可以不动
-                if (_goalChangeOn)
-                  Positioned(
-                    left: 20,
-                    top: 96,
-                    child: GestureDetector(
-                      key: const Key('goalChange.cancel'),
-                      onTap: _cancelGoalChange,
-                      behavior: HitTestBehavior.opaque,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 14,
-                          vertical: 9,
-                        ),
-                        decoration: BoxDecoration(
-                          color: const Color(0xD1040C1C),
-                          borderRadius: BorderRadius.circular(18),
-                          border: Border.all(color: C.line),
-                        ),
-                        child: Text(
-                          '算了，不换',
-                          style: fs(
-                            family: F.cn,
-                            size: 12.5,
-                            wght: 700,
-                            color: C.ice,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
                 // 绑定仪式 · 第 1 幕：卡片式访谈（docs/18 §2.1，t4 组件 + t8 装配）
                 // 答完 → buildFirstGoal 落 3 天 3 环 → 见面礼 → 大厅
                 if (onboard && _interviewCat != null)
@@ -1674,6 +1675,7 @@ class _AppShellState extends State<AppShell>
                 Sheet(
                   host: _host,
                   kind: _sheetKind,
+                  // 2026-10-13 宿主裁定：**不让位** —— 名牒册悬浮在档案上就行
                   visible: sheet,
                   // 设置页「表演调试台」→ 收起投影面板，开调试设施（她仍在背景可见）
                   onOpenPerfDebug: () => setState(() {
@@ -1723,9 +1725,7 @@ class _AppShellState extends State<AppShell>
                   published: _publishedPlanIndices(),
                   activeIndex: _activePlanIndex(),
                   selected: main ? _pickedTask : null,
-                  elapsed: _active
-                      ? _clockText(_execReadout().elapsed)
-                      : null,
+                  elapsed: _active ? _clockText(_execReadout().elapsed) : null,
                   canDispatch: main && !_flow.queueEmpty,
                   visible: main && !_goalChangeOn,
                   onClose: () => setState(() => _moment = Moment.lobby),
@@ -2178,6 +2178,13 @@ class _AppShellState extends State<AppShell>
   /// 表演调试台开着没（宿主 2026-10-11：调试预设/动作/表情的设施）
   bool _perfDebugOn = false;
 
+  /// 悬浮牌局开着没（名牒册 / 补给 / 证据来源）。
+  ///
+  /// ⚠️ 2026-10-12 宿主截图④：名牒册整桌牌**盖在六维雷达上**（层级打架）。
+  /// 解法不是改牌，是**让面板退场** —— 牌桌浮起时投影面板与光束一起收掉，
+  /// 关掉牌桌再回来。牌本身一个字都不改。
+  bool _tableOpen = false;
+
   /// 开投影面板（原型 `App.sheet(kind)`）
   void _openSheet(SheetKind kind) {
     FocusScope.of(context).unfocus(); // 键盘别压在面板上（宿主验收）
@@ -2195,31 +2202,60 @@ class _AppShellState extends State<AppShell>
   /// 但牌面皮肤完全不同（货架 / 名牒 / 取景窗）。
   /// 收起由 overlay 自己的幕接管（点幕 / 点出口铭牌），所以 barrier 不拦点击。
   Future<void> _openTable(TableScene scene) async {
-    await showGeneralDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      barrierColor: Colors.transparent,
-      transitionDuration: const Duration(milliseconds: 240),
-      pageBuilder:
-          (BuildContext ctx, Animation<double> a, Animation<double> b) =>
-              TableOverlay(
-                scene: scene,
-                host: _host,
-                onClose: () => Navigator.of(ctx).pop(),
-                onBuy: (String id) {
-                  if (!_flow.buy(id)) return null;
-                  setState(() => _host = _flow.host);
-                  _persist();
-                  return _flow.host;
-                },
-                onEquip: (String id) {
-                  if (!_flow.equip(id)) return null;
-                  setState(() => _host = _flow.host);
-                  _persist();
-                  return _flow.host;
-                },
-              ),
-    );
+    if (_tableOpen) return;
+    FocusScope.of(context).unfocus();
+    final bool reduce = MediaQuery.maybeDisableAnimationsOf(context) ?? false;
+    setState(() => _tableOpen = true);
+    try {
+      await showGeneralDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        barrierColor: Colors.transparent,
+        transitionDuration: Duration(milliseconds: reduce ? 120 : 280),
+        // 牌桌浮起：淡入 + 轻微上移。退场比进场快（apple-design §7 / §3.2）。
+        transitionBuilder:
+            (
+              BuildContext ctx,
+              Animation<double> a,
+              Animation<double> b,
+              Widget child,
+            ) {
+              final Animation<double> eased = a.drive(CurveTween(curve: kOut));
+              return FadeTransition(
+                opacity: eased,
+                child: SlideTransition(
+                  position: Tween<Offset>(
+                    begin: Offset(0, reduce ? 0 : .02),
+                    end: Offset.zero,
+                  ).animate(eased),
+                  child: child,
+                ),
+              );
+            },
+        pageBuilder:
+            (BuildContext ctx, Animation<double> a, Animation<double> b) =>
+                TableOverlay(
+                  scene: scene,
+                  host: _host,
+                  onClose: () => Navigator.of(ctx).pop(),
+                  onBuy: (String id) {
+                    if (!_flow.buy(id)) return null;
+                    setState(() => _host = _flow.host);
+                    _persist();
+                    return _flow.host;
+                  },
+                  onEquip: (String id) {
+                    if (!_flow.equip(id)) return null;
+                    setState(() => _host = _flow.host);
+                    _persist();
+                    return _flow.host;
+                  },
+                ),
+      );
+    } finally {
+      // 牌桌收起 → 投影面板与光束回来（§2 ④ 的"让位"是双向的）
+      if (mounted) setState(() => _tableOpen = false);
+    }
   }
 
   /// 本单已经挂上生效的道具（原型 `A.dbl / A.crit / A.shield`）
@@ -2608,8 +2644,10 @@ class _AppShellState extends State<AppShell>
     final AwayKind k = AwayGreeting.kindFor(away) ?? AwayKind.back10m;
     if (!mounted) return;
     // 欢迎手势 + 问候情绪（原型 _greet：睁眼后亮个相再开口）
-    debugPrint('[stage] 欢迎手势 act(present) + mood'
-        '=${k == AwayKind.back10m ? 'smug' : 'neutral'}');
+    debugPrint(
+      '[stage] 欢迎手势 act(present) + mood'
+      '=${k == AwayKind.back10m ? 'smug' : 'neutral'}',
+    );
     _stagePort?.act('present');
     _stagePort?.mood(k == AwayKind.back10m ? 'smug' : 'neutral');
     _stagePort?.idleMood('neutral');
@@ -2631,9 +2669,8 @@ class _AppShellState extends State<AppShell>
     unawaited(Sfx.play('ignite'));
     unawaited(Haptics.buzz('ignite'));
 
-    void tick() => setState(
-      () => _bandLit = Curves.easeOutCubic.transform(c.value),
-    );
+    void tick() =>
+        setState(() => _bandLit = Curves.easeOutCubic.transform(c.value));
 
     c.addListener(tick);
     tick();
@@ -2733,7 +2770,6 @@ class _AppShellState extends State<AppShell>
     super.dispose();
   }
 }
-
 
 /// 唤醒过场用：把界面层按 0→1 淡入（吃 [AppShellState._wakeFade]）。
 /// 开机态这些层是**布尔门控**（`visible: lobby`）—— 切页那一瞬间硬出现，

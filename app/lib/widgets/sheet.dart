@@ -10,6 +10,7 @@ import '../agent/llm_client.dart';
 import '../agent/llm_telemetry.dart';
 import '../agent/settings_store.dart';
 import '../data/items.dart';
+import '../state/haptics.dart';
 import '../state/sfx.dart';
 import '../data/rewards.dart';
 import '../data/titles.dart';
@@ -118,6 +119,7 @@ class _SheetState extends State<Sheet> {
   Widget build(BuildContext context) {
     final double h = MediaQuery.sizeOf(context).height;
     final List<String> t = Sheet._titles[kind]!;
+    final bool reduce = MediaQuery.maybeDisableAnimationsOf(context) ?? false;
 
     return Positioned(
       left: 0,
@@ -126,53 +128,58 @@ class _SheetState extends State<Sheet> {
       bottom: 0,
       child: IgnorePointer(
         ignoring: !visible,
+        // 减弱动态（apple-design §14）：不滑屏，只做 160ms 交叉淡入
         child: AnimatedSlide(
           offset: visible
               ? Offset.zero
-              : const Offset(0, 1.04), // translateY(104%)
-          duration: const Duration(milliseconds: 550),
+              : Offset(0, reduce ? 0 : 1.04), // translateY(104%)
+          duration: Duration(milliseconds: reduce ? 160 : 550),
           curve: kOut,
-          child: DecoratedBox(
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: <Color>[Color(0xE6061228), Color(0xF7030812)],
-                stops: <double>[0, .3],
+          child: AnimatedOpacity(
+            opacity: reduce && !visible ? 0 : 1,
+            duration: const Duration(milliseconds: 160),
+            child: DecoratedBox(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: <Color>[Color(0xE6061228), Color(0xF7030812)],
+                  stops: <double>[0, .3],
+                ),
               ),
-            ),
-            child: Stack(
-              // `.sh-edge::after` 有一半探到面板上沿外面（CSS 里 #sheet 不裁），
-              // Stack 默认 hardEdge 会把它切掉
-              clipBehavior: Clip.none,
-              children: <Widget>[
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: <Widget>[
-                    _head(t[0], t[1]),
-                    Expanded(
-                      child: SingleChildScrollView(
-                        key: const Key('sheet.body'),
-                        controller: _scroll,
-                        padding: const EdgeInsets.fromLTRB(20, 8, 20, 34),
-                        child: _body(),
+              child: Stack(
+                // `.sh-edge::after` 有一半探到面板上沿外面（CSS 里 #sheet 不裁），
+                // Stack 默认 hardEdge 会把它切掉
+                clipBehavior: Clip.none,
+                children: <Widget>[
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: <Widget>[
+                      _head(t[0], t[1]),
+                      Expanded(
+                        child: SingleChildScrollView(
+                          key: const Key('sheet.body'),
+                          controller: _scroll,
+                          padding: const EdgeInsets.fromLTRB(20, 8, 20, 34),
+                          child: _body(),
+                        ),
+                      ),
+                    ],
+                  ),
+                  // .sh-edge —— 顶边那道光
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    top: 0,
+                    child: IgnorePointer(
+                      child: CustomPaint(
+                        painter: _EdgePainter(),
+                        size: const Size(double.infinity, 1),
                       ),
                     ),
-                  ],
-                ),
-                // .sh-edge —— 顶边那道光
-                Positioned(
-                  left: 0,
-                  right: 0,
-                  top: 0,
-                  child: IgnorePointer(
-                    child: CustomPaint(
-                      painter: _EdgePainter(),
-                      size: const Size(double.infinity, 1),
-                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
@@ -302,7 +309,12 @@ class _SheetState extends State<Sheet> {
   /// 回顾入口（A6）：档案 loot 格语言的一行，点进 StatsPane
   Widget _reviewEntry(VoidCallback onTap) {
     return GestureDetector(
-      onTap: onTap,
+      // 每一次有效交互都要有对应反馈（§3.3）
+      onTap: () {
+        Sfx.play('tap');
+        Haptics.buzz('choose');
+        onTap();
+      },
       behavior: HitTestBehavior.opaque,
       child: Container(
         key: const Key('sheet.reviewEntry'),
@@ -562,7 +574,11 @@ class _SheetState extends State<Sheet> {
     return GestureDetector(
       key: const Key('sheet.titles'),
       behavior: HitTestBehavior.opaque,
-      onTap: widget.onOpenTitles,
+      onTap: () {
+        Sfx.play('tap');
+        Haptics.buzz('choose');
+        widget.onOpenTitles?.call();
+      },
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
         decoration: BoxDecoration(
@@ -1043,10 +1059,7 @@ class _SystemPaneState extends State<_SystemPane> {
     return Column(
       key: Key('sheet.setPane.${c.name}'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: <Widget>[
-        _subHead(c),
-        _paneBody(c),
-      ],
+      children: <Widget>[_subHead(c), _paneBody(c)],
     );
   }
 
@@ -1179,7 +1192,10 @@ class _SystemPaneState extends State<_SystemPane> {
               behavior: HitTestBehavior.opaque,
               onTap: () => widget.onOpenPerfDebug?.call(),
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 7,
+                ),
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(15),
                   border: Border.all(color: C.line),
@@ -1327,102 +1343,95 @@ class _SystemPaneState extends State<_SystemPane> {
   /// 所以这里不再挂 `_kicker`（同一个名字出现两次是噪音）。
   Widget _llmSection() {
     return _rows(<Widget>[
-          _setRow(
-            '视觉校验',
-            '拍照后交她核一眼；关=纯信任，全按未校验计',
-            _seg(
-              'vision',
-              const <List<String>>[
-                <String>['1', '开'],
-                <String>['0', '关'],
-              ],
-              _s.visionEnabled ? '1' : '0',
-              (String v) {
-                _update(
-                  (AgentSettings s) => s.copyWith(visionEnabled: v == '1'),
-                );
-              },
+      _setRow(
+        '视觉校验',
+        '拍照后交她核一眼；关=纯信任，全按未校验计',
+        _seg(
+          'vision',
+          const <List<String>>[
+            <String>['1', '开'],
+            <String>['0', '关'],
+          ],
+          _s.visionEnabled ? '1' : '0',
+          (String v) {
+            _update((AgentSettings s) => s.copyWith(visionEnabled: v == '1'));
+          },
+        ),
+      ),
+      _llmField('接口地址', 'OpenAI 兼容端点，默认官方 DeepSeek', _baseC, 'sheet.llm.base'),
+      _llmField(
+        'API Key',
+        '只存本机；留空=不校验，证据标「未校验」',
+        _keyC,
+        'sheet.llm.key',
+        obscure: true,
+      ),
+      _llmField(
+        '模型名',
+        '默认 deepseek-v4.1flash（请求前自动归一）',
+        _modelC,
+        'sheet.llm.model',
+      ),
+      const SizedBox(height: 10),
+      Row(
+        children: <Widget>[
+          _testButton(),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              _testStatus,
+              key: const Key('sheet.llm.status'),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: fs(
+                family: F.mono,
+                size: 10.5,
+                wght: 500,
+                color: _testOk == null
+                    ? C.mist
+                    : (_testOk! ? C.blue : const Color(0xFFFF8F99)),
+              ),
             ),
           ),
-          _llmField(
-            '接口地址',
-            'OpenAI 兼容端点，默认官方 DeepSeek',
-            _baseC,
-            'sheet.llm.base',
-          ),
-          _llmField(
-            'API Key',
-            '只存本机；留空=不校验，证据标「未校验」',
-            _keyC,
-            'sheet.llm.key',
-            obscure: true,
-          ),
-          _llmField(
-            '模型名',
-            '默认 deepseek-v4.1flash（请求前自动归一）',
-            _modelC,
-            'sheet.llm.model',
-          ),
-          const SizedBox(height: 10),
-          Row(
-            children: <Widget>[
-              _testButton(),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  _testStatus,
-                  key: const Key('sheet.llm.status'),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: fs(
-                    family: F.mono,
-                    size: 10.5,
-                    wght: 500,
-                    color: _testOk == null
-                        ? C.mist
-                        : (_testOk! ? C.blue : const Color(0xFFFF8F99)),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Key 只存在本机；照片仅在开启校验时上行。校验失败不阻塞提交。',
+        ],
+      ),
+      const SizedBox(height: 8),
+      Text(
+        'Key 只存在本机；照片仅在开启校验时上行。校验失败不阻塞提交。',
+        style: fs(
+          family: F.cn,
+          size: 10.5,
+          wght: 400,
+          height: 1.6,
+          color: const Color(0xFF5F7190),
+        ),
+      ),
+      const SizedBox(height: 12),
+      // 组底部只读回显（docs/22 §2.0「兜底要可观测」）：
+      // 读 LlmTelemetry 内存态仪表，不落盘、不可点；每次 build 现读，
+      // 切档/测连接/重挂都会跟着刷新。
+      _setRow(
+        '最近一次 LLM 失败',
+        '${LlmTelemetry.summary} · ${LlmTelemetry.kindSummary}',
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 150),
+          child: Text(
+            LlmTelemetry.lastDetail ?? '—',
+            key: const Key('sheet.llm.lastFail'),
+            maxLines: 2,
+            textAlign: TextAlign.right,
+            overflow: TextOverflow.ellipsis,
             style: fs(
-              family: F.cn,
+              family: F.mono,
               size: 10.5,
-              wght: 400,
-              height: 1.6,
-              color: const Color(0xFF5F7190),
+              wght: 500,
+              color: LlmTelemetry.failures > 0
+                  ? const Color(0xFFFF8F99)
+                  : C.mist,
             ),
           ),
-          const SizedBox(height: 12),
-          // 组底部只读回显（docs/22 §2.0「兜底要可观测」）：
-          // 读 LlmTelemetry 内存态仪表，不落盘、不可点；每次 build 现读，
-          // 切档/测连接/重挂都会跟着刷新。
-          _setRow(
-            '最近一次 LLM 失败',
-            '${LlmTelemetry.summary} · ${LlmTelemetry.kindSummary}',
-            ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 150),
-              child: Text(
-                LlmTelemetry.lastDetail ?? '—',
-                key: const Key('sheet.llm.lastFail'),
-                maxLines: 2,
-                textAlign: TextAlign.right,
-                overflow: TextOverflow.ellipsis,
-                style: fs(
-                  family: F.mono,
-                  size: 10.5,
-                  wght: 500,
-                  color: LlmTelemetry.failures > 0
-                      ? const Color(0xFFFF8F99)
-                      : C.mist,
-                ),
-              ),
-            ),
-          ),
+        ),
+      ),
     ]);
   }
 

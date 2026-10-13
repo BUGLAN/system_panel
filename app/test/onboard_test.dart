@@ -50,7 +50,7 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('整块贴底 34，两行预设 + 54 高的输入条', (WidgetTester tester) async {
+    testWidgets('整块贴底 34，XS 微牌牌列 + 54 高的输入条', (WidgetTester tester) async {
       await _mount(
         tester,
         const AskField(
@@ -63,15 +63,18 @@ void main() {
       expect(ask.left, 20);
       expect(ask.right, 370);
       expect(ask.bottom, closeTo(810, .5)); // bottom 34
-      expect(ask.height, closeTo(157, .5)); // 91 预设 + 12 + 54
+      expect(ask.height, closeTo(232, .5)); // 牌列 166 + 12 + 54
+      // 牌列 = CardTable（XS 微牌）：牌高 72 + topPad 26 + dy2 38 + 尾隙 30
       final Rect presets = tester.getRect(find.byKey(const Key('ask.presets')));
-      expect(presets.height, closeTo(91, .5)); // 42 + 7 + 42
+      expect(presets.left, 20); // 牌列铺满输入条那条轨（20 → 370）
+      expect(presets.right, 370);
+      expect(presets.height, closeTo(166, .5));
       final Rect submit = tester.getRect(find.byKey(const Key('ask.submit')));
       expect(submit.height, 42);
       expect(submit.right, closeTo(364, .5)); // 370 - 6
     });
 
-    testWidgets('预设按钮按内容宽度排，不许被拉满', (WidgetTester tester) async {
+    testWidgets('预设排成 XS 微牌，一张一张，不许被拉满', (WidgetTester tester) async {
       await _mount(
         tester,
         const AskField(
@@ -80,20 +83,20 @@ void main() {
           presets: kPresets,
         ),
       );
-      // ⚠️ 给 Container 加 alignment 会让它吃掉最大宽度，Wrap 里就一颗一行了。
-      // 原型实测第一颗「三个月跑完半马」宽 114。
-      final Rect first = tester.getRect(find.text(kPresets[0]));
-      expect(first.width, lessThan(200));
-      final Rect box = tester.getRect(
-        find
-            .ancestor(
-              of: find.text(kPresets[0]),
-              matching: find.byType(Container),
-            )
-            .first,
+      // 牌桌给每张牌挂的 key 是 `table.card.<id>`；一张预设 = 一张 XS 微牌
+      // （100×72）。轨宽 350，牌宽 100 —— 内容宽度，不许被拉满。
+      for (int i = 0; i < kPresets.length; i++) {
+        final Rect r = tester.getRect(find.byKey(Key('table.card.preset.$i')));
+        expect(r.width, 100);
+        expect(r.height, 72);
+        expect(r.width, lessThan(200));
+      }
+      // 领位那张（6 张的中间一张）居中在整条轨上，牌心 = 屏心
+      final Rect lead = tester.getRect(
+        find.byKey(const Key('table.card.preset.2')),
       );
-      expect(box.height, 42);
-      expect(box.left, closeTo(20, .5));
+      expect(lead.center.dx, closeTo(195, .5));
+      expect(lead.left, closeTo(145, .5));
     });
 
     testWidgets('没有预设时就只有输入条', (WidgetTester tester) async {

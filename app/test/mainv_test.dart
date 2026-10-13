@@ -15,7 +15,9 @@ Future<void> _mount(WidgetTester tester, Widget child) async {
   tester.view.devicePixelRatio = 3.0;
   addTearDown(tester.view.reset);
   await tester.pumpWidget(
-    MaterialApp(home: Scaffold(body: Stack(children: <Widget>[child]))),
+    MaterialApp(
+      home: Scaffold(body: Stack(children: <Widget>[child])),
+    ),
   );
   await tester.pump();
 }
@@ -79,26 +81,32 @@ void main() {
   });
 
   group('委托轨（第 4 套皮肤 duty）', () {
-    test('尺寸：轨上 268×58、审视 208×292（docs/32 §4.2 的 W 条牌 / L 大牌）', () {
-      expect(dimsOf(CardSkin.duty, CardTableSize.m).w, 268);
-      expect(dimsOf(CardSkin.duty, CardTableSize.m).h, 58);
+    test('尺寸：牌扇 132×196 / 牌屉 208×292 / XS 微牌 100×72（横条 268×58 已退役）', () {
+      expect(dimsOf(CardSkin.duty, CardTableSize.m).w, 132);
+      expect(dimsOf(CardSkin.duty, CardTableSize.m).h, 196);
       expect(dimsOf(CardSkin.duty, CardTableSize.l).w, 208);
       expect(dimsOf(CardSkin.duty, CardTableSize.l).h, 292);
+      expect(dimsOf(CardSkin.duty, CardTableSize.s).w, 100);
+      expect(dimsOf(CardSkin.duty, CardTableSize.s).h, 72);
     });
 
     test('窗口：从第一张没做完的往前带一张，往后最多 6 张', () {
       // 12 天全待办 → 第 0 张起（往前带不了）最多 6 张
       expect(MainView(goal: _planOf()).railIndices(), <int>[0, 1, 2, 3, 4, 5]);
       // 做完 4 张 → 第一张没做完的是 4，往前带第 3 张 → 3..8
-      expect(
-        MainView(goal: _planOf(done: 4)).railIndices(),
-        <int>[3, 4, 5, 6, 7, 8],
-      );
+      expect(MainView(goal: _planOf(done: 4)).railIndices(), <int>[
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+      ]);
       // 全走完 → 停在最后两张（往前带一张的既有口径）
-      expect(
-        MainView(goal: _planOf(days: 12, done: 12)).railIndices(),
-        <int>[10, 11],
-      );
+      expect(MainView(goal: _planOf(days: 12, done: 12)).railIndices(), <int>[
+        10,
+        11,
+      ]);
     });
 
     test('五态：已完成 / 执行中 / 可接 / 待发布 / 已放弃', () {
@@ -130,33 +138,48 @@ void main() {
     });
   });
 
-  group('主线页 · 交互', () {
-    testWidgets('点一条 → 展开 L 大牌；按住可接的那条 → 接单', (WidgetTester tester) async {
+  group('主线页 · 交互（2026-10-12 重设计：竖牌扇 + 牌屉）', () {
+    testWidgets('抬头 / 牌扇 / 刻度轨都在；点领位 → 展开牌屉', (WidgetTester tester) async {
       final Goal g = _planOf(days: 6, done: 1);
       int? picked;
-      int? taken;
       await _mount(
         tester,
         MainView(
           goal: g,
-          published: const <int>{2, 3},
+          // 领位（计划第 1 张）必须是**可接**的，否则落定不该触发（`enabled` 门控）
+          published: const <int>{1, 2, 3},
           activeIndex: 2,
           onSelect: (int i) => picked = i,
-          onAccept: (int i) => taken = i,
         ),
       );
       expect(find.byKey(const Key('main.top')), findsOneWidget);
       expect(find.byKey(const Key('main.rail')), findsOneWidget);
+      expect(find.byKey(const Key('main.scale')), findsOneWidget);
       expect(find.byKey(const Key('main.newGoal')), findsOneWidget);
 
-      await tester.tap(find.byKey(const Key('main.card.3')));
-      expect(picked, 3);
-
-      await tester.longPress(find.byKey(const Key('main.card.3')));
-      expect(taken, 3);
+      // 领位 = 第一张没做完的（计划第 1 张），它就在扇心
+      await tester.tapAt(tester.getCenter(find.byKey(const Key('main.rail'))));
+      expect(picked, 1);
     });
 
-    testWidgets('审视态：L 大牌 + 接这张；点「收起」回轨', (WidgetTester tester) async {
+    testWidgets('牌扇整个落在安全带里（不越到她脸上）', (WidgetTester tester) async {
+      await _mount(
+        tester,
+        MainView(goal: _planOf(days: 6, done: 1), published: const <int>{2, 3}),
+      );
+      final Rect fan = tester.getRect(find.byKey(const Key('main.rail')));
+      expect(
+        fan.top,
+        greaterThanOrEqualTo(kDesign.height * MainView.kSafeTop - .5),
+        reason: '牌扇顶边不得越过安全带（她的脸在 20%~42%）',
+      );
+      expect(
+        fan.bottom,
+        lessThanOrEqualTo(kDesign.height * MainView.kSafeBottom + .5),
+      );
+    });
+
+    testWidgets('牌屉：可接那张给【接任务】；点「收起」回牌扇', (WidgetTester tester) async {
       final Goal g = _planOf(days: 6, done: 1);
       int? picked;
       int? taken;
@@ -164,25 +187,28 @@ void main() {
         tester,
         MainView(
           goal: g,
-          published: const <int>{2, 3},
-          selected: 3,
+          published: const <int>{1, 2, 3},
+          activeIndex: 2,
+          selected: 1,
           onSelect: (int i) => picked = i,
           onAccept: (int i) => taken = i,
         ),
       );
+      await tester.pumpAndSettle();
       expect(find.byKey(const Key('main.detail')), findsOneWidget);
       expect(find.byKey(const Key('main.rail')), findsNothing);
       await tester.tap(find.byKey(const Key('main.take')));
-      expect(taken, 3);
+      expect(taken, 1);
       await tester.tap(find.byKey(const Key('main.back')));
       expect(picked, -1);
     });
 
-    testWidgets('待发布那张没有「接这张」（只读读数）', (WidgetTester tester) async {
+    testWidgets('待发布那张没有【接任务】（只读）', (WidgetTester tester) async {
       await _mount(
         tester,
         MainView(goal: _planOf(days: 6, done: 1), selected: 5),
       );
+      await tester.pumpAndSettle();
       expect(find.byKey(const Key('main.take')), findsNothing);
       expect(find.byKey(const Key('main.detail')), findsOneWidget);
     });

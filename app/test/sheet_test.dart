@@ -64,7 +64,6 @@ Future<void> _openSetCat(WidgetTester tester, String cat) async {
 }
 
 void main() {
-
   group('宿主数据', () {
     test('演示档与原型「老宿主 · 第 23 天」一致', () {
       const HostState s = HostState.demo;
@@ -143,21 +142,21 @@ void main() {
       for (final Item it in Item.all) {
         // 名字与「持有 ×N」在同一个 Text.rich 里，得用 textContaining
         expect(find.textContaining(it.name), findsWidgets);
-        expect(find.text(it.desc), findsOneWidget);
-        expect(find.text('${it.price}'), findsOneWidget);
+        // 价格每件都看得见：领位 = 六边价签，侧位 = 价格角标
+        expect(find.text('${it.price}'), findsWidgets);
       }
-      // 持有数（veteran 档）：双倍卡 1 / 暴击芯片 1 / 免死金牌 1 / 换单券 2
-      // （
-      //   之前那版「×undefined」是被玩脏的存档造成的，不是原型的问题）
-      expect(find.textContaining('持有 ×2'), findsOneWidget);
-      expect(find.textContaining('持有 ×1'), findsNWidgets(3));
-      expect(find.textContaining('持有 ×0'), findsNothing);
+      // 侧牌摘要（铁律 2/3）：说明与「持有 ×N」**只画在领位那一张**上 ——
+      // 侧位被压掉一半，画了就是裁字（宿主截图⑤的病根）。
+      int descCount = 0;
+      for (final Item it in Item.all) {
+        descCount += find.text(it.desc).evaluate().length;
+      }
+      expect(descCount, 1, reason: '说明只画在领位那张（侧牌摘要）');
+      expect(find.textContaining('持有 ×'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('系统页一级菜单：五类模块 + 当前值回显 + 控制台状态条', (
-      WidgetTester tester,
-    ) async {
+    testWidgets('系统页一级菜单：五类模块 + 当前值回显 + 控制台状态条', (WidgetTester tester) async {
       _mockPrefs();
       await _mount(
         tester,
@@ -372,33 +371,36 @@ void main() {
       expect(s2.model, 'deepseek-v4.1flash'); // 回到默认，不抛异常
     });
 
-    test('老档缺 reasoningEffort/strictMode/paceMs：补默认、不清档、不炸（docs/22 §2.0/§R4）', () async {
-      // 只有旧字段的老档（本轮三个新字段一个都没有）
-      _mockPrefs(<String, Object>{
-        SettingsStore.key: jsonEncode(<String, dynamic>{
-          'apiKey': 'sk-old',
-          'visionEnabled': false,
-          'voice': 'tts',
-        }),
-      });
-      final AgentSettings s = await SettingsStore().load();
-      // 旧字段照旧读回来（合并=在默认值上盖，不是整档重来）
-      expect(s.apiKey, 'sk-old');
-      expect(s.visionEnabled, isFalse);
-      expect(s.voice, 'tts');
-      // 缺的三个新字段补默认
-      expect(s.reasoningEffort, 'low');
-      expect(s.strictMode, 'auto');
-      expect(s.paceMs, 34); // 老档没有 paceMs → 标准档，不写迁移代码
-      // 补默认后回写一轮：老字段一个不少，新字段落进 JSON
-      await SettingsStore().save(s);
-      final AgentSettings s2 = await SettingsStore().load();
-      expect(s2.apiKey, 'sk-old');
-      expect(s2.visionEnabled, isFalse);
-      expect(s2.reasoningEffort, 'low');
-      expect(s2.strictMode, 'auto');
-      expect(s2.paceMs, 34);
-    });
+    test(
+      '老档缺 reasoningEffort/strictMode/paceMs：补默认、不清档、不炸（docs/22 §2.0/§R4）',
+      () async {
+        // 只有旧字段的老档（本轮三个新字段一个都没有）
+        _mockPrefs(<String, Object>{
+          SettingsStore.key: jsonEncode(<String, dynamic>{
+            'apiKey': 'sk-old',
+            'visionEnabled': false,
+            'voice': 'tts',
+          }),
+        });
+        final AgentSettings s = await SettingsStore().load();
+        // 旧字段照旧读回来（合并=在默认值上盖，不是整档重来）
+        expect(s.apiKey, 'sk-old');
+        expect(s.visionEnabled, isFalse);
+        expect(s.voice, 'tts');
+        // 缺的三个新字段补默认
+        expect(s.reasoningEffort, 'low');
+        expect(s.strictMode, 'auto');
+        expect(s.paceMs, 34); // 老档没有 paceMs → 标准档，不写迁移代码
+        // 补默认后回写一轮：老字段一个不少，新字段落进 JSON
+        await SettingsStore().save(s);
+        final AgentSettings s2 = await SettingsStore().load();
+        expect(s2.apiKey, 'sk-old');
+        expect(s2.visionEnabled, isFalse);
+        expect(s2.reasoningEffort, 'low');
+        expect(s2.strictMode, 'auto');
+        expect(s2.paceMs, 34);
+      },
+    );
 
     testWidgets('思考档位/严格模式/对白节奏：三行三档都在、可点、点后落盘', (WidgetTester tester) async {
       _mockPrefs();
@@ -535,16 +537,12 @@ void main() {
       expect(fill.width / bar.width, closeTo(1, .01)); // 214 / 54 → clamp 到 1
 
       // 未满档：20 / 54 —— 旧曲线 /340 会画成 5.9%，一眼能看出换没换曲线
-      await _mount(
-        tester,
-        Sheet(host: HostState.demo.copyWith(exp: 20)),
-      );
+      await _mount(tester, Sheet(host: HostState.demo.copyWith(exp: 20)));
       final Rect bar2 = tester.getRect(find.byKey(const Key('sheet.bar')));
-      final Rect fill2 = tester.getRect(find.byKey(const Key('sheet.bar.fill')));
-      expect(
-        fill2.width / bar2.width,
-        closeTo(20 / Rewards.needFor(7), .01),
+      final Rect fill2 = tester.getRect(
+        find.byKey(const Key('sheet.bar.fill')),
       );
+      expect(fill2.width / bar2.width, closeTo(20 / Rewards.needFor(7), .01));
     });
 
     testWidgets('经验环分母读的是 rewards.need(lv)（LV7 = /54，不是 /340）', (
@@ -554,7 +552,9 @@ void main() {
       final Finder row = find.byKey(const Key('sheet.arTop'));
       expect(row, findsOneWidget);
       final Iterable<String> texts = tester
-          .widgetList<Text>(find.descendant(of: row, matching: find.byType(Text)))
+          .widgetList<Text>(
+            find.descendant(of: row, matching: find.byType(Text)),
+          )
           .map((Text t) => t.data ?? t.textSpan?.toPlainText() ?? '');
       expect(
         texts.any((String s) => s.contains(' / ${Rewards.needFor(7)}')),
@@ -622,7 +622,9 @@ void main() {
   });
 
   group('D6 · 称号佩戴（store.js equip 语义）', () {
-    testWidgets('名牒册牌桌：点已解锁称号的领位 → onEquip 收到正确 id', (WidgetTester tester) async {
+    testWidgets('名牒册牌桌：点已解锁称号的领位 → onEquip 收到正确 id', (
+      WidgetTester tester,
+    ) async {
       _mockPrefs();
       String? equipped;
       // `crit` 在 HostTitle.all 里是第 3 张（0 基 2）—— 把它送到领位再点，
@@ -715,7 +717,11 @@ void main() {
 
     test('未解锁 → false，且 title 一动不动', () {
       final QuestFlow f = flowWith(HostState.demo);
-      expect(f.host.ownedTitles.contains('rankS'), isFalse, reason: '前提：demo 没有 rankS');
+      expect(
+        f.host.ownedTitles.contains('rankS'),
+        isFalse,
+        reason: '前提：demo 没有 rankS',
+      );
       expect(f.equip('rankS'), isFalse);
       expect(f.host.title, HostState.demo.title);
     });
@@ -788,31 +794,29 @@ void main() {
       _mockPrefs();
       HostState host = HostState.demo;
       Sheet build() => Sheet(
-            host: host,
-            kind: SheetKind.supply,
-            onBuyItem: (String id) {
-              // 宿主侧（T2 接 QuestFlow.buy）的语义：coins 够则扣币加道具
-              final Item it = Item.byId(id)!;
-              if (host.coins >= it.price) {
-                host = host.copyWith(
-                  coins: host.coins - it.price,
-                  items: <String, int>{
-                    ...host.items,
-                    id: (host.items[id] ?? 0) + 1,
-                  },
-                );
-              }
-            },
-          );
+        host: host,
+        kind: SheetKind.supply,
+        onBuyItem: (String id) {
+          // 宿主侧（T2 接 QuestFlow.buy）的语义：coins 够则扣币加道具
+          final Item it = Item.byId(id)!;
+          if (host.coins >= it.price) {
+            host = host.copyWith(
+              coins: host.coins - it.price,
+              items: <String, int>{
+                ...host.items,
+                id: (host.items[id] ?? 0) + 1,
+              },
+            );
+          }
+        },
+      );
       await _mount(tester, build());
       // 领位 = 双倍卡（60）：点它落定购买
       await tester.tapAt(tester.getCenter(find.byKey(const Key('sheet.shop'))));
       await tester.pumpAndSettle();
       await tester.pumpWidget(
         MaterialApp(
-          home: Scaffold(
-            body: Stack(children: <Widget>[build()]),
-          ),
+          home: Scaffold(body: Stack(children: <Widget>[build()])),
         ),
       );
       expect(find.text('金币 ◈ 280 · 只能花在这'), findsOneWidget); // 340 - 60
@@ -829,20 +833,18 @@ void main() {
       int coin = 5,
       Map<String, int> attrs = const <String, int>{'体': 1},
     }) => HistoryEntry(
-          at: at,
-          name: '测试单 $rank',
-          rank: rank,
-          kind: 'daily',
-          exp: exp,
-          coin: coin,
-          streak: 1,
-          result: result,
-          attrs: attrs,
-        );
+      at: at,
+      name: '测试单 $rank',
+      rank: rank,
+      kind: 'daily',
+      exp: exp,
+      coin: coin,
+      streak: 1,
+      result: result,
+      attrs: attrs,
+    );
 
-    testWidgets('档案页有「本周回顾」入口，点开回顾 pane（空态不裸奔）', (
-      WidgetTester tester,
-    ) async {
+    testWidgets('档案页有「本周回顾」入口，点开回顾 pane（空态不裸奔）', (WidgetTester tester) async {
       _mockPrefs();
       await _mount(tester, const Sheet(host: HostState.demo));
       expect(find.byKey(const Key('sheet.reviewEntry')), findsOneWidget);
@@ -871,9 +873,7 @@ void main() {
       expect(find.byKey(const Key('sheet.reviewEntry')), findsOneWidget);
     });
 
-    testWidgets('有数据态：概览读数 + 六维行 + 战绩列表（稀有度色标）', (
-      WidgetTester tester,
-    ) async {
+    testWidgets('有数据态：概览读数 + 六维行 + 战绩列表（稀有度色标）', (WidgetTester tester) async {
       final DateTime now = DateTime.now();
       _mockPrefs(<String, Object>{
         HistoryLog.key: jsonEncode(<Map<String, dynamic>>[
@@ -1036,7 +1036,11 @@ void main() {
       double prev = -1;
       for (int v = 0; v <= 100; v++) {
         final double rr = radarRadiusFor(v);
-        expect(rr, greaterThanOrEqualTo(prev), reason: 'v=$v 不该比 v=${v - 1} 更靠里');
+        expect(
+          rr,
+          greaterThanOrEqualTo(prev),
+          reason: 'v=$v 不该比 v=${v - 1} 更靠里',
+        );
         prev = rr;
       }
       expect(radarRadiusFor(17), closeTo(50, 1.5)); // 任务书给的落点：v=17 → ≈50
@@ -1046,7 +1050,14 @@ void main() {
     });
 
     testWidgets('六维全 0：退化成中心一点，不抛异常也不画 NaN', (WidgetTester tester) async {
-      final ByteData d = await shot(tester, const <String, int>{'力': 0, '敏': 0, '体': 0, '智': 0, '知': 0, '魅': 0});
+      final ByteData d = await shot(tester, const <String, int>{
+        '力': 0,
+        '敏': 0,
+        '体': 0,
+        '智': 0,
+        '知': 0,
+        '魅': 0,
+      });
       expect(tester.takeException(), isNull);
       final Rect r = tester.getRect(find.byKey(const Key('sheet.radar')));
       expect(r.width, closeTo(300, .5));

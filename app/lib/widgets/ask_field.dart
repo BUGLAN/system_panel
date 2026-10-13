@@ -1,20 +1,61 @@
 import 'package:flutter/material.dart';
 
-import 'press_scale.dart';
+import 'card_table.dart';
+import 'rail_base.dart';
 
 import '../design/tokens.dart';
 
 /// ═══════════════════════════════════════════════════════════
 ///  终端式输入（app.css L197-207 `#ask`）
-///  绑定仪式里她问「你叫什么」「你想变成什么样」，宿主就在这儿敲。
-///  可以先给几个现成答案（`.presets`）。
+///  + **换目标预设 = XS 微牌横滑牌列**（2026-10-12 · §4.B）
 ///
-///  实测盒模型（390×844，目标那一步）：
-///    ask [20,653,350,157]（bottom 34）
-///    presets [20,653,350,91]（两行 42 + 间隔 7）→ 现改为**卡片**（见 [_preset]）
-///    label [20,756,350,54] · ps [38,775,41,16] · input [89,756,201,54]
+///  绑定仪式里她问「你叫什么」「你想变成什么样」，宿主就在这儿敲；
+///  「换目标」的预设从**圆角胶囊**改成 **XS 微牌（100×72）横滑牌列** ——
+///  与补给 / 档案 / 主线同一套牌语（斜切、状态线、领位抬起、档位咬合），
+///  只是档位换成 XS。
+///
+///  ── 牌列（§4.B.1 ~ §4.B.3）──────────────────────────────────
+///   · 一张预设 = 一张 `CardSkin.duty` 的 XS 微牌：① 角标（`预设 · 01`）
+///     + ④ 单行名称 + ⑨ 状态线。XS 档**塞不下九区**，塞规则行必然裁字
+///     （§10 已知坑 4）。
+///   · 左右滑动 / 档位咬合（`rung` + 轻震）/ 吸附 / 领位抬起 —— 全在
+///     `CardTable` 里（`rail_base.dart` 的 `RailShell`），这里一个字都不加。
+///   · 点**领位** = 填入输入框（`onPreset`）；点**侧牌** = 送位（`CardTable`
+///     自己处理：`kCardSideTapCommits = false`）。
+///   · 牌列**末尾**可挂两张**非目标牌**：入口牌「先问小祥」（`onEntry`；
+///     线框状态线 = 与目标牌区分）与取消牌「算了，不换」（`onCancel`）。
+///     两张都走 `onPick` 给的**下标**分派。
+///
+///  ── 三条布局纪律（第一优先级：不许挡住她的脸，§1）──────────
+///   1. 她的脸在屏高 **20%~42%**，UI 只许落在 **45%~86%** 的安全带，整块贴底 34。
+///   2. **键盘弹起 = 牌列退场**（§4.B.5）：`bottomInset > 0` 时整块被顶到
+///      `844 − 336 − 34 = 474`，166 高的牌列再往上就摸到 **242 ≈ 28.7%** ——
+///      正好压在她脸上。所以键盘可见时牌列**连布局都不占**，只留输入条 +
+///      一枚「已选值」小标签。
+///      ⚠️ 退场因此是**硬切**、没有 180ms 淡出：淡出期间它仍在布局里、仍会被
+///      顶进禁区 —— 那不是「更顺滑」，那是挡脸。
+///   3. `resizeToAvoidBottomInset` 仍归调用方（main.dart 必须 false：整屏随
+///      键盘缩 → 舞台矩形变 → 插件重建 FBO + 她与环场错位）；本组件只吃
+///      `bottomInset`，绝不自己动整屏。
+///
+///  盒模型（390×844，无键盘）：
+///    ask [20,578,350,232]（bottom 34）= 牌列 166 + 12 + 输入条 54
+///    牌列 166 = 牌高 72 + topPad 26 + dy2 38 + 尾隙 30（`CardTable._tableH`）
 /// ═══════════════════════════════════════════════════════════
-class AskField extends StatelessWidget {
+
+/// 输入条左上 / 右下那两道斜切（§4.B.4：与 TerminalButton 同一套斜切语言）
+const double _kBevel = 9;
+
+/// 【确定】键的斜切 —— 内层元素用更小的**同向**斜切（§3.1）
+const double _kSubmitBevel = 6;
+
+/// 「已选值」小标签的斜切（同上，再小一档）
+const double _kTagBevel = 5;
+
+/// 「已选值」小标签的估高（给安全带守卫用；宁可估大一点，早一点不显示）
+const double _kTagH = 20;
+
+class AskField extends StatefulWidget {
   const AskField({
     super.key,
     required this.prompt,
@@ -26,6 +67,8 @@ class AskField extends StatelessWidget {
     this.bottomInset = 0,
     this.onSubmit,
     this.onPreset,
+    this.onCancel,
+    this.onEntry,
   });
 
   /// 左边那个提示词（`目标 ›`）
@@ -33,7 +76,7 @@ class AskField extends StatelessWidget {
 
   final String placeholder;
 
-  /// 现成答案（点一下填进输入框）
+  /// 现成答案（点领位那张牌 → 填进输入框）
   final List<String> presets;
 
   final TextEditingController? controller;
@@ -46,49 +89,216 @@ class AskField extends StatelessWidget {
   /// 主 Scaffold 用 `resizeToAvoidBottomInset: false`（**不能**让整屏随键盘缩，
   /// 否则舞台矩形跟着变 → 插件重建 FBO + 她整条位移；见 main.dart 的注释），
   /// 所以输入框得自己抬到键盘上面。
+  ///
+  /// ⚠️ 它同时是**牌列要不要退场**的唯一判据：`> 0` = 键盘可见 = 牌列不渲染。
   final double bottomInset;
 
   final VoidCallback? onSubmit;
+
+  /// 点牌列领位那张**目标牌**：把预设词填进输入框
   final ValueChanged<String>? onPreset;
+
+  /// 取消牌「算了，不换」（§4.B.3）—— 原来单独浮在左上的那颗胶囊已并进牌列，
+  /// 传了它牌列末尾才会多出那一张。
+  final VoidCallback? onCancel;
+
+  /// 入口牌「先问小祥」（§4.B.2）：带场合上下文开对话，**不填输入框**。
+  /// 传了它牌列末尾（取消牌之前）才会多出那一张。
+  final VoidCallback? onEntry;
+
+  @override
+  State<AskField> createState() => _AskFieldState();
+}
+
+class _AskFieldState extends State<AskField> {
+  /// 自己造的 controller / focusNode（外部没给时才造，也要自己 dispose）
+  TextEditingController? _ownCtrl;
+  FocusNode? _ownFocus;
+  late TextEditingController _ctrl;
+  late FocusNode _focus;
+
+  /// 最近一次从牌列里选中的预设（键盘态下用它回显「已选值」）
+  String? _picked;
+
+  /// 空输入点确定时的**内联**提示（§4.B.4：不许弹窗）
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _bind();
+  }
+
+  void _bind() {
+    _ownCtrl = widget.controller == null ? TextEditingController() : null;
+    _ownFocus = widget.focusNode == null ? FocusNode() : null;
+    _ctrl = widget.controller ?? _ownCtrl!;
+    _focus = widget.focusNode ?? _ownFocus!;
+    _ctrl.addListener(_onText);
+    _focus.addListener(_onFocus);
+  }
+
+  void _unbind() {
+    _ctrl.removeListener(_onText);
+    _focus.removeListener(_onFocus);
+    _ownCtrl?.dispose();
+    _ownFocus?.dispose();
+    _ownCtrl = null;
+    _ownFocus = null;
+  }
+
+  @override
+  void didUpdateWidget(covariant AskField old) {
+    super.didUpdateWidget(old);
+    if (old.controller != widget.controller ||
+        old.focusNode != widget.focusNode) {
+      _unbind();
+      _bind();
+    }
+    // 整块收起来（换目标关了 / 绑定仪式走了）：选中值与报错都归零，
+    // 下次打开是一张干净的脸。
+    if (old.visible && !widget.visible) {
+      _picked = null;
+      _error = null;
+    }
+  }
+
+  @override
+  void dispose() {
+    _unbind();
+    super.dispose();
+  }
+
+  void _onText() {
+    // 一开始打字就撤掉内联提示 —— 它只在「空输入点确定」那一下有意义
+    if (_error != null && _ctrl.text.trim().isNotEmpty) {
+      setState(() => _error = null);
+    }
+  }
+
+  void _onFocus() {
+    if (mounted) setState(() {}); // 描边：聚焦转 C.blue（§4.B.4）
+  }
+
+  /// 键盘是否可见 —— **唯一判据是调用方给的 `bottomInset`**
+  bool get _keyboardUp => widget.bottomInset > 0;
+
+  /// 键盘态下这枚标签会不会把整块顶进 `y < 45%` 的禁区（§1.2）。
+  ///
+  /// 屏幕矮 / 键盘高的机型上，输入条自己就已经贴到 45% 上下 —— 这时标签宁可
+  /// 不显示：她的脸是第一位，而选中值在输入框里本来就看得见。
+  bool _tagFits(BuildContext context) {
+    final double h = MediaQuery.sizeOf(context).height;
+    final double barTop = h - 34 - widget.bottomInset - 54;
+    return barTop - 8 - _kTagH > h * .45;
+  }
+
+  /// 确定：空输入 → 内联提示（不弹窗、不落库）；有内容 → 交给调用方
+  void _submit() {
+    if (_ctrl.text.trim().isEmpty) {
+      setState(() => _error = '空的她拆不动');
+      return;
+    }
+    if (_error != null) setState(() => _error = null);
+    widget.onSubmit?.call();
+  }
+
+  /// 牌列：预设牌 → 入口牌 → 取消牌（§4.B.1 ~ §4.B.3）
+  List<TableCard> _cards() {
+    final List<TableCard> out = <TableCard>[];
+    for (int i = 0; i < widget.presets.length; i++) {
+      out.add(
+        TableCard(
+          id: 'preset.$i',
+          // ① 角标：`预设 · 01`（与货架/牌屉的编号同一套，从 01 起）
+          kicker: '预设 · ${(i + 1).toString().padLeft(2, '0')}',
+          // ④ 单行名称（XS 档只有这一行是正文）
+          title: widget.presets[i],
+          // ⑨ 亮青实线 = 可接（目标牌）
+          dutyState: DutyState.open,
+        ),
+      );
+    }
+    if (widget.onEntry != null) {
+      // 入口牌**不是目标牌**：sealed = 虚线状态线（线框），与目标牌区分开
+      out.add(
+        const TableCard(
+          id: 'preset.entry',
+          kicker: 'ENTRY · 小祥',
+          title: '先问小祥',
+          dutyState: DutyState.sealed,
+        ),
+      );
+    }
+    if (widget.onCancel != null) {
+      out.add(
+        const TableCard(
+          id: 'preset.cancel',
+          kicker: 'CANCEL',
+          title: '算了，不换',
+          dutyState: DutyState.sealed,
+        ),
+      );
+    }
+    return out;
+  }
+
+  /// 牌列落定：`onPick` 给的是**下标**，按下标分派（§4.B.1 / §4.B.2 / §4.B.3）。
+  ///
+  /// ⚠️ 点侧牌只送位、不落定（`kCardSideTapCommits = false`），所以这里只在
+  ///    「点领位」那一下被调到 —— 左右滑动、档位咬合、吸附全由 `CardTable` 负责。
+  void _onPick(int i) {
+    final List<TableCard> cards = _cards();
+    if (i < 0 || i >= cards.length) return;
+    final TableCard c = cards[i];
+    if (c.id == 'preset.entry') {
+      widget.onEntry?.call();
+      return;
+    }
+    if (c.id == 'preset.cancel') {
+      widget.onCancel?.call();
+      return;
+    }
+    setState(() {
+      _picked = c.title;
+      _error = null;
+    });
+    widget.onPreset?.call(c.title); // 点领位 = 填入输入框
+  }
 
   @override
   Widget build(BuildContext context) {
+    final bool reduce = railReduceMotion(context);
+    final List<TableCard> cards = _cards();
+    // 键盘一弹，整块被 bottomInset 顶上去；牌列再跟着上就是压她的脸 ——
+    // 所以键盘态**连布局都不占**（§4.B.5 / §1.3 硬约束 4）。
+    final bool railOn = cards.isNotEmpty && !_keyboardUp;
+
     return Positioned(
       left: 20,
       right: 20,
-      bottom: 34 + bottomInset,
+      bottom: 34 + widget.bottomInset,
       child: IgnorePointer(
-        ignoring: !visible,
+        ignoring: !widget.visible,
         child: AnimatedOpacity(
-          opacity: visible ? 1 : 0,
-          duration: const Duration(milliseconds: 300),
+          opacity: widget.visible ? 1 : 0,
+          // 减弱动态：只剩一次短淡入（§3.2：更少更轻，不是全无）
+          duration: Duration(milliseconds: reduce ? 160 : 300),
           child: AnimatedSlide(
-            offset: visible
+            offset: (widget.visible || reduce)
                 ? Offset.zero
                 : const Offset(0, .3), // translateY(16px)
-            duration: const Duration(milliseconds: 500),
+            duration: Duration(milliseconds: reduce ? 160 : 500),
             curve: kOut,
             child: Column(
               key: const Key('ask'),
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: <Widget>[
-                if (presets.isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 12),
-                    // ⚠️ 这里**不能用 LayoutBuilder 算半宽**：AskField 挂在 Column 里，
-                    //    宽度约束是无界的，`(inf - 8) / 2` 会算出 Infinity 直接抛断言。
-                    //    所以卡片方案作废（宿主 2026-10-11：「立目标预设 卡片太丑了，
-                    //    没见过这么丑的」），回到原来这排胶囊。
-                    child: Wrap(
-                      key: const Key('ask.presets'),
-                      spacing: 7,
-                      runSpacing: 7,
-                      children: <Widget>[
-                        for (final String p in presets) _preset(p),
-                      ],
-                    ),
-                  ),
+                if (railOn) _rail(cards),
+                // 键盘态：牌列退场，已选值改由一枚小标签回显（§4.B.5）
+                if (_keyboardUp && _picked != null && _tagFits(context))
+                  _pickedTag(),
                 _field(),
               ],
             ),
@@ -98,57 +308,101 @@ class AskField extends StatelessWidget {
     );
   }
 
-  /// `.presets button` —— 注意它继承了 `#ask button` 的 `height:42` 与 `font-weight:700`
-  /// 按下：`#ask .presets button:active { background: rgba(56,225,255,.2) }`（瞬变，无过渡）
-  Widget _preset(String text) {
-    return PressBuilder(
-      onTap: onPreset == null ? null : () => onPreset!(text),
-      builder: (BuildContext _, bool down) => Container(
-        height: 42,
-        // Border 占布局、CSS 的 inset 阴影不占 → padding 各减 1px
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-        decoration: BoxDecoration(
-          color: down
-              ? const Color(0x3338E1FF) // rgba(56,225,255,.2)
-              : const Color(0xD1040C1C), // rgba(4,12,28,.82)
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: C.line, width: 1),
-        ),
-        // ⚠️ 不能给 Container 加 alignment —— 那会让它吃掉最大宽度，
-        // 在 Wrap 里就变成一颗一行了（踩过）
-        child: Center(
-          widthFactor: 1,
+  /// XS 微牌横滑牌列（§4.B.1）—— 机械全在 `CardTable`，这里只给牌面与档位。
+  Widget _rail(List<TableCard> cards) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: CardTable(
+        // 牌列容器（`ask.presets` 挂在整条轨上）
+        key: const Key('ask.presets'),
+        cards: cards,
+        skin: CardSkin.duty,
+        size: CardTableSize.s, // XS 微牌 100×72
+        onPick: _onPick,
+      ),
+    );
+  }
+
+  /// 键盘态下的「已选值」小标签（§4.B.5）。
+  ///
+  /// 牌列退场后选中的那一个不能就这么消失，用一枚小标签回显。
+  /// ⚠️ 贴在**输入条上方**而不是塞进 Row：键盘态下宽度最紧张，塞进去会直接
+  ///    吃掉正在打字的宽度（输入框只剩 ~90px）。
+  Widget _pickedTag() {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+          decoration: const ShapeDecoration(
+            color: C.abyss,
+            shape: BeveledRectangleBorder(
+              borderRadius: BorderRadius.only(
+                topLeft: Radius.circular(_kTagBevel),
+                bottomRight: Radius.circular(_kTagBevel),
+              ),
+              side: BorderSide(color: C.line),
+            ),
+          ),
           child: Text(
-            text,
-            style: fs(family: F.cn, size: 12.5, wght: 700, color: C.ice),
+            '已选 · ${_picked!}',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: fs(
+              family: F.mono,
+              size: 10,
+              wght: 600,
+              ls: .6, // 小字标正字距（§15）
+              height: 1.1,
+              color: C.blue,
+            ),
           ),
         ),
       ),
     );
   }
 
-  /// 预设小牌的轮廓：左上斜切 14（与货架的 22、名牒的挂孔都不同）
-
-
+  /// 输入条（§4.B.4：单行输入 + 右侧【确定】，只优化材质与斜切，不改结构）
   Widget _field() {
+    final bool focused = _focus.hasFocus;
     return Container(
       height: 54,
-      padding: const EdgeInsets.fromLTRB(17, 0, 5, 0), // CSS 18/6，Border 占 1
-      decoration: BoxDecoration(
-        color: const Color(0xDB040C1C), // rgba(4,12,28,.86)
-        borderRadius: BorderRadius.circular(27),
-        border: Border.all(color: C.blue, width: 1),
-        boxShadow: <BoxShadow>[
-          BoxShadow(
-            color: C.blue.withAlpha(51),
-            blurRadius: 24,
-          ), // 0 0 24px 20%
+      // CSS 18/6，Border 占 1
+      padding: const EdgeInsets.fromLTRB(17, 0, 5, 0),
+      // 牌语统一：近实底 `C.abyss` + 细边 `C.line`，聚焦时描边转 `C.blue`；
+      // 斜切 = 左上 + 右下 9px。
+      //
+      // ⚠️ 形状必须走 **ShapeDecoration**：`BoxDecoration` 的背景是按**矩形**铺的
+      //    （`_paintBackgroundColor` 只认 `borderRadius`，不认 `OutlinedBorder` 的
+      //    路径），配 `BeveledRectangleBorder` 会留下一块方角 + 一条斜线，等于没切。
+      decoration: ShapeDecoration(
+        color: C.abyss,
+        shape: BeveledRectangleBorder(
+          borderRadius: const BorderRadius.only(
+            topLeft: Radius.circular(_kBevel),
+            bottomRight: Radius.circular(_kBevel),
+          ),
+          side: BorderSide(color: focused ? C.blue : C.line),
+        ),
+        shadows: <BoxShadow>[
+          if (focused)
+            BoxShadow(
+              color: C.blue.withAlpha(51),
+              blurRadius: 24,
+            ) // 0 0 24px 20%
+          else
+            const BoxShadow(
+              color: Color(0x99000000),
+              offset: Offset(0, 6),
+              blurRadius: 16,
+            ),
         ],
       ),
       child: Row(
         children: <Widget>[
           Text(
-            prompt,
+            widget.prompt,
             key: const Key('ask.prompt'),
             style: fs(
               family: F.mono,
@@ -163,36 +417,53 @@ class AskField extends StatelessWidget {
           Expanded(
             child: TextField(
               key: const Key('ask.input'),
-              controller: controller,
-              focusNode: focusNode,
-              onSubmitted: (_) => onSubmit?.call(),
+              controller: _ctrl,
+              focusNode: _focus,
+              onSubmitted: (_) => _submit(),
               cursorColor: C.blue,
               style: fs(family: F.cn, size: 16, wght: 500, color: C.ice),
               decoration: InputDecoration(
                 isCollapsed: true,
                 border: InputBorder.none,
-                hintText: placeholder,
+                hintText: widget.placeholder,
                 hintStyle: fs(
                   family: F.cn,
                   size: 16,
                   wght: 500,
                   color: const Color(0xFF50627E),
                 ),
+                // 空输入点确定 → **内联**一行小字，不弹窗（§4.B.4）。
+                // 它长在输入框自己的装饰里，所以输入条高度不变（54 装得下）。
+                errorText: _error,
+                errorMaxLines: 1,
+                errorStyle: fs(
+                  family: F.cn,
+                  size: 11,
+                  wght: 500,
+                  height: 1.1,
+                  color: C.rS,
+                ),
               ),
             ),
           ),
           const SizedBox(width: 10),
           GestureDetector(
-            onTap: onSubmit,
+            onTap: _submit,
             behavior: HitTestBehavior.opaque,
             child: Container(
               key: const Key('ask.submit'),
               height: 42,
               padding: const EdgeInsets.symmetric(horizontal: 18),
               alignment: Alignment.center,
-              decoration: BoxDecoration(
+              decoration: const ShapeDecoration(
                 color: C.blue,
-                borderRadius: BorderRadius.circular(21),
+                // 内层元素用更小的**同向**斜切（§3.1）
+                shape: BeveledRectangleBorder(
+                  borderRadius: BorderRadius.only(
+                    topLeft: Radius.circular(_kSubmitBevel),
+                    bottomRight: Radius.circular(_kSubmitBevel),
+                  ),
+                ),
               ),
               child: Text(
                 '确定',
@@ -205,4 +476,3 @@ class AskField extends StatelessWidget {
     );
   }
 }
-

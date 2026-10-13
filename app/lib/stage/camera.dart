@@ -68,7 +68,21 @@ class Cam {
   static const Map<String, Cam> all = <String, Cam>{
     'boot': Cam(.64, 0, -.30, .5, .444),
     'lobby': Cam(.92, 0, -.535, .5, .505),
-    'talk': Cam(1.70, 0, .30, .5, .14),
+    // talk = 派单时推到她跟前（只给 `Moment.dispatch` 用）
+    //
+    // ⚠️ 2026-10-13 修：宿主原话「点击委托，这里放大显示的是下半身，应该显示上半身」。
+    //    病根是**相机中心与屏幕中心这对参数不匹配**：原值 ay=.30（世界坐标里
+    //    她**头顶以上**）配 sy=.14H（屏幕中心贴顶），两个一起把可见带推到了
+    //    腰以下 —— 脸整个出画。
+    //
+    //    这个映射和原型不同（原型是 WebGL 仿射相机，Flutter 用"布局矩形复刻"：
+    //    `live2d_stage.dart` 的 `viewRect` 高度 = H·s·kSize、宽 = 高×2/3，
+    //    可见世界带 = 3.0/s = 1.765 单位）。按这套换算反解出正确的一对：
+    //      · 可见带 w ∈ [−1.215, 0.55] → 发际线落在屏高 6%、胸口 37%、腰 60%
+    //      · ay 必须等于屏幕中心对应的世界高度 = −0.33（原来写成 +.30，方向反了）
+    //      · sy = H·.65 让屏幕中心落到那个高度
+    //    → 脸在屏高 6%~25%，派单板（48%~92%）正好压在她腰以下。
+    'talk': Cam(1.70, 0, -.33, .5, .65),
     'exec': Cam(.72, 0, -.50, .76, .42),
     'result': Cam(1.05, 0, .18, .5, .26),
     'full': Cam(.68, 0, -.535, .46, .46),
@@ -177,9 +191,7 @@ class CamSpring {
   void step(double dt) {
     if (_gliding) {
       _glideT += dt * 1000;
-      final double t = _glideMs <= 0
-          ? 1
-          : (_glideT / _glideMs).clamp(0.0, 1.0);
+      final double t = _glideMs <= 0 ? 1 : (_glideT / _glideMs).clamp(0.0, 1.0);
       final double e = _easeInOutCubic(t);
       _s.set(_lerp(_from[0], _to[0], e), snap: true);
       _ax.set(_lerp(_from[1], _to[1], e), snap: true);

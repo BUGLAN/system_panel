@@ -15,22 +15,42 @@ import 'package:system_panel/stage/stage_port.dart';
 ///  · 12 种情绪全部能在 28 表情表里查到下标（一个不多、一个不少）
 ///  · 全部动词的动作组都在 sakiko.model3.json 的 17 个组里
 ///  · 待机池 ⊆ 17 组；未知输入有兜底不炸
+/// 画布顶边对应的世界高度（实测标定）。
+///
+/// 由「`talk` 的 sy=.14 时，可见带顶正好落在她腰部（w ≈ −0.35）」反解：
+/// `wTop = wCanvasTop − 1.5 + (3/s)·syF` ⇒ `wCanvasTop = −0.35 + 1.5 − (3/1.70)·.14
+/// = 0.903`。它同时也是「矩形按画布比例展开」这套映射的隐含常量，
+/// 相机取景断言全靠它把 `syF` 翻译成"看得见她哪一段"。
+const double _wCanvasTop = 0.903;
+
 void main() {
   group('情绪表（stage.js EMO_EXP，12 种）', () {
     test('恰好 12 种，键与原型一致', () {
       expect(StageBridges.emoExp.keys.toSet(), <String>{
-        'neutral', 'smug', 'cold', 'annoyed', 'pleased', 'tsun',
-        'joy', 'proud', 'surprised', 'sad', 'focus', 'sleep',
+        'neutral',
+        'smug',
+        'cold',
+        'annoyed',
+        'pleased',
+        'tsun',
+        'joy',
+        'proud',
+        'surprised',
+        'sad',
+        'focus',
+        'sleep',
       });
       expect(StageBridges.emoExp.length, 12);
     });
 
     test('每种情绪都能在 32 表情表里查到下标（≥0）', () {
-      for (final MapEntry<String, String> e
-          in StageBridges.emoExp.entries) {
+      for (final MapEntry<String, String> e in StageBridges.emoExp.entries) {
         final int i = Live2DStage.expressionIndex(e.value);
-        expect(i, greaterThanOrEqualTo(0),
-            reason: '${e.key} → ${e.value} 不在表情表里');
+        expect(
+          i,
+          greaterThanOrEqualTo(0),
+          reason: '${e.key} → ${e.value} 不在表情表里',
+        );
       }
     });
 
@@ -61,8 +81,7 @@ void main() {
   group('动词表（stage.js MOVE → model3.json 17 组）', () {
     test('19 个动词全部映射到 17 个合法动作组', () {
       expect(StageBridges.verbGroup.length, 19);
-      for (final MapEntry<String, String> e
-          in StageBridges.verbGroup.entries) {
+      for (final MapEntry<String, String> e in StageBridges.verbGroup.entries) {
         expect(
           Live2DStage.motionGroups.contains(e.value),
           isTrue,
@@ -95,9 +114,23 @@ void main() {
 
     test('17 个动作组一个不缺（与 sakiko.model3.json 实测清单一致）', () {
       expect(Live2DStage.motionGroups.toSet(), <String>{
-        'idle', 'smile', 'nod', 'cry', 'angry', 'look', 'surprised',
-        'question', 'sad', 'serious', 'denial', 'check', 'bye',
-        'misc_tear', 'maskoff', 'kime', 'thinking',
+        'idle',
+        'smile',
+        'nod',
+        'cry',
+        'angry',
+        'look',
+        'surprised',
+        'question',
+        'sad',
+        'serious',
+        'denial',
+        'check',
+        'bye',
+        'misc_tear',
+        'maskoff',
+        'kime',
+        'thinking',
       });
     });
 
@@ -134,11 +167,7 @@ void main() {
           isTrue,
           reason: '${e.key} → ${e.value} 不是动词',
         );
-        expect(
-          StageBridges.isMood(e.key),
-          isTrue,
-          reason: '${e.key} 不是合法情绪',
-        );
+        expect(StageBridges.isMood(e.key), isTrue, reason: '${e.key} 不是合法情绪');
       }
       // 克制的：neutral/smug 等不配动作（表演预算）
       expect(StageBridges.actOf('neutral'), '');
@@ -172,8 +201,11 @@ void main() {
         expect(p.name.trim(), isNotEmpty, reason: '${p.id} 没有中文名');
         expect(p.priority, inInclusiveRange(1, 3), reason: '${p.id} 优先级越界');
       }
-      expect(PerfPresets.all.length, greaterThanOrEqualTo(30),
-          reason: '预设是本次交付的主体，不该只剩几条');
+      expect(
+        PerfPresets.all.length,
+        greaterThanOrEqualTo(30),
+        reason: '预设是本次交付的主体，不该只剩几条',
+      );
     });
 
     test('按族取不丢条目（调试页分组与文档分节都靠它）', () {
@@ -196,7 +228,9 @@ void main() {
   group('待机池（docs/24 §3 清单 A：动作组 + 表情）', () {
     test('三档心情的池都非空，组 ⊆ 17 组、表情都在 32 表里', () {
       expect(StageBridges.idlePool.keys.toSet(), <String>{
-        'cold', 'pleased', 'neutral',
+        'cold',
+        'pleased',
+        'neutral',
       });
       for (final MapEntry<String, List<Perf>> e
           in StageBridges.idlePool.entries) {
@@ -222,9 +256,11 @@ void main() {
           .expand((List<Perf> l) => l)
           .map((Perf p) => p.exp)
           .toSet();
-      expect(used.containsAll(<String>['exp_idle02', 'exp_idle03', 'exp_kime01']),
-          isTrue,
-          reason: '清单 A 承诺启用这三个闲置表情');
+      expect(
+        used.containsAll(<String>['exp_idle02', 'exp_idle03', 'exp_kime01']),
+        isTrue,
+        reason: '清单 A 承诺启用这三个闲置表情',
+      );
     });
 
     test('未知心情回落 neutral', () {
@@ -330,8 +366,7 @@ void main() {
       const Size screen = Size(430, 932);
       final Rect r = Live2DStage.stageRect(Cam.byName('lobby'), screen);
       final double cx = r.center.dx;
-      Offset at(double f, double dx) =>
-          Offset(cx + dx, r.top + r.height * f);
+      Offset at(double f, double dx) => Offset(cx + dx, r.top + r.height * f);
 
       // 头顶（f≈.05）：宽度因子小 → 偏 150px 就出界
       expect(Live2DStage.hitHer(at(.05, 0), r), isTrue, reason: '正中间没命中');
@@ -347,16 +382,41 @@ void main() {
     });
 
     test('相机变了矩形跟着变（推镜头是布局矩形在动）', () {
-      final Rect lobby = Live2DStage.stageRect(
-        Cam.byName('lobby'),
-        const Size(390, 844),
+      const Size screen = Size(390, 844);
+      final Rect lobby = Live2DStage.stageRect(Cam.byName('lobby'), screen);
+      final Rect talk = Live2DStage.stageRect(Cam.byName('talk'), screen);
+      expect(
+        talk.height,
+        greaterThan(lobby.height),
+        reason: 'talk s=1.70 > lobby s=.92',
       );
-      final Rect talk = Live2DStage.stageRect(
-        Cam.byName('talk'),
-        const Size(390, 844),
+
+      // ⚠️ 2026-10-13 改：原来这里断言 `talk.center.dy < lobby.center.dy`
+      //    （talk 的矩形中心更靠上）—— 那条**把 bug 锁死了**：屏幕中心贴顶
+      //    （sy=.14H）配上相机中心 ay=+.30（她头顶以上的世界高度），可见带被推到
+      //    腰以下、脸整个出画（宿主截图「放大显示的是下半身」）。
+      //
+      //    现在断言真正要的东西：**她的脸在画面里，且落在上半屏**。
+      //
+      //    映射（`live2d_stage.dart` 的 `viewRect`）：矩形高 = H·s·kSize
+      //    （kSize=1）、宽 = 高×2/3、画布高 = 3.0 世界单位。于是
+      //      可见带高 = 3.0 / s
+      //      带顶世界高度 = wCanvasTop − 1.5 + 带高 × syF
+      //    `wCanvasTop` 是实测标定值（画布顶边对应的世界高度，由「sy=.14 时
+      //    可见带顶正好落在她腰部」反解），不是猜的。
+      final Cam c = Cam.byName('talk');
+      final double band = 3.0 / c.s;
+      final double wTop = _wCanvasTop - 1.5 + band * c.syF;
+      final double wBottom = wTop - band;
+      expect(wTop, greaterThan(StageAnchors.hair), reason: '发际线必须在画面内（头顶不能出画）');
+      expect(
+        wBottom,
+        lessThan(StageAnchors.shoulder),
+        reason: '肩线必须在画面内（不能只露下半身）',
       );
-      expect(talk.height, greaterThan(lobby.height), reason: 'talk s=1.70 > lobby s=.92');
-      expect(talk.center.dy, lessThan(lobby.center.dy));
+      final double hairY =
+          (wTop - StageAnchors.hair) * screen.height * c.s / 3.0;
+      expect(hairY, lessThan(screen.height * .4), reason: '脸要落在上半屏');
     });
   });
 
@@ -374,15 +434,19 @@ void main() {
         expect(
           Live2DStage.expressions[i - 1].compareTo(Live2DStage.expressions[i]),
           lessThan(0),
-          reason: '表情表不是字母序：${Live2DStage.expressions[i - 1]} ≥ ${Live2DStage.expressions[i]}',
+          reason:
+              '表情表不是字母序：${Live2DStage.expressions[i - 1]} ≥ ${Live2DStage.expressions[i]}',
         );
       }
     });
 
     test('基底组 = "Idle" 别名（插件字面约定），与 17 个语义组不混', () {
       expect(Live2DStage.baseGroup, 'Idle');
-      expect(Live2DStage.motionGroups, isNot(contains('Idle')),
-          reason: 'Idle 是基底别名，不进动词桥接表');
+      expect(
+        Live2DStage.motionGroups,
+        isNot(contains('Idle')),
+        reason: 'Idle 是基底别名，不进动词桥接表',
+      );
     });
 
     // 本机有转换产物（gitignore，版权红线）时核对名表与产物逐条一致；
@@ -406,8 +470,11 @@ void main() {
       );
       final Map<String, dynamic> motions =
           refs['Motions'] as Map<String, dynamic>;
-      expect(motions.containsKey('Idle'), isTrue,
-          reason: 'model3.json 缺 "Idle" 别名组 —— 待机会冻结（插件字面约定）');
+      expect(
+        motions.containsKey('Idle'),
+        isTrue,
+        reason: 'model3.json 缺 "Idle" 别名组 —— 待机会冻结（插件字面约定）',
+      );
       // 变体数表必须与产物一致（组内随机取变体就靠它，错了会越界/退化成 1）
       for (final String g in Live2DStage.motionCounts.keys) {
         expect(motions.containsKey(g), isTrue, reason: 'model3.json 缺组 $g');
