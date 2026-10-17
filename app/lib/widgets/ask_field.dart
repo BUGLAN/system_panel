@@ -1,9 +1,12 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import 'card_table.dart';
 import 'rail_base.dart';
 
 import '../design/tokens.dart';
+import '../state/sfx.dart';
 
 /// ═══════════════════════════════════════════════════════════
 ///  终端式输入（app.css L197-207 `#ask`）
@@ -22,9 +25,15 @@ import '../design/tokens.dart';
 ///     `CardTable` 里（`rail_base.dart` 的 `RailShell`），这里一个字都不加。
 ///   · 点**领位** = 填入输入框（`onPreset`）；点**侧牌** = 送位（`CardTable`
 ///     自己处理：`kCardSideTapCommits = false`）。
-///   · 牌列**末尾**可挂两张**非目标牌**：入口牌「先问小祥」（`onEntry`；
-///     线框状态线 = 与目标牌区分）与取消牌「算了，不换」（`onCancel`）。
-///     两张都走 `onPick` 给的**下标**分派。
+///   · 牌列**末尾**可挂一张**非目标牌**：入口牌「先问小祥」（`onEntry`；
+///     线框状态线 = 与目标牌区分）。它走 `onPick` 给的**下标**分派。
+///
+///  ── docs/39 M-24（2026-10-17 真机走查 · P1）──────────────────
+///  取消牌「算了，不换」**已从牌列移除**：真机上它是牌列最右一张，被 430 屏宽
+///  裁掉一半；而键盘一弹整条牌列连布局都不占（见下面纪律 2），取消就彻底没了
+///  退路（走查图 04/08）。现在取消 = **输入幕左上那颗常驻 44 圆**（挂在
+///  `main.dart`，只有主线的「换目标」有；绑定仪式本来就不该有取消），键盘弹起
+///  也一直在。牌列只负责「预设」与「先问小祥」。
 ///
 ///  ── 三条布局纪律（第一优先级：不许挡住她的脸，§1）──────────
 ///   1. 她的脸在屏高 **20%~42%**，UI 只许落在 **45%~86%** 的安全带，整块贴底 34。
@@ -67,7 +76,6 @@ class AskField extends StatefulWidget {
     this.bottomInset = 0,
     this.onSubmit,
     this.onPreset,
-    this.onCancel,
     this.onEntry,
   });
 
@@ -98,13 +106,13 @@ class AskField extends StatefulWidget {
   /// 点牌列领位那张**目标牌**：把预设词填进输入框
   final ValueChanged<String>? onPreset;
 
-  /// 取消牌「算了，不换」（§4.B.3）—— 原来单独浮在左上的那颗胶囊已并进牌列，
-  /// 传了它牌列末尾才会多出那一张。
-  final VoidCallback? onCancel;
-
   /// 入口牌「先问小祥」（§4.B.2）：带场合上下文开对话，**不填输入框**。
-  /// 传了它牌列末尾（取消牌之前）才会多出那一张。
+  /// 传了它牌列末尾才会多出那一张。
   final VoidCallback? onEntry;
+
+  // docs/39 M-24：原来这里还有 `onCancel`（牌列末尾的「算了，不换」）。
+  // 取消已经搬去输入幕左上那颗**常驻 44 圆**（挂载在 main.dart），
+  // 本组件不再承载取消 —— 牌列里也不再有 CANCEL，绑定仪式依旧没有取消。
 
   @override
   State<AskField> createState() => _AskFieldState();
@@ -183,13 +191,23 @@ class _AskFieldState extends State<AskField> {
   /// 键盘是否可见 —— **唯一判据是调用方给的 `bottomInset`**
   bool get _keyboardUp => widget.bottomInset > 0;
 
+  /// docs/39 H-17 · 输入条距底的安全下限（原来是写死的 34）。
+  ///
+  /// 只取 `MediaQuery.padding` 的**下限**（math.max），不与 34 叠加 ——
+  /// iPhone 的 Home Indicator 就是 34 → max(34, 34) = 34，真机位置不变；
+  /// MuMu / 无手势条的机器 padding.bottom = 0 → 仍是 34，观感也不变。
+  /// 以后出现更大的底部安全区（例如带 dock 的平板）它才真的抬起来。
+  double _safeBottom(BuildContext context) =>
+      math.max(34, MediaQuery.paddingOf(context).bottom);
+
   /// 键盘态下这枚标签会不会把整块顶进 `y < 45%` 的禁区（§1.2）。
   ///
   /// 屏幕矮 / 键盘高的机型上，输入条自己就已经贴到 45% 上下 —— 这时标签宁可
   /// 不显示：她的脸是第一位，而选中值在输入框里本来就看得见。
   bool _tagFits(BuildContext context) {
     final double h = MediaQuery.sizeOf(context).height;
-    final double barTop = h - 34 - widget.bottomInset - 54;
+    final double barTop =
+        h - _safeBottom(context) - widget.bottomInset - 54;
     return barTop - 8 - _kTagH > h * .45;
   }
 
@@ -200,10 +218,13 @@ class _AskFieldState extends State<AskField> {
       return;
     }
     if (_error != null) setState(() => _error = null);
+    // docs/39 M-24 / §5.4：确认 = `choose`（取消那颗圆是 `tap`，两者语义分开）。
+    // 放这里而不是调用方：绑定仪式与换目标两条路都要这一声。
+    Sfx.play('choose');
     widget.onSubmit?.call();
   }
 
-  /// 牌列：预设牌 → 入口牌 → 取消牌（§4.B.1 ~ §4.B.3）
+  /// 牌列：预设牌 → 入口牌（§4.B.1 / §4.B.2）—— docs/39 M-24：取消牌已删
   List<TableCard> _cards() {
     final List<TableCard> out = <TableCard>[];
     for (int i = 0; i < widget.presets.length; i++) {
@@ -230,16 +251,6 @@ class _AskFieldState extends State<AskField> {
         ),
       );
     }
-    if (widget.onCancel != null) {
-      out.add(
-        const TableCard(
-          id: 'preset.cancel',
-          kicker: 'CANCEL',
-          title: '算了，不换',
-          dutyState: DutyState.sealed,
-        ),
-      );
-    }
     return out;
   }
 
@@ -253,10 +264,6 @@ class _AskFieldState extends State<AskField> {
     final TableCard c = cards[i];
     if (c.id == 'preset.entry') {
       widget.onEntry?.call();
-      return;
-    }
-    if (c.id == 'preset.cancel') {
-      widget.onCancel?.call();
       return;
     }
     setState(() {
@@ -277,7 +284,8 @@ class _AskFieldState extends State<AskField> {
     return Positioned(
       left: 20,
       right: 20,
-      bottom: 34 + widget.bottomInset,
+      // docs/39 H-17：底边 34 是**安全区下限**（不是写死值），见 [_safeBottom]
+      bottom: _safeBottom(context) + widget.bottomInset,
       child: IgnorePointer(
         ignoring: !widget.visible,
         child: AnimatedOpacity(

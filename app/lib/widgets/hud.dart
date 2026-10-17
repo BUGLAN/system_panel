@@ -9,13 +9,17 @@ import '../state/haptics.dart';
 import '../state/host_state.dart';
 import '../state/sfx.dart';
 import 'fx_layer.dart';
+import 'rail_base.dart';
 import 'sys_icons.dart';
 
 /// ═══════════════════════════════════════════════════════════
-///  HUD（app.css L94-117 `#hud`）
+///  HUD（app.css L94-117 #hud）
 ///  等级环 + 名字/称号/连击 + 金币 + 菜单。
-///  实测盒模型（390×844）：hud [0,0,390,74] · lv [16,23,46,46]
-///  · name [72,22,179,17] · coin [261,31,69,30] · menu [340,29,34,34]
+///  实测盒模型（390×844，**docs/39 §3.1 H-02…H-06 的新规格**）：
+///    hud [0,0,390,74] · 左右边距 20 · lv [20,22,48,48]
+///    name 起点 78（20 + 48 + 10；H-02 的 76 是按 46 的环算的 —— H-03 把环
+///    抬到 48 后保持同一个 10pt 间隙，名字自然落到 78）
+///    coin 右缘 326 / top 30 / 高 32 · menu 视觉 [336,29,34,34]（命中盒 44）
 ///
 ///  t26/P2 · 跨级白闪：结算出账升级的那拍 HUD 被结算页压住（visible=false），
 ///  回大厅（visible 翻真）时等级环播一遍 AGENTS.md「经验条上涨」的跨级编排——
@@ -32,8 +36,8 @@ class Hud extends StatefulWidget {
   });
 
   /// 唤醒过场用的淡入动画（0→1）。⚠️ 必须在**本组件内部**套 Opacity：
-  /// 本 build 的顶层就是 `Positioned`（ParentDataWidget），外面再包一层
-  /// 带 RenderObject 的包装件会报 `Incorrect use of ParentDataWidget`
+  /// 本 build 的顶层就是 Positioned（ParentDataWidget），外面再包一层
+  /// 带 RenderObject 的包装件会报 Incorrect use of ParentDataWidget
   /// （2026-10-11 实测：HUD/底栏各抛一次）。
   final Animation<double>? fade;
 
@@ -55,13 +59,16 @@ const double kLvFlashMs = 180; // 白闪（亮帧同源：16% / 180ms）
 const double kLvSecondMs = 420; // 归零后再涨到余额
 const double kLvTotalMs = kLvRiseMs + kLvSecondMs;
 
-/// 跨级编排的相位函数（纯函数，可单测）：给时刻 `t`（0~`kLvTotalMs`），
+/// docs/39 H-01 · 顶部承托的高度（压在 HUD 盒 74 之上、到她眉眼上方为止）
+const double kHudScrimH = 116;
+
+/// 跨级编排的相位函数（纯函数，可单测）：给时刻 t（0~kLvTotalMs），
 /// 算等级环此刻该显示成什么样。
 ///
-///  · `t < 360`：旧环比往满环涨（easeOutCubic），级数还是旧级；
-///  · `t = 360`：白闪起（峰值 16%，180ms ease-out 衰减）+ 级数切到新级
+///  · t < 360：旧环比往满环涨（easeOutCubic），级数还是旧级；
+///  · t = 360：白闪起（峰值 16%，180ms ease-out 衰减）+ 级数切到新级
 ///    （数字 1.3→1 弹一下）+ 环归零；
-///  · `t ∈ (360, 780]`：从 0 涨到新档余额（easeOutCubic，420ms）。
+///  · t ∈ (360, 780]：从 0 涨到新档余额（easeOutCubic，420ms）。
 ({int lv, double ratio, double flash, double pop}) hudLevelFx({
   required double t,
   required int fromLv,
@@ -136,11 +143,11 @@ class _HudState extends State<Hud> with SingleTickerProviderStateMixin {
 
   void _play() {
     _pending = false;
-    // 升级（`flows.js:485` `levelUp(lv)`）：
-    // `Sound.play('levelup'); FX.flash('#e9fbff', .2, 260); buzz([30, 50, 30, 50])`
-    // —— 这一拍就是本工程里"升级"的唯一相位（结算的 `res.ups` 在 result_panel 里
+    // 升级（flows.js:485 levelUp(lv)）：
+    // Sound.play('levelup'); FX.flash('#e9fbff', .2, 260); buzz([30, 50, 30, 50])
+    // —— 这一拍就是本工程里"升级"的唯一相位（结算的 res.ups 在 result_panel 里
     // 不建模）：HUD 在前台就是升级那一帧、被结算页压住就攒到回大厅补播的那一帧。
-    // `_play()` 只在 `_pending` 翻假时被调一次（跨级、且只跨一级攒一拍），不会连发。
+    // _play() 只在 _pending 翻假时被调一次（跨级、且只跨一级攒一拍），不会连发。
     Sfx.play('levelup');
     Haptics.buzz('levelup');
     _c.forward(from: 0);
@@ -163,44 +170,63 @@ class _HudState extends State<Hud> with SingleTickerProviderStateMixin {
           child: AnimatedOpacity(
             opacity: widget.visible ? 1 : 0,
             duration: const Duration(milliseconds: 400),
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 18, 16, 0),
-              child: Row(
-                children: <Widget>[
-                  AnimatedBuilder(
-                    animation: _c,
-                    builder: (BuildContext _, Widget? _) {
-                      if (!_c.isAnimating) {
-                        // 静态（含首挂）：与旧版逐字节一致
-                        return _LvRing(
-                          lv: widget.state.lv,
-                          ratio: widget.state.expRatio,
-                        );
-                      }
-                      final ({int lv, double ratio, double flash, double pop})
-                      s = hudLevelFx(
-                        t: _c.value * kLvTotalMs,
-                        fromLv: _fromLv,
-                        toLv: widget.state.lv,
-                        fromRatio: _fromRatio,
-                        toRatio: _toRatio,
-                      );
-                      return _LvRing(
-                        lv: s.lv,
-                        ratio: s.ratio,
-                        flash: s.flash,
-                        pop: s.pop,
-                      );
-                    },
+            child: Stack(
+              // H-01 的承托比 HUD 盒（74）高出一截，必须允许画到盒外
+              clipBehavior: Clip.none,
+              children: <Widget>[
+                // docs/39 H-01 · 顶部压暗：她之上、HUD 之下的一层承托。
+                // 没有它名字/称号直接压在浅灰蓝头发上（真机图 01/05）。
+                // 不压脸：116 只盖到她眉眼上方，脸（屏高 10%~30%）不受影响。
+                const Positioned(
+                  left: 0,
+                  right: 0,
+                  top: 0,
+                  height: kHudScrimH,
+                  child: IgnorePointer(child: _TopScrim()),
+                ),
+                Padding(
+                  // docs/39 H-02：左右边距统一 20（原 16/18），高 74 不变
+                  padding: const EdgeInsets.fromLTRB(20, 18, 20, 0),
+                  child: Row(
+                    children: <Widget>[
+                      AnimatedBuilder(
+                        animation: _c,
+                        builder: (BuildContext _, Widget? _) {
+                          if (!_c.isAnimating) {
+                            // 静态（含首挂）：与旧版逐字节一致
+                            return _LvRing(
+                              lv: widget.state.lv,
+                              ratio: widget.state.expRatio,
+                            );
+                          }
+                          final ({int lv, double ratio, double flash, double pop})
+                          s = hudLevelFx(
+                            t: _c.value * kLvTotalMs,
+                            fromLv: _fromLv,
+                            toLv: widget.state.lv,
+                            fromRatio: _fromRatio,
+                            toRatio: _toRatio,
+                          );
+                          return _LvRing(
+                            lv: s.lv,
+                            ratio: s.ratio,
+                            flash: s.flash,
+                            pop: s.pop,
+                          );
+                        },
+                      ),
+                      const SizedBox(width: 10), // #hud gap
+                      Expanded(child: _Who(state: widget.state)),
+                      const SizedBox(width: 10),
+                      _Coin(coins: widget.state.coins),
+                      // docs/39 H-06：菜单的透明命中盒是 44（视觉仍 34、右对齐）——
+                      // 多出来的 10 全落在它左边，所以这里不再另给 10：
+                      // 胶囊右缘 326、汉堡条视觉左缘 336，观感间距仍是 10pt。
+                      _Menu(onTap: widget.onMenu),
+                    ],
                   ),
-                  const SizedBox(width: 10), // #hud gap
-                  Expanded(child: _Who(state: widget.state)),
-                  const SizedBox(width: 10),
-                  _Coin(coins: widget.state.coins),
-                  const SizedBox(width: 10),
-                  _Menu(onTap: widget.onMenu),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
         ),
@@ -226,9 +252,29 @@ class _HudState extends State<Hud> with SingleTickerProviderStateMixin {
   }
 }
 
+/// docs/39 H-01 · 顶部压暗渐变：#020610 α .78 → 0（top→bottom）。
+/// 它是 HUD 的**承托**，不是氛围层：只买对比度，不循环、不吃点击。
+class _TopScrim extends StatelessWidget {
+  const _TopScrim();
+
+  @override
+  Widget build(BuildContext context) {
+    return const DecoratedBox(
+      key: Key('hud.scrim'),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: <Color>[Color(0xC7020610), Color(0x00020610)], // .78 → 0
+        ),
+      ),
+    );
+  }
+}
+
 /// .hud-lv —— 六边等级牌上的经验环（app.css L98-104）
 ///
-/// `flash`/`pop` 是跨级白闪那 780ms 里的临时参数（见 [hudLevelFx]）；
+/// flash/pop 是跨级白闪那 780ms 里的临时参数（见 [hudLevelFx]）；
 /// 缺省（静态）时渲染与旧版逐字节一致。
 class _LvRing extends StatelessWidget {
   const _LvRing({required this.lv, required this.ratio, this.flash = 0, this.pop = 1});
@@ -246,25 +292,29 @@ class _LvRing extends StatelessWidget {
   Widget build(BuildContext context) {
     return SizedBox(
       key: const Key('hud.lv'),
-      width: 46,
-      height: 46,
+      // docs/39 H-03：46 → 48（viewBox 48 现在 1:1，环不再被整体缩小）
+      width: 48,
+      height: 48,
       child: Stack(
         children: <Widget>[
           Positioned.fill(
-            child: CustomPaint(painter: _LvRingPainter(ratio: ratio)),
+            child: CustomPaint(
+              // 静态辉光 .78 / blur 2（H-03）；跨级那拍才全亮
+              painter: _LvRingPainter(ratio: ratio, lit: flash > 0 ? 1 : .78),
+            ),
           ),
           Positioned(
             left: 0,
             right: 0,
-            top: 9,
+            top: 9.5,
             child: Text(
               'LV',
               textAlign: TextAlign.center,
               style: fs(
                 family: F.mono,
-                size: 7.5,
+                size: 8.5, // H-03：7.5 → 8.5
                 wght: 600,
-                ls: 1.5, // .2em
+                ls: 1.7, // .2em
                 height: 1,
                 color: C.mist,
               ),
@@ -273,7 +323,7 @@ class _LvRing extends StatelessWidget {
           Positioned(
             left: 0,
             right: 0,
-            top: 17,
+            top: 18.5,
             child: pop == 1
                 ? _lvText()
                 : Transform.scale(scale: pop, child: _lvText()),
@@ -295,7 +345,7 @@ class _LvRing extends StatelessWidget {
       textAlign: TextAlign.center,
       style: fs(
         family: F.num,
-        size: 19,
+        size: 20, // H-03：19 → 20
         wght: 800,
         height: 1,
         color: C.ice,
@@ -307,15 +357,18 @@ class _LvRing extends StatelessWidget {
   }
 }
 
-/// SVG viewBox 48×48 画在 46×46 的盒子里；r=20、stroke 2.6、周长 125.66
+/// SVG viewBox 48×48 画在 48×48 的盒子里（1:1）；r=20、stroke 3、周长 125.66
 class _LvRingPainter extends CustomPainter {
-  const _LvRingPainter({required this.ratio});
+  const _LvRingPainter({required this.ratio, this.lit = .78});
 
   final double ratio;
 
+  /// 静态辉光强度（H-03：静态 .78；跨级那拍给 1 = 全亮）
+  final double lit;
+
   static const double _vb = 48; // viewBox
   static const double _r = 20;
-  static const double _sw = 2.6;
+  static const double _sw = 3; // H-03：2.6 → 3
 
   @override
   void paint(Canvas canvas, Size s) {
@@ -342,6 +395,8 @@ class _LvRingPainter extends CustomPainter {
       ..strokeCap = StrokeCap.round
       ..color = C.blue;
     // filter: drop-shadow(0 0 3px rgba(56,225,255,.9))
+    // H-03：静态 blur 3 → 2、α .9 → .78；跨级那拍才全亮（回到 3 / .9）
+    final bool hot = lit >= 1;
     canvas.drawArc(
       rect,
       start,
@@ -351,17 +406,21 @@ class _LvRingPainter extends CustomPainter {
         ..style = PaintingStyle.stroke
         ..strokeWidth = _sw * k
         ..strokeCap = StrokeCap.round
-        ..color = C.blue.withAlpha(230)
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3),
+        ..color = C.blue.withAlpha(hot ? 230 : 199) // .9 / .78
+        ..maskFilter = MaskFilter.blur(BlurStyle.normal, hot ? 3 : 2),
     );
     canvas.drawArc(rect, start, sweep, false, arc);
   }
 
   @override
-  bool shouldRepaint(covariant _LvRingPainter o) => o.ratio != ratio;
+  bool shouldRepaint(covariant _LvRingPainter o) =>
+      o.ratio != ratio || o.lit != lit;
 }
 
 /// .hud-who —— 名字 / 称号 / 连击（app.css L105-109）
+///
+/// docs/39 H-04：名字 15 / 称号 11.5，两者都加一层黑色投影 —— 顶部压暗
+/// （H-01）是承托，投影是给亮发上那几笔留的最后一层保险。
 class _Who extends StatelessWidget {
   const _Who({required this.state});
 
@@ -379,11 +438,18 @@ class _Who extends StatelessWidget {
           overflow: TextOverflow.ellipsis,
           style: fs(
             family: F.cn,
-            size: 14,
+            size: 15, // H-04：14 → 15
             wght: 600,
-            ls: .56,
+            ls: .5,
             height: 1,
             color: C.ice,
+            shadows: const <Shadow>[
+              Shadow(
+                color: Color(0x8C000000), // rgba(0,0,0,.55)
+                blurRadius: 6,
+                offset: Offset(0, 1),
+              ),
+            ],
           ),
         ),
         const SizedBox(height: 3),
@@ -393,11 +459,18 @@ class _Who extends StatelessWidget {
           overflow: TextOverflow.ellipsis,
           style: fs(
             family: F.cn,
-            size: 11,
+            size: 11.5, // H-04：11 → 11.5
             wght: 400,
-            ls: .22,
+            ls: .2,
             height: 1,
             color: C.blue,
+            shadows: const <Shadow>[
+              Shadow(
+                color: Color(0x8C000000),
+                blurRadius: 6,
+                offset: Offset(0, 1),
+              ),
+            ],
           ),
         ),
       ],
@@ -407,11 +480,12 @@ class _Who extends StatelessWidget {
 
 /// 连击药丸（宿主 2026-10-11：「主界面这个联机……给它换个位置，换到这个委托的上方一点」）。
 ///
-/// 原先是 `.hud-who` 里的第三行（名字 / 称号 / 连击），压在左上角那一小块里、
-/// 和称号挤在一起看不出分量。现在把它**摘出来单独一颗**，贴在顶栏下沿居中：
+/// 原先是 .hud-who 里的第三行（名字 / 称号 / 连击），压在左上角那一小块里、
+/// 和称号挤在一起看不出分量。现在把它**摘出来单独一颗**，贴在顶栏下沿：
 /// 既离开了那个角落，又稳稳落在委托卡上方（派单板与执行面板都在屏幕下三分之一）。
 ///
-/// 读数照旧：`连击 <b>N</b> 天`（数字走 Tektur），0 连击显示破折号。
+/// 读数照旧：连击 N 天（数字走 Tektur），0 连击显示破折号。
+/// docs/39 H-07：宿主决定隐藏，本轮**不动**（main.dart 仍传 visible:false）。
 class StreakPill extends StatelessWidget {
   const StreakPill({super.key, required this.streak, this.visible = true});
 
@@ -493,38 +567,102 @@ class StreakPill extends StatelessWidget {
 }
 
 /// .hud-coin（app.css L110-112）
-class _Coin extends StatelessWidget {
+///
+/// docs/39 H-05：高 30→32、内边距 9/11、图标 14、数字 16（Tektur 700）、
+/// 底 .55→.62、边 .12→.16；进账时 300ms count-up + 1.12→1 的 180ms 回弹。
+class _Coin extends StatefulWidget {
   const _Coin({required this.coins});
 
   final int coins;
 
   @override
+  State<_Coin> createState() => _CoinState();
+}
+
+class _CoinState extends State<_Coin> with SingleTickerProviderStateMixin {
+  /// 1.12 → 1 的回弹（H-05 的 180ms）
+  late final AnimationController _pop = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 180),
+  );
+
+  /// 正在显示的数值（count-up 的起点），换数时从这里滚到新值
+  late int _shown;
+  late int _from;
+
+  @override
+  void initState() {
+    super.initState();
+    _shown = widget.coins;
+    _from = widget.coins;
+  }
+
+  @override
+  void didUpdateWidget(covariant _Coin old) {
+    super.didUpdateWidget(old);
+    if (old.coins != widget.coins) {
+      _from = _shown;
+      _shown = widget.coins;
+      _pop.forward(from: 0); // 1.12 → 1 的回弹
+    }
+  }
+
+  @override
+  void dispose() {
+    _pop.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    // docs/39 §5.5：reduced-motion 下只保留数字变化
+    final bool reduce = railReduceMotion(context);
     return Container(
       key: const Key('hud.coin'),
-      height: 30,
+      height: 32,
       // ⚠️ Flutter 的 Border 会占布局空间，CSS 的 inset box-shadow 不会 ——
       // 所以用 Border 模拟 inset 描边时，padding 要各减 1px 才与原型同宽。
-      padding: const EdgeInsets.fromLTRB(8, 0, 10, 0),
+      padding: const EdgeInsets.fromLTRB(9, 0, 11, 0),
       decoration: BoxDecoration(
-        color: const Color(0x8C08142A), // rgba(8,20,42,.55)
-        borderRadius: BorderRadius.circular(15),
-        border: Border.all(color: C.line2, width: 1), // inset 0 0 0 1px
+        color: const Color(0x9E08142A), // rgba(8,20,42,.62)
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0x2938E1FF), width: 1), // .16
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
-          SvgPicture.string(kIconCoin, width: 13, height: 13),
+          SvgPicture.string(kIconCoin, width: 14, height: 14),
           const SizedBox(width: 6),
-          Text(
-            '$coins',
-            style: fs(
-              family: F.num,
-              size: 15,
-              wght: 700,
-              ls: .45,
-              height: 1,
-              color: C.ice,
+          // 进账回弹：只缩**数字**（Transform 不吃布局，也不产生 saveLayer）
+          AnimatedBuilder(
+            animation: _pop,
+            builder: (BuildContext _, Widget? child) {
+              if (reduce || !_pop.isAnimating) return child!;
+              final double k =
+                  1 + .12 * (1 - Curves.easeOut.transform(_pop.value));
+              return Transform.scale(scale: k, child: child);
+            },
+            // H-05：数值变化 300ms count-up（reduced-motion 直接落终值）
+            child: TweenAnimationBuilder<double>(
+              tween: Tween<double>(
+                begin: _from.toDouble(),
+                end: _shown.toDouble(),
+              ),
+              duration: reduce
+                  ? Duration.zero
+                  : const Duration(milliseconds: 300),
+              curve: Curves.easeOutCubic,
+              builder: (BuildContext _, double v, Widget? _) => Text(
+                v.round().toString(),
+                style: fs(
+                  family: F.num,
+                  size: 16, // H-05：15 → 16
+                  wght: 700,
+                  ls: .45,
+                  height: 1,
+                  color: C.ice,
+                ),
+              ),
             ),
           ),
         ],
@@ -534,17 +672,55 @@ class _Coin extends StatelessWidget {
 }
 
 /// .hud-menu —— 三根不等长的横杠（app.css L115-117）
-class _Menu extends StatelessWidget {
+///
+/// docs/39 H-06：视觉不变（18/12/15，杠高 1.6→2），但**透明命中扩到 44×44**；
+/// 按下 bars α .72、tap 音效、补 Semantics / tooltip —— 原先 34×34 又没有任何
+/// 反馈，真机上「像装饰，不像按钮」。
+class _Menu extends StatefulWidget {
   const _Menu({this.onTap});
 
   final VoidCallback? onTap;
 
   @override
+  State<_Menu> createState() => _MenuState();
+}
+
+class _MenuState extends State<_Menu> {
+  bool _down = false;
+
+  void _set(bool v) {
+    if (_down == v) return;
+    setState(() => _down = v);
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: _bars(),
+    final bool on = widget.onTap != null;
+    return Semantics(
+      button: true,
+      label: '系统设置',
+      child: Tooltip(
+        message: '系统设置',
+        child: GestureDetector(
+          onTap: on
+              ? () {
+                  Sfx.play('tap'); // docs/39 §5.4：菜单归 tap
+                  widget.onTap!();
+                }
+              : null,
+          onTapDown: on ? (_) => _set(true) : null,
+          onTapUp: on ? (_) => _set(false) : null,
+          onTapCancel: on ? () => _set(false) : null,
+          behavior: HitTestBehavior.opaque,
+          // 44×44 命中盒；里面那颗仍是原来的 34×34 视觉盒（右对齐，
+          // 所以汉堡条相对右边距 20 的位置不变）—— hud.menu 记在视觉层。
+          child: SizedBox(
+            width: 44,
+            height: 44,
+            child: Align(alignment: Alignment.centerRight, child: _bars()),
+          ),
+        ),
+      ),
     );
   }
 
@@ -572,7 +748,10 @@ class _Menu extends StatelessWidget {
 
   Widget _bar(double w, Color c) => Container(
     width: w,
-    height: 1.6,
-    decoration: BoxDecoration(color: c, borderRadius: BorderRadius.circular(1)),
+    height: 2, // H-06：1.6 → 2
+    decoration: BoxDecoration(
+      color: _down ? c.withAlpha(184) : c, // 按下 α .72
+      borderRadius: BorderRadius.circular(1),
+    ),
   );
 }

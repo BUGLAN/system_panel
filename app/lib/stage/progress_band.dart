@@ -223,7 +223,8 @@ class ProgressBandPainter extends CustomPainter {
         0,
         end,
         full ? _ice : _blue,
-        (full ? .95 : .62 * pulse) * mul,
+        // docs/39 H-10：完成弧的不透明度 .62 → .75（走满时另有 .95 的实心亮弧）
+        (full ? .95 : .75 * pulse) * mul,
         full ? 2.4 : 1.6,
       );
       if (!full) {

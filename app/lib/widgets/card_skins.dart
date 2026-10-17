@@ -79,7 +79,9 @@ Dims dimsOf(CardSkin skin, CardTableSize size) {
   if (skin == CardSkin.duty) {
     return switch (size) {
       CardTableSize.l => const Dims(208, 292),
-      CardTableSize.m => const Dims(132, 196),
+      // docs/39 M-05：132×196 → 148×220（牌扇领位牌）。
+      // CardTable 高度 = 220 + topPad 26 + dy2 38 + 30 = 314。
+      CardTableSize.m => const Dims(148, 220),
       CardTableSize.s => const Dims(100, 72),
     };
   }
@@ -176,18 +178,20 @@ SkinGeom geomOf(CardSkin s) => switch (s) {
   // 委托：**竖牌扇**（2026-10-12 重设计）——像手里捏着一把牌：领位抬起，
   // 两侧向外倾、往下沉、缩小。横条牌的「竖直堆叠」（stride 66 / dx1 6）已退役。
   //
-  // 露出宽度账（M 档牌宽 132、侧位缩放 .86 = 113.5）：
-  //   dx1 96 → 侧位左缘 −152.75、右缘 −39.25；领位左缘 −66
-  //   ⇒ 被压住 26.75px、露出约 86px —— 够放一行 12px 的名称（铁律 2：重叠处不许有字）
+  // docs/39 M-05 / M-06（2026-10-17 真机走查后）：牌 132×196 → 148×220，
+  // stride 96 → 104，侧位缩放 .86 → .84，领位纵向提升 −6 → −12。
+  // 露出宽度账（M 档牌宽 148、侧位缩放 .84 = 124.3）：
+  //   dx1 104 → 侧位内侧缘 104 − 124.3/2 = 41.85、外侧缘 −82.45；领位左缘 −74
+  //   ⇒ 被压住 33px、露出约 91px —— 够放一行 14.3px/17pt 的名称（铁律 2）。
   CardSkin.duty => const SkinGeom(
-    stride: 96,
-    dx1: 96,
-    dx2: 152,
-    dy0: -6,
+    stride: 104,
+    dx1: 104,
+    dx2: 164,
+    dy0: -12,
     dy1: 18,
     dy2: 38,
     rot1: 5,
-    scale1: .86,
+    scale1: .84,
     scale2: .70,
     op1: 1.0,
     op2: .99,
@@ -234,6 +238,7 @@ class TableCard {
     this.dutyMeta,
     this.cost,
     this.elapsed,
+    this.evidenceCount = 0,
   });
 
   final String id;
@@ -280,6 +285,12 @@ class TableCard {
 
   /// 执行中的计时读数（`12:04`）—— 状态线右侧
   final String? elapsed;
+
+  /// ⑩ 证据带已经拍到几张（docs/39 M-16）。0 = 还没拍。
+  ///
+  /// 只给 [CardSkin.duty] 的牌屉读；本轮只读**份数**（缩略图要接存档里的
+  /// 相对路径 + 会话里的 absPath，那是 P1 的活）。
+  final int evidenceCount;
 }
 
 /// 高对比 / 反色 → 用实底材质（apple-design §14）。
@@ -436,6 +447,9 @@ class CardFace extends StatelessWidget {
     this.chrome = true,
     this.showKicker = true,
     this.dims,
+    this.far = false,
+    this.leadT = 1,
+    this.run = -1,
   });
 
   final CardSkin skin;
@@ -473,6 +487,23 @@ class CardFace extends StatelessWidget {
 
   /// 拖拽进度 -1~1 —— 液态玻璃的**对角高光跟着它走**
   final double dragPhase;
+
+  /// 离领位 ≥2 格（docs/39 M-07「±2 位只留档位 + 状态线，不画文字」）。
+  ///
+  /// 只有 [CardSkin.duty] 读它（其余三套皮肤的侧位本来就靠缩放压暗表达层级，
+  /// 没有「±2 位」这个概念）—— 默认 false，别处行为一行不变。
+  final bool far;
+
+  /// 领位外辉的淡入进度 0~1（docs/39 M-06「换领位时外辉 200ms 淡入」）。
+  ///
+  /// 同样只有 duty 读它；默认 1 = 立刻就位（其余皮肤不画这层辉光）。
+  final double leadT;
+
+  /// 执行中状态线的**光包相位** 0~1（docs/39 M-09「12px 光包 1.6s 走」）。
+  ///
+  /// `< 0` = 不画（默认 -1）—— 因此**不给它灌值的地方完全没有光包、行为不变**；
+  /// 只有主线页的牌扇会用一个 15fps 的 ticker 往里灌。
+  final double run;
 
   @override
   Widget build(BuildContext context) {
@@ -1831,7 +1862,13 @@ class _BackPainter extends CustomPainter {
 //    ⑨ 状态线 2px           card.dutyState
 // ═══════════════════════════════════════════════════════════
 
-/// 状态线的颜色（暗青 / 亮青 / 金 / 灰）。
+/// 状态线的颜色（暗青虚线 / 亮青 / 金 / 灰）。
+///
+/// docs/39 M-09：五态改成**形状 + 颜色双编码** —— 以前 open 与 active 是
+/// 完全同款的一条亮青线，真机上分不出「能接」和「正在做」。现在：
+///   可接 = 亮青**实线**；执行中 = 亮青实线 + **12px 光包 1.6s 沿 2px 线走**；
+///   已完成 = 金线；待发布 = 暗青虚线；已放弃 = 灰线 + 整张压暗 .55。
+/// （颜色只能扫一眼：低视力/色弱时靠的仍然是「实线/虚线/光包在不在动」。）
 Color dutyLineColor(DutyState s) => switch (s) {
   DutyState.sealed => const Color(0x5538E1FF),
   DutyState.open => C.blue,
@@ -1972,14 +2009,19 @@ extension _DutyFace on CardFace {
     );
   }
 
-  // ── 审视态那张大牌（208×292，九区）──────────────────────
-  // ── 竖牌（牌扇，132×196）—— 只放「读得下的一档」─────────────
+  // ── 竖牌（牌扇，docs/39 M-05 起为 148×220）—— 只放「读得下的一档」──
   //
-  // ⚠️ 这个盒子**放不下完整九区**（132 宽 → 内容区只有 100；塞满必 overflow，
+  // ⚠️ 这个盒子**放不下完整九区**（148 宽 → 内容区 124；塞满必 overflow，
   //    实机踩过 `BOTTOM OVERFLOWED BY 81 PIXELS`）。所以牌扇给的是
   //    ① 角标 / ② 印位 / ③ 字形 / ④ 名称 / ⑤ 规则行(1 行) / ⑥ 报酬(数字)
   //    / ⑨ 状态线 / 印章；**完整九区在牌屉**（`_dutyDrawer`）。
-  //    侧位再降一级：只留 ① ② ④ 单行 + ⑨ + 印章（铁律 2/3「侧牌摘要」）。
+  //
+  // docs/39 M-07 侧位摘要：相邻位只留 ① 角标 / ② 档位 / ④ 单行标题 / ⑨ 状态线
+  //   （隐藏 kicker 之外的规则行与报酬）；±2 位**只留档位 + 状态线、不画文字**
+  //   —— 侧位被压住的那 33px 上不许有字（铁律 2）。
+  //
+  // docs/39 M-08 排版：档位 26pt/800（辉光 blur 10）、标题 17pt、kicker 9.5、
+  //   规则行 11.5、报酬 13、印章 10。
   Widget _dutyFull(BuildContext context, Dims d) {
     final Color accent = card.accent ?? C.blue;
     final bool solid = solidMaterial(context);
@@ -1991,6 +2033,14 @@ extension _DutyFace on CardFace {
           color: solid ? C.line2 : (lead ? C.blue.withAlpha(120) : C.line2),
         ),
         boxShadow: <BoxShadow>[
+          // docs/39 M-06：领位的**青色外辉** α .45 / blur 22（换领位 200ms 淡入），
+          // 黑色落影保留 —— 一个说「这张被抽出来了」，一个说「它离台面有多高」。
+          if (lead && !solid)
+            BoxShadow(
+              color: C.blue.withAlpha((.45 * 255 * leadT).round()),
+              blurRadius: 22,
+              spreadRadius: -2,
+            ),
           if (lead)
             const BoxShadow(
               color: Color(0xB3050812),
@@ -2042,6 +2092,15 @@ extension _DutyFace on CardFace {
               ),
             ),
             _glass(lead: lead, solid: solid, radius: 12),
+            // docs/39 M-09「已放弃 = 整张压暗 .55」：压暗用**叠一块深底**表达，
+            // 不是给整张卡套 Opacity —— 后者会 saveLayer（§5.5 红线），
+            // 而且会把后面的舞台一起透出来（宿主三次反馈过的老病）。
+            if (dim)
+              const Positioned.fill(
+                child: IgnorePointer(
+                  child: ColoredBox(color: Color(0x8C03060E)),
+                ),
+              ),
             // 稀有度色三处之一：左侧 3px 竖条
             Positioned(
               left: 0,
@@ -2055,67 +2114,72 @@ extension _DutyFace on CardFace {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
-                  // ① 角标 + ③ 字形
-                  Row(
-                    children: <Widget>[
-                      Expanded(
-                        child: Text(
-                          card.kicker ?? '',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: fs(
-                            family: F.mono,
-                            size: 8,
-                            wght: 500,
-                            ls: 1.4,
-                            height: 1.2,
-                            color: dim ? C.dim : C.blue,
+                  // ① 角标 + ③ 字形（M-07：±2 位一个字都不画，全交给档位与状态线）
+                  if (!far)
+                    Row(
+                      children: <Widget>[
+                        Expanded(
+                          child: Text(
+                            card.kicker ?? '',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: fs(
+                              family: F.mono,
+                              size: 9.5,
+                              wght: 500,
+                              ls: 1.4,
+                              height: 1.2,
+                              color: dim ? C.dim : C.blue,
+                            ),
                           ),
                         ),
-                      ),
-                      if (card.glyph != null)
-                        Text(
-                          card.glyph!,
-                          style: fs(
-                            family: F.cn,
-                            size: 13,
-                            wght: 700,
-                            height: 1,
-                            color: accent,
+                        if (card.glyph != null)
+                          Text(
+                            card.glyph!,
+                            style: fs(
+                              family: F.cn,
+                              size: 13,
+                              wght: 700,
+                              height: 1,
+                              color: accent,
+                            ),
                           ),
-                        ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  // ② 印位
+                      ],
+                    ),
+                  // M-07「±2 位只留档位 + 状态线，不画文字」：档位照样在顶部（它是
+                  // 这张牌仅剩的识别信息），中间整段留白，底部交给状态线。
+                  if (!far) const SizedBox(height: 6),
+                  // ② 印位（docs/39 M-08：30 → 26pt，辉光 14 → blur 10 / α .45）
                   Text(
                     card.rank,
                     style: fs(
                       family: F.num,
-                      size: 30,
+                      size: 26,
                       wght: 800,
                       height: .9,
                       color: accent,
                       shadows: <Shadow>[
-                        Shadow(color: accent.withAlpha(110), blurRadius: 14),
+                        Shadow(color: accent.withAlpha(115), blurRadius: 10),
                       ],
                     ),
                   ),
-                  const SizedBox(height: 8),
-                  // ④ 名称（领位 2 行 / 侧位 1 行）
-                  Text(
-                    card.title,
-                    maxLines: lead ? 2 : 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: fs(
-                      family: F.hd,
-                      size: lead ? 15 : 13,
-                      wght: 700,
-                      height: 1.3,
-                      color: dim ? C.dim : C.ice,
+                  if (!far) ...<Widget>[
+                    const SizedBox(height: 6),
+                    // ④ 名称（领位 17pt 2 行 / 侧位 17pt 1 行 → ×.84 ≈ 14.3）
+                    Text(
+                      card.title,
+                      maxLines: lead ? 2 : 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: fs(
+                        family: F.hd,
+                        size: 17,
+                        wght: 700,
+                        height: 1.28,
+                        color: dim ? C.dim : C.ice,
+                      ),
                     ),
-                  ),
-                  // ⑤ 规则行：只在领位、且只一行（侧位不画）
+                  ],
+                  // ⑤ 规则行：只在领位、且只一行（侧位不画，M-07）
                   if (lead && card.dutyMeta != null) ...<Widget>[
                     const SizedBox(height: 6),
                     Text(
@@ -2124,29 +2188,49 @@ extension _DutyFace on CardFace {
                       overflow: TextOverflow.ellipsis,
                       style: fs(
                         family: F.cn,
-                        size: 10.5,
+                        size: 11.5,
                         wght: 400,
                         height: 1.3,
                         color: C.mist,
                       ),
                     ),
                   ],
+                  // 领位/相邻位用 Spacer 把报酬+印章压到底；±2 位也吃同一段留白
                   const Spacer(),
-                  // ⑥ 报酬：只在领位、只留数字
+                  // ⑥ 报酬：只在领位、只留数字（M-07：侧位不画报酬）
                   if (lead && card.loot.isNotEmpty) _lootRow(compact: true),
-                  const SizedBox(height: 8),
-                  _stateStamp(),
+                  if (!far) const SizedBox(height: 8),
+                  if (!far) _stateStamp(),
                 ],
               ),
             ),
-            // ⑨ 状态线：贴底一条 2px
+            // ⑨ 状态线：贴底一条 2px（执行中在这条线上再叠一个光包，见 _statusLine）
             Positioned(
               left: 0,
               right: 0,
               bottom: 0,
               height: 2,
-              child: _statusLine(),
+              child: _statusLine(run: run),
             ),
+            // M-09「执行中 = 牌角 11pt 计时」：光包是**运动**，计时是**不动**的读数 ——
+            // 两者都给，色弱也能读，静音/静止时也能读。
+            if (card.dutyState == DutyState.active && card.elapsed != null)
+              Positioned(
+                right: 10,
+                bottom: 9,
+                child: Text(
+                  card.elapsed!,
+                  key: const Key('duty.timer'),
+                  style: fs(
+                    family: F.num,
+                    size: 11,
+                    wght: 700,
+                    ls: .4,
+                    height: 1,
+                    color: C.blue,
+                  ),
+                ),
+              ),
           ],
         ),
       ),
@@ -2216,10 +2300,16 @@ extension _DutyFace on CardFace {
               child: ColoredBox(color: accent),
             ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(18, 14, 18, 58),
-              child: Row(
+              // docs/39 M-15：批注已经进了内容流（原来是 Positioned 吸底的），
+              // 底部不再需要预留 58 那两行 —— 留 14 就够，多出来的高度给证据带。
+              padding: const EdgeInsets.fromLTRB(18, 14, 18, 14),
+              child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
+                  // ① 头部（角标 / 印位 34 / 名称 19 / 规则行 12.5 + 右侧报酬 chip）
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -2240,12 +2330,12 @@ extension _DutyFace on CardFace {
                         Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: <Widget>[
-                            // ② 印位
+                            // ② 印位（docs/39 M-15：40 → 34，别让档位字母抢了题面）
                             Text(
                               card.rank,
                               style: fs(
                                 family: F.num,
-                                size: 40,
+                                size: 34,
                                 wght: 800,
                                 height: .9,
                                 color: accent,
@@ -2336,33 +2426,56 @@ extension _DutyFace on CardFace {
                   ),
                 ],
               ),
-            ),
-            // ⑧ 批注：吸底（这一段填的就是原来那片"空"）
-            if (card.note != null)
-              Positioned(
-                left: 18,
-                right: 18,
-                bottom: 14,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    Container(height: 1, color: C.line),
-                    const SizedBox(height: 8),
-                    Text(
-                      '» ${card.note!}',
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: fs(
-                        family: F.cn,
-                        size: 12.5,
-                        wght: 500,
-                        height: 1.45,
-                        color: C.mist,
+                  // ② 证据带（docs/39 M-16）：原来是最下面那排**牌外**的
+                  //    五个无标签虚线圈（真机上是「空板下的五个空圈」）。
+                  //    移进卡里，按五态给内容 —— 这一段就是被它填掉的空白。
+                  const SizedBox(height: 12),
+                  _evidenceBand(),
+                  const SizedBox(height: 10),
+                  // ③ 底部：状态线 + 她的批注（原来批注是 Positioned 吸底的，
+                  //    重排后跟着内容走，不再和证据带之间空一大块）
+                  Container(height: 1, color: C.line),
+                  const SizedBox(height: 8),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Expanded(
+                        child: card.note == null
+                            ? const SizedBox.shrink()
+                            : Text(
+                                '» ${card.note!}',
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: fs(
+                                  family: F.cn,
+                                  size: 12.5,
+                                  wght: 500,
+                                  height: 1.45,
+                                  color: C.mist,
+                                ),
+                              ),
                       ),
-                    ),
-                  ],
-                ),
+                      if (card.dutyState == DutyState.active &&
+                          card.elapsed != null) ...<Widget>[
+                        const SizedBox(width: 10),
+                        Text(
+                          card.elapsed!,
+                          style: fs(
+                            family: F.num,
+                            size: 18,
+                            wght: 700,
+                            ls: .6,
+                            height: 1,
+                            color: C.blue,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ],
               ),
+            ),
+            // ⑨ 状态线：贴底一条 2px（card_skins 的 `_statusLine`）
             // ⑨ 状态线：贴底一条 2px
             Positioned(
               left: 0,
@@ -2377,8 +2490,157 @@ extension _DutyFace on CardFace {
     );
   }
 
-  /// ⑨ 状态线 —— 待发布虚线、可接/执行中亮青（执行中呼吸）、已完成实心金
-  Widget _statusLine() {
+  /// ② 证据带（docs/39 M-15 / M-16）—— 牌屉中段那五个槽。
+  ///
+  /// 原来它在**牌外**（main_view 的独立托盘）：五个无标签、无数据、无点击的
+  /// 虚线圈，加上牌屉卡片里 55% 的空玻璃，就是真机图 03/07 的样子。
+  /// 现在移进卡里，并且按五态给内容：
+  ///  · 可接   = 5 个虚线槽 + 「接单后可传证据」
+  ///  · 执行中 = 已拍到的份数 + 「已拍 N/5」
+  ///  · 已完成 = 只读槽 + 「N 份」
+  ///  · 待发布 = 锁形占位 + 「派到你手上才能拍」
+  ///  · 已放弃 = 灰槽 + 「这单作废了」
+  ///
+  /// ⚠️ 缩略图本轮只画**占位**：要接真图得从存档取相对路径 + 会话里的
+  ///    absPath 再异步解码，那是 P1 的活；[TableCard.evidenceCount] 已经留好。
+  Widget _evidenceBand() {
+    final DutyState s = card.dutyState;
+    final int n = card.evidenceCount.clamp(0, 5);
+    final bool readonly =
+        s == DutyState.done || s == DutyState.abandoned || s == DutyState.active;
+    final String label = switch (s) {
+      DutyState.open => '证据 · 最多 5 张',
+      DutyState.active => '证据 · 已拍 $n/5',
+      DutyState.done => '证据 · $n 份',
+      DutyState.sealed => '证据 · 派到你手上才能拍',
+      DutyState.abandoned => '证据 · 这单作废了',
+    };
+    final String hint = switch (s) {
+      DutyState.open => '接单后可传证据',
+      DutyState.active => n == 0 ? '还没拍。计时在走。' : '继续拍，凑齐 5 张。',
+      DutyState.done => '提交时一起结的。',
+      DutyState.sealed => '系统还没把它派给你。',
+      DutyState.abandoned => '——',
+    };
+    return Column(
+      key: const Key('duty.evidence'),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Row(
+          children: <Widget>[
+            Text(
+              label,
+              style: fs(
+                family: F.mono,
+                size: 10,
+                wght: 600,
+                ls: 1.1,
+                height: 1.2,
+                color: C.mist,
+              ),
+            ),
+            const Spacer(),
+            Flexible(
+              child: Text(
+                hint,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: fs(
+                  family: F.cn,
+                  size: 10.5,
+                  wght: 400,
+                  height: 1.2,
+                  color: C.dim,
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        SizedBox(
+          height: 38,
+          child: Row(
+            children: <Widget>[
+              for (int k = 0; k < 5; k++) ...<Widget>[
+                if (k > 0) const SizedBox(width: 6),
+                Expanded(
+                  child: _evidenceSlot(
+                    index: k,
+                    filled: readonly && k < n,
+                    locked: s == DutyState.sealed,
+                    dead: s == DutyState.abandoned,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// 证据带里的一格：虚线框（空）/ 编号占位（有）/ 锁形（待发布）
+  Widget _evidenceSlot({
+    required int index,
+    required bool filled,
+    required bool locked,
+    required bool dead,
+  }) {
+    return Container(
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(
+          color: filled
+              ? C.blue.withAlpha(120)
+              : (dead ? const Color(0x229AA3B2) : const Color(0x4D38E1FF)),
+        ),
+        gradient: filled
+            ? LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: <Color>[C.blue.withAlpha(30), C.blue.withAlpha(10)],
+              )
+            : null,
+      ),
+      child: locked
+          ? Text(
+              '锁',
+              style: fs(
+                family: F.cn,
+                size: 10,
+                wght: 400,
+                height: 1,
+                color: C.dim,
+              ),
+            )
+          : filled
+          ? Text(
+              '${index + 1}',
+              style: fs(
+                family: F.num,
+                size: 12,
+                wght: 700,
+                height: 1,
+                color: C.blue.withAlpha(200),
+              ),
+            )
+          : const SizedBox.shrink(),
+    );
+  }
+
+  /// ⑨ 状态线 —— 五态**形状 + 颜色双编码**（docs/39 M-09）。
+  ///
+  ///  · 待发布 = 暗青**虚线**（CustomPainter 画，真正的虚线不是细线）
+  ///  · 可接   = 亮青**实线** + 两端渐隐（静止）
+  ///  · 执行中 = 亮青实线 + **12px 光包沿 2px 线 1.6s 走**（[_DutyRunPainter]）
+  ///  · 已完成 = **金线**（C.rB）
+  ///  · 已放弃 = **灰线**（整张另有一层压暗，见 [_dutyFull]）
+  ///
+  /// ⚠️ 光包是 CustomPainter 里画一个 12px 宽的渐变块，**不是**对整张卡做
+  ///    Opacity/动画层 —— 那样每帧都 saveLayer（§5.5 红线）。
+  ///    减弱动态时 [_DutyRunPainter] 不跑（`progress < 0` 直接不画）。
+  Widget _statusLine({double run = -1}) {
     switch (card.dutyState) {
       case DutyState.sealed:
         return CustomPaint(painter: const _DutyDashPainter());
@@ -2387,6 +2649,7 @@ extension _DutyFace on CardFace {
       case DutyState.done:
         return const DecoratedBox(
           decoration: BoxDecoration(
+            // 金线也做两端渐隐：两端「收进去」比硬切更像刻上去的
             gradient: LinearGradient(
               colors: <Color>[
                 Color(0x00FBBF24),
@@ -2397,7 +2660,6 @@ extension _DutyFace on CardFace {
           ),
         );
       case DutyState.open:
-      case DutyState.active:
         return DecoratedBox(
           decoration: BoxDecoration(
             gradient: LinearGradient(
@@ -2407,6 +2669,28 @@ extension _DutyFace on CardFace {
               BoxShadow(color: C.blue.withAlpha(150), blurRadius: 10),
             ],
           ),
+        );
+      case DutyState.active:
+        // 执行中 = 可接那条线 + 跑动的光包（两道编码叠在一起）
+        return Stack(
+          fit: StackFit.expand,
+          children: <Widget>[
+            DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: <Color>[
+                    C.blue.withAlpha(0),
+                    C.blue,
+                    C.blue.withAlpha(0),
+                  ],
+                ),
+                boxShadow: <BoxShadow>[
+                  BoxShadow(color: C.blue.withAlpha(150), blurRadius: 10),
+                ],
+              ),
+            ),
+            CustomPaint(painter: _DutyRunPainter(run)),
+          ],
         );
     }
   }
@@ -2499,6 +2783,48 @@ extension _DutyFace on CardFace {
     DutyState.sealed => _seal('待发布'),
     _ => const SizedBox.shrink(),
   };
+}
+
+/// 执行中那条线上跑的**光包**（docs/39 M-09）。
+///
+/// 12px 宽的一段亮青，沿 2px 状态线从左往右走一圈（1.6s 循环）；
+/// [progress] < 0 = 不画（reduced-motion / 非执行态）。
+///
+/// ⚠️ 只画这一小段 —— 不是给整条线套动画，也不是给卡加图层。
+class _DutyRunPainter extends CustomPainter {
+  const _DutyRunPainter(this.progress);
+
+  /// 0~1 的相位；< 0 = 不画
+  final double progress;
+
+  /// 光包宽度（docs/39 M-09「12px 光包」）
+  static const double kRunW = 12;
+
+  @override
+  void paint(Canvas canvas, Size s) {
+    if (progress < 0) return;
+    final double span = s.width + kRunW;
+    final double head = progress.clamp(0.0, 1.0) * span;
+    final double x0 = head - kRunW;
+    final Rect r = Rect.fromLTWH(x0, 0, kRunW, s.height);
+    final Paint glow = Paint()
+      ..shader = LinearGradient(
+        colors: <Color>[
+          C.blue.withAlpha(0),
+          C.blue.withAlpha(200),
+          C.ice,
+        ],
+      ).createShader(r)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4);
+    canvas.drawRect(r, glow);
+    canvas.drawRect(
+      Rect.fromLTWH(head - 4, 0, 4, s.height),
+      Paint()..color = C.ice,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _DutyRunPainter old) => old.progress != progress;
 }
 
 /// 待发布那条虚线状态线（`repeating-linear-gradient` 的等价物）

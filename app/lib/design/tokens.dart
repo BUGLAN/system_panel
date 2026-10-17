@@ -100,6 +100,58 @@ double em(double size, double emValue) => size * emValue;
 /// 缓动（app.css L22）
 const kOut = Cubic(0.16, 1, 0.3, 1);
 
+/// easeInOutCubic（util.js L85 `ease.inOutCubic` 的 Flutter 等价物）
+const kInOut = Cubic(0.65, 0, 0.35, 1);
+
+/// ═══════════════════════════════════════════════════════════
+///  动效令牌（docs/39 §5.1「令牌先加进 design/tokens.dart，再改组件」）
+///
+///  四层：Touch / Respond / Scene / Payoff。改动画前先在这里找档位，
+///  **不许在组件里再写字面量时长** —— 同一个动作两处不同时长就是「不统一」。
+/// ═══════════════════════════════════════════════════════════
+class Motion {
+  const Motion._();
+
+  // ── Touch：按下 0ms 到、抬起 120ms 回 ──────────────────────
+  static const int touchMs = 0;
+  static const int releaseMs = 120;
+
+  // ── Respond：状态切换、小反馈 120–160ms ────────────────────
+  static const int respondMs = 140;
+
+  // ── Scene：内容 320ms / 相机 + chrome 520ms ───────────────
+  static const int sceneContentMs = 320;
+  static const int sceneChromeMs = 520;
+
+  // ── Payoff：接单 / 结算 / 升级 / 进度收割 ─────────────────
+  static const int harvestMs = 600; // 进度收割（弧增长）
+  static const int stampMs = 280; // 接单压印
+  static const int levelUpMs = 780; // 跨级编排（360 + 180 + 420）
+
+  // ── 系统心跳：只驱动 CTA 呼吸 / 进度带弧头 / 挂签光点 ────────
+  static const int heartMs = 2400;
+
+  // ── 牌屉开 / 关 / 压暗 ───────────────────────────────────
+  static const int drawerOpenMs = 420;
+  static const int drawerCloseMs = 260;
+  static const int scrimMs = 200;
+
+  // ── 物理弹簧（docs/39 §5.1）───
+  static const double cardTableK = 120;
+  static const double cardTableZeta = .9;
+  static const double cameraK = 70;
+  static const double cameraZeta = .95;
+
+  /// 过冲上限（§5.1「过冲 ≤1.08」）
+  static const double maxOvershoot = 1.08;
+
+  /// 退场 = 进场的 60%（§5.1「退场 = 进场的 60%」）
+  static const double exitRatio = .6;
+
+  /// 同屏最多几个可感知循环（她 + 心跳 = 2，其余 ≥18s 归环境层）
+  static const int maxLooping = 2;
+}
+
 /// 舞台锚点。
 ///
 /// 原型里这些值由 Live2D 模型实测比例 + 镜头矩阵算出（`Stage.toScreen`），

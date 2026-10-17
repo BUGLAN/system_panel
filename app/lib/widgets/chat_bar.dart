@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../design/tokens.dart';
+import '../state/sfx.dart';
 import 'press_scale.dart';
 import 'sys_icons.dart';
 
@@ -15,32 +16,50 @@ import 'sys_icons.dart';
 /// ═══════════════════════════════════════════════════════════
 
 /// 大厅的对话入口（原型无此物，样式对齐 `#sheet ×`/`.dk` 的玻璃圆钮）
+///
+/// docs/39 H-13（P2）：直径 56→52（挂载尺寸由 main.dart 传）、底 .70→.62、
+/// 边框 .12→.16、按下 .94、补 `tap` 音与 [Semantics] 标签 —— 原先纯图标、
+/// 无音效无标签，读屏只会念「按钮」。
 class ChatEntryButton extends StatelessWidget {
   const ChatEntryButton({super.key, this.onTap, this.size = 34});
 
   final VoidCallback? onTap;
 
-  /// 直径。默认 34（原型那颗）；搬到委托上方后宿主指定 56。
+  /// 直径。默认 34（原型那颗）；搬到委托上方后宿主指定 52（docs/39 H-13）。
   final double size;
 
   @override
   Widget build(BuildContext context) {
-    return PressScale(
-      onTap: onTap,
-      pressedGlow: const <BoxShadow>[
-        BoxShadow(color: Color(0x5938E1FF), blurRadius: 16),
-      ],
-      child: Container(
-        key: const Key('chat.entry'),
-        width: size,
-        height: size,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: const Color(0xB3040E20), // rgba(4,14,32,.7)
-          border: Border.all(color: C.line, width: 1),
-        ),
-        child: Center(
-          child: SvgPicture.string(kIconChat, width: size * .47, height: size * .47),
+    return Semantics(
+      button: true,
+      label: '找她说',
+      child: PressScale(
+        scale: .94, // H-13
+        onTap: onTap == null
+            ? null
+            : () {
+                Sfx.play('tap'); // docs/39 §5.4：对话圆钮归 tap
+                onTap!();
+              },
+        pressedGlow: const <BoxShadow>[
+          BoxShadow(color: Color(0x5938E1FF), blurRadius: 16),
+        ],
+        child: Container(
+          key: const Key('chat.entry'),
+          width: size,
+          height: size,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: const Color(0x9E040E20), // H-13：rgba(4,14,32,.62)
+            border: Border.all(color: const Color(0x2938E1FF), width: 1), // .16
+          ),
+          child: Center(
+            child: SvgPicture.string(
+              kIconChat,
+              width: size * .44, // H-13：图标 47% → 44%
+              height: size * .44,
+            ),
+          ),
         ),
       ),
     );

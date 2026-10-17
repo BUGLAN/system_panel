@@ -58,6 +58,10 @@ class CardTable extends StatefulWidget {
     this.size = CardTableSize.l,
     this.onPick,
     this.initialLead,
+    this.tapLeadAlways = false,
+    this.lead,
+    this.onLeadReport,
+    this.run = -1,
   });
 
   final List<TableCard> cards;
@@ -68,6 +72,31 @@ class CardTable extends StatefulWidget {
   final ValueChanged<int>? onPick;
 
   final int? initialLead;
+
+  /// 领位**无论 enabled 与否**都回调 [onPick]（docs/39 M-10）。
+  ///
+  /// 默认 false = 老行为（`enabled: false` 的牌点了只响一声、不打开）——
+  /// 补给 / 称号 / 证据 / 换目标四个场景都走默认值，**行为一行不变**。
+  ///
+  /// 主线页置 true：「点领位 = 打开牌屉」要全五态成立，
+  /// 接任务只发生在牌屉里的按钮上，所以 `enabled` 在这里只表达
+  /// 「这单现在能不能接」，不再兼任「能不能看」。
+  final bool tapLeadAlways;
+
+  /// **受控领位**（docs/39 M-13/M-14）：非 null 时由外部指定当前领位，
+  /// 变化就跟着 `moveTo`（刻度轨拖动 → 牌扇领位跟着动，但**不开牌屉**）。
+  ///
+  /// null = 不接管（默认）：领位仍由牌桌自己的拖拽/点选决定，
+  /// 其余四个场景（补给/称号/证据/换目标）一行行为都不变。
+  final int? lead;
+
+  /// 领位变化上报（无论来自手势还是受控注入）—— 刻度轨据此画「脚下」。
+  final ValueChanged<int>? onLeadReport;
+
+  /// 执行中状态线的光包相位（docs/39 M-09）；`< 0` = 不画。
+  ///
+  /// 默认 -1：其余四个场景（补给/称号/证据/换目标）不跑这个动画。
+  final double run;
 
   @override
   State<CardTable> createState() => _CardTableState();
@@ -125,6 +154,15 @@ class _CardTableState extends State<CardTable> with TickerProviderStateMixin {
     super.didUpdateWidget(old);
     _rail.clampTo(_n);
     if (_ids(old.cards) != _ids(widget.cards)) _playEnter();
+    // docs/39 M-13：受控领位 —— 外部（刻度轨拖动/点击）改了 `lead` 就跟着走。
+    // 这里**不响 rung**：拖动/点击那一下已经由刻度轨自己 `_detent` 过了。
+    final int? want = widget.lead;
+    if (want != null && want != _rail.lead) {
+      if (_rail.moveTo(want, length: _n)) {
+        widget.onLeadReport?.call(_rail.lead);
+        if (!railReduceMotion(context)) _sweep.forward(from: 0);
+      }
+    }
   }
 
   @override
@@ -167,6 +205,7 @@ class _CardTableState extends State<CardTable> with TickerProviderStateMixin {
     Haptics.buzz('choose');
     _lastDetent = null;
     if (!railReduceMotion(context)) _sweep.forward(from: 0);
+    widget.onLeadReport?.call(_rail.lead);
   }
 
   /// 上一次咬合到第几格（null = 还没咬过）
@@ -200,6 +239,16 @@ class _CardTableState extends State<CardTable> with TickerProviderStateMixin {
 
   void _commit(int i) {
     final TableCard c = widget.cards[i];
+    // docs/39 M-10：`tapLeadAlways` 的桌子（主线）把「点开看」与「接单」
+    // 彻底分开 —— 五态都能打开详情，所以这里不看 `enabled`、也不压印；
+    // 接单只发生在详情里的按钮上（那里的音效才是 seal）。
+    if (widget.tapLeadAlways) {
+      // 看详情 = tap + choose（§5.4：原来这里错用 seal，那是接单的音）
+      Sfx.play('tap');
+      Haptics.buzz('choose');
+      widget.onPick?.call(i);
+      return;
+    }
     if (!c.enabled) {
       // 不可用：点了她解释一句，**不落定**
       Sfx.play('tap');
@@ -385,6 +434,14 @@ class _CardTableState extends State<CardTable> with TickerProviderStateMixin {
                 lean: lean,
                 // 液态玻璃的对角高光跟着手势走
                 dragPhase: reduce ? 0 : (-frac * 2).clamp(-1.0, 1.0),
+                // docs/39 M-07：离领位 ≥1.5 格 = 「±2 位」，只留档位 + 状态线
+                far: ad >= 1.5,
+                // docs/39 M-06：换领位时外辉 200ms 淡入。`sweep` 就是那 520ms 的
+                // 一次性进度，它的前 200/520 ≈ .38 正好当外辉的淡入段用 ——
+                // 不额外开一个 controller（牌桌已经有三个）。
+                leadT: isLead ? (reduce ? 1.0 : (sweep / .38).clamp(0.0, 1.0)) : 1,
+                // docs/39 M-09：只有 duty 的执行中会画光包（其余皮肤不看这个字段）
+                run: widget.run,
               ),
             ),
           ),

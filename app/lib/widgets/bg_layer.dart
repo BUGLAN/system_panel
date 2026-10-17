@@ -28,12 +28,24 @@ class BgLayer extends StatefulWidget {
 class _BgLayerState extends State<BgLayer> with TickerProviderStateMixin {
   // 三条轨道环各自的周期（app.css L55-57）
   // ⚠️ 性能：转一整圈要 140~300s，60fps 地重建纯浪费——三个环共用一条
-  //    Ticker，相位连续累计、**每 100ms 才重建一次**（环1每步弧长
+  //    Ticker，相位连续累计、**每 100ms 才提交一次**（环1每步弧长
   //    r165×0.26°≈0.74px，亚像素级，肉眼不可辨）。
+  //
+  // docs/39 §5.5 性能收口：提交**不再走整层 setState** —— 原来 100ms 一次
+  //    `setState(() {})` 会把天幕这一整棵（渐变×3、底图、大字两层、噪点贴图）
+  //    全部重建一遍，只为让三个环的 Transform 转一点。现在相位发给
+  //    [_orbitRev] 这个 Listenable，三个环的 CustomPainter 用 `repaint:` 订阅它，
+  //    **只重画那三个环自己**（旋转也从 Transform 搬进 painter：绕自身圆心旋转
+  //    的圆环与 Transform.rotate 的合成结果逐像素等价）。
+  //    提交节奏（100ms）与相位数值完全没动 —— 观感零变化。
   late final Ticker _orbitTick = createTicker(_onOrbitTick);
   double _t1 = 0, _t2 = 0, _t3 = 0;
   double _orbitAccum = 0;
   Duration _orbitLast = Duration.zero;
+
+  /// 轨道环的重绘信号（值只是「第几次提交」；painter 直接读本 State 上的 _t1.._t3）
+  final ValueNotifier<int> _orbitRev = ValueNotifier<int>(0);
+
   void _onOrbitTick(Duration now) {
     final double dt = _orbitLast == Duration.zero
         ? 1 / 60
@@ -45,7 +57,7 @@ class _BgLayerState extends State<BgLayer> with TickerProviderStateMixin {
     _orbitAccum += dt;
     if (_orbitAccum >= .1) {
       _orbitAccum = 0;
-      setState(() {});
+      _orbitRev.value++; // 只通知三个环的 painter 重绘，不重建 widget
     }
   }
 
@@ -59,17 +71,23 @@ class _BgLayerState extends State<BgLayer> with TickerProviderStateMixin {
   double _floorPhase = 0;
   double _floorPainted = -1;
   Duration _floorLast = Duration.zero;
+
+  /// 地面网格的重绘信号（值 = 上一次真正画出去的相位）。
+  /// docs/39 §5.5：与轨道环同一套收口 —— 31Hz 的提交只重画网格这一张画布，
+  /// 不再整层 rebuild。量子（0.25 逻辑像素）与相位数值原样保留。
+  final ValueNotifier<double> _floorRev = ValueNotifier<double>(0);
+
   void _onFloorTick(Duration now) {
     final double dt = _floorLast == Duration.zero
         ? 1 / 60
         : (now - _floorLast).inMicroseconds / 1e6;
     _floorLast = now;
-    final double next = (_floorPhase + dt * 1e6 / _floorPeriod.inMicroseconds) % 1;
+    final double next =
+        (_floorPhase + dt * 1e6 / _floorPeriod.inMicroseconds) % 1;
     if ((next - _floorPainted).abs() * _floorCell >= _floorQuantum) {
-      setState(() {
-        _floorPhase = next;
-        _floorPainted = next;
-      });
+      _floorPhase = next;
+      _floorPainted = next;
+      _floorRev.value = next; // 只通知 _GridPainter 重绘
     } else {
       _floorPhase = next;
     }
@@ -83,7 +101,8 @@ class _BgLayerState extends State<BgLayer> with TickerProviderStateMixin {
   Future<void> _bakeGrain(Size size) async {
     final int w = size.width.round(), h = size.height.round();
     if (w <= 0 || h <= 0) return;
-    if (_grain != null && (size.width - _grainSize.width).abs() < 24 &&
+    if (_grain != null &&
+        (size.width - _grainSize.width).abs() < 24 &&
         (size.height - _grainSize.height).abs() < 24) {
       return;
     }
@@ -125,6 +144,8 @@ class _BgLayerState extends State<BgLayer> with TickerProviderStateMixin {
   void dispose() {
     _orbitTick.dispose();
     _floorTick.dispose();
+    _orbitRev.dispose();
+    _floorRev.dispose();
     _grain?.dispose();
     super.dispose();
   }
@@ -186,17 +207,17 @@ class _BgLayerState extends State<BgLayer> with TickerProviderStateMixin {
               ),
             ),
             const Positioned.fill(child: CustomPaint(painter: _SkyPainter())),
-            _orbit(w, h, diameter: 330, alpha: .10, dashed: true, t: _t1),
+            _orbit(w, h, diameter: 330, alpha: .10, dashed: true, t: () => _t1),
             _orbit(
               w,
               h,
               diameter: 620,
               alpha: .07,
               dashed: false,
-              t: _t2,
+              t: () => _t2,
               reverse: true,
             ),
-            _orbit(w, h, diameter: 980, alpha: .07, dashed: true, t: _t3),
+            _orbit(w, h, diameter: 980, alpha: .07, dashed: true, t: () => _t3),
             _word(w, h),
             _floorGrid(w, h),
             // 颗粒：噪声图烘焙完成后只做一次贴图 overlay（Opacity .07 照抄原型）
@@ -216,14 +237,20 @@ class _BgLayerState extends State<BgLayer> with TickerProviderStateMixin {
   }
 
   /// 轨道环：圆心钉在她的头（--hx/--hy），整环缓慢自转
-  /// [t] 现在是 0~1 的相位（10Hz Ticker 推进，见 `_onOrbitTick`）
+  /// [t] 是**相位取值器**（0~1，10Hz Ticker 推进，见 `_onOrbitTick`）。
+  ///
+  /// docs/39 §5.5：原来这里读的是 build 时的 `_t1` 并挂在 `Transform.rotate` 上，
+  /// 所以每次相位推进都得整层 setState。现在相位与旋转都进 painter：
+  /// `repaint: _orbitRev` 只让这一张画布 markNeedsPaint，widget 树不动。
+  /// 旋转的写法与 `Transform.rotate` 等价 —— 都是绕画布中心转（画布是紧约束的
+  /// diameter×diameter 方块，圆心 = 中心）。
   Widget _orbit(
     double w,
     double h, {
     required double diameter,
     required double alpha,
     required bool dashed,
-    required double t,
+    required double Function() t,
     bool reverse = false,
   }) {
     final double cx = w * .5;
@@ -234,13 +261,13 @@ class _BgLayerState extends State<BgLayer> with TickerProviderStateMixin {
       width: diameter,
       height: diameter,
       child: IgnorePointer(
-        child: Transform.rotate(
-          angle: (reverse ? -1 : 1) * t * 2 * math.pi,
-          child: CustomPaint(
-            painter: _RingPainter(
-              color: C.blue.withAlpha((alpha * 255).round()),
-              dashed: dashed,
-            ),
+        child: CustomPaint(
+          painter: _RingPainter(
+            color: C.blue.withAlpha((alpha * 255).round()),
+            dashed: dashed,
+            reverse: reverse,
+            phase: t,
+            repaint: _orbitRev,
           ),
         ),
       ),
@@ -328,7 +355,11 @@ class _BgLayerState extends State<BgLayer> with TickerProviderStateMixin {
           transform: Matrix4.identity()
             ..setEntry(3, 2, -1 / 320)
             ..rotateX(66 * math.pi / 180),
-          child: CustomPaint(painter: _GridPainter(phase: _floorPhase)),
+          // docs/39 §5.5：painter 自己订阅 `_floorRev` 重绘（31Hz 的提交不再
+          // 触发整层 rebuild；相位取值器读的是 State 上最新的 _floorPhase）。
+          child: CustomPaint(
+            painter: _GridPainter(phase: () => _floorPhase, repaint: _floorRev),
+          ),
         ),
       ),
     );
@@ -402,44 +433,70 @@ class _SkyPainter extends CustomPainter {
 }
 
 /// 轨道环：1px 实线或虚线
+///
+/// docs/39 §5.5：自转从 `Transform.rotate` 搬进 painter（`repaint:` 订阅
+/// 10Hz 的提交信号，只 markNeedsPaint、不重建 widget）。`canvas.rotate` 绕的是
+/// 画布原点 —— 画布中心即环心，所以先平移到中心、转、再平移回去；
+/// 与 `Transform.rotate(alignment: center)` 的合成结果逐像素等价。
 class _RingPainter extends CustomPainter {
-  const _RingPainter({required this.color, required this.dashed});
+  _RingPainter({
+    required this.color,
+    required this.dashed,
+    required this.reverse,
+    required this.phase,
+    super.repaint,
+  });
 
   final Color color;
   final bool dashed;
+
+  /// 反向自转（中间那只 620 的环）
+  final bool reverse;
+
+  /// 相位取值器（0~1，读 State 上最新的 _t）
+  final double Function() phase;
 
   @override
   void paint(Canvas canvas, Size s) {
     final Offset center = Offset(s.width / 2, s.height / 2);
     final double r = s.width / 2 - .5;
+    final double angle = (reverse ? -1 : 1) * phase() * 2 * math.pi;
+    canvas.save();
+    canvas.translate(center.dx, center.dy);
+    canvas.rotate(angle);
+    canvas.translate(-center.dx, -center.dy);
     final Paint p = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1
       ..color = color;
     if (!dashed) {
       canvas.drawCircle(center, r, p);
-      return;
+    } else {
+      final Rect rect = Rect.fromCircle(center: center, radius: r);
+      const double dash = 4, gap = 4;
+      final double step = (dash + gap) / r;
+      for (double a = 0; a < 2 * math.pi; a += step) {
+        canvas.drawArc(rect, a, dash / r, false, p);
+      }
     }
-    final Rect rect = Rect.fromCircle(center: center, radius: r);
-    const double dash = 4, gap = 4;
-    final double step = (dash + gap) / r;
-    for (double a = 0; a < 2 * math.pi; a += step) {
-      canvas.drawArc(rect, a, dash / r, false, p);
-    }
+    // ⚠️ save/restore 必须成对：原来实线那支直接 return，把旋转的 save 漏掉了
+    //    （框架会当场断言 canvas 状态不一致）。
+    canvas.restore();
   }
 
   @override
   bool shouldRepaint(covariant _RingPainter o) =>
-      o.color != color || o.dashed != dashed;
+      o.color != color || o.dashed != dashed || o.reverse != reverse;
 }
 
 /// 地面网格：46px 格，1px 线，整体向下滚
 /// 淡出＝线色自带与原 ShaderMask(dstIn) 同参数的竖向渐变：
 /// bottom(α.16) → 85% 处透明（stop 0.85，再往上保持透明）
 class _GridPainter extends CustomPainter {
-  const _GridPainter({required this.phase});
+  _GridPainter({required this.phase, super.repaint});
 
-  final double phase;
+  /// 相位取值器（0~1，读 State 上最新的 _floorPhase）
+  final double Function() phase;
 
   @override
   void paint(Canvas canvas, Size s) {
@@ -452,7 +509,7 @@ class _GridPainter extends CustomPainter {
         <double>[0, .85],
       );
     const double cell = 46;
-    final double off = phase * cell;
+    final double off = phase() * cell;
     for (double y = off - cell; y < s.height + cell; y += cell) {
       canvas.drawLine(Offset(0, y), Offset(s.width, y), p);
     }
@@ -462,7 +519,8 @@ class _GridPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _GridPainter o) => o.phase != phase;
+  // 相位由 `repaint: _floorRev` 推送；这里只需比固定参数（全是常量，恒 false）
+  bool shouldRepaint(covariant _GridPainter o) => false;
 }
 
 /// 颗粒：原型的 SVG feTurbulence 换成程序化噪点，用 overlay 混合。
