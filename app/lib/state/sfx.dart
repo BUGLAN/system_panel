@@ -140,6 +140,39 @@ class Sfx {
   /// 12 槽 / 250ms = 48 发每秒 > 打字机 29 字每秒（34ms/字），不会饿死。
   static const Duration _busyHold = Duration(milliseconds: 250);
 
+  /// **长音**的槽位保持时长（docs/41 §4.2）。
+  ///
+  /// 原来的 [_busyHold] 是固定 250ms —— 它按「最高频那条路」（逐字音 ~60ms）
+  /// 标定的，于是所有 >250ms 的音都被**腰斩**：
+  ///   `seal` 1.26s / `impact` 1.29s / `stamp` 0.29s / `boot` 3.65s /
+  ///   `levelup` ~1.4s / `rank_6` 1.77s。
+  /// 后果不只是「声音被切」：槽位提前标空闲 → 被下一发复用到**正在播的实例**上
+  /// → 插件层 `stop()/play()` 交错（正是 `.verify/batch2/` 观测到的 30s 超时那类问题）。
+  ///
+  /// 修法：按 key 给一个**上界**，与 `onPlayerComplete` 谁先到算谁。
+  /// 上界取得比素材时长略长（多 200ms 余量），只影响槽位归还、不影响听感。
+  static const Map<String, Duration> _longHold = <String, Duration>{
+    "seal": Duration(milliseconds: 1500),
+    "impact": Duration(milliseconds: 1500),
+    "boot": Duration(milliseconds: 3900),
+    "levelup": Duration(milliseconds: 1600),
+    "rank": Duration(milliseconds: 1200),
+    "stamp": Duration(milliseconds: 500),
+    "crit": Duration(milliseconds: 900),
+    "fail": Duration(milliseconds: 900),
+    "publish": Duration(milliseconds: 700),
+  };
+
+  /// 这一发最多占着槽位多久
+  static Duration _holdFor(String key) => _longHold[key] ?? _busyHold;
+
+  /// 供测试与诊断：某个 key 的槽位保持时长（docs/41 §4.2 的回归点）。
+  ///
+  /// 为什么要暴露它：`_busyHold` 固定 250ms 曾把 `seal`(1.26s) / `impact`(1.29s)
+  /// 腰斩 —— 那是**听不出来**但会引发槽位复用错乱的一类缺陷，必须有钉子。
+  @visibleForTesting
+  static Duration holdForTest(String key) => _holdFor(key);
+
   /// 单发起播的看门狗：超过它就认为这一发起不来了（平台 `prepared` 丢了），
   /// 丢弃这一发 + 把槽踢出池子（audioplayers 自己的超时是 30 秒，太长——
   /// 一发挂住会拖垮整段逐字音）。
@@ -271,7 +304,7 @@ class Sfx {
         _retire(slot);
         return;
       }
-      _releaseWhenDone(slot, p);
+      _releaseWhenDone(slot, p, key);
     } catch (e) {
       // 素材缺失 / 平台不支持都只是"没声"：记一行，不抛
       slot.busy = false;
@@ -312,7 +345,7 @@ class Sfx {
   /// SoundPool 低延迟路径不保证回调，所以配一个 [_busyHold] 兜底计时器——
   /// 否则槽位会泄漏成"越用越没声"。
   /// 这两个都只在**起播成功之后**创建，所以 widget 测试里不会留 pending timer。
-  static void _releaseWhenDone(_Slot slot, AudioPlayer p) {
+  static void _releaseWhenDone(_Slot slot, AudioPlayer p, String key) {
     bool released = false;
     StreamSubscription<void>? sub;
     void release() {
@@ -325,7 +358,8 @@ class Sfx {
     try {
       sub = p.onPlayerComplete.listen((_) => release());
     } catch (_) {}
-    Timer(_busyHold, release);
+    // 按 key 给上界：长音（seal/impact/boot…）不再被 250ms 腰斩
+    Timer(_holdFor(key), release);
   }
 
   /// 释放（App 退出/测试收尾）

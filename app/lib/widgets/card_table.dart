@@ -414,12 +414,27 @@ class _CardTableState extends State<CardTable> with TickerProviderStateMixin {
         : a.clamp(-2.0, 2.0) * _g.rot1 * math.pi / 180;
     final double op = _sideOp(ad);
 
-    // ── 入场：materialize（透明 + 微缩 + 从上方落下），无过冲 ──
-    // 减弱动态时只剩「透明度」那一条
+    // ── 入场：**发牌**（docs/41 §3.1）──────────────────────────────
+    // 原来只有「透明 + 微缩 + 从上方落下」三条同时线性插值 —— 那是「淡入」，
+    // 不是「发牌」。真实的发牌有**方向**：牌从右下方被甩出来，落定时才转正。
+    //
+    // 补的两条（都随 ep 收口，末帧严格等于原样）：
+    //   ① **微旋转 + 位移方向**：从 +3.5° 转到 0、从右下方小幅摆入
+    //   ② 落定前**先到位、后转正**（旋转用 ep 的平方根 → 先转、后落）
+    // ⚠️ 不加过冲：入场不是手势驱动的（`card_table.dart:20-21` 已写对）。
     final double ep = reduce ? _enter.value : _enterP(i, ms);
     final double px = cx - dims.w / 2 + dx0;
+    // 位移：向上 10（原位）＋ 入场时从右下方 6px 摆入
+    // ⚠️ 必须**对称**：`sign == 0`（领位）时若给 +6，领位牌首帧就偏右 6px，
+    //  「领位居中」这条测试与视觉都会被破坏。所以领位不给横向偏移，
+    //  只做纵向 + 旋转；侧位才顺着自己的方向甩出。
+    final double enterDx = (reduce || sign == 0) ? 0 : (1 - ep) * 6 * sign;
     final double py = _g.topPad + dy0 + (reduce ? 0 : (1 - ep) * -10);
     final double pScale = scale * (reduce ? 1 : (0.94 + 0.06 * ep));
+    // 旋转：入场时额外 +3.5° 甩出，收口比位移更早（√ep → 先转正再落定）
+    final double enterRot = reduce
+        ? 0
+        : (1 - math.sqrt(ep.clamp(0.0, 1.0))) * 3.5 * math.pi / 180;
     // 减弱动态：按下不缩放，改成压暗一点点（保留「这一下被接收了」的反馈）
     final double pOp = (op * ep).clamp(0.0, 1.0);
 
@@ -442,7 +457,8 @@ class _CardTableState extends State<CardTable> with TickerProviderStateMixin {
     final double lean = reduce ? 0 : -frac;
 
     return Positioned(
-      left: px,
+      // 入场位移：叠加到 left（只在入场期间非 0，末帧严格为 0）
+      left: px + enterDx,
       top: py,
       width: dims.w,
       height: dims.h,
@@ -454,7 +470,8 @@ class _CardTableState extends State<CardTable> with TickerProviderStateMixin {
         // RepaintBoundary 不裁切（它是**重绘隔离**，不是裁剪层）——
         // 牌面那圈 boxShadow 照旧溢出到牌外，观感不变；见 _PressFeedback 的说明
         child: Transform.rotate(
-          angle: rot,
+          // 入场时额外 +3.5° 甩出（√ep 收口：先转正、后落定）
+          angle: rot + enterRot,
           child: Transform.scale(
             scale: pScale * (stamping ? 1.02 : 1),
             child: Opacity(
