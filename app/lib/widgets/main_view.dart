@@ -1527,6 +1527,10 @@ class _DetailStageState extends State<_DetailStage>
       _open.value = 1;
     } else {
       _open.forward();
+      // docs/41 §3.5：开牌屉 = 「翻开一张牌」，给一声 flip（0.10s / −27.5dBFS）
+      // + 一次很轻的震动。原来这里只有视觉，没有「翻开」的触觉。
+      Sfx.play('flip');
+      Haptics.buzz('flip');
     }
   }
 

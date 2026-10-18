@@ -191,8 +191,27 @@ class _CardTableState extends State<CardTable> with TickerProviderStateMixin {
     _enter.duration = Duration(milliseconds: reduce ? 160 : _spanMs.round());
     _enter.forward(from: 0);
     if (!reduce) _sweep.forward(from: 0);
+    // docs/41 §3.1「发牌」：一次发牌**只出 2 声**（首张 + 末张）。
+    // 为什么不是逐张：相隔 <20ms 的两声会被听成一个；n=8 时 stagger 只有 11.4ms。
+    //
+    // ⚠️ 末张那一声走 [_enter] 的进度判断，**不用 `Future.delayed`**：
+    //    后者会给 widget 测试留 pending timer（仓库踩过）。
+    if (reduce) return;
+    Sfx.play('deal', variant: 0);
+    Haptics.buzz('deal');
+    if (_n > 1 && _spanMs > 120) _lastDealSounded = false;
   }
 
+  /// 末张发牌那一声是否已经响过（每个入场周期只响一次）
+  bool _lastDealSounded = true;
+
+  /// 入场进度推进时检查：走到 88% 就把末张那一声补上
+  void _tickDealSound() {
+    if (_lastDealSounded || !_enter.isAnimating) return;
+    if (_enter.value < .88) return;
+    _lastDealSounded = true;
+    Sfx.play('deal', variant: 4);
+  }
   double _enterP(int i, double ms) {
     final double start = _stagger * i;
     if (ms <= start) return 0;
@@ -205,7 +224,7 @@ class _CardTableState extends State<CardTable> with TickerProviderStateMixin {
     // 原来这里 `Sfx.play('rung')` **不带 variant** → `_pick` 随机取 5 档之一，
     // 于是每次落定的音高是不受控的（可能低音，破坏「往右走高」的阶梯感）。
     // 改成与 [_onDragProgress] 同一口径：音高跟着领位下标走。
-    Sfx.play('rung', variant: _rail.lead % 5);
+    Sfx.play('detent', variant: _rail.lead % 5);
     Haptics.buzz('choose');
     _lastDetent = null;
     if (!railReduceMotion(context)) _sweep.forward(from: 0);
@@ -227,7 +246,9 @@ class _CardTableState extends State<CardTable> with TickerProviderStateMixin {
     if (last == null || detent == last) return;
     if (railReduceMotion(context)) return;
     final int i = detent.round().clamp(0, _n - 1);
-    Sfx.play('rung', variant: i % 5);
+    // docs/41 §3.3：咬合换专用 detent（28ms，与 8ms 震动同量级）。
+    // rung 是 70ms 方波 —— 手指 8ms 就结束了、耳朵还在响，是「音画不同步」的来源。
+    Sfx.play('detent', variant: i % 5);
     Haptics.buzz('choose');
   }
 
@@ -261,8 +282,12 @@ class _CardTableState extends State<CardTable> with TickerProviderStateMixin {
     }
     _locked = true;
     // 因果同帧（apple-design §13）：压印、亮闪、声音、震动都在这一下
-    Sfx.play('seal');
-    Haptics.buzz('seal');
+    //
+    // docs/41 §3.4：落定**不再用 `seal`** —— 那是全场第二重的音（1.26s），
+    // 却是「我把这一张选定了」这种高频动作；来回选 10 次就是 10 次钤印声叠加。
+    // 改用 `stamp`（0.29s / −16.3dBFS），`seal` 保留给接任务/提交。
+    Sfx.play('stamp');
+    Haptics.buzz('stamp');
     widget.onPick?.call(i);
     if (railReduceMotion(context)) {
       _locked = false;
@@ -312,7 +337,14 @@ class _CardTableState extends State<CardTable> with TickerProviderStateMixin {
           // 拖动中每过一格：一声 + 轻震（档位咬合）
           onDragProgress: _onDragProgress,
           builder: (BuildContext _, double dx) => AnimatedBuilder(
-            animation: Listenable.merge(<Listenable>[_enter, _stamp, _sweep]),
+            // ⚠️ 入场走到 88% 时补末张那声发牌（[_tickDealSound]），
+            //    走 AnimatedBuilder 的每帧回调，不另起 timer。
+            animation: Listenable.merge(<Listenable>[
+              _enter,
+              _stamp,
+              _sweep,
+              _DealTicker(_enter, _tickDealSound),
+            ]),
             builder: (BuildContext _, Widget? _) =>
                 _stack(c.maxWidth / 2, dims, dx, reduce),
           ),
@@ -506,5 +538,29 @@ class _PressFeedbackState extends State<_PressFeedback> {
         ),
       ),
     );
+  }
+}
+
+/// 把「入场进度」包成一个 Listenable 给 AnimatedBuilder，顺带每帧回调一次。
+///
+/// 为什么需要它：末张那声发牌要踩在入场走到 88% 的那一帧（不用 `Future.delayed`
+/// —— 后者会给 widget 测试留 pending timer，仓库踩过）。
+class _DealTicker extends ChangeNotifier {
+  _DealTicker(this._target, this._onTick) {
+    _target.addListener(_forward);
+  }
+
+  final Animation<double> _target;
+  final VoidCallback _onTick;
+
+  void _forward() {
+    _onTick();
+    notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _target.removeListener(_forward);
+    super.dispose();
   }
 }

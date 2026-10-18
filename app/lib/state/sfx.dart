@@ -76,6 +76,23 @@ class Sfx {
       'audio/ignite_6.wav',
       'audio/ignite_7.wav',
     ],
+    // ── docs/41 §4：卡牌专属（v16）────────────────────────────────
+    // detent：档位咬合（28ms，与 8ms 震动同量级；rung 是 70ms 给派单板的）
+    'detent': <String>[
+      'audio/detent_0.wav',
+      'audio/detent_1.wav',
+      'audio/detent_2.wav',
+      'audio/detent_3.wav',
+      'audio/detent_4.wav',
+    ],
+    'stamp': <String>['audio/stamp.wav'], // 落定压印（0.29s，比 seal 轻得多）
+    'deal': <String>[ // 发牌（一次最多 2 声：首张 0 + 末张 4）
+      'audio/deal_0.wav',
+      'audio/deal_1.wav',
+      'audio/deal_2.wav',
+      'audio/deal_3.wav',
+      'audio/deal_4.wav',
+    ],
     'seal': <String>['audio/seal.wav'], // 按满接单 / 提交钤印
     'publish': <String>['audio/ding.wav'], // 发布（原型叫 ding，「只属于派单」）
     'impact': <String>['audio/impact.wav'], // 结算砸印
