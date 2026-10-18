@@ -87,6 +87,11 @@ class Sfx {
     'crit': <String>['audio/crit.wav'],
     'levelup': <String>['audio/levelup.wav'],
     'fail': <String>['audio/fail.wav'],
+    // docs/41 §1 Bug ③：`boot.wav` **一直在盘上（85 件里的第 1 件）**，
+    // 但 `table` 里从来没有这个 key —— 而 `main.dart` 的唤醒流程每次都在调
+    // `Sfx.play('boot')`。于是每次唤醒都是一次**空调用**：`_pick` 返回 null、
+    // 静默返回、连 `failCount` 都不加，因此这个漏项从来没被任何统计发现。
+    'boot': <String>['audio/boot.wav'],
     // ── 底噪（可循环，设置页可关；原型 audio.js 的 ambient）──
     'ambient': <String>['audio/ambient_loop.wav'],
   };

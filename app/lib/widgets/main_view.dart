@@ -270,6 +270,67 @@ class _MainViewState extends State<MainView> with TickerProviderStateMixin {
   double _run = -1;
   Timer? _runTimer;
 
+  // ── 接任务三拍（docs/41 §3.7 · 本轮唯一「一做就立刻感觉得到」的改动）──
+  //
+  //  真机上现在接单是**同一帧硬切**：点【接任务】→ `onAccept` → `_beginExec`
+  //  → 立刻换页。牌桌上那股「捏着一张牌」的手感，在最有分量的那一下消失了。
+  //
+  //  改成三拍（合计 360ms）：
+  //    ① 0..120ms   压印：卡缩到 .96 再弹回 1.02（`_acceptP` 驱动）
+  //    ② 120..360ms 卡被抽走：向上位移 + 淡出 + 轻微放大（像被系统抽走）
+  //    ③ 360ms      才真正 `onAccept()`，切到执行面板
+  //
+  //  ⚠️ 只作用于 `main_view` 这一处；`main.dart` 一行不用改（docs/41 §7 的
+  //     落地判断）。reduced-motion 下直接落终态（跳过 ①②，立即 onAccept）。
+  late final AnimationController _accept = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 360),
+  );
+
+  /// 正在被抽走的那张（-1 = 没有）。它是**预案序号**（不是窗口下标）。
+  int _accepting = -1;
+
+  /// 接单编排：压印 → 抽走 → 回调。见 [_accept] 上方那段说明。
+  void _takeTask(int planIndex) {
+    if (_accepting >= 0) return; // 已有一次在播
+    if (railReduceMotion(context)) {
+      onAccept?.call(planIndex);
+      return;
+    }
+    setState(() => _accepting = planIndex);
+    // ⚠️ 用 status listener 而不是 `whenComplete`：后者走 Future 微任务，
+    //    在 widget 测试里会比动画多等一帧（实测 t+400 尚未回调、t+700 才到），
+    //    于是「360ms 三拍」这条断言没法钉准。listener 在动画到达 completed 的
+    //    **同一次 pump** 里触发，时序与设计值一致。
+    void onDone(AnimationStatus s) {
+      if (s != AnimationStatus.completed) return;
+      _accept.removeStatusListener(onDone);
+      if (!mounted) return;
+      setState(() => _accepting = -1);
+      onAccept?.call(planIndex);
+    }
+
+    _accept.addStatusListener(onDone);
+    _accept.forward(from: 0);
+  }
+
+  /// 这一张此刻的接单变换（只对 [_accepting] 那张生效）。
+  /// 返回 `(scale, dy, opacity)`：`null` = 不作用。
+  (double, double, double)? _acceptFx(int planIndex) {
+    if (_accepting != planIndex) return null;
+    final double t = _accept.value; // 0..1（360ms）
+    if (t <= .333) {
+      // ① 压印：.96 → 1.02（120ms，`t=.333` 时到峰值）
+      final double p = t / .333;
+      final double s = .96 + .06 * Curves.easeOut.transform(p);
+      return (s, 0, 1);
+    }
+    // ② 被抽走：向上 -28、缩到 .9、淡出（240ms）
+    final double p = (t - .333) / .667;
+    final double e = Curves.easeInCubic.transform(p);
+    return (1.02 - .18 * e, -34 * e, (1 - e).clamp(0.0, 1.0));
+  }
+
   // ── 进页编排（docs/39 §5.2）──────────────────────────────
 
   /// 整段编排 0~1（0ms 起、760ms 到 1）。下面每一件的**延迟**都由它算。
@@ -310,6 +371,9 @@ class _MainViewState extends State<MainView> with TickerProviderStateMixin {
     _runTimer?.cancel();
     _enter.dispose();
     _doneCtl.dispose();
+    // ⚠️ 漏了它会在单测里抛「disposed with an active Ticker」——
+    //    接单三拍正播着的时候换页（恰恰是最常见的路径：接完就进执行面板）。
+    _accept.dispose();
     super.dispose();
   }
 
@@ -762,11 +826,39 @@ class _MainViewState extends State<MainView> with TickerProviderStateMixin {
     const double gap = 12;
     const double actionH = 48;
     final double cardH = math.max(120, math.min(250, band - gap - actionH));
+    final Widget stage = _DetailStage(
+      key: const Key('main.detail'),
+      top: top,
+      band: band,
+      onClose: () => onSelect?.call(-1),
+      card: SizedBox(
+        height: cardH,
+        child: CardFace(
+          skin: CardSkin.duty,
+          card: cardOf(i, lead: true),
+          size: CardTableSize.l,
+          lead: true,
+          dims: Dims(width, cardH),
+        ),
+      ),
+      actions: (VoidCallback close) => _actionRow(i, st, close),
+    );
+    // docs/41 §3.7：接任务三拍（压印 .96→1.02 → 被抽走 ↑34/缩.9/淡出）。
+    //
+    // ⚠️ 变换必须交给 [_DetailStage] **在它内部**应用：它的顶层是 `Positioned`
+    //    （ParentDataWidget），在外面包 Transform/Opacity 会直接抛
+    //    「Incorrect use of ParentDataWidget」—— 仓库 2026-10-11 踩过一次，
+    //    lobby_test 第一条用例就是防它的。
+    //    没在接单时 `fx` 为 null；[_DetailStage] 内部即**零变换**，
+    //    默认路径的渲染与不做这件事时逐像素一致。
+    if (_accepting != i) return stage;
     return _DetailStage(
       key: const Key('main.detail'),
       top: top,
       band: band,
       onClose: () => onSelect?.call(-1),
+      acceptFx: _accept,
+      acceptFxOf: () => _acceptFx(i),
       card: SizedBox(
         height: cardH,
         child: CardFace(
@@ -818,7 +910,8 @@ class _MainViewState extends State<MainView> with TickerProviderStateMixin {
                 // 接单才 seal（docs/39 §5.4：看详情是 tap，接单才是 seal）
                 Sfx.play('seal');
                 Haptics.buzz('seal');
-                onAccept!(i);
+                // docs/41 §3.7 三拍：压印 120 → 抽走 240 → 才切页（共 360ms）
+                _takeTask(i);
               },
       DutyState.active => onResume,
       _ => null,
@@ -1376,6 +1469,8 @@ class _DetailStage extends StatefulWidget {
     required this.card,
     required this.actions,
     this.onClose,
+    this.acceptFx,
+    this.acceptFxOf,
   });
 
   /// 安全带顶（45% 屏高）
@@ -1392,6 +1487,15 @@ class _DetailStage extends StatefulWidget {
 
   /// 下拉关闭（M-19，手势）与 scrim 点击都走它
   final VoidCallback? onClose;
+
+  /// **接单三拍**的变换（docs/41 §3.7）：给一个动画 + 取值器，
+  /// 本组件在**内部**把它应用到内容 Column 上。
+  ///
+  /// 为什么不从外面包：本组件顶层是 `Positioned`（ParentDataWidget），
+  /// 外面套 Transform/Opacity 会抛 `Incorrect use of ParentDataWidget`。
+  /// null = 没在接单 → 零变换（默认路径逐像素不变）。
+  final Animation<double>? acceptFx;
+  final (double, double, double)? Function()? acceptFxOf;
 
   @override
   State<_DetailStage> createState() => _DetailStageState();
@@ -1459,15 +1563,36 @@ class _DetailStageState extends State<_DetailStage>
           final double t = reduce
               ? _open.value
               : Curves.easeOutBack.transform(_open.value);
+          Widget body = Column(
+            children: <Widget>[
+              Expanded(child: widget.card),
+              const SizedBox(height: 12),
+              SizedBox(height: 48, child: widget.actions(_close)),
+            ],
+          );
+          // docs/41 §3.7 接单三拍：变换在这里应用（本组件顶层是 Positioned，
+          // 外面包 Transform/Opacity 会抛 ParentDataWidget 冲突）。
+          final (double, double, double)? fx = widget.acceptFxOf?.call();
+          if (fx != null && widget.acceptFx != null && !reduce) {
+            body = AnimatedBuilder(
+              animation: widget.acceptFx!,
+              builder: (BuildContext _, Widget? child) {
+                final (double, double, double)? f = widget.acceptFxOf?.call();
+                if (f == null) return child!;
+                return Transform.translate(
+                  offset: Offset(0, f.$2),
+                  child: Transform.scale(
+                    scale: f.$1,
+                    child: Opacity(opacity: f.$3, child: child),
+                  ),
+                );
+              },
+              child: body,
+            );
+          }
           return Transform.translate(
             offset: Offset(0, (1 - t) * 44),
-            child: Column(
-              children: <Widget>[
-                Expanded(child: widget.card),
-                const SizedBox(height: 12),
-                SizedBox(height: 48, child: widget.actions(_close)),
-              ],
-            ),
+            child: body,
           );
         },
       ),

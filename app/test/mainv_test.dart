@@ -83,10 +83,11 @@ void main() {
   });
 
   group('委托轨（第 4 套皮肤 duty）', () {
-    test('尺寸：牌扇 148×220 / 牌屉 208×292 / XS 微牌 100×72（docs/39 M-05）', () {
-      // docs/39 M-05：132×196 → 148×220（CardTable 高度 = 220+26+38+30 = 314）
+    test('尺寸：牌扇 148×240 / 牌屉 208×292 / XS 微牌 100×72（docs/40 §3.8）', () {
+      // docs/40 §3.8：220 → 240（220 装不下「印位+星轨+名称+规格+徽记+页脚」六段，
+      // 实测徽记与页脚压在一起）。CardTable 总高 = 240+26+38+30 = 334 ≤ 安全带 346。
       expect(dimsOf(CardSkin.duty, CardTableSize.m).w, 148);
-      expect(dimsOf(CardSkin.duty, CardTableSize.m).h, 220);
+      expect(dimsOf(CardSkin.duty, CardTableSize.m).h, 240);
       expect(dimsOf(CardSkin.duty, CardTableSize.l).w, 208);
       expect(dimsOf(CardSkin.duty, CardTableSize.l).h, 292);
       expect(dimsOf(CardSkin.duty, CardTableSize.s).w, 100);
@@ -200,7 +201,13 @@ void main() {
       expect(find.byKey(const Key('main.detail')), findsOneWidget);
       expect(find.byKey(const Key('main.rail')), findsNothing);
       await tester.tap(find.byKey(const Key('main.take')));
-      expect(taken, 1);
+      // docs/41 §3.7 三拍：压印 120 + 抽走 240 = 360ms 之后才回调 onAccept。
+      // 这条断言是回归网：**接单不许是同一帧硬切**（原来就是同一帧）。
+      await tester.pump(const Duration(milliseconds: 200));
+      expect(taken, isNull, reason: '压印/抽走演到一半，还不该切页');
+      // 走完三拍（有余量：动画 completed 之后回调还落一拍）
+      await tester.pumpAndSettle();
+      expect(taken, 1, reason: '三拍走完后才回调');
       // docs/39 M-18：收起先播 260ms 退场再回调 _pickedTask = null
       await tester.tap(find.byKey(const Key('main.back')));
       await tester.pumpAndSettle();
@@ -471,10 +478,10 @@ void main() {
       expect(picked, isEmpty, reason: '刻度轨轻点只该跳段，不该触发 onSelect（开牌屉）');
     });
 
-    // docs/39 M-05：领位牌 148×220 —— 牌桌高度 = 220+26+38+30 = 314，
-    // 390 基准的安全带只有 346，所以牌桌**贴着安全带撑满**（`Positioned` 给的
-    // 是紧约束），真正要钉的是牌本身 148×220 与「不越过 45%」。
-    testWidgets('牌扇几何：领位牌 148×220、整个落在安全带里', (WidgetTester tester) async {
+    // docs/40 §3.8：领位牌 148×240 —— 牌桌高度 = 240+26+38+30 = 334，
+    // 390 基准的安全带只有 346（余 12），所以牌桌**贴着安全带撑满**
+    // （`Positioned` 给的是紧约束），真正要钉的是牌本身 148×240 与「不越过 45%」。
+    testWidgets('牌扇几何：领位牌 148×240、整个落在安全带里', (WidgetTester tester) async {
       await _mount(
         tester,
         MainView(goal: _planOf(days: 8), published: const <int>{0, 1, 2}),
@@ -487,7 +494,7 @@ void main() {
       final CardFace leadFace = faces.firstWhere((CardFace f) => f.lead);
       final Dims d = dimsOf(CardSkin.duty, CardTableSize.m);
       expect(d.w, 148);
-      expect(d.h, 220);
+      expect(d.h, 240);
       expect(leadFace.size, CardTableSize.m);
       // 整块牌扇仍然落在 45%~86% 里（她脸在 20%~42%）
       final Rect fan = tester.getRect(find.byKey(const Key('main.rail')));

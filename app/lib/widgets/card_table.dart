@@ -201,7 +201,11 @@ class _CardTableState extends State<CardTable> with TickerProviderStateMixin {
 
   /// 换领位：响一声 + 轻震（= 选择器的「档位咬合」），并给新领位扫一次光
   void _onLeadChanged() {
-    Sfx.play('rung');
+    // docs/41 §1「牌桌的档位咬合有两处结构性浪费」Bug ②：
+    // 原来这里 `Sfx.play('rung')` **不带 variant** → `_pick` 随机取 5 档之一，
+    // 于是每次落定的音高是不受控的（可能低音，破坏「往右走高」的阶梯感）。
+    // 改成与 [_onDragProgress] 同一口径：音高跟着领位下标走。
+    Sfx.play('rung', variant: _rail.lead % 5);
     Haptics.buzz('choose');
     _lastDetent = null;
     if (!railReduceMotion(context)) _sweep.forward(from: 0);

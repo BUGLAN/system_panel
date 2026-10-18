@@ -46,6 +46,7 @@ import 'state/result.dart';
 import 'widgets/bg_layer.dart';
 import 'widgets/ask_field.dart';
 import 'widgets/banner.dart';
+import 'widgets/card_skins.dart';
 import 'widgets/chat_bar.dart';
 import 'widgets/choices.dart';
 import 'widgets/dock.dart';
@@ -91,8 +92,28 @@ class SysApp extends StatelessWidget {
   /// emugl 不兼容 —— 见 STAGE-OPTIONS「2026-10-12 复盘」）。平时保持 false。
   static const bool kStageBareProbe = false;
 
+  /// **截图专用：跳过 Live2D 平台视图**（`--dart-define=NO_STAGE=1`）。
+  ///
+  /// 为什么要有它：**iOS 模拟器上原生 Live2D 必崩** —— `libCoreVMClient` 的
+  /// `cvms_element_build_from_source` 在编译 Cubism 的 `#version 100` 着色器
+  /// 时 SIGBUS（模拟器自带的 GL 转译层撑不住，与 App 代码无关；真机完全正常，
+  /// 见 docs/39 §1 与 docs/35）。于是模拟器里看不到任何 Flutter 层。
+  ///
+  /// 打开它：平台视图整层不建，露出天幕下的**全息剪影**（这是 `Live2DStage`
+  /// 加载失败时的既有降级），HUD / 环场 / 卡牌 / 字幕全部照常渲染 ——
+  /// 用来在模拟器里截图核对**卡片与 UI 的视觉**，不用于验证角色。
+  /// **真机与本机日常开发都别打开**（`flutter run` 不给 define 即为关）。
+  static const bool kNoStage = bool.fromEnvironment('NO_STAGE');
+
   @override
   Widget build(BuildContext context) {
+    // 五态陈列页（设计验收用）：`--dart-define=SHOT=states`
+    if (const String.fromEnvironment('SHOT') == 'states') {
+      return const MaterialApp(
+        debugShowCheckedModeBanner: false,
+        home: CardStatesGallery(),
+      );
+    }
     if (kStageBareProbe) {
       return MaterialApp(
         debugShowCheckedModeBanner: false,
@@ -1199,27 +1220,34 @@ class _AppShellState extends State<AppShell>
                 // WebView 降级路线 2026-10-12 已按宿主拍板删除（理由见
                 // `_stagePort` 上方那段注释：触摸是断的 + 当年保留它的归因是错的）。
                 // 相机随弹簧推镜头逐帧刷新（与下方环场同一数据源 _cam）。
-                ValueListenableBuilder<Cam>(
-                  valueListenable: _cam,
-                  builder: (BuildContext _, Cam camNow, Widget? _) =>
-                      Live2DStage(
-                        visible: true,
-                        cam: camNow,
-                        onReady: (Live2DStageHandle handle) {
-                          _stagePort = NativeStagePort(handle);
-                          debugPrint('[stage] 原生舞台就绪（flutter_live2d）');
-                          // 开机睡姿（docs/22 R5「Mac 轮验收项」）：boot 全程
-                          // 闭眼低头睡着，等宿主触碰唤醒。舞台加载晚于唤醒
-                          // （罕见）就跳过 —— 她已经醒了不必再睡。
-                          if (_moment == Moment.boot) {
-                            unawaited(_stagePort!.sleep());
-                          }
-                        },
-                        // 加载失败：舞台自己收掉平台视图，下面是全息剪影。
-                        // （不再切任何路线 —— 降级路线已删除。）
-                        onFailed: () => debugPrint('[stage] 原生舞台加载失败 → 全息剪影'),
-                      ),
-                ),
+                // docs/39 §1 / docs/35：**模拟器上原生 Live2D 必崩**（GL 转译层
+                // 编不了 Cubism 的 shader → `cvms_element_build_from_source` SIGBUS）。
+                // `--dart-define=NO_STAGE=1` 时整层不建，露出天幕下的全息剪影，
+                // 其余 Flutter 层照常 —— 供模拟器截图核对 UI（真机不受影响）。
+                if (SysApp.kNoStage)
+                  const SizedBox.shrink()
+                else
+                  ValueListenableBuilder<Cam>(
+                    valueListenable: _cam,
+                    builder: (BuildContext _, Cam camNow, Widget? _) =>
+                        Live2DStage(
+                          visible: true,
+                          cam: camNow,
+                          onReady: (Live2DStageHandle handle) {
+                            _stagePort = NativeStagePort(handle);
+                            debugPrint('[stage] 原生舞台就绪（flutter_live2d）');
+                            // 开机睡姿（docs/22 R5「Mac 轮验收项」）：boot 全程
+                            // 闭眼低头睡着，等宿主触碰唤醒。舞台加载晚于唤醒
+                            // （罕见）就跳过 —— 她已经醒了不必再睡。
+                            if (_moment == Moment.boot) {
+                              unawaited(_stagePort!.sleep());
+                            }
+                          },
+                          // 加载失败：舞台自己收掉平台视图，下面是全息剪影。
+                          // （不再切任何路线 —— 降级路线已删除。）
+                          onFailed: () => debugPrint('[stage] 原生舞台加载失败 → 全息剪影'),
+                        ),
+                  ),
                 // 「戳她」的命中层（原型 `main.js` L42-44：`#stage` 的 pointerdown
                 // → `Stage.hit(x,y)` → `App.poke()`）。放在她**之上**、环场/UI **之下**：
                 //   · 在她矩形外的点不受影响，照常落到背景那层（跳过打字机）
@@ -1645,7 +1673,8 @@ class _AppShellState extends State<AppShell>
                   // docs/39 H-17：字幕带底边不许越过底部安全区（下限 34 + 8 呼吸）。
                   // 主线页再让开底部两键（56 + 底边 34 + 12）——H-12 的 3 行上限
                   // 会让字幕比原来高 ~1 行，走查图 02 里它已经快贴到【去执行】。
-                  bottomFloor: _safeBottom(context) +
+                  bottomFloor:
+                      _safeBottom(context) +
                       8 +
                       (main ? 56 + 12 : 0) +
                       _bottomExtra(context),
@@ -2167,7 +2196,6 @@ class _AppShellState extends State<AppShell>
   }
 
   @override
-  @override
   void initState() {
     super.initState();
     // 原型 document.visibilitychange —— 记下你什么时候走的
@@ -2175,6 +2203,44 @@ class _AppShellState extends State<AppShell>
     _clock.startSeconds(_onSecond); // 原型 setInterval(App.second, 1000)
     _restore();
     _initAgent(); // 小祥：设置→LLM 网关→文案/聊天服务 + 聊天历史读档
+    _maybeRunShot();
+  }
+
+  /// **模拟器截图调度**（`--dart-define=SHOT=<场景>`）。
+  ///
+  /// 为什么要有它：iOS 模拟器上没法点（`simctl` 不支持注入触摸，idb 缺
+  /// companion），而原生 Live2D 在模拟器上还会 SIGBUS —— 想核对卡片视觉
+  /// 就得**跳过开机屏、直接停在某一页**，再用 `simctl io screenshot` 拍。
+  ///
+  /// 场景值：`lobby` / `main` / `drawer` / `goal` / `deck` / `sheet`
+  ///          `supply` / `titles` / `evidence` / `result` / `onboard`
+  ///
+  /// ⚠️ 只在给了 `SHOT` 时跑；**真机与本机日常开发不给这个 define**，
+  /// 行为与这条函数不存在时完全一致。
+  Future<void> _maybeRunShot() async {
+    const String shot = String.fromEnvironment('SHOT');
+    if (shot.isEmpty) return;
+    // 等首帧落定 + 存档读完后，再一次性把状态摆到目标页
+    await Future<void>.delayed(const Duration(milliseconds: 600));
+    if (!mounted) return;
+    _wakeFade.value = 1; // 跳过唤醒淡入，直接"已就位"
+    _camSpring.set('lobby', MediaQuery.sizeOf(context), snap: true);
+    setState(() {
+      _moment = switch (shot) {
+        'main' || 'drawer' => Moment.main,
+        'goal' => Moment.main,
+        'sheet' || 'supply' || 'titles' => Moment.lobby,
+        'result' => Moment.result,
+        'onboard' => Moment.onboard,
+        _ => Moment.lobby,
+      };
+      if (shot == 'drawer') _pickedTask = _goal.firstOpenIndex;
+      if (shot == 'goal') _goalChangeOn = true;
+    });
+    if (shot == 'sheet') _openSheet(SheetKind.archive);
+    if (shot == 'supply') _openTable(TableScene.supply);
+    if (shot == 'titles') _openTable(TableScene.titles);
+    debugPrint('[shot] 已摆到 $shot');
   }
 
   /// ═══ 生命周期：她记得你走了多久（flows.js L186-193）═══
@@ -3035,6 +3101,117 @@ class _ProgressBandLiveState extends State<ProgressBandLive> {
   }
 }
 
+/// **五态陈列页**（只在 `--dart-define=SHOT=states` 时挂载）。
+///
+/// 为什么需要它：五态（可接 / 执行中 / 已完成 / 待发布 / 已放弃）在真实数据里
+/// 不会同时出现，而它们**必须一起比对**才能判断「形状 + 颜色双编码是否成立」。
+/// 这是设计验收页，不是产品页面 —— 真机与日常运行永远不会走到。
+class CardStatesGallery extends StatelessWidget {
+  const CardStatesGallery({super.key});
+
+  static const List<(DutyState, String)> _states = <(DutyState, String)>[
+    (DutyState.open, 'C'),
+    (DutyState.active, 'B'),
+    (DutyState.done, 'A'),
+    (DutyState.sealed, 'E'),
+    (DutyState.abandoned, 'F'),
+  ];
+
+  static const List<String> _titles = <String>[
+    '跑完 5 公里',
+    '早上空腹称重',
+    '走满 8000 步',
+    '今天不喝含糖饮料',
+    '做 20 个俯卧撑',
+  ];
+
+  static const List<String> _metas = <String>[
+    '45 分钟 · 跑步 App 截图',
+    '7 分钟 · 体重秤照片',
+    '30 分钟 · 步数截图',
+    '1 天 · 饮料清单',
+    '10 分钟 · 训练视频',
+  ];
+
+  static const List<String> _notes = <String>[
+    '接了就开计时。',
+    '计时中。别磨蹭。',
+    '这单已经记在账上了。',
+    '还没派到你手上。',
+    '这单作废了。',
+  ];
+
+  static const List<String> _glyphs = <String>['力', '敏', '体', '智', '知'];
+
+  TableCard _card(int i) {
+    final (DutyState st, String rank) = _states[i];
+    return TableCard(
+      id: 'state.$i',
+      kicker: 'MAIN · 0${i + 1}',
+      title: _titles[i],
+      glyph: _glyphs[i],
+      rank: rank,
+      accent: Rarity.of(rank).color,
+      loot: <String>['EXP ${12 + i * 4}', '◈ ${6 + i * 2}'],
+      dutyState: st,
+      dutyMeta: _metas[i],
+      elapsed: st == DutyState.active ? '12:04' : null,
+      sealWord: st == DutyState.done ? '已完成' : null,
+      enabled: st == DutyState.open,
+      locked: st == DutyState.sealed,
+      index: i + 1,
+      note: _notes[i],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: C.voidBg,
+      body: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(12, 32, 12, 24),
+          children: <Widget>[
+            Text(
+              'CARD STATES · 五态陈列',
+              style: fs(
+                family: F.mono,
+                size: 11,
+                wght: 600,
+                ls: 1.8,
+                color: C.blue,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '可接 / 执行中 / 已完成 / 待发布 / 已放弃',
+              style: fs(family: F.cn, size: 12, wght: 400, color: C.mist),
+            ),
+            const SizedBox(height: 16),
+            for (int i = 0; i < _states.length; i++) ...<Widget>[
+              Center(
+                child: SizedBox(
+                  width: 148,
+                  height: 240,
+                  child: CardFace(
+                    key: Key('gallery.$i'),
+                    skin: CardSkin.duty,
+                    card: _card(i),
+                    size: CardTableSize.m,
+                    lead: true,
+                    dims: const Dims(148, 240),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 /// 系统返回键要消费的那一层（docs/39 M-04）。
 ///
 /// 顺序即优先级：失败页 > 牌屉 > 主线；null = 交给系统（退到桌面）。
@@ -3112,9 +3289,13 @@ class _GoalChangeChromeState extends State<_GoalChangeChrome>
             child: Opacity(
               opacity: k,
               child: Transform.translate(
-                offset: Offset(0, _c.status == AnimationStatus.reverse
-                    ? 8 * (1 - k) // 出：往下沉 8
-                    : -8 * (1 - k)), // 进：从 -8 落到 0
+                offset: Offset(
+                  0,
+                  _c.status == AnimationStatus.reverse
+                      ? 8 *
+                            (1 - k) // 出：往下沉 8
+                      : -8 * (1 - k),
+                ), // 进：从 -8 落到 0
                 child: child,
               ),
             ),
