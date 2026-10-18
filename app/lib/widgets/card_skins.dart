@@ -510,7 +510,9 @@ class DutySigilPainter extends CustomPainter {
     //    （.verify/cards/50-drawer-sigil.png 就是这么翻车的）。
     //    取 min(宽度基准, 高度基准 × 1.15)：竖牌（148×240 中 74 高的带）
     //    与牌屉（358×74）算出来的 R 一致，两边观感同一枚印。
-    final double autoR = math.min(38 * k, s.height * .36);
+    // 默认按宽度算（竖牌那条带只有 34 高，若也按高度封顶会被压到 12px，
+    // 实测徽记缩成一个点）。宽盒（牌屉）用 maxRadius 单独封顶。
+    final double autoR = 38 * k;
     final double R = maxRadius == null ? autoR : math.min(autoR, maxRadius!);
     final double a = lead ? 1.0 : .55;
     final Color rc = rarityIndex >= 3 ? rarityColor : C.blue;
@@ -3608,7 +3610,12 @@ extension _DutyFace on CardFace {
                 left: 12,
                 // ⚠️ 右侧留 46：执行中那张右下角有 `12:04` 计时（bottom 9 / right 10）。
                 //    原来 right 12 会让批注直接压到计时上（迭代 13 实测）。
-                right: 46,
+                // ⚠️ 右侧只在**真有计时**时让位：执行中那张右下角有 `12:04`。
+                //    原来无条件留 46，导致「» 计时中。别磨…」被提前裁掉
+                //    （.verify/cards/COMPARE-before-after.png 下半张可见）。
+                right: (card.dutyState == DutyState.active && card.elapsed != null)
+                    ? 56
+                    : 12,
                 bottom: 8,
                 child: IgnorePointer(
                   child: Text(
