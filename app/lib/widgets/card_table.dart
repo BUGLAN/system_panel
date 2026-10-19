@@ -443,9 +443,20 @@ class _CardTableState extends State<CardTable> with TickerProviderStateMixin {
     //    按下/抬起各来一次 setState，每次都把整桌 8 张牌重建一遍，
     //    而 8 张牌里只有 1 张的视觉真的变了 —— 白重建的 7 张就是「点一下卡一下」。
 
-    // ── 落定压印 ──
+    // ── 落定压印（docs/41 §3.4）──────────────────────────────────
+    // 两段：前 30% **压下去**（1 → 1.02），后 70% **弹回来**（1.02 → 1）。
+    //
+    // ⚠️ 原来这里是 `pScale * (stamping ? 1.02 : 1)` —— 1.02 是**瞬间乘上去**
+    //    然后瞬间消失，中间没有过程。读起来是「闪了一下」，不是「压印」。
+    //    为什么只到 1.02 而不是 1.08：1.02 是**压进去**（press-in），
+    //    过冲属于「被甩出来的东西」（入场/弹簧），不属于落定。
     final bool stamping = i == _stampIndex && _stamp.value > 0;
     final double st = stamping ? _stamp.value : 0;
+    final double stampScale = st <= 0
+        ? 1.0
+        : (st < .3
+              ? 1 + .02 * (st / .3) // 压入
+              : 1.02 - .02 * ((st - .3) / .7)); // 回落
     final double flash = st <= 0
         ? 0
         : (st < .7 ? (1 - st / .7) * kStampFlash : 0);
@@ -473,7 +484,8 @@ class _CardTableState extends State<CardTable> with TickerProviderStateMixin {
           // 入场时额外 +3.5° 甩出（√ep 收口：先转正、后落定）
           angle: rot + enterRot,
           child: Transform.scale(
-            scale: pScale * (stamping ? 1.02 : 1),
+            // 落定压印：两段（压入 → 回落），见上方 stampScale 的说明
+            scale: pScale * stampScale,
             child: Opacity(
               opacity: pOp,
               child: CardFace(

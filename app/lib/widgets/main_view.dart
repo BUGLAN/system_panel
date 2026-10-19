@@ -1567,6 +1567,16 @@ class _DetailStageState extends State<_DetailStage>
           final double t = reduce
               ? _open.value
               : Curves.easeOutBack.transform(_open.value);
+          // docs/41 §3.5「翻开一张牌」：除了升起，还要有一点**掀起的旋转**。
+          // 1.6° → 0（随 `_open` 收口，末帧严格为 0；reduce 下不转）。
+          // 为什么是 1.6° 而不是 5°：牌屉是「从袖口抽出来摊在桌上」，
+          // 不是「牌被甩到空中」—— 角度大了会像贴纸歪了。
+          final double flutterRot = reduce
+              ? 0
+              : (1 - Curves.easeOutCubic.transform(_open.value)) *
+                    1.6 *
+                    math.pi /
+                    180;
           Widget body = Column(
             children: <Widget>[
               Expanded(child: widget.card),
@@ -1594,9 +1604,10 @@ class _DetailStageState extends State<_DetailStage>
               child: body,
             );
           }
+          // 位移（升起）+ 掀起旋转（flutterRot 末帧严格为 0）
           return Transform.translate(
             offset: Offset(0, (1 - t) * 44),
-            child: body,
+            child: Transform.rotate(angle: flutterRot, child: body),
           );
         },
       ),
