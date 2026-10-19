@@ -1405,6 +1405,9 @@ class _AppShellState extends State<AppShell>
                   quest: _quest,
                   host: _host,
                   visible: dispatch,
+                  // docs/41 §6.5：揭示可跳过（整屏 tap 的计数，见上方那个 
+                  // GestureDetector；Plate 内部有 90ms 防误触窗口）
+                  skipToken: _tap,
                   // 稀有度滚完那一刻（原型 `Plate.rankRoll` 收尾）：
                   // `FX.flash(RARITY[r].c, target >= 4 ? .13 : .06, 280)`
                   // `if (target >= 5) FX.shake(6, 320)`（外加 Stage.glitch —— 那作用在

@@ -31,6 +31,9 @@ import 'plate_timeline.dart';
 ///  砸落动画已做；**骰子滚动 / 激光刻字 / 按住指纹**属于行为，等宿主约束，
 ///  这里渲染的是「已经刻完字、等她点头」的静态样子。
 /// ═══════════════════════════════════════════════════════════
+/// docs/41 §6.5：揭示可跳过的**防误触窗口**（前 90ms 不响应点击）
+const int kRankSkipGuardMs = 90;
+
 class Plate extends StatefulWidget {
   const Plate({
     super.key,
@@ -40,6 +43,9 @@ class Plate extends StatefulWidget {
     this.animateLand = true,
     this.onAccept,
     this.onRankFx,
+    // docs/41 §6.5：揭示可跳过。整屏点一下 —— 前 90ms 不响应（防误触），
+    // 之后任何点击直接把滚档**落终态**（不是「跳过动画」，是「立即结算」）。
+    this.skipToken = 0,
     this.onWaver,
   });
 
@@ -55,6 +61,9 @@ class Plate extends StatefulWidget {
 
   /// 稀有度滚完那一刻（原型在这里 flash + shake + glitch + burst）
   final ValueChanged<int>? onRankFx;
+
+  /// 每 +1 = 宿主点了一下屏幕（来自 main 的整屏 tap）
+  final int skipToken;
 
   /// 按指纹按到一半松手（`p > .25` 才说，且只说一次）
   final VoidCallback? onWaver;
@@ -144,6 +153,19 @@ class _PlateState extends State<Plate> with TickerProviderStateMixin {
     super.didUpdateWidget(old);
     if (!old.visible && widget.visible) {
       _start();
+    // docs/41 §6.5：揭示可跳过。
+    //
+    // 规则：**前 90ms 不响应**（防误触 —— 宿主可能正好在点别处），
+    // 之后任何一次点击把滚档**直接落终态**（不是「加速」，是立即结算）。
+    // 为什么是「落终态」而不是「跳过动画」：稀有度决定报酬/暴击率，
+    // 迟一拍让玩家点空，等于让他多等一次不确定的时长。
+    if (widget.skipToken != old.skipToken && _roll.isAnimating) {
+      final double elapsedMs = _roll.value * _rollTotal;
+      if (elapsedMs >= kRankSkipGuardMs) {
+        _roll.stop();
+        _roll.value = 1;
+      }
+    }
     } else if (widget.visible) {
       if (old.quest.serial != widget.quest.serial) {
         _start(); // 换单 = 重新刻一块
