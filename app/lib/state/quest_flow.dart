@@ -156,9 +156,13 @@ class FinaleOutcome {
 }
 
 /// 收官时生成下一条主线的钩子。
-/// 参数 = `(上一目标, 已走过的环数, 上一目标总环数, 结算后等级)`；
-/// 返回 null = 这次不续（叙事停在终点）。
-typedef NextGoalHook = Goal? Function(
+/// 参数 = `(上一目标, 已走过的环数, 上一目标总环数, 结算后等级)`。
+///
+/// ⚠️ 2026-10-23：**不再允许返回 null**。旧签名用 null 表示「这次不续」，
+/// 于是「拆不出下一份计划」和「故意停在终点」被混成同一件事，失败被吞掉。
+/// 现在钩子要么返回一份计划，要么抛（拆解失败原样往上抛给调用方）。
+/// 想真的停在终点，就别接这个钩子。
+typedef NextGoalHook = Future<Goal> Function(
   Goal prev,
   int cleared,
   int total,
@@ -287,7 +291,8 @@ class QuestFlow {
   void _notify() => onChanged?.call();
 
   /// 收官钩子（TODO-01）：最后一环 CLEAR 时铸下一条主线。
-  /// 不接 = 叙事停在终点（老行为，队列真的会空）；接上 = 自动续主线。
+  /// 不接 = 叙事停在终点（队列真的会空）；接上 = 自动续主线。
+  /// 钩子抛异常 = 拆解失败，**原样往上抛**（不吞、不降级）。
   NextGoalHook? nextGoalHook;
 
   /// 最近一次收官的结果（界面据此说「下一条主线已经钉好了」）。
@@ -731,11 +736,22 @@ class QuestFlow {
 
   // ── 结算（store.js `settle`；提交任务的真正语义）────────────────
 
-  /// 无执行中单据时返回 null（调用方自行兜底）。
+  /// 没有执行中的单 → **抛** [StateError]（旧版返回 null，调用方 `?? _result`
+  /// 把「没结算」伪装成「结算成功」，正是静默降级）。
+  ///
+  /// 收官（最后一单）时会 await [nextGoalHook] 去铸下一份计划 —— 那是一次真
+  /// LLM 调用，失败会**原样抛**给调用方，不会退化成模板。
+  ///
   /// [forceCrit] 只给测试用（demo 也可钉死非暴击：传 false）。
-  QuestResult? settle({DateTime? now, math.Random? rnd, bool? forceCrit}) {
+  Future<QuestResult> settle({
+    DateTime? now,
+    math.Random? rnd,
+    bool? forceCrit,
+  }) async {
     final ActiveQuest? a = _active;
-    if (a == null) return null;
+    if (a == null) {
+      throw StateError('settle：没有正在执行的单，没有可结算的东西');
+    }
     final DateTime t0 = now ?? DateTime.now();
     final Quest task = a.task;
     final Duration held = t0.difference(a.startAt);
@@ -823,8 +839,10 @@ class QuestFlow {
     // 结算**当场落库**（不是等界面点一下）——否则结算页读到的 `empty` 是错的，
     // 宿主会看到【收工。】而其实新主线已经在手上。
     if (finale) {
-      // 提档读的是「走过了几张 / 一共几张」——兑现单交掉时就是全部
-      _applyFinale(
+      // 提档读的是「走过了几张 / 一共几张」——兑现单交掉时就是全部。
+      // ⚠️ 拆解失败会从这里抛出去：结算已经落账，但**下一份计划拿不出来**
+      //    这件事必须让调用方看见（旧版是静默停在终点）。
+      await _applyFinale(
         cleared: goal.doneCount,
         total: goal.plan.length,
         level: host.lv,
@@ -917,17 +935,18 @@ class QuestFlow {
   ///   · 新主线首环**钉在队首**（`queue.unshift(planTask(0))`）
   ///   · 档案里的 `goal` 换成新主线
   ///
-  /// 与原型唯一的不同：**日常单保留**（原型 `newGoal` 也保留），
-  /// 且新主线是「按上一目标完成度 + 等级铸的 5~8 环长链」（TODO-06 模板半）。
-  /// 没接 [nextGoalHook] 时返回一个 `goal == null` 的结果 —— 叙事真的停在终点。
-  FinaleOutcome _applyFinale({
+  /// 与原型唯一的不同：**日常单保留**（原型 `newGoal` 也保留）。
+  /// 没接 [nextGoalHook] 时返回一个 `goal == null` 的结果 —— 叙事真的停在终点
+  /// （那是**故意**不接，不是失败）。接了钩子就一定会 await 到一份计划，
+  /// 钩子抛什么就往上抛什么。
+  Future<FinaleOutcome> _applyFinale({
     required int cleared,
     required int total,
     required int level,
-  }) {
+  }) async {
     final Goal prev = goal;
-    final Goal? next = nextGoalHook?.call(prev, cleared, total, level);
-    if (next == null || next.plan.isEmpty) {
+    final NextGoalHook? hook = nextGoalHook;
+    if (hook == null) {
       final FinaleOutcome stop = FinaleOutcome(
         cleared: cleared,
         total: total,
@@ -936,6 +955,10 @@ class QuestFlow {
       );
       _finaleOutcome = stop;
       return stop;
+    }
+    final Goal next = await hook(prev, cleared, total, level);
+    if (next.plan.isEmpty) {
+      throw StateError('收官钩子交回的目标「${next.text}」没有任务清单');
     }
     queue.removeWhere((Quest q) => q.kind == 'main');
     goal = next;
@@ -959,7 +982,7 @@ class QuestFlow {
   ///   ① 老存档（收官发生在本功能之前）读档后首环不在队列里；
   ///   ② 调用方重复调用（点了两次「下一条主线」）。
   /// 返回这次是否真的动了队列。
-  bool applyFinaleOutcome() {
+  Future<bool> applyFinaleOutcome() async {
     // ① 上一轮收官铸好的新主线，首环没钉上（老档读回 / 上次落盘发生在钉环之前）
     final FinaleOutcome? o = _finaleOutcome;
     final Goal? g = o?.goal;
@@ -990,7 +1013,7 @@ class QuestFlow {
     if (nextGoalHook != null &&
         goal.plan.isNotEmpty &&
         goal.firstOpenIndex < 0) {
-      _applyFinale(
+      await _applyFinale(
         cleared: goal.doneCount,
         total: goal.plan.length,
         level: host.lv,
@@ -1002,17 +1025,24 @@ class QuestFlow {
 
   /// 换目标（原型 `Store.newGoal` 的落库语义；TODO-01 的「换目标」入口）：
   /// **旧主线单移除、新主线钉队首**。传进来的 [next] 由调用方铸
-  /// （`buildNextGoal` 或访谈流），这里只负责队列手术与档案替换。
+  /// （`_buildGoalWithAgent` 拆出来的），这里只负责队列手术与档案替换。
   ///
-  /// 返回被钉上队首的那张首环单；[next] 没有环 → null（不动任何状态）。
-  Quest? newGoal(Goal next) {
-    if (next.plan.isEmpty) return null;
+  /// 返回被钉上队首的那张首单。[next] 没有清单 → **抛** [StateError]
+  /// （旧版返回 null，调用方 `if (first == null) return;` 把「新目标没排出来」
+  /// 这件事悄悄咽掉：界面看着像换了目标，其实什么都没发生）。
+  Quest newGoal(Goal next) {
+    if (next.plan.isEmpty) {
+      throw StateError('newGoal：目标「${next.text}」没有任务清单，不能落库');
+    }
     queue.removeWhere((Quest q) => q.kind == 'main');
     goal = next;
     final List<Quest> pub = publishPlanTasks();
     _syncQueueCount();
     _notify();
-    return pub.isEmpty ? null : pub.first;
+    if (pub.isEmpty) {
+      throw StateError('newGoal：目标「${next.text}」落库后没有任何一张单被派出来');
+    }
+    return pub.first;
   }
 
   List<String> _checkTitles({

@@ -9,11 +9,13 @@ import 'package:flutter/services.dart';
 
 import 'agent/copy.dart';
 import 'agent/context_adapter.dart';
-import 'agent/mainline_agent.dart';
+import 'agent/goal_match_agent.dart';
 import 'agent/mainline_tool.dart';
 import 'agent/llm_client.dart';
 import 'agent/llm_gateway.dart';
 import 'agent/memory.dart';
+import 'agent/plan_agent.dart';
+import 'agent/plan_brief.dart';
 import 'agent/settings_store.dart';
 import 'agent/tools.dart';
 import 'agent/vision.dart';
@@ -30,6 +32,7 @@ import 'stage/progress_band.dart';
 import 'state/host_state.dart';
 import 'state/goal.dart';
 import 'state/goal_gen.dart';
+import 'state/plan_failure.dart';
 import 'stage/camera.dart';
 import 'stage/live2d_stage.dart';
 import 'stage/redraw_veil.dart';
@@ -232,11 +235,11 @@ class _AppShellState extends State<AppShell>
   /// 业务唯一真源：队列 / 接单 / 道具 / 结算 / 认输（store.js 移植，quest_flow.dart）。
   /// 「提交卡死」根因①②的修复点：提交不再只是切页面，而是经 `_flow.settle()`
   /// 产出真实结算并落到档案 / 主线 / 队列。
-  QuestFlow _flow = _demoFlow();
+  late QuestFlow _flow = _demoFlow();
 
-  /// 演示档的 Flow —— 声明式字段初始化器里 `_wireFlow` 还不可用（实例未建好），
-  /// 所以包一层静态工厂：既拿 demo 队列，也把收官钩子接上。
-  static QuestFlow _demoFlow() {
+  /// 演示档的 Flow —— 声明式字段初始化器里不能调实例方法，
+  /// 所以包一层：既拿 demo 队列，也把收官钩子接上（钩子走 Agent，非静态）。
+  QuestFlow _demoFlow() {
     final QuestFlow f = QuestFlow.demo();
     _wireFlow(f);
     return f;
@@ -267,17 +270,19 @@ class _AppShellState extends State<AppShell>
   /// 接上「收官 → 下一条主线」的钩子（TODO-01）。
   /// **每一个** QuestFlow 实例都要过这一道 —— 读档/重置/重新绑定都会换实例，
   /// 漏一个就会出现「这条主线走完就没单了」。
-  static void _wireFlow(QuestFlow f) {
+  void _wireFlow(QuestFlow f) {
+    // ⚠️ 2026-10-23：钩子改 async 且**不许返回 null**。
+    //   旧版是同步 `buildNextGoal(...)` 走类别模板 —— 收官后的下一份计划
+    //   永远是模板。现在走同一条 Agent 链路（匹配 + 拆解 + 规则校验），
+    //   失败会从这里抛到 `settle()` 的调用方。
     f.nextGoalHook = (Goal prev, int cleared, int total, int level) =>
-        buildNextGoal(
-          prev: prev,
-          cleared: cleared,
-          total: total,
-          level: level,
+        _buildGoalWithAgent(
+          text: prev.text,
           // O-2 裁决（宿主 2026-10-10）：「立目标时刻」**沿用**上一目标 ——
           // goal.at 代表「这条主线是什么时候立的」，走完一条再续一条时
           // 把它改成"现在"会让「主线已立 N 天」这类读数跳变。
           at: prev.at,
+          answers: prev.interview,
         );
   }
 
@@ -297,7 +302,7 @@ class _AppShellState extends State<AppShell>
   /// ── 绑定流多幕（docs/18 §2.1 · t8 装配）────────────────────────
   ///
   /// 第 0 幕 = 问目标（AskField）；[_interviewCat] 非空 = 第 1 幕访谈卡
-  /// （t4 的 InterviewDeck，按目标类型出 3~5 张）；答完 → `buildFirstGoal`
+  /// （t4 的 InterviewDeck，按目标类型出 3~5 张）；答完 → `_buildGoalWithAgent`
   /// 落 3 天 3 环 E/D/C + 见面礼双倍卡 → 大厅（首单已在队列）。
   GoalCategory? _interviewCat;
 
@@ -400,10 +405,13 @@ class _AppShellState extends State<AppShell>
   String? _probeLine; // 追问（绑定仪式）
   String? _dispatchLine; // 发布（派单板）
 
-  /// 立主线的预取态：[_planFor] 是它对应的那句话（换目标/重绑会换句，
-  /// 只有对得上才采用，免得把上一句话的链安到新目标头上）。
-  String? _planFor;
-  Future<MainlineResult>? _planFuture;
+  /// 最近一次拆解失败（null = 没失败过）。
+  ///
+  /// 2026-10-23：拆解**不再有兜底**，失败必须看得见 —— 这个字段是给
+  /// 诊断横幅 / 设置页 / 测试读的唯一入口。它**不影响**游戏状态：
+  /// 失败时目标、队列、存档一律不动。
+  PlanFailure? _planError;
+  String _planErrorGoal = '';
 
   /// 聊天消息 id（会话内唯一即可）
   int _chatSeq = 0;
@@ -412,9 +420,10 @@ class _AppShellState extends State<AppShell>
   /// LLM 网关 + 文案/聊天服务（initState 异步装配；没配 Key 也能跑，全走兜底）
   SystemCopyProvider? _copy;
 
-  /// 立主线的 agent 循环（docs/06）：她 get_status → set_mainline → 解释。
-  /// 没配 Key / 她没交 / 循环用尽 → 类别模板兜底
-  MainlineAgent? _mainlineAgent;
+  /// 立主线的 agent 循环（docs/34）：她 get_status → set_plan → 解释。
+  /// 没配 Key / 她没交 / 循环用尽 → **抛**（不再退回类别模板）
+  PlanAgent? _planAgent;
+  GoalMatchAgent? _matchAgent;
   ChatService? _chatService;
 
   /// 当前 LLM 客户端（TODO-07 网关热更：设置变更时关旧建新，连接池不泄漏）
@@ -504,7 +513,8 @@ class _AppShellState extends State<AppShell>
       _llmClient = client;
       _memory = mem;
       _copy = SystemCopyProvider(llm: gw, memory: mem);
-      _mainlineAgent = MainlineAgent(client: client, memory: mem);
+      _planAgent = PlanAgent(client: client, memory: mem);
+      _matchAgent = GoalMatchAgent(client: client, memory: mem);
       _agentTools = reg;
       _chatService = ChatService(
         gateway: gw,
@@ -697,14 +707,9 @@ class _AppShellState extends State<AppShell>
   /// 换目标输入框里那颗「先问小祥」的暗号（她接管追问，落库仍走 [newGoal]）
   static const String _kAskXiangPreset = '先问小祥';
 
-  /// 走到「该铸环了」时最多再等多久拆解结果 —— 预取通常已经好了，
-  /// 这个上限只用于兜住「模型特别慢」。到点就按类别模板铸，绝不吊着宿主。
-  static const Duration kPlanWaitOnConsume = Duration(seconds: 4);
-
-  /// 换目标时的等待上限：这里是**冷启动**（没有访谈时间来掩盖网络），
-  /// 宿主刚说完那句话、正看着「让我把这条拆开」，所以给得宽一点；
-  /// 超时则退回类别模板 —— 迟到的好链不如准时的链。
-  static const Duration kPlanWaitOnChangeGoal = Duration(seconds: 15);
+  // ⚠️ 2026-10-23 删除：`kPlanWaitOnConsume`(4s) / `kPlanWaitOnChangeGoal`(15s)。
+  //    这两个"等待上限"就是静默降级的闸门：到点没等到就退回类别模板。
+  //    现在没有模板可退，所以也没有等待上限 —— 请求慢就慢，失败就报。
 
   /// 入口牌「先问小祥」：带场合上下文开对话（**不填输入框、不落库**）
   void _enterAskXiang() {
@@ -712,9 +717,16 @@ class _AppShellState extends State<AppShell>
     _openChat(scenario: _newGoalScenario);
   }
 
-  /// 新目标提交（第 0 幕的空泛判定复用 `isVagueGoal`）：
-  /// 具体 → `buildNextGoal`（按新那句话的时长词算**期限**、排出任务清单）
-  /// → `flow.newGoal` 落库（旧主线单移除、新计划单补进队列）→ 存盘 → 回主线页。
+  /// 新目标提交 —— **全程 fail fast**。
+  ///
+  /// 2026-10-23 宿主定调：这里原来有「预取 + 等 15 秒 + 取不到就退回类别模板」
+  /// 三层降级，正是「两周内骑自行车 10 次」被铸成模板清单的原因。
+  /// 现在：
+  ///   ① 空泛 → 前置校验拦下（输入侧规则，不是生成兜底）
+  ///   ② 匹配类别/短字/期限 → `GoalMatchAgent` 调 `set_goal_category`
+  ///   ③ 拆解任务 → `PlanAgent` 调 `set_plan`
+  ///   ④ 规则校验 → `buildGoalFromPlan`（不合格就抛）
+  /// 任何一步失败都走 [_failPlan]：**不落库、不改目标**，把原因摆在屏幕上。
   Future<void> _onGoalChangeSubmitted() async {
     FocusScope.of(context).unfocus();
     final String typed = _goalAsk.text.trim();
@@ -729,64 +741,151 @@ class _AppShellState extends State<AppShell>
       return;
     }
     final Goal prev = _flow.goal;
-    // 期限先按规则算（时长词 + 完成度提档）—— 拆解照这个期限要任务，
-    // 免得「半年」只要 8 张而计划其实是 180 天。
-    final int n =
-        (goalDaysFor(typed) +
-                completionDayBoost(
-                  cleared: prev.doneCount,
-                  total: prev.plan.length,
-                  level: _host.lv,
-                ))
-            .clamp(kPlanMinTasks, kPlanMaxTasks)
-            .toInt();
-    final int need = planDraftCountFor(n);
-    // 她先想一下：拆解是真网络请求，不能让界面看着像卡住
-    setState(() => _goalChangeOn = false);
-    _sayAside('……行，让我把这条拆开。', holdMs: 1400);
-    _prefetchPlan(
-      typed,
-      detectCategory(typed),
-      taskCount: need,
-      days: n,
-      withStatus: true, // 换目标时状态是真的：让她先看清再拆
-    );
-    final List<TaskSpec>? planned = await _takePlan(
-      typed,
-      taskCount: need,
-      wait: kPlanWaitOnChangeGoal,
-    );
-    // 等待期间宿主可能又换了目标 / 重置了存档 —— 对不上就整件事作废
-    if (!mounted || !identical(_flow.goal, prev)) return;
-    final Goal next = buildNextGoal(
-      prev: prev,
-      // 换目标是宿主**主动**换（不是走完的）——按已走过的环数算完成度
-      cleared: prev.doneCount,
-      total: prev.plan.length,
-      level: _host.lv,
-      text: typed,
-      // 同上 O-2：主动换目标也沿用原「立目标时刻」
-      at: prev.at,
-      // 内容来自 LLM 拆解；取不到就是 null → 类别模板兜底
-      planned: planned,
-    );
-    final Quest? first = _flow.newGoal(next);
-    if (first == null) return; // 新目标没排出单（不该发生）：不动任何状态
+    // 新的尝试开始 → 上一次的失败读数清掉（成功时不至于挂着旧错误）
     setState(() {
-      _host = _flow.host;
-      _goal = _flow.goal;
       _goalChangeOn = false;
-      _pickedTask = null;
-      _moment = Moment.main;
+      _planError = null;
+      _planErrorGoal = '';
     });
-    _persist();
-    // docs/24 #17 换目标落库：正色点头（nod + exp_serious02）
-    _stagePort?.act('nod');
-    _sayAside(
-      '行。旧的撤了，新清单 [[${_goal.plan.length} 单]] 已经在你手上。'
-      '「$typed」——别又三天热度。',
-      holdMs: 3000,
+    _sayAside('……行，让我把这条拆开。', holdMs: 1400);
+    try {
+      final Goal next = await _buildGoalWithAgent(
+        text: typed,
+        // ⚠️ 2026-10-23 真机修正：**换目标 = 新的一条路**，期限从今天起算。
+        //
+        // 旧口径沿用了 O-2 的「立目标时刻沿用上一目标」，于是刚建好的
+        // 14 天计划一出生就写着「已过 11/14 天 · 剩 3 天」——目标不可执行
+        // 的观感有一半来自这里。O-2 要保的是**同一条主线的读数不跳变**，
+        // 换了一句话就不是同一条线了。
+        at: DateTime.now(),
+      );
+      // 等待期间宿主可能又换了目标 / 重置了存档 —— 对不上就整件事作废
+      if (!mounted || !identical(_flow.goal, prev)) return;
+      _flow.newGoal(next);
+      setState(() {
+        _host = _flow.host;
+        _goal = _flow.goal;
+        _goalChangeOn = false;
+        _pickedTask = null;
+        _moment = Moment.main;
+      });
+      _persist();
+      // docs/24 #17 换目标落库：正色点头（nod + exp_serious02）
+      _stagePort?.act('nod');
+      _sayAside(
+        '行。旧的撤了，新清单 [[${_goal.plan.length} 单]] 已经在你手上。'
+        '「$typed」——别又三天热度。',
+        holdMs: 3000,
+      );
+    } on PlanFailure catch (e) {
+      _failPlan(e, goalText: typed);
+    }
+  }
+
+  /// 匹配 + 拆解 = 一次完整的目标铸造。**失败一律抛**，由调用方决定怎么显示。
+  ///
+  /// 两步都是 Agent 调 tool：
+  ///   · `GoalMatchAgent` → `set_goal_category`（类别 / 短字 / 期限）
+  ///   · `PlanAgent`     → `set_plan`（任务池，schema 固定）
+  /// 最后 `buildGoalFromPlan` 跑规则校验（条数/档位/时限），不合格同样抛。
+  Future<Goal> _buildGoalWithAgent({
+    required String text,
+    required DateTime at,
+    bool firstGoal = false,
+    Map<String, String> answers = const <String, String>{},
+  }) async {
+    final PlanAgent? planner0 = _planAgent;
+    final GoalMatchAgent? matcher0 = _matchAgent;
+    if (planner0 == null || matcher0 == null) {
+      throw const PlanGenerationError(
+        PlanFailureCode.noKey,
+        'Agent 还没装配好（_initAgent 未完成 / 没配 Key）',
+      );
+    }
+    final String? status = firstGoal ? null : _statusLineForAgent();
+
+    // ① 匹配：类别 / 天幕短字 / 期限
+    final GoalMatchDraft matchDraft = GoalMatchDraft();
+    final StrictAgentToolRegistry matchTools = StrictAgentToolRegistry();
+    if (!firstGoal && _agentTools != null) {
+      for (final String name in <String>['get_status', 'recall']) {
+        final AgentTool? t = _agentTools!.tool(name);
+        if (t != null) matchTools.register(t);
+      }
+    }
+    matchTools.register(
+      setGoalCategoryTool(goalText: text, draft: matchDraft),
     );
+    final GoalMatch m = await matcher0.match(
+      goalText: text,
+      tools: matchTools,
+      draft: matchDraft,
+      statusLine: status,
+    );
+
+    // ② 拆解：按匹配出的**期限或次数配额**要任务（规则在 goal_gen）
+    //
+    // ⚠️ 2026-10-23 真机事故：原来只按「期限天数」要任务，于是
+    // 「两周内骑自行车 10 次」要了 14 张，模型只能写成「第1..14次骑行」，
+    // 末张还自相矛盾地写「第14次骑满120分钟并交全部10次轨迹」。
+    final int days = m.days;
+    final int need = planTaskCountFor(days, quota: m.quota);
+    final PlanDraft planDraft = PlanDraft();
+    final StrictAgentToolRegistry planTools = StrictAgentToolRegistry();
+    if (!firstGoal && _agentTools != null) {
+      for (final String name in <String>['get_status', 'recall']) {
+        final AgentTool? t = _agentTools!.tool(name);
+        if (t != null) planTools.register(t);
+      }
+    }
+    planTools.register(
+      setPlanTool(
+        goalText: text,
+        taskCount: need,
+        days: days,
+        draft: planDraft,
+      ),
+    );
+    final PlanResult pr = await planner0.generate(
+      brief: PlanBrief(
+        goalText: text,
+        days: days,
+        taskCount: need,
+        cat: m.cat,
+        interview: answers,
+        statusLine: status,
+        firstGoal: firstGoal,
+      ),
+      tools: planTools,
+      draft: planDraft,
+    );
+
+    // ③ 规则校验 + 铸计划（校验不过会抛 PlanRuleError）
+    return buildGoalFromPlan(
+      text: text,
+      short: m.short,
+      cat: m.cat,
+      days: days,
+      quota: m.quota,
+      tasks: pr.tasks,
+      answers: answers,
+      at: at,
+      firstGoal: firstGoal,
+    );
+  }
+
+  /// 拆解失败的**唯一出口**：不落库、不改目标，把原因直接摆到屏幕上。
+  ///
+  /// 旧版这里什么都不做（`return null` → 走模板），于是失败不可见。
+  /// 现在：横幅（开发者一眼看到 code）+ 字幕（人可读原因）+ debugPrint。
+  void _failPlan(PlanFailure e, {String goalText = ''}) {
+    debugPrint('[plan] ❌ ${e.code.name} · ${e.detail}'
+        '${goalText.isEmpty ? '' : ' · goal=「$goalText」'}');
+    setState(() {
+      _planError = e;
+      _planErrorGoal = goalText;
+    });
+    _sayAside('拆解失败：${e.code.name}。${_clip(e.detail, 60)}', holdMs: 6000);
   }
 
   /// 换目标中途算了：什么都不动。
@@ -1492,38 +1591,7 @@ class _AppShellState extends State<AppShell>
                     visible: exec,
                     // 指纹钤印那一下：原型 `Plate.seal()` 是
                     // `FX.flash('#bff6ff', .24, 280)` + `FX.shake(4, 220)`
-                    onSubmit: () {
-                      if (_busy) return; // 原型 `App.submit()` → `run()`
-                      _clock.stopFast();
-                      _active = false; // 交出去了，药丸该消失
-                      // docs/24 #7 提交任务：交单前满意地点个头
-                      _stagePort?.perf('nod', 'exp_smile01');
-                      _pulse(color: const Color(0xFFBFF6FF), a: .24, ms: 280);
-                      // 钤印那一下：涟漪 + 火花 + 爆散（ui.js L346-347 / L358）
-                      _fx.ripple(
-                        195,
-                        726,
-                        r1: 300,
-                        flat: .38,
-                        color: const Color(0xFFBFF6FF),
-                        w: 3,
-                        ms: 700,
-                      );
-                      _fx.spark(195, 726, n: 18);
-                      _fx.burst(195, 540, n: 60);
-                      // 真实结算（store.js settle 的移植）：经验/金币/六维/连击/
-                      // 升级/主线环/称号全部落账，再进结算页 —— 卡死根因①②
-                      setState(() {
-                        _result = _flow.settle() ?? _result;
-                        _resultChoicesOn = false;
-                        _moment = Moment.result;
-                        _host = _flow.host;
-                        _goal = _flow.goal;
-                      });
-                      // 原型 settle() L372：结算时她专注读单
-                      _stagePort?.mood('focus');
-                      _persist();
-                    },
+                    onSubmit: () => unawaited(_submitQuest()),
                     onQuitProgress: (double p) => setState(() => _quitP = p),
                     onQuit: () {
                       if (_busy) return; // 原型 `App.fail()` → `run()`
@@ -1561,6 +1629,15 @@ class _AppShellState extends State<AppShell>
                   // 演出播完 → 弹【再来一单。/先歇会儿。|收工。】（卡死根因④：
                   // 这是结算页唯一的退出路径，原型 flows.js L460-462）
                   onDone: _onResultDone,
+                  // 「返回主界面」：兜底出口 —— 不等结算演出播完，
+                  // 直接回大厅（与岔路口里【收工。/先歇会儿。】同一条路）。
+                  //
+                  // ⚠️ 2026-10-23：宿主报「无法退出页面」。原来唯一出口是
+                  //    演出播完后的岔路口，演出没走完 = 整页无路。
+                  onExit: () => setState(() {
+                    _resultChoicesOn = false;
+                    _moment = Moment.lobby;
+                  }),
                   // 「找小祥说说」（docs/18 §2.7 入口 A）：带结算上下文开对话层
                   onTalk: () => _openChat(scenario: _resultTalkScenario),
                   // 印章砸下那一刻（原型 `settle()` 的 ②）：
@@ -1758,7 +1835,7 @@ class _AppShellState extends State<AppShell>
                   onEntry: _enterAskXiang,
                 ),
                 // 绑定仪式 · 第 1 幕：卡片式访谈（docs/18 §2.1，t4 组件 + t8 装配）
-                // 答完 → buildFirstGoal 落 3 天 3 环 → 见面礼 → 大厅
+                // 答完 → Agent 拆解落 3 天 3 张 → 见面礼 → 大厅
                 if (onboard && _interviewCat != null)
                   Positioned(
                     left: 0,
@@ -1773,6 +1850,8 @@ class _AppShellState extends State<AppShell>
                 Sheet(
                   host: _host,
                   kind: _sheetKind,
+                  planError: _planError,
+                  planErrorGoal: _planErrorGoal,
                   // 2026-10-13 宿主裁定：**不让位** —— 名牒册悬浮在档案上就行
                   visible: sheet,
                   // 设置页「表演调试台」→ 收起投影面板，开调试设施（她仍在背景可见）
@@ -1890,13 +1969,24 @@ class _AppShellState extends State<AppShell>
                   onQuickTool: _onQuickTool,
                   paceMs: _paceMs, // docs/22 §R4：同一档位喂聊天气泡的打字机
                 ),
-                // 横幅（z 5，压在所有东西上面）—— 绑定见面礼（数值语义在 goal_gen 的 kBindGift*）
-                SysBanner(
-                  kicker: kBindGiftKicker,
-                  text: kBindGiftText,
-                  glyph: '×2',
-                  visible: _banner,
-                ),
+                // 横幅（z 5，压在所有东西上面）。
+                // ① 拆解失败优先：失败必须**看得见**（旧版失败时屏幕上什么都不发生）。
+                // ② 否则是绑定见面礼（数值语义在 goal_gen 的 kBindGift*）。
+                if (_planError != null)
+                  SysBanner(
+                    kicker: 'PLAN · 拆解失败',
+                    text:
+                        '${_planError!.code.name} · ${_clip(_planError!.detail, 48)}',
+                    glyph: '!',
+                    visible: true,
+                  )
+                else
+                  SysBanner(
+                    kicker: kBindGiftKicker,
+                    text: kBindGiftText,
+                    glyph: '×2',
+                    visible: _banner,
+                  ),
               ],
             ),
           ),
@@ -1910,6 +2000,10 @@ class _AppShellState extends State<AppShell>
 
   /// 绑定 · 第 0 幕收卷（原型 `makeGoal` 的空泛判定）：
   /// 空泛/太短 → 她追问到具体为止（不进访谈）；具体 → 进访谈卡。
+  ///
+  /// ⚠️ 2026-10-23：这里原来「趁访谈先把拆解预取跑起来」，类别却是**正则表**
+  /// 猜的。现在类别也走 LLM（`GoalMatchAgent`），所以匹配挪到这一步现取：
+  /// 拿不到类别就**不进访谈**，把原因摆出来 —— 不再用正则硬猜一个。
   void _onGoalSubmitted() {
     final String typed = _ask.text.trim();
     if (isVagueGoal(typed)) {
@@ -1917,86 +2011,53 @@ class _AppShellState extends State<AppShell>
       _sayAside('太空了。说点具体的。', holdMs: 1800);
       return;
     }
-    setState(() {
-      _pendingGoalText = typed;
-      _interviewCat = detectCategory(typed);
-    });
     _takeProbeLine(typed);
-    // 趁她在答访谈卡（几秒到几十秒），**先把拆解跑起来** ——
-    // 等访谈答完再发请求就白等一轮网络；这里预取，`_completeOnboarding`
-    // 里直接取（答案通常是现成的，取不到才等 [kPlanWaitOnConsume]）。
-    _prefetchPlan(
-      typed,
-      _interviewCat!,
-      taskCount: kFirstGoalDays,
-      days: kFirstGoalDays,
-      withStatus: false, // 绑定期还没有真档案，别让她读演示档
-    );
+    setState(() {
+      _planError = null;
+      _planErrorGoal = '';
+    });
+    unawaited(_startInterview(typed));
   }
 
-  /// 预取「这一句话的计划」。失败静默（`hasPlan=false`）—— 组装时自然退回类别模板。
-  ///
-  /// [withStatus]：绑定仪式**不给** `get_status` —— 那一刻 `_flow` 还是演示档，
-  /// 让她读会读出一份假档案；换目标时才给（那时状态是真的）。
-  void _prefetchPlan(
-    String text,
-    GoalCategory cat, {
-    required int taskCount,
-    int? days,
-    bool withStatus = false,
-  }) {
-    final MainlineAgent? agent = _mainlineAgent;
-    _planFor = text;
-    if (agent == null) {
-      _planFuture = null;
+  /// 第 0 幕 → 第 1 幕：先让 Agent 判类别（访谈卡组由类别决定）。
+  /// 失败就**不进访谈**、把原因摆出来（旧版会用正则猜一个类别硬走）。
+  Future<void> _startInterview(String typed) async {
+    final GoalMatchAgent? matcher = _matchAgent;
+    if (matcher == null) {
+      _failPlan(
+        const PlanGenerationError(
+          PlanFailureCode.noKey,
+          'Agent 还没装配好（_initAgent 未完成 / 没配 Key）',
+        ),
+        goalText: typed,
+      );
       return;
     }
-    final int d = days ?? goalDaysFor(text);
-    final PlanDraft draft = PlanDraft();
-    _planFuture = agent.run(
-      goalText: text,
-      taskCount: taskCount,
-      tools: _mainlineTools(
-        goalText: text,
-        taskCount: taskCount,
-        days: d,
+    try {
+      final GoalMatchDraft draft = GoalMatchDraft();
+      final StrictAgentToolRegistry tools = StrictAgentToolRegistry();
+      tools.register(setGoalCategoryTool(goalText: typed, draft: draft));
+      final GoalMatch m = await matcher.match(
+        goalText: typed,
+        tools: tools,
         draft: draft,
-        withStatus: withStatus,
-      ),
-      draft: draft,
-      statusLine: withStatus ? _statusLineForAgent() : null,
-    );
+        // 绑定期还没有真档案：不给 statusLine（旧版的 withStatus: false 同理）
+        statusLine: null,
+      );
+      if (!mounted) return;
+      setState(() {
+        _pendingGoalText = typed;
+        _interviewCat = m.cat;
+      });
+    } on PlanFailure catch (e) {
+      _failPlan(e, goalText: typed);
+    }
   }
 
-  /// 立主线这一轮给她哪些工具。
-  ///
-  /// ⚠️ 只给「读状态 / 翻记忆 / 交主线」——**不给** `swap_quest` /
-  ///    `adjust_plan`：换主线时的队列手术由 `_onGoalChangeSubmitted` 自己做，
-  ///    让她同一轮里既换主线又动队列会打架（而且拉长这一轮的往返）。
-  AgentToolRegistry _mainlineTools({
-    required String goalText,
-    required int taskCount,
-    required int days,
-    required PlanDraft draft,
-    required bool withStatus,
-  }) {
-    final AgentToolRegistry reg = AgentToolRegistry();
-    final AgentToolRegistry? base = _agentTools;
-    if (withStatus && base != null) {
-      for (final String name in <String>['get_status', 'recall', 'remember']) {
-        final AgentTool? t = base.tool(name);
-        if (t != null) reg.register(t);
-      }
-    }
-    reg.register(
-      setPlanTool(
-        goalText: goalText,
-        taskCount: taskCount,
-        days: days,
-        draft: draft,
-      ),
-    );
-    return reg;
+  /// 截断一段文案（诊断条 / 字幕用）
+  static String _clip(String s, int max) {
+    final String t = s.trim().replaceAll('\n', ' ');
+    return t.length <= max ? t : '${t.substring(0, max)}…';
   }
 
   /// 给她的「宿主档案」一行（`Persona.buildConversation` 的 statusLine 位）
@@ -2008,26 +2069,6 @@ class _AppShellState extends State<AppShell>
         '现主线：${g.text.isEmpty ? '（无）' : '「${g.text}」完成 ${g.doneCount}/${g.plan.length} 单'}';
   }
 
-  /// 取预取的主线环。**最多等 [wait]** —— 宿主已经走到「该铸环了」，
-  /// 不能为了好听让她多等一整轮工具循环的超时。
-  Future<List<TaskSpec>?> _takePlan(
-    String text, {
-    int? taskCount,
-    Duration wait = kPlanWaitOnConsume,
-  }) async {
-    if (_planFor != text || _planFuture == null) return null;
-    try {
-      final MainlineResult r = await _planFuture!.timeout(wait);
-      final List<TaskSpec>? tasks = r.tasks;
-      if (tasks == null || tasks.isEmpty) return null;
-      if (taskCount != null && tasks.length != taskCount) return null;
-      return tasks;
-    } catch (_) {
-      // 超时 / 失败：当没说（调用方走模板）
-      return null;
-    }
-  }
-
   /// 绑定 · 第 1 幕收卷（原型 `Store.bind(name, plan)` 的新政版）：
   /// 访谈答案 → 3 天 3 张 E/D/C 落档 → 队列 = 计划前几张 + 当日日常 1~2
   /// → 见面礼双倍卡 ×1 → 大厅（首单已在队列）。
@@ -2035,69 +2076,84 @@ class _AppShellState extends State<AppShell>
     unawaited(_bindWithPlan(answers));
   }
 
-  /// 绑定收卷（异步）：先取预取的 LLM 拆解（通常已就绪），取不到就用类别模板。
-  /// 内容（拆成哪几环）听拆解；**档位仍是 E/D/C 三天阶梯**（docs/05 锁定）。
+  /// 绑定收卷（异步）：**内容全部来自 Agent 拆解**，失败直接摆到屏幕上。
+  ///
+  /// 旧版这里是「先取预取的拆解，取不到就用类别模板」——首目标 100% 走模板
+  /// 的那条路就是这么来的（绑定期还没有设置入口，没 Key 时必然模板）。
+  /// 现在拿不到拆解就不落库：目标仍然空着，宿主看得到失败原因。
   Future<void> _bindWithPlan(Map<String, String> answers) async {
-    final GoalCategory cat = _interviewCat!;
-    final List<TaskSpec>? planned = await _takePlan(
-      _pendingGoalText,
-      taskCount: kFirstGoalDays,
-    );
-    if (!mounted || _interviewCat != cat) return; // 这中间被重置/换目标了
-    // ⚠️ 重置存档会冻结存储（原型靠随后的 location.reload() 解冻，我们没有重载），
-    //    所以重新绑定这一刻要显式解冻，否则这次存盘会被静默跳过。
-    _save.unfreeze();
-    setState(() {
-      _goal = buildFirstGoal(
-        text: _pendingGoalText,
-        cat: cat,
+    final GoalCategory? cat = _interviewCat;
+    if (cat == null) return;
+    final String text = _pendingGoalText;
+    try {
+      final Goal goal = await _buildGoalWithAgent(
+        text: text,
+        at: DateTime.now(),
+        firstGoal: true,
         answers: answers,
-        planned: planned,
       );
-      _flow = QuestFlow(host: _host, goal: _goal);
-      _wireFlow(_flow);
-      // 绑定即建队列：首环 + 当日日常（store.js bind() 的 L165-167；
-      // 每日 1~2 个走 §2.2 新政，不再用 seedForCurrentGoal 的固定 3 张）
-      _flow.publishPlanTasks(); // 计划前几张（在手窗口）
-      _flow.queue.addAll(_genTodaysDailies());
-      _resyncQueueCount();
-      // 见面礼：双倍卡 ×1（原型 bind() 的 `S.items.dbl += 1`，
-      // 数值语义钉在 kBindGift*；Banner 演出在 build 里挂着）
-      _flow.host = _flow.host.copyWith(items: applyBindGift(_flow.host.items));
-      _host = _flow.host;
-      _lastRollDay = startOfDay(DateTime.now());
-      _interviewCat = null;
-      // 绑定收卷 = 小景别（boot .64）→ 正常大小（lobby .92）：走慢推，
-      // 别让"绑定完就跳到大厅"（宿主验收：要看得见的放大）
-      _camGlideMs = 1400;
-      _moment = Moment.lobby;
-      _banner = true;
-    });
-    _persist();
-    _rememberInterview(cat, answers);
-    _sayAside('排好了。三天，一天一张。', holdMs: 2200);
-    Future<void>.delayed(const Duration(milliseconds: 2200), () {
-      if (mounted) setState(() => _banner = false);
-    });
+      if (!mounted || _interviewCat != cat) return; // 这中间被重置/换目标了
+      // ⚠️ 重置存档会冻结存储（原型靠随后的 location.reload() 解冻，我们没有重载），
+      //    所以重新绑定这一刻要显式解冻，否则这次存盘会被静默跳过。
+      _save.unfreeze();
+      setState(() {
+        _goal = goal;
+        _flow = QuestFlow(host: _host, goal: _goal);
+        _wireFlow(_flow);
+        // 绑定即建队列：计划前几张 + 当日日常（store.js bind() 的 L165-167；
+        // 每日 1~2 个走 §2.2 新政，不再用 seedForCurrentGoal 的固定 3 张）
+        _flow.publishPlanTasks(); // 计划前几张（在手窗口）
+        _flow.queue.addAll(_genTodaysDailies());
+        _resyncQueueCount();
+        // 见面礼：双倍卡 ×1（原型 bind() 的 `S.items.dbl += 1`，
+        // 数值语义钉在 kBindGift*；Banner 演出在 build 里挂着）
+        _flow.host = _flow.host.copyWith(
+          items: applyBindGift(_flow.host.items),
+        );
+        _host = _flow.host;
+        _lastRollDay = startOfDay(DateTime.now());
+        _interviewCat = null;
+        // 绑定收卷 = 小景别（boot .64）→ 正常大小（lobby .92）：走慢推，
+        // 别让"绑定完就跳到大厅"（宿主验收：要看得见的放大）
+        _camGlideMs = 1400;
+        _moment = Moment.lobby;
+        _banner = true;
+      });
+      _persist();
+      _rememberInterview(cat, answers);
+      _sayAside('排好了。三天，一天一张。', holdMs: 2200);
+      Future<void>.delayed(const Duration(milliseconds: 2200), () {
+        if (mounted) setState(() => _banner = false);
+      });
+    } on PlanFailure catch (e) {
+      // 拆不出首目标就不落库：目标仍空着，原因摆在屏幕上（不退回模板）
+      _failPlan(e, goalText: text);
+    }
   }
 
-  /// 访谈答案 → 小祥的长期记忆（答案三用之三；记忆挂了不阻塞绑定）
+  /// 访谈答案 → 小祥的长期记忆（答案三用之三）。
+  ///
+  /// ⚠️ 2026-10-23：这里原来 `catch (_) { return; }` —— 写记忆失败**静默吞掉**。
+  /// 现在失败会原样抛出，由 [_bindWithPlan] 的 catch 报到屏幕上：
+  /// 访谈答案是她后续拆解的唯一上下文来源，写不进去就等于丢了他的话。
   Future<void> _rememberInterview(
     GoalCategory cat,
     Map<String, String> answers,
   ) async {
     final MemoryStore? mem = _memory;
-    if (mem == null) return;
+    if (mem == null) {
+      throw const PlanGenerationError(
+        PlanFailureCode.noKey,
+        'MemoryStore 还没装配好：访谈答案无处落库',
+      );
+    }
     for (final String text in memoriesFromInterview(
       cat: cat,
       answers: answers,
       goalText: _pendingGoalText,
+      days: _goal.days,
     )) {
-      try {
-        await mem.add(text, source: MemorySource.interview, weight: 2);
-      } catch (_) {
-        return;
-      }
+      await mem.add(text, source: MemorySource.interview, weight: 2);
     }
   }
 
@@ -2572,6 +2628,59 @@ class _AppShellState extends State<AppShell>
     }
   }
 
+  /// 提交任务 → 真实结算。**fail fast**：结算/收官拆解失败都当场报。
+  ///
+  /// 旧版是内联的 `_result = _flow.settle() ?? _result`：settle 返回 null 时
+  /// 悄悄沿用上一单的结算数据（看着像结算成功，其实什么都没发生）。
+  /// 现在 settle 要么给结果、要么抛，失败走 [_failPlan]（目标/队列都不动）。
+  Future<void> _submitQuest() async {
+    if (_busy) return; // 原型 `App.submit()` → `run()`
+    _clock.stopFast();
+    _active = false; // 交出去了，药丸该消失
+    // docs/24 #7 提交任务：交单前满意地点个头
+    _stagePort?.perf('nod', 'exp_smile01');
+    _pulse(color: const Color(0xFFBFF6FF), a: .24, ms: 280);
+    // 钤印那一下：涟漪 + 火花 + 爆散（ui.js L346-347 / L358）
+    _fx.ripple(
+      195,
+      726,
+      r1: 300,
+      flat: .38,
+      color: const Color(0xFFBFF6FF),
+      w: 3,
+      ms: 700,
+    );
+    _fx.spark(195, 726, n: 18);
+    _fx.burst(195, 540, n: 60);
+    try {
+      // 真实结算（store.js settle 的移植）：经验/金币/六维/连击/升级/
+      // 主线/称号全部落账。收官那一单还会在这里 await 下一份计划的拆解。
+      final QuestResult r = await _flow.settle();
+      if (!mounted) return;
+      setState(() {
+        _result = r;
+        _resultChoicesOn = false;
+        _moment = Moment.result;
+        _host = _flow.host;
+        _goal = _flow.goal;
+      });
+      // 原型 settle() L372：结算时她专注读单
+      _stagePort?.mood('focus');
+      _persist();
+    } on PlanFailure catch (e) {
+      // 收官时拆不出下一份计划：结算已经落账，但计划没拿到 —— 说出来。
+      if (!mounted) return;
+      setState(() {
+        _host = _flow.host;
+        _goal = _flow.goal;
+        _resultChoicesOn = false;
+        _moment = Moment.result;
+      });
+      _failPlan(e, goalText: _goal.text);
+      _persist();
+    }
+  }
+
   /// 结算演出播完（原型 `choose()` 前的那一刻）：弹选项 + 她按档位说一句
   /// （flows.js L442-447 的 tier 台词，t10 已由 SystemCopyProvider 接管：
   /// LLM 回了顶掉下面这句，兜底保持原句）
@@ -2953,14 +3062,20 @@ class _AppShellState extends State<AppShell>
     });
     // 补出来的种子要落一次盘，重启后队列还在
     if (seeded && _flow.queue.isNotEmpty) _persist();
-    // TODO-01 兜底：存档里这条主线**已经走完**（收官发生在「自动续主线」之前
-    // 的老档）→ 补铸下一条并钉队首，别让认真用户重启后停在叙事终点。
-    if (_flow.applyFinaleOutcome()) {
-      setState(() {
-        _host = _flow.host;
-        _goal = _flow.goal;
-      });
-      _persist();
+    // 存档里这条主线**已经走完**（收官发生在「自动续主线」之前的老档）→
+    // 补铸下一条并钉队首。⚠️ 现在这一步会真的调 LLM 拆解，失败会抛
+    // （旧版是同步模板，永远不会失败）——所以读档时也要接住并报出来。
+    try {
+      if (await _flow.applyFinaleOutcome()) {
+        if (!mounted) return;
+        setState(() {
+          _host = _flow.host;
+          _goal = _flow.goal;
+        });
+        _persist();
+      }
+    } on PlanFailure catch (e) {
+      _failPlan(e, goalText: _flow.goal.text);
     }
     // 换日（store.js rollDay）：隔夜日常作废、主线单重钉、补发当日日常。
     // 「清晨首次进入」= 存档 lastSeen 的日子不是今天（同日重进不重发）

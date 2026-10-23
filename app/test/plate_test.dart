@@ -325,14 +325,14 @@ void main() {
       expect(Rewards.coinOf('E'), 5); // 5 × .5 = 2.5 → 3
     });
 
-    test('补救单真结算 == 板面文案（走 QuestFlow.settle 全链路）', () {
+    test('补救单真结算 == 板面文案（走 QuestFlow.settle 全链路）', () async {
       for (final String rank in kAllRanks) {
         final Quest remedy = questOf(rank, kind: 'remedy');
         final QuestFlow f = QuestFlow(
           host: HostState.empty,
           goal: Goal.demo(),
         )..accept(remedy);
-        final QuestResult r = f.settle(forceCrit: false)!;
+        final QuestResult r = await f.settle(forceCrit: false);
         // 板面那一行必须**逐字**含真结算的两个数（不是各自算一遍再比）
         expect(
           remedy.lootText,

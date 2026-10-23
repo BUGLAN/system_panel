@@ -15,7 +15,7 @@ import 'press_scale.dart';
 ///
 ///  自包含组件：只认 [InterviewCard] 与回调，装配（挂进 onboard 幕）归 T8。
 ///  答案以 `卡 id → 答案原文` 交给 [onDone]，由调用方喂给
-///  `buildFirstGoal` / `dailyPoolFor` / `memoriesFromInterview`。
+///  `PlanBrief.interview`（喂拆解）/ `dailyPoolFor` / `memoriesFromInterview`。
 /// ═══════════════════════════════════════════════════════════
 class InterviewDeck extends StatefulWidget {
   const InterviewDeck({

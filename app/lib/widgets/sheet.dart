@@ -16,6 +16,7 @@ import '../data/rewards.dart';
 import '../data/titles.dart';
 import '../design/tokens.dart';
 import '../state/host_state.dart';
+import '../state/plan_failure.dart';
 import '../stage/live2d_stage.dart';
 import '../stage/perf_presets.dart';
 import '../state/settings.dart';
@@ -49,6 +50,8 @@ class Sheet extends StatefulWidget {
     this.onBuyItem,
     this.onSettingsChanged,
     this.onOpenPerfDebug,
+    this.planError,
+    this.planErrorGoal = '',
   });
 
   final HostState host;
@@ -77,6 +80,13 @@ class Sheet extends StatefulWidget {
 
   /// 打开「表演调试台」（宿主 2026-10-11：调试预设/动作/表情；由 main.dart 挂叠层）
   final VoidCallback? onOpenPerfDebug;
+
+  /// 最近一次**目标拆解失败**（2026-10-23：拆解不再有兜底，失败要可观测）。
+  ///
+  /// 只读回显在设置页「LLM」组底部，给开发者一眼看到失败类别与原因；
+  /// null = 没失败过。它是**诊断仪表**，不参与任何业务判定。
+  final PlanFailure? planError;
+  final String planErrorGoal;
 
   static const Map<SheetKind, List<String>> _titles = <SheetKind, List<String>>{
     SheetKind.archive: <String>['ARCHIVE · 宿主档案', '档案'],
@@ -697,6 +707,9 @@ class _SheetState extends State<Sheet> {
       onWipe: widget.onWipe,
       onSettingsChanged: widget.onSettingsChanged,
       onOpenPerfDebug: widget.onOpenPerfDebug,
+      // 目标拆解失败（2026-10-23：拆解没有兜底，失败必须在设置页看得到）
+      planError: widget.planError,
+      planErrorGoal: widget.planErrorGoal,
       // 一级 ↔ 二级切换时把面板正文滚回顶部：一级清单比二级长，不归零的话
       // 进二级会沿用清单的滚动位置，看上去就是「先闪过一段内容才进二级」
       onViewChanged: _toTop,
@@ -746,7 +759,13 @@ class _SystemPane extends StatefulWidget {
     this.onSettingsChanged,
     this.onOpenPerfDebug,
     this.onViewChanged,
+    this.planError,
+    this.planErrorGoal = '',
   });
+
+  /// 最近一次目标拆解失败（只读诊断回显）
+  final PlanFailure? planError;
+  final String planErrorGoal;
 
   /// 一级菜单顶部那行实时读数用的宿主副本（LV / 连击 / 道具数）
   final HostState host;
@@ -1410,6 +1429,33 @@ class _SystemPaneState extends State<_SystemPane> {
       // 组底部只读回显（docs/22 §2.0「兜底要可观测」）：
       // 读 LlmTelemetry 内存态仪表，不落盘、不可点；每次 build 现读，
       // 切档/测连接/重挂都会跟着刷新。
+      // 目标拆解失败（2026-10-23）：拆解**没有兜底**，失败必须可观测。
+      // 这一行就是开发者看"为什么没生成出计划"的地方。
+      _setRow(
+        '最近一次拆解失败',
+        widget.planError == null
+            ? '—'
+            : '${widget.planError!.code.name}'
+                  '${widget.planErrorGoal.isEmpty ? '' : ' · 「${widget.planErrorGoal}」'}',
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 150),
+          child: Text(
+            widget.planError?.detail ?? '—',
+            key: const Key('sheet.plan.lastFail'),
+            maxLines: 3,
+            textAlign: TextAlign.right,
+            overflow: TextOverflow.ellipsis,
+            style: fs(
+              family: F.mono,
+              size: 10.5,
+              wght: 500,
+              color: widget.planError != null
+                  ? const Color(0xFFFF8F99)
+                  : C.mist,
+            ),
+          ),
+        ),
+      ),
       _setRow(
         '最近一次 LLM 失败',
         '${LlmTelemetry.summary} · ${LlmTelemetry.kindSummary}',

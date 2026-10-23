@@ -14,6 +14,7 @@ library;
 
 import '../data/rarity.dart';
 import '../state/goal.dart';
+import '../state/plan_failure.dart';
 import '../state/host_state.dart';
 import '../state/quest.dart';
 import 'memory.dart';
@@ -438,4 +439,61 @@ AgentToolRegistry defaultAgentTools({
     ),
   ]);
   return reg;
+}
+
+// ═══════════════════════════════════════════════════════════
+//  严格注册表（2026-10-23 宿主定调：fail fast，不许吞异常）
+// ═══════════════════════════════════════════════════════════
+
+/// 工具执行失败 —— **抛**出来，不再折成 `ToolOutcome.fail` 回执。
+///
+/// [tool] 是工具名（一眼知道哪一步炸了），[detail] 是人可读原因，
+/// [cause] 是原始异常（工具内部抛的那种，带堆栈）。
+class ToolExecutionError implements Exception {
+  const ToolExecutionError(this.tool, this.detail, {this.cause});
+
+  final String tool;
+  final String detail;
+  final Object? cause;
+
+  @override
+  String toString() =>
+      '[tool:$tool] $detail${cause == null ? '' : ' · 原因：$cause'}';
+}
+
+/// 严格版注册表：**任何不成功都抛异常**，绝不把失败包成一条"回执"。
+///
+/// 与 [AgentToolRegistry.execute] 的区别（那张是给聊天用的宽容版）：
+///   · 未知工具名 → [ToolExecutionError]
+///   · 工具内部抛异常 → 包成 [ToolExecutionError] 抛出（带原因与堆栈）
+///   · 工具抛 [PlanFailure]（形状/规则错）→ **原样上抛**，不包一层
+///     （code / where 这些字段是调用方分流用的，包掉就丢了）
+///   · 工具返回 `ok == false` → [ToolExecutionError] 抛出
+///
+/// 目标拆解只走这一张：模型交的形状不对时必须当场炸给开发者看，
+/// 而不是把 fail 文案回填给模型"让它再试一次"——那会把失败藏进多轮循环里。
+class StrictAgentToolRegistry extends AgentToolRegistry {
+  @override
+  Future<ToolOutcome> execute(String name, [Map<String, dynamic>? args]) async {
+    final AgentTool? t = _tools[name];
+    if (t == null) {
+      throw ToolExecutionError(name, '没有这个工具（已注册：${_tools.keys.join(' / ')}）');
+    }
+    final ToolOutcome out;
+    try {
+      out = await t.run(args ?? const <String, dynamic>{});
+    } on PlanFailure {
+      // 工具自己抛的**带类型**的失败（形状/规则）原样上抛 —— 包一层会丢掉
+      // code/where 这些调用方要分流的信息。
+      rethrow;
+    } on ToolExecutionError {
+      rethrow;
+    } catch (e, st) {
+      throw ToolExecutionError(name, '工具内部异常', cause: '$e\n$st');
+    }
+    if (!out.ok) {
+      throw ToolExecutionError(name, out.message);
+    }
+    return out;
+  }
 }

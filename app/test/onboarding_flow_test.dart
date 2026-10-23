@@ -167,9 +167,9 @@ void main() {
     testWidgets('早睡早起：3 张卡答完 → 首目标 3 天 3 张 E/D/C 入档', (
       WidgetTester tester,
     ) async {
-      // ① 宿主输入目标（装配层把输入喂给识别与卡组）
+      // ① 宿主输入目标 → Agent 判类别（这里直接用类别表里的 sleep）
       const String goalText = '一个月早睡早起';
-      final GoalCategory cat = detectCategory(goalText);
+      final GoalCategory cat = goalCats['sleep']!;
       final List<String> answered = <String>[];
       Map<String, String>? answers;
 
@@ -194,11 +194,38 @@ void main() {
       expect(answers, isNotNull);
       expect(answered.length, 3);
 
-      // ③ 完成访谈 → 建立主线（T8 装配时把 outcomes 落进 AppShell）
-      final Goal goal = buildFirstGoal(
+      // ③ 访谈答案 → Agent 拆解（这里直接喂一份合规的「她交上来的」任务池，
+      //    只验落库形状；Agent 本身的行为见 plan_agent_test.dart）
+      final Goal goal = buildGoalFromPlan(
         text: goalText,
+        short: '早起',
         cat: cat,
+        days: kFirstGoalDays,
+        tasks: const <TaskSpec>[
+          TaskSpec(
+            short: '先早一点',
+            title: '比昨天早睡 15 分钟',
+            proof: '屏幕使用时间截图',
+            minutes: 10,
+            rank: 'E',
+          ),
+          TaskSpec(
+            short: '23:30',
+            title: '今晚 23:30 前放下手机上床',
+            proof: '屏幕使用时间截图',
+            minutes: 20,
+            rank: 'D',
+          ),
+          TaskSpec(
+            short: '不赖床',
+            title: '闹钟响后 5 分钟内起床',
+            proof: '起床时间截图',
+            minutes: 10,
+            rank: 'C',
+          ),
+        ],
         answers: answers!,
+        firstGoal: true,
       );
       expect(goal.days, 3);
       expect(goal.cat, 'sleep');
@@ -210,7 +237,7 @@ void main() {
       ]);
       expect(goal.plan.first.state, PlanState.todo);
       expect(goal.firstOpenIndex, 0);
-      // 「天天熬夜」 → 第 1 张从轻档起步
+      // 「她」按访谈答案把第 1 张压到 15 分钟以内
       expect(goal.plan.first.title, '比昨天早睡 15 分钟');
       expect(goal.interview.length, 3);
       expect(shouldOnboard(goal), isFalse); // 主线已立，不再触发绑定流
@@ -227,8 +254,7 @@ void main() {
 
     testWidgets('换一类目标（考研上岸）卡组跟着变', (WidgetTester tester) async {
       const String goalText = '考研上岸';
-      final GoalCategory cat = detectCategory(goalText);
-      expect(cat.id, 'exam');
+      final GoalCategory cat = goalCats['exam']!;
 
       Map<String, String>? answers;
       await mount(
@@ -247,15 +273,41 @@ void main() {
         await tester.pumpAndSettle();
       }
 
-      final Goal goal = buildFirstGoal(
+      final Goal goal = buildGoalFromPlan(
         text: goalText,
+        short: '上岸',
         cat: cat,
+        days: kFirstGoalDays,
+        tasks: const <TaskSpec>[
+          TaskSpec(
+            short: '清桌',
+            title: '清空书桌，只留下要用的一本书',
+            proof: '桌面照片',
+            minutes: 10,
+            rank: 'E',
+          ),
+          TaskSpec(
+            short: '三小时',
+            title: '今天专注复习 3 小时',
+            proof: '计时截图',
+            minutes: 25,
+            rank: 'D',
+          ),
+          TaskSpec(
+            short: '真题',
+            title: '做一套真题并复盘错题',
+            proof: '试卷照片',
+            minutes: 30,
+            rank: 'C',
+          ),
+        ],
         answers: answers!,
+        firstGoal: true,
       );
       expect(goal.days, 3);
       expect(goal.short, '上岸');
       expect(goal.plan.first.title, '清空书桌，只留下要用的一本书');
-      expect(goal.plan.first.title, isNot('比昨天早睡 15 分钟')); // 无轻档类别
+      expect(goal.plan.first.title, isNot('比昨天早睡 15 分钟'));
     });
   });
 }

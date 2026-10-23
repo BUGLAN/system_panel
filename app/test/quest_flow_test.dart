@@ -125,14 +125,50 @@ void main() {
     return f;
   }
 
-  /// 接一张单并结算（默认不暴击）；返回结算结果
-  QuestResult? settleOf(
+
+  /// 测试用的**假计划**（不是产品兜底）：直接按条数铸 N 张，
+  /// 供只关心队列手术/finale 语义的用例使用。
+  ///
+  /// ⚠️ 2026-10-23 起生产代码**没有**任何模板路径（buildNextGoal 已删除），
+  /// 所以测试不能再「顺手调用一下模板」。这里的假数据只活在 test/ 里。
+  int fakeSeq = 0;
+  Goal fakeGoal(String text, {int days = 21, int done = 0}) {
+    final int n = days.clamp(kPlanMinTasks, kPlanMaxTasks);
+    return Goal(
+      text: text,
+      short: text,
+      // ⚠️ 立目标时刻**每份假计划都不同**：`Goal.id` 由 `at` 推出来，
+      //    同 id 会让 publishPlanTasks 把旧目标的单也算进在手窗口（少发一张）。
+      at: DateTime(2030, 1, 1).add(Duration(days: fakeSeq++)),
+      days: n,
+      cat: 'gen',
+      plan: <PlanTask>[
+        for (int i = 0; i < n; i++)
+          PlanTask(
+            index: i,
+            short: '第${i + 1}张',
+            title: '$text · 第 ${i + 1} 张',
+            proof: '截图',
+            minutes: 20,
+            rank: i == n - 1 ? 'S' : 'E',
+            attrs: const <String, int>{'体': 1},
+            state: i < done ? PlanState.done : PlanState.todo,
+            finalTask: i == n - 1,
+          ),
+      ],
+    );
+  }
+
+  /// 接一张单并结算（默认不暴击）；返回结算结果。
+  /// ⚠️ 2026-10-23：`settle` 改成 async（收官要 await 下一份计划的拆解），
+  /// 且不再返回 null（没有执行中的单 → 抛）。
+  Future<QuestResult> settleOf(
     QuestFlow f,
     Quest q, {
     DateTime? start,
     DateTime? end,
     bool? crit,
-  }) {
+  }) async {
     f.accept(q, now: start ?? DateTime(2026, 1, 1, 10));
     return f.settle(
       now: end ?? DateTime(2026, 1, 1, 10, 30),
@@ -337,15 +373,15 @@ void main() {
   });
 
   group('结算：数字来自真实计算', () {
-    test('没接单时 settle 返回 null', () {
-      expect(freshFlow().settle(), isNull);
+    test('没接单时 settle **抛**（旧版返回 null，被调用方 ?? _result 吞掉）', () {
+      expect(() => freshFlow().settle(), throwsStateError);
     });
 
-    test('E 级单：EXP +1、金币 +5、六维 +、连击起 1（验收：E→1/5）', () {
+    test('E 级单：EXP +1、金币 +5、六维 +、连击起 1（验收：E→1/5）', () async {
       final QuestFlow f = freshFlow();
-      final QuestResult? r = settleOf(f, eQuest);
+      final QuestResult r = await settleOf(f, eQuest);
       expect(r, isNotNull);
-      expect(r!.baseExp, 1);
+      expect(r.baseExp, 1);
       expect(r.exp, 1);
       expect(r.coin, 5);
       expect(r.crit, isFalse);
@@ -367,22 +403,22 @@ void main() {
       expect(f.active, isNull);
     });
 
-    test('暴击 ×2：经验与金币都翻倍，critCount 记账', () {
+    test('暴击 ×2：经验与金币都翻倍，critCount 记账', () async {
       final QuestFlow f = freshFlow();
-      final QuestResult? r = settleOf(f, eQuest, crit: true);
-      expect(r!.exp, 2);
+      final QuestResult r = await settleOf(f, eQuest, crit: true);
+      expect(r.exp, 2);
       expect(r.coin, 10);
       expect(r.crit, isTrue);
       expect(f.host.critCount, 1);
       expect(f.host.coins, 10);
     });
 
-    test('双倍卡 ×2；与暴击可叠成 ×4（道具效果不再只是摆设）', () {
+    test('双倍卡 ×2；与暴击可叠成 ×4（道具效果不再只是摆设）', () async {
       final QuestFlow f = freshFlow();
       f.accept(eQuest);
       f.useItem('dbl');
-      QuestResult? r = f.settle(forceCrit: false);
-      expect(r!.exp, 2, reason: 'E 1 × 双倍卡 2');
+      QuestResult r = await f.settle(forceCrit: false);
+      expect(r.exp, 2, reason: 'E 1 × 双倍卡 2');
       expect(r.dbl, isTrue);
       expect(f.host.items['dbl'], 0, reason: '库存真扣了');
 
@@ -390,23 +426,23 @@ void main() {
       g.accept(eQuest);
       g.useItem('dbl');
       g.useItem('crit'); // 暴击芯片只加暴击率，forceCrit 钉死结果
-      r = g.settle(forceCrit: true);
-      expect(r!.exp, 4, reason: 'E 1 × 暴击 2 × 双倍卡 2');
+      r = await g.settle(forceCrit: true);
+      expect(r.exp, 4, reason: 'E 1 × 暴击 2 × 双倍卡 2');
       expect(g.host.items['dbl'], 0);
       expect(g.host.items['crit'], 0);
       expect(g.host.coins, 5 * 2, reason: '金币吃暴击不吃双倍');
     });
 
-    test('补救单半价：EXP 1、金币 3，redeemed 置位', () {
+    test('补救单半价：EXP 1、金币 3，redeemed 置位', () async {
       final QuestFlow f = freshFlow();
-      final QuestResult? r = settleOf(f, dRemedy);
-      expect(r!.baseExp, 1); // D 2 × .5
+      final QuestResult r = await settleOf(f, dRemedy);
+      expect(r.baseExp, 1); // D 2 × .5
       expect(r.exp, 1);
       expect(r.coin, 3); // D 5 × .5 = 2.5 → 3
       expect(r.redeemed, isTrue);
     });
 
-    test('升级：need=12+lv×6，溢出滚入下一档，afterNeed 换分母', () {
+    test('升级：need=12+lv×6，溢出滚入下一档，afterNeed 换分母', () async {
       final HostState lv1near = HostState.empty.copyWith(
         exp: 17, // 差 1 升级
         items: <String, int>{'dbl': 1, 'crit': 1, 'shield': 1, 'swap': 0},
@@ -427,8 +463,8 @@ void main() {
         ),
       );
       f.useItem('dbl'); // S 10 ×2 = 20
-      final QuestResult? r = f.settle(forceCrit: false);
-      expect(r!.ups, <int>[2]); // 17+20=37 → 溢出 19，lv2
+      final QuestResult r = await f.settle(forceCrit: false);
+      expect(r.ups, <int>[2]); // 17+20=37 → 溢出 19，lv2
       expect(r.lvAfter, 2);
       expect(r.expAfterSettle, 19);
       expect(r.finalNeed, 24); // 12 + 2×6
@@ -436,7 +472,7 @@ void main() {
       expect(f.host.exp, 19);
     });
 
-    test('连升两级：ups 依次记录', () {
+    test('连升两级：ups 依次记录', () async {
       final QuestFlow f = freshFlow(
         host: HostState.empty.copyWith(
           exp: 17,
@@ -458,22 +494,22 @@ void main() {
         ),
       );
       f.useItem('dbl');
-      final QuestResult? r = f.settle(forceCrit: true); // 10 ×2 ×2 = 40
+      final QuestResult r = await f.settle(forceCrit: true); // 10 ×2 ×2 = 40
       // 17+40=57 → -18=39(lv2) → -24=15(lv3)，15 < 30 停
-      expect(r!.ups, <int>[2, 3]);
+      expect(r.ups, <int>[2, 3]);
       expect(f.host.lv, 3);
       expect(f.host.exp, 15);
     });
 
-    test('60 秒内交单 → tooFast（她会拆穿）', () {
+    test('60 秒内交单 → tooFast（她会拆穿）', () async {
       final QuestFlow f = freshFlow();
-      final QuestResult? r = settleOf(
+      final QuestResult r = await settleOf(
         f,
         eQuest,
         start: DateTime(2026, 1, 1, 10),
         end: DateTime(2026, 1, 1, 10, 0, 30),
       );
-      expect(r!.tooFast, isTrue);
+      expect(r.tooFast, isTrue);
       expect(r.held, const Duration(seconds: 30));
     });
 
@@ -486,16 +522,16 @@ void main() {
   });
 
   group('主线单（提交后划掉 + 补到在手窗口）', () {
-    test('清一张：state=done、held/doneAt 落档、补到在手窗口（3 张）', () {
+    test('清一张：state=done、held/doneAt 落档、补到在手窗口（3 张）', () async {
       final QuestFlow f = QuestFlow.demo();
       final Quest head = f.head!;
       expect(head.planIndex, 4);
       f.accept(head, now: DateTime(2026, 1, 1, 10));
-      final QuestResult? r = f.settle(
+      final QuestResult r = await f.settle(
         now: DateTime(2026, 1, 1, 10, 45),
         forceCrit: false,
       );
-      expect(r!.planClear, 4);
+      expect(r.planClear, 4);
       expect(r.finale, isFalse);
       final List<PlanTask> plan = f.goal.plan;
       expect(plan[4].state, PlanState.done);
@@ -512,7 +548,7 @@ void main() {
       expect(r.empty, isFalse);
     });
 
-    test('收官：最后一环清掉 → finale，下一条主线自动接上（TODO-01）', () {
+    test('收官：最后一环清掉 → finale，下一条主线自动接上（TODO-01）', () async {
       final Goal oneRing = Goal(
         text: '测试目标',
         short: '测试',
@@ -530,13 +566,8 @@ void main() {
         ],
       );
       final QuestFlow f = freshFlow(goal: oneRing);
-      f.nextGoalHook = (Goal prev, int cleared, int total, int level) =>
-          buildNextGoal(
-            prev: prev,
-            cleared: cleared,
-            total: total,
-            level: level,
-          );
+      f.nextGoalHook = (Goal prev, int cleared, int total, int level) async =>
+          fakeGoal(prev.text);
       f.accept(
         Quest(
           serial: 905,
@@ -553,8 +584,8 @@ void main() {
           attrs: <String, int>{'体': 1},
         ),
       );
-      final QuestResult? r = f.settle(forceCrit: false);
-      expect(r!.planClear, 0);
+      final QuestResult r = await f.settle(forceCrit: false);
+      expect(r.planClear, 0);
       expect(r.finale, isTrue);
       expect(r.titles, contains('finale'));
 
@@ -580,7 +611,7 @@ void main() {
       expect(r.empty, isFalse); // 结算页不该弹【收工。】
     });
 
-    test('收官但没接钩子：叙事停在终点（队列真的空，老行为）', () {
+    test('收官但没接钩子：叙事停在终点（队列真的空，老行为）', () async {
       final Goal oneRing = Goal(
         text: '测试目标',
         short: '测试',
@@ -614,14 +645,14 @@ void main() {
           attrs: <String, int>{'体': 1},
         ),
       );
-      final QuestResult? r = f.settle(forceCrit: false);
-      expect(r!.finale, isTrue);
+      final QuestResult r = await f.settle(forceCrit: false);
+      expect(r.finale, isTrue);
       expect(f.queueEmpty, isTrue);
       expect(r.empty, isTrue);
       expect(f.lastFinale?.goal, isNull);
     });
 
-    test('收官接钩子但钩子不给目标（她没答应）：同样停在终点', () {
+    test('收官接钩子但钩子不给目标（她没答应）：同样停在终点', () async {
       final Goal oneRing = Goal(
         text: '测试目标',
         short: '测试',
@@ -639,7 +670,7 @@ void main() {
         ],
       );
       final QuestFlow f = freshFlow(goal: oneRing);
-      f.nextGoalHook = (Goal _, int _, int _, int _) => null;
+      // 不接钩子 = 故意停在终点（**不是**失败）。钩子接了就一定给计划。
       f.accept(
         Quest(
           serial: 907,
@@ -656,14 +687,14 @@ void main() {
           attrs: <String, int>{'体': 1},
         ),
       );
-      final QuestResult? r = f.settle(forceCrit: false);
-      expect(r!.finale, isTrue);
+      final QuestResult r = await f.settle(forceCrit: false);
+      expect(r.finale, isTrue);
       expect(f.queueEmpty, isTrue);
       expect(f.lastFinale?.goal, isNull);
       expect(f.lastFinale?.newGoalText, '');
     });
 
-    test('收官不动日常单：队列里原来的日常还留着（只有 main 被撤）', () {
+    test('收官不动日常单：队列里原来的日常还留着（只有 main 被撤）', () async {
       final Goal oneRing = Goal(
         text: '测试目标',
         short: '测试',
@@ -681,13 +712,8 @@ void main() {
         ],
       );
       final QuestFlow f = freshFlow(goal: oneRing);
-      f.nextGoalHook = (Goal prev, int cleared, int total, int level) =>
-          buildNextGoal(
-            prev: prev,
-            cleared: cleared,
-            total: total,
-            level: level,
-          );
+      f.nextGoalHook = (Goal prev, int cleared, int total, int level) async =>
+          fakeGoal(prev.text);
       final Quest daily = f.genDaily(1).single;
       f.queue.add(daily);
       f.accept(
@@ -706,7 +732,7 @@ void main() {
           attrs: <String, int>{'体': 1},
         ),
       );
-      f.settle(forceCrit: false);
+      await f.settle(forceCrit: false);
       // 新主线的在手窗口（3 张）铺满；日常单一张不少
       final List<Quest> mains = f.queue
           .where((Quest q) => q.kind == 'main')
@@ -717,7 +743,7 @@ void main() {
       expect(f.host.queue, f.queue.length); // 读数同步
     });
 
-    test('applyFinaleOutcome 幂等：重复调用不重复钉环', () {
+    test('applyFinaleOutcome 幂等：重复调用不重复钉环', () async {
       final Goal oneRing = Goal(
         text: '测试目标',
         short: '测试',
@@ -735,13 +761,8 @@ void main() {
         ],
       );
       final QuestFlow f = freshFlow(goal: oneRing);
-      f.nextGoalHook = (Goal prev, int cleared, int total, int level) =>
-          buildNextGoal(
-            prev: prev,
-            cleared: cleared,
-            total: total,
-            level: level,
-          );
+      f.nextGoalHook = (Goal prev, int cleared, int total, int level) async =>
+          fakeGoal(prev.text);
       f.accept(
         Quest(
           serial: 909,
@@ -758,9 +779,9 @@ void main() {
           attrs: <String, int>{'体': 1},
         ),
       );
-      f.settle(forceCrit: false);
+      await f.settle(forceCrit: false);
       final int before = f.queue.length;
-      expect(f.applyFinaleOutcome(), isFalse); // 已经发过了
+      expect(await f.applyFinaleOutcome(), isFalse); // 已经发过了
       expect(f.queue.length, before);
       expect(
         f.queue.where((Quest q) => q.kind == 'main').length,
@@ -768,7 +789,7 @@ void main() {
       );
     });
 
-    test('applyFinaleOutcome：首环被清掉后能补回来（老档读回时首环不在队列）', () {
+    test('applyFinaleOutcome：首环被清掉后能补回来（老档读回时首环不在队列）', () async {
       final Goal oneRing = Goal(
         text: '测试目标',
         short: '测试',
@@ -786,13 +807,8 @@ void main() {
         ],
       );
       final QuestFlow f = freshFlow(goal: oneRing);
-      f.nextGoalHook = (Goal prev, int cleared, int total, int level) =>
-          buildNextGoal(
-            prev: prev,
-            cleared: cleared,
-            total: total,
-            level: level,
-          );
+      f.nextGoalHook = (Goal prev, int cleared, int total, int level) async =>
+          fakeGoal(prev.text);
       f.accept(
         Quest(
           serial: 910,
@@ -809,15 +825,15 @@ void main() {
           attrs: <String, int>{'体': 1},
         ),
       );
-      f.settle(forceCrit: false);
+      await f.settle(forceCrit: false);
       f.queue.removeWhere((Quest q) => q.kind == 'main'); // 模拟老档没存首环
       expect(f.queueEmpty, isTrue);
-      expect(f.applyFinaleOutcome(), isTrue);
+      expect(await f.applyFinaleOutcome(), isTrue);
       expect(f.head?.kind, 'main');
       expect(f.head?.planIndex, 0);
       expect(f.head?.planTotal, 21);
     });
-    test('applyFinaleOutcome：老档读回时「主线已走完」→ 补铸下一条并钉队首（TODO-01 兜底）', () {
+    test('applyFinaleOutcome：老档读回时「主线已走完」→ 补铸下一条并钉队首（TODO-01 兜底）', () async {
       // 收官发生在本功能之前的老存档：环全 done、队列里没有主线单
       final Goal finished = Goal(
         text: '一个月早睡早起',
@@ -863,19 +879,15 @@ void main() {
         serial: 2000,
         rnd: math.Random(3),
       );
-      f.nextGoalHook = (Goal prev, int cleared, int total, int level) =>
-          buildNextGoal(
-            prev: prev,
-            cleared: cleared,
-            total: total,
-            level: level,
-          );
+      f.nextGoalHook = (Goal prev, int cleared, int total, int level) async =>
+          fakeGoal(prev.text, days: 37);
       expect(f.goal.firstOpenIndex, -1); // 没有「脚下那一张」
       expect(f.queueEmpty, isTrue); // 老档队列里没有主线单
 
-      expect(f.applyFinaleOutcome(), isTrue);
+      expect(await f.applyFinaleOutcome(), isTrue);
       expect(f.goal.text, '一个月早睡早起');
-      // 「一个月早睡早起」= 30 天 + lv5 满额提档 7 天 = 37 天 → 37 张
+      // ⚠️ 期限/条数现在由 LLM 给（旧版是 goalDaysFor 关键词 + 提档）。
+      //    这里用测试假计划钉 37 张，只验「补铸 + 钉队首」的队列语义。
       expect(f.goal.plan.length, 37);
       expect(f.goal.plan.first.state, PlanState.todo);
       expect(f.head?.kind, 'main');
@@ -886,34 +898,24 @@ void main() {
       );
       expect(f.lastFinale?.goal, isNotNull);
       // 再调一次不动（幂等）
-      expect(f.applyFinaleOutcome(), isFalse);
+      expect(await f.applyFinaleOutcome(), isFalse);
     });
 
-    test('applyFinaleOutcome：未绑定（空目标）不动手', () {
+    test('applyFinaleOutcome：未绑定（空目标）不动手', () async {
       final QuestFlow f = freshFlow(goal: Goal.empty());
-      f.nextGoalHook = (Goal prev, int cleared, int total, int level) =>
-          buildNextGoal(
-            prev: prev,
-            cleared: cleared,
-            total: total,
-            level: level,
-          );
-      expect(f.applyFinaleOutcome(), isFalse);
+      f.nextGoalHook = (Goal prev, int cleared, int total, int level) async =>
+          fakeGoal(prev.text);
+      expect(await f.applyFinaleOutcome(), isFalse);
       expect(f.goal.isEmpty, isTrue);
       expect(f.queueEmpty, isTrue);
     });
 
-    test('applyFinaleOutcome：主线还没走完不动手', () {
+    test('applyFinaleOutcome：主线还没走完不动手', () async {
       final QuestFlow f = QuestFlow.demo();
-      f.nextGoalHook = (Goal prev, int cleared, int total, int level) =>
-          buildNextGoal(
-            prev: prev,
-            cleared: cleared,
-            total: total,
-            level: level,
-          );
+      f.nextGoalHook = (Goal prev, int cleared, int total, int level) async =>
+          fakeGoal(prev.text);
       expect(f.goal.firstOpenIndex, 4);
-      expect(f.applyFinaleOutcome(), isFalse);
+      expect(await f.applyFinaleOutcome(), isFalse);
       expect(f.goal.plan.length, 8);
     });
   });
@@ -925,27 +927,21 @@ void main() {
           f.queue.where((Quest q) => q.kind == 'daily').length;
       expect(f.queue.where((Quest q) => q.kind == 'main').length, 1);
 
-      final Goal next = buildNextGoal(
-        prev: f.goal,
-        cleared: f.goal.doneCount,
-        total: f.goal.plan.length,
-        level: f.host.lv,
-        text: '半年减重 10 斤',
-      );
-      final Quest? inserted = f.newGoal(next);
+      final Goal next = fakeGoal('半年减重 10 斤', days: 180);
+      final Quest inserted = f.newGoal(next);
 
       expect(inserted, isNotNull);
       expect(f.goal, same(next));
       expect(f.goal.text, '半年减重 10 斤');
-      expect(f.goal.cat, 'slim');
-      // 「半年」→ 180 天 → 180 张（上一目标没走完，不提档）
+      // ⚠️ 类别/条数现在由 LLM 决定（`GoalMatchAgent` + `PlanAgent`），
+      //    这里用测试假计划，只验队列手术语义 —— 所以 cat/days 跟着假数据走。
       expect(f.goal.plan.length, 180);
       // 新主线的在手窗口铺满 3 张，序号从 0 起；返回的就是第一张
       final List<Quest> mains =
           f.queue.where((Quest q) => q.kind == 'main').toList();
       expect(mains.length, QuestFlow.kPlanPublishWindow);
       expect(mains.map((Quest q) => q.planIndex).toList(), <int>[0, 1, 2]);
-      expect(mains.first.serial, inserted!.serial);
+      expect(mains.first.serial, inserted.serial);
       expect(mains.first.planTotal, 180);
       expect(
         f.queue.where((Quest q) => q.kind == 'daily').length,
@@ -956,22 +952,11 @@ void main() {
       expect(f.queue.any((Quest q) => q.name == '跑完 5 公里'), isFalse);
     });
 
-    test('新主线可整链走完（换目标后还能一张一张清到 finale）', () {
+    test('新主线可整链走完（换目标后还能一张一张清到 finale）', () async {
       final QuestFlow f = QuestFlow.demo();
-      f.nextGoalHook = (Goal prev, int cleared, int total, int level) =>
-          buildNextGoal(
-            prev: prev,
-            cleared: cleared,
-            total: total,
-            level: level,
-          );
-      final Goal next = buildNextGoal(
-        prev: f.goal,
-        cleared: 0,
-        total: f.goal.plan.length,
-        level: f.host.lv,
-        text: '半年减重 10 斤',
-      );
+      f.nextGoalHook = (Goal prev, int cleared, int total, int level) async =>
+          fakeGoal(prev.text);
+      final Goal next = fakeGoal('半年减重 10 斤', days: 180);
       f.newGoal(next);
       // 「半年」→ 180 天 → 180 张
       final int total = f.goal.plan.length;
@@ -989,12 +974,12 @@ void main() {
         expect(head!.kind, 'main', reason: '第 $i 张不在队列里');
         expect(head.planIndex, i, reason: '第 $i 张的序号不对');
         f.accept(head, now: DateTime(2026, 1, 1 + i, 10));
-        final QuestResult? r = f.settle(
+        final QuestResult r = await f.settle(
           now: DateTime(2026, 1, 1 + i, 10, 30),
           forceCrit: false,
         );
         expect(r, isNotNull, reason: '第 $i 张结算失败');
-        expect(r!.planClear, i);
+        expect(r.planClear, i);
         if (i < total - 1) {
           expect(r.finale, isFalse);
           expect(f.goal.plan[i].state, PlanState.done);
@@ -1018,7 +1003,8 @@ void main() {
       final QuestFlow f = QuestFlow.demo();
       final Goal before = f.goal;
       final int qLen = f.queue.length;
-      expect(f.newGoal(Goal.empty()), isNull);
+      // 2026-10-23：不再返回 null —— 「新目标没清单」是错误，必须抛出来
+      expect(() => f.newGoal(Goal.empty()), throwsStateError);
       expect(f.goal, same(before));
       expect(f.queue.length, qLen);
     });
@@ -1141,22 +1127,22 @@ void main() {
       expect(back.host.name, '老档');
     });
 
-    test('连做 3 单（提交 → 再来一单循环）全程有单可接、不卡死', () {
+    test('连做 3 单（提交 → 再来一单循环）全程有单可接、不卡死', () async {
       final QuestFlow f = QuestFlow.demo();
       for (int i = 0; i < 3; i++) {
         final Quest? head = f.head;
         expect(head, isNotNull, reason: '第 ${i + 1} 单必须有单可接');
         f.accept(head!, now: DateTime(2026, 1, 1, 10 + i));
-        final QuestResult? r = f.settle(
+        final QuestResult r = await f.settle(
           now: DateTime(2026, 1, 1, 10 + i, 30),
           forceCrit: false,
         );
         expect(r, isNotNull);
         // 结算页出口：还有单 → 再来一单；没单 → 收工（不再停留）
         if (f.queueEmpty) {
-          expect(r!.empty, isTrue);
+          expect(r.empty, isTrue);
         } else {
-          expect(r!.empty, isFalse);
+          expect(r.empty, isFalse);
         }
       }
       expect(f.host.doneCount, HostState.demo.doneCount + 3); // demo 档本身 31 单
@@ -1177,13 +1163,13 @@ void main() {
       expect(f.critChance(), closeTo(.06 + .07 + .04 + .04, 1e-9));
     });
 
-    test('settle 用的 chance 就是证据联动口径（进 QuestResult.chance）', () {
+    test('settle 用的 chance 就是证据联动口径（进 QuestResult!.chance）', () async {
       final QuestFlow f = freshFlow();
       f.accept(eQuest);
       f.addEvidence(shot('a', EvidenceStatus.verified));
       f.addEvidence(shot('b', EvidenceStatus.unverified));
-      final QuestResult? r = f.settle(forceCrit: false);
-      expect(r!.photos, 2);
+      final QuestResult r = await f.settle(forceCrit: false);
+      expect(r.photos, 2);
       expect(r.chance, closeTo(.17, 1e-9));
     });
 
@@ -1317,7 +1303,7 @@ void main() {
       expect(f.host.title, 'mouth', reason: '强制期里换挂一律拒绝');
     });
 
-    test('强制期在交成一单后结束：换回称号，新称号照常解锁（store.js L311）', () {
+    test('强制期在交成一单后结束：换回称号，新称号照常解锁（store.js L311）', () async {
       final QuestFlow f = freshFlow(queue: <Quest>[cQuest]);
       final DateTime t = DateTime(2026, 1, 1, 9);
       for (int i = 0; i < 3; i++) {
@@ -1325,7 +1311,7 @@ void main() {
       }
       expect(f.host.title, 'mouth');
       f.accept(f.head!, now: DateTime(2026, 1, 1, 10));
-      final QuestResult? r = f.settle(
+      final QuestResult r = await f.settle(
         now: DateTime(2026, 1, 1, 10, 30),
         forceCrit: false,
       );
@@ -1418,17 +1404,17 @@ void main() {
       expect(g.active!.photos, 1);
     });
 
-    test('restore 后计时按 startAt 推导：杀进程重启计时不归零', () {
+    test('restore 后计时按 startAt 推导：杀进程重启计时不归零', () async {
       final QuestFlow f = freshFlow();
       f.accept(eQuest, now: DateTime(2026, 1, 1, 10));
       final Map<String, dynamic>? json = f.activeToSaveJson();
       final QuestFlow g = freshFlow();
       g.restoreActiveFromJson(json);
-      final QuestResult? r = g.settle(
+      final QuestResult r = await g.settle(
         now: DateTime(2026, 1, 1, 10, 30),
         forceCrit: false,
       );
-      expect(r!.held, const Duration(minutes: 30), reason: '计时起点随档恢复');
+      expect(r.held, const Duration(minutes: 30), reason: '计时起点随档恢复');
     });
 
     test('restoreActiveFromJson(null/坏形状) 静默忽略（合并式迁移口径）', () {
