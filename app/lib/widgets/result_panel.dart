@@ -41,6 +41,7 @@ class ResultPanel extends StatefulWidget {
     this.onImpact,
     this.onDone,
     this.onTalk,
+    this.onExit,
   });
 
   final QuestResult result;
@@ -61,6 +62,13 @@ class ResultPanel extends StatefulWidget {
   /// 原型 flows.js L460-462 是她把话说完才 `choose()`）
   final VoidCallback? onDone;
 
+  /// 「返回主界面」—— 常驻、可点、**不等演出播完**。
+  ///
+  /// ⚠️ 2026-10-23 宿主报「无法退出页面」：原来结算页唯一的出口是
+  ///    演出播完后弹出的【再来一单。/先歇会儿。】，演出没走完（或动画卡住）
+  ///    就整页无出路。这个按钮是**兜底出口**，与 [onDone] 的岔路口并存。
+  final VoidCallback? onExit;
+
   @override
   State<ResultPanel> createState() => _ResultPanelState();
 }
@@ -76,6 +84,7 @@ class _ResultPanelState extends State<ResultPanel>
   /// 下面这些渲染方法原本是 Stateless 时写的，用 getter 接上 widget 的字段
   QuestResult get result => widget.result;
   VoidCallback? get onSave => widget.onSave;
+  VoidCallback? get onExit => widget.onExit;
 
   /// 当前时刻（ms）
   double _t = 0;
@@ -325,6 +334,78 @@ class _ResultPanelState extends State<ResultPanel>
                 ],
               ),
             ),
+            // 「返回主界面」：**不等演出**，一上屏就能点。
+            //
+            // ⚠️ 2026-10-23 宿主报「无法退出页面」。两件事一起修：
+            //    ① 唯一出口原本是演出播完后的岔路口（onDone）—— 演出没
+            //       走完就整页无路，所以这里补一个常驻出口，且**不套 _rise**
+            //       （入场动效会让它晚一拍出现，甚至一直是透明的）。
+            //    ② **必须放在 Stack 最后**：rs.stack 里那颗 104pt 的档位字
+            //       是后画的，会盖住先画的按钮 —— 测试里点它命中的正是
+            //       RenderParagraph（"C"），而不是按钮本身。
+            //       层级顺序 = 命中顺序，所以兜底出口永远排在最后。
+            if (onExit != null)
+              Positioned(
+                top: 30,
+                left: 0,
+                right: 0,
+                child: Center(child: _exitButton()),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 「返回主界面」—— 主色描边 + 实底，比两颗次级钮更醒目。
+  ///
+  /// 位置在顶部居中（top: 30），与左「找小祥说说」/右「保存战报」（top: 86）
+  /// 错开一行，**不会被 Live2D 或这两颗钮压住**；层级上它在 Stack 的后段，
+  /// 盖在舞台之上。
+  Widget _exitButton() {
+    return GestureDetector(
+      onTap: () {
+        Sfx.play('tap');
+        onExit?.call();
+      },
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        key: const Key('result.exit'),
+        height: 36,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        decoration: BoxDecoration(
+          color: const Color(0xE6041226),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: C.blue.withAlpha(190), width: 1),
+          boxShadow: <BoxShadow>[
+            BoxShadow(color: C.blue.withAlpha(60), blurRadius: 14),
+          ],
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Text(
+              '‹',
+              style: fs(
+                family: F.cn,
+                size: 17,
+                wght: 600,
+                height: 1,
+                color: C.blue,
+              ),
+            ),
+            const SizedBox(width: 7),
+            Text(
+              '返回主界面',
+              style: fs(
+                family: F.cn,
+                size: 12.5,
+                wght: 600,
+                ls: .6,
+                height: 1,
+                color: C.ice,
+              ),
+            ),
           ],
         ),
       ),
@@ -438,9 +519,15 @@ class _ResultPanelState extends State<ResultPanel>
       key: const Key('result.card'),
       padding: const EdgeInsets.fromLTRB(17, 15, 17, 15),
       decoration: BoxDecoration(
-        color: const Color(0xC7050E20), // rgba(5,14,32,.78)
+        // ⚠️ 2026-10-23（宿主「奖励数字看不清」）：原来是 .78 不透明度的
+        //    深蓝 —— Live2D 的浅色裙子正好从卡片透出来，白色数字压在同亮度
+        //    的背景上就糊了。提高到 .94，并加一层外阴影把卡片从她身上"抬"起来。
+        color: const Color(0xF0050E20),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: C.line2, width: 1),
+        boxShadow: <BoxShadow>[
+          BoxShadow(color: const Color(0xB302060F), blurRadius: 18),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -465,16 +552,26 @@ class _ResultPanelState extends State<ResultPanel>
       crossAxisAlignment: CrossAxisAlignment.baseline,
       textBaseline: TextBaseline.alphabetic,
       children: <Widget>[
+        // ⚠️ 2026-10-23：44pt 的数字基线比 10pt 的标签低很多，
+        //    按基线对齐会让 EXP 悬在数字腰部、间距也被吃掉。
+        //    改成固定宽度 + 底部留白，标签压在数字基线略上方，
+        //    读起来是「EXP +40」而不是「EXP+40」挤成一团。
         SizedBox(
-          width: 34,
-          child: Text(
-            'EXP',
-            style: fs(
-              family: F.mono,
-              size: 10,
-              wght: 400,
-              ls: 1.6,
-              color: C.blue,
+          width: 38,
+          child: Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: Text(
+              'EXP',
+              style: fs(
+                family: F.mono,
+                size: 11,
+                wght: 600,
+                ls: 1.6,
+                color: C.blue,
+                shadows: <Shadow>[
+                  Shadow(color: const Color(0xCC02060F), blurRadius: 1),
+                ],
+              ),
             ),
           ),
         ),
@@ -485,26 +582,41 @@ class _ResultPanelState extends State<ResultPanel>
                 text: '+',
                 style: fs(
                   family: F.num,
-                  size: 24,
+                  size: 28,
                   wght: 800,
                   wdth: 85,
                   height: 1,
                   color: C.blue,
+                  shadows: <Shadow>[
+                    Shadow(color: const Color(0xCC02060F), blurRadius: 1),
+                    Shadow(color: C.blue.withAlpha(160), blurRadius: 6),
+                  ],
                 ),
               ),
               TextSpan(
                 // 数字往上跳（原型那个 `count()`）
+                //
+                // ⚠️ 2026-10-23 改（宿主观感「奖励数字看不清」）：
+                //    原来是 40pt / 纯白 0xFFF3FDFF / blurRadius 20 的青色辉光。
+                //    在深底上大模糊半径的辉光会**向外糊成一片**，把字自己的
+                //    边缘吃掉（截图里 `+0` 看起来像一团白斑，数字认不出）。
+                //    现在：字号 40→**44**，辉光收窄（20→8）只保留一圈"通电"感，
+                //    另加**描边**（黑底描边撑住轮廓）—— 大字在深色背景上靠
+                //    轮廓而不是靠辉光读，这是 HUD 字号偏小的通病。
                 text: '${_tl.expAt(_t)}',
                 style: fs(
                   family: F.num,
-                  size: 40,
+                  size: 44,
                   wght: 800,
                   wdth: 85,
                   ls: .4,
                   height: 1,
                   color: const Color(0xFFF3FDFF),
                   shadows: <Shadow>[
-                    Shadow(color: C.blue.withAlpha(140), blurRadius: 20),
+                    // 描边：深色 + 极近距离，把字从背景里"抠"出来
+                    Shadow(color: const Color(0xCC02060F), blurRadius: 1),
+                    // 通电感：窄辉光，不糊字
+                    Shadow(color: C.blue.withAlpha(190), blurRadius: 8),
                   ],
                 ),
               ),
@@ -822,9 +934,13 @@ class _GlyphState extends State<_Glyph> with SingleTickerProviderStateMixin {
               wdth: 75,
               height: 1,
               color: rk,
+              // ⚠️ 2026-10-23：原来是 blurRadius 30 的档位色辉光 + 2px 白。
+              //    结算页她正好站在字后面，浅色裙子上那圈大辉光会**糊成一片**，
+              //    "E" 的轮廓被吃掉了。改成：深色描边撑轮廓（她从后面经过时
+              //    也读得清）+ 窄辉光保留稀有度色。
               shadows: <Shadow>[
-                Shadow(color: rk, blurRadius: 30),
-                const Shadow(color: Colors.white, blurRadius: 2),
+                Shadow(color: const Color(0xCC02060F), blurRadius: 2),
+                Shadow(color: rk.withAlpha(150), blurRadius: 12),
               ],
             ),
           ),
