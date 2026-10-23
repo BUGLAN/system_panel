@@ -42,7 +42,10 @@
 
 - **不要找 MCP**。MuMu 官方 `mumu-control` skill 已装并跑通（`C:/Users/buglan/.agents/skills/mumu-control`，9 文件，MIT，Windows only）。`mumu-cli.exe` 与 `MuMuManager.exe` 是同一二进制（实测同尺寸同时间戳）
 - **为什么不用裸 adb**：旧方案 64 次工具调用里至少 40 次在跟「没有 UI 元素模型」搏斗——`uiautomator dump` 出 size:0、Git Bash 改写 `/sdcard` 路径、中文乱码、只能截图猜坐标。改用 skill 后同类任务 2 条命令
-- **环境**：设备 `127.0.0.1:16512`（端口用 `"E:/MuMu Player 12/nx_main/MuMuManager.exe" info -v all` 查）｜包名 `com.systempanel.app`｜屏幕 780×1688 @320dpi = **390×844dp**
+- **环境**：设备 `127.0.0.1:16512`（端口用 `"E:/MuMu Player 12/nx_main/MuMuManager.exe" info -v all` 查）｜包名 `com.systempanel.app`｜屏幕 **1170×2532 @480dpi = 390×844dp（DPR 3）**
+  - **2026-10-23 起：逻辑尺寸不变（390×844dp），物理面板提到 1170×2532@480 ⇒ DPR 从 2 升到 3**，Live2D 中频清晰度 **+110%**（详见 [`docs/46-Live2D清晰度-DPR与mipmap.md`](docs/46-Live2D清晰度-DPR与mipmap.md)）
+  - ⚠️ **不要再 `wm size`/`wm density` 覆盖**：覆盖会把 SurfaceFlinger 从「1:1」变成「缩放」，实测中频掉 45%。当前 `display_size_forced = null` 就是正确状态
+  - MuMu 实例 API 写分辨率的**顺序陷阱**：`resolution_mode` 设成 `custom` 会把三个值清零，且普通键 `key not writable` —— 必须写 `.custom` 后缀键（见 docs/46 §2）
 - **三条命令覆盖 80% 场景**：
   ```bash
   SKILL="C:/Users/buglan/.agents/skills/mumu-control"
@@ -113,6 +116,7 @@
 | `40-卡牌视觉系统重设计.md` | 卡牌从玻璃组件重做成「系统铸造的委托契据」 |
 | `41-卡牌手感与音效设计.md` | 卡牌手感三拍、音效组、触觉波形 |
 | `45-安卓模拟器Agent操作方案.md` | **模拟器 Agent 操作方案**（mumu-control / MCP 评估 / 落地步骤） |
+| `46-Live2D清晰度-DPR与mipmap.md` | **清晰度四维量测法**；MuMu 面板提到 1170×2532@480（DPR3，中频 +110%，已落地）；iOS 关 mipmap 方案（**补丁已写未打**） |
 
 ---
 
