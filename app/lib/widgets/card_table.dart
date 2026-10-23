@@ -63,6 +63,7 @@ class CardTable extends StatefulWidget {
     this.lead,
     this.onLeadReport,
     this.run = -1,
+    this.strideScale = 1.0,
   });
 
   final List<TableCard> cards;
@@ -98,6 +99,12 @@ class CardTable extends StatefulWidget {
   ///
   /// 默认 -1：其余四个场景（补给/称号/证据/换目标）不跑这个动画。
   final double run;
+
+  /// 步距缩放（2026-10-23）：主线牌扇要挂**全部 N 张**，
+  /// 张数一多就得压窄相邻间距，否则 180 张会叠成一条线、拖不动也看不清。
+  ///
+  /// 默认 1.0 = 原样 —— 补给/称号/证据/换目标四个场景一行行为都不变。
+  final double strideScale;
 
   @override
   State<CardTable> createState() => _CardTableState();
@@ -324,6 +331,9 @@ class _CardTableState extends State<CardTable> with TickerProviderStateMixin {
 
   double _tableH(double h) => h + _g.topPad + _g.dy2 + 30;
 
+  /// 实际步距 = 皮肤步距 × [CardTable.strideScale]（张数多时压窄）。
+  double get _stride => _g.stride * widget.strideScale;
+
   @override
   Widget build(BuildContext context) {
     final bool reduce = railReduceMotion(context);
@@ -336,7 +346,7 @@ class _CardTableState extends State<CardTable> with TickerProviderStateMixin {
         builder: (BuildContext ctx, BoxConstraints c) => RailShell(
           controller: _rail,
           length: _n,
-          stride: _g.stride,
+          stride: _stride,
           // 两端继续拖 = 渐进阻力，不是硬停（apple-design §9）
           rubberExtent: c.maxWidth,
           onLeadChanged: _onLeadChanged,
@@ -368,7 +378,7 @@ class _CardTableState extends State<CardTable> with TickerProviderStateMixin {
     //
     // （以前这里用的是「整数领位 + 刚性平移」，松手那一瞬整叠会跳一格，
     //   看上去就是「切换没有动画、很卡手」。）
-    final double p = _rail.lead - drag / _g.stride;
+    final double p = _rail.lead - drag / _stride;
     // 离最近一格的偏移（−.5 ~ .5）：整桌侧倾 / 高光 / 名牒摆动都由它驱动。
     // 用它而不是 drag：松手时 drag 会被补偿跳一下（见 RailShell），frac 不会。
     final double frac = (p - _rail.lead).clamp(-1.0, 1.0);

@@ -95,22 +95,22 @@ void main() {
       expect(dimsOf(CardSkin.duty, CardTableSize.s).h, 72);
     });
 
-    test('窗口：从第一张没做完的往前带一张，往后最多 5 张（M-05 领位 ±2）', () {
-      // 12 天全待办 → 第 0 张起（往前带不了）最多 5 张
-      expect(MainView(goal: _planOf()).railIndices(), <int>[0, 1, 2, 3, 4]);
-      // 做完 4 张 → 第一张没做完的是 4，往前带第 3 张 → 3..7
-      expect(MainView(goal: _planOf(done: 4)).railIndices(), <int>[
-        3,
-        4,
-        5,
-        6,
-        7,
+    test('窗口：清单有几张就挂几张（2026-10-23 宿主裁定，撤掉 M-05 的 5 张上限）', () {
+      // 12 天全待办 → 12 张全在桌上
+      expect(MainView(goal: _planOf()).railIndices(), <int>[
+        0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11,
       ]);
-      // 全走完 → 停在最后两张（往前带一张的既有口径）
-      expect(MainView(goal: _planOf(days: 12, done: 12)).railIndices(), <int>[
-        10,
-        11,
-      ]);
+      // 做完 4 张 → 仍是 12 张（完成度不再改变上桌张数）
+      expect(MainView(goal: _planOf(done: 4)).railIndices(), hasLength(12));
+      // 全走完 → 还是 12 张
+      expect(MainView(goal: _planOf(days: 12, done: 12)).railIndices(),
+          hasLength(12));
+      // 张数靠间距吸收：12 张 > kRailComfort(6) → 步距收窄
+      expect(
+        MainView(goal: _planOf()).railStrideScale,
+        lessThan(1.0),
+        reason: '多出来的牌靠压窄间距吸收，不靠丢牌',
+      );
     });
 
     test('五态：已完成 / 执行中 / 可接 / 待发布 / 已放弃', () {

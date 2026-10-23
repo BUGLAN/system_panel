@@ -131,22 +131,38 @@ class MainView extends StatefulWidget {
   /// 刻度轨最多分几格（再长就分组 —— 单格只有几像素，靠擦洗而不是靠点准）
   static const int kScaleSlots = 40;
 
-  /// 轨上同时显示几张（docs/39 M-05：领位 ±2 = 最多 **5** 张；原来是 6）
-  static const int kRailMax = 5;
-
   /// 空计划的进页时长（docs/39 M-22「进页 240ms」）。
   static const int kEmptyInMs = 240;
 
-  /// 轨上显示的序号：从第一张没做完的往前带一张（给点上下文），
-  /// 往后最多 [kRailMax] 张 —— 清单一长（半年 = 180 张）也不会铺满屏。
+  /// 轨上显示的序号：**全部 N 张**。
+  ///
+  /// ⚠️ 2026-10-23 真机定案（宿主裁定）：这里原先是「从第一张没做完的
+  /// 往前带一张、往后最多 5 张」的窗口 —— 于是 10 张清单只挂 5 张，
+  /// 宿主滑了几下数到 7 张，与「1/10 单」对不上，报成「卡片数不一致」。
+  ///
+  /// 当时的补丁是「加一行窗口读数」，**被宿主否掉了** —— 那是给「被裁」写说明，
+  /// 而不是不裁。正解：清单有几张就挂几张，牌扇自己负责滚动/收窄间距。
+  ///
+  /// 牌扇本身（`CardTable._stack`）对 N 无上限：它按 `_n` 全量排序绘制，
+  /// 只有这里在砍。所以「180 张铺满屏」的担心落在间距与滚动上，不靠丢牌解决。
   List<int> railIndices() {
     final int n = goal.plan.length;
     if (n == 0) return const <int>[];
-    final int open = goal.firstOpenIndex;
-    final int first = open < 0 ? n - 1 : open;
-    final int start = math.max(0, first - 1);
-    final int end = math.min(n, start + kRailMax);
-    return <int>[for (int i = start; i < end; i++) i];
+    return <int>[for (int i = 0; i < n; i++) i];
+  }
+
+  /// 牌扇步距缩放：张数一多就压窄相邻间距，让**全部 N 张**都留在桌面可拖范围内。
+  ///
+  /// 口径：≤ [kRailComfort] 张时原样（1.0，视觉一点不变）；超了就按反比收窄，
+  /// 下限 [kRailMinStrideScale]（再窄就叠成一摞、点不中）。
+  /// 这是「不裁牌」的配套代价 —— 靠间距解决，不靠丢数据解决。
+  static const int kRailComfort = 6;
+  static const double kRailMinStrideScale = .34;
+
+  double get railStrideScale {
+    final int n = goal.plan.length;
+    if (n <= kRailComfort) return 1;
+    return math.max(kRailMinStrideScale, kRailComfort / n);
   }
 
   DutyState stateOf(int i) {
@@ -467,6 +483,7 @@ class _MainViewState extends State<MainView> with TickerProviderStateMixin {
   // 纯读数据的方法都留在 [MainView] 上（单测直接 `MainView.railIndices()`），
   // 这里只做转发 —— 状态机本身不依赖任何 State 字段。
   List<int> railIndices() => widget.railIndices();
+  double get railStrideScale => widget.railStrideScale;
   DutyState stateOf(int i) => widget.stateOf(i);
   TableCard cardOf(int i, {bool lead = false}) => widget.cardOf(i, lead: lead);
   MainCtaAction get ctaAction => widget.ctaAction;
@@ -768,6 +785,8 @@ class _MainViewState extends State<MainView> with TickerProviderStateMixin {
                     cards: <TableCard>[for (final int i in idx) cardOf(i)],
                     skin: CardSkin.duty,
                     size: CardTableSize.m,
+                    // 全部 N 张都在桌上 —— 张数多时压窄间距（见 railStrideScale）
+                    strideScale: railStrideScale,
                     initialLead: _lead,
                     tapLeadAlways: true,
                     // M-13/M-14：受控领位 —— 刻度轨拖动/轻点改 `_lead` 就跟着走
@@ -1783,9 +1802,10 @@ class _MissionScrubberState extends State<_MissionScrubber> {
                         borderRadius: BorderRadius.circular(6),
                         border: Border.all(color: C.line2),
                       ),
+                      // ⚠️ 2026-10-23：原来是 ${NN}/${NN}（两个补零数字），
+                      //     读起来分不清「张数/总数」还是「序号/总数」。改成明说。
                       child: Text(
-                        '${(shown + 1).toString().padLeft(2, '0')}/'
-                        '${widget.total.toString().padLeft(2, '0')}',
+                        '第 ${shown + 1} 张 · 共 ${widget.total} 单',
                         style: fs(
                           family: F.num,
                           size: 12,
