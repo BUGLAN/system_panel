@@ -71,7 +71,7 @@
 - **本机 Flutter 工具链**：Flutter `3.47.6` stable（Dart 3.13.5）装在 `D:\flutter`（已入 PATH），JDK 用 Android Studio 自带 JBR，Android SDK 在 `%LOCALAPPDATA%\Android\Sdk`，`flutter doctor` 全绿
 - **全程国内源、不走代理（硬要求）**：`PUB_HOSTED_URL=https://pub.flutter-io.cn`、`FLUTTER_STORAGE_BASE_URL=https://storage.flutter-io.cn`（已写入用户环境变量）；Gradle 走腾讯云镜像（`app/android/gradle/wrapper/gradle-wrapper.properties`），AGP/Kotlin 走阿里云镜像（`app/android/settings.gradle.kts`、`app/android/build.gradle.kts`）；字体取自 jsDelivr 的 `google/fonts`
 - **iOS 测试路线**：本机跑 Android 模拟器；iOS 模拟器在 Mac Air（配置脚本 `tools/setup-macos-ios.sh`）。真机 UDID `00008130-001169D830A1401C`
-- **Live2D 舞台几何**：平台视图的**布局尺寸按「族」固定**（`Live2DStage.kViewFamilies = [1.40, 1.70]`；2026-10-24 小族由 1.05 提到 1.40 = **超采样**，见 [`docs/46`](docs/46-Live2D清晰度-DPR与mipmap.md) §3.9 —— 别再改回 1.05，那是「软」的根因），缩放/平移交给 `Transform.scale(cam.s / 族尺寸)` —— 逐帧改布局尺寸会让插件 iOS 侧 `layoutSubviews()` 每帧重建 FBO。换景走 `CamSpring.glideTo(..., ms: 1400)` 的 easeInOutCubic 慢推。**`Opacity` 禁套平台视图**（saveLayer），`Transform` 可以。细节：`app/STAGE-OPTIONS.md` 坑 4、`docs/18` §1.5.3
+- **Live2D 舞台几何**：平台视图的**布局尺寸按「族」固定**（`Live2DStage.kViewFamilies = [1.55, 1.70]`；2026-10-24 小族由 1.05 提到 1.55 = **超采样**（大厅 1.68×，已在 ~1.7× 饱和：再大只是 LOD 撞 mip0 烧显存），见 [`docs/46`](docs/46-Live2D清晰度-DPR与mipmap.md) §3.9/§3.10 —— 别再改回 1.05，那是「软」的根因），缩放/平移交给 `Transform.scale(cam.s / 族尺寸)` —— 逐帧改布局尺寸会让插件 iOS 侧 `layoutSubviews()` 每帧重建 FBO。换景走 `CamSpring.glideTo(..., ms: 1400)` 的 easeInOutCubic 慢推。**`Opacity` 禁套平台视图**（saveLayer），`Transform` 可以。细节：`app/STAGE-OPTIONS.md` 坑 4、`docs/18` §1.5.3
 - **原生 Live2D shader 打包（2026-10-12 定案，勿删）**：产品路线是**原生**（WebView 降级路线已删除）。`app/android/app/build.gradle.kts` 里的 `syncLive2dShaders` 任务把 `flutter_live2d` 自带的 `Shaders/StandardES/*` 同步进 APK 的 `assets/FrameworkShaders/` —— **插件自己不打包这些文件，漏了就不上屏，且每帧刷 `GL error 0x501`**。排查全文 `docs/35-MuMu原生Live2D排查.md`
 - **输入态（`#ask` / 换目标）布局纪律**：主 Scaffold 必须 `resizeToAvoidBottomInset: false`，输入框自己用 `AskField.bottomInset: MediaQuery.viewInsetsOf(context).bottom` 抬到键盘之上；「换目标」时主线全景整层退场、字幕让到屏幕中段，输入框/预设词不许和 CTA 或字幕重叠
 
@@ -116,7 +116,7 @@
 | `40-卡牌视觉系统重设计.md` | 卡牌从玻璃组件重做成「系统铸造的委托契据」 |
 | `41-卡牌手感与音效设计.md` | 卡牌手感三拍、音效组、触觉波形 |
 | `45-安卓模拟器Agent操作方案.md` | **模拟器 Agent 操作方案**（mumu-control / MCP 评估 / 落地步骤） |
-| `46-Live2D清晰度-DPR与mipmap.md` | **清晰度四维量测法**；MuMu 面板 1170×2532@480（DPR3，中频 +110%）；**iOS 定案 = 超采样 1.52×**（族 1.40，中频 +50~53%、无锯齿，§3.9）；`关 mipmap` 已实测证否（锯齿，§3.7/§3.8），别再用 |
+| `46-Live2D清晰度-DPR与mipmap.md` | **清晰度四维量测法**；MuMu 面板 1170×2532@480（DPR3，中频 +110%）；**iOS 定案 = 超采样 1.68×**（族 1.55）+ 贴图预锐化（中频 +64~69%、无锯齿，§3.10）；`关 mipmap`（锯齿）与 shader LOD bias（模型不渲染）都已实测证否 |
 
 ---
 

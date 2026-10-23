@@ -120,6 +120,53 @@ VARIANTS = {
     "nearest": "GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_NEAREST);  // [patch_plugin.py] mip 近邻",
 }
 
+# ── LOD bias（--bias）：不换过滤模式，只让采样器"取更细一级" ──────────────────
+# 与超采样（Live2DStage.kViewFamilies）**可叠加**：超采样把像素密度拉高，
+# bias 再把贴图采样推细，多出来的混叠被超采样平均掉 —— 这是"更清晰但不脏"的组合。
+# GLSL ES 1.00 的 texture2D 第三参数 bias 各驱动支持不一，**打之前先看画面**：
+# 编译失败 = 模型整个不画（不是变糊），一测就知道。
+SHADER_DIR = pathlib.Path("ios/CubismFramework/Rendering/OpenGL/Shaders/StandardES")
+BIAS_OLD = "texture2D(s_texture0, v_texCoord)"
+BIAS_NEW = "texture2D(s_texture0, v_texCoord, {bias})  // [patch_plugin.py] LOD bias"
+BIAS_MARK = "[patch_plugin.py] LOD bias"
+
+
+def shader_files(path: pathlib.Path) -> tuple[pathlib.Path, ...]:
+    """所有采样模型贴图（s_texture0）的 frag —— 蒙版/混合贴图不碰"""
+    d = path / SHADER_DIR
+    if not d.is_dir():
+        return ()
+    return tuple(
+        p for p in sorted(d.glob("*.frag"))
+        if "s_texture0, v_texCoord" in p.read_text("utf-8", errors="ignore")
+    )
+
+
+def apply_bias(path: pathlib.Path, bias: float) -> str:
+    files = shader_files(path)
+    if not files:
+        return f"没有 {SHADER_DIR}/*.frag"
+    new = BIAS_NEW.format(bias=bias)
+    n = 0
+    for p in files:
+        backup = pathlib.Path(str(p) + ".orig")
+        src = backup.read_text("utf-8") if backup.is_file() else p.read_text("utf-8")
+        if BIAS_OLD not in src:
+            continue
+        if not backup.is_file():
+            shutil.copyfile(p, backup)
+        p.write_text(src.replace(BIAS_OLD, new), "utf-8")
+        n += 1
+    return f"已加 LOD bias {bias}（{n} 个 frag）"
+
+
+def bias_status(path: pathlib.Path) -> str:
+    files = shader_files(path)
+    if not files:
+        return "无 frag"
+    on = sum(1 for p in files if BIAS_MARK in p.read_text("utf-8", errors="ignore"))
+    return f"LOD bias {on}/{len(files)} 个 frag 已加" if on else "LOD bias 未加"
+
 
 def cache_roots() -> list[pathlib.Path]:
     """本机 pub 缓存可能有多个位置（PUB_CACHE / 老默认 / Windows 重定位）"""
@@ -175,16 +222,22 @@ def status(path: pathlib.Path, target: str) -> str:
     return "签名不匹配（插件版本变了？）"
 
 
+def revert_all(path: pathlib.Path, target: str) -> str:
+    """整文件还原：过滤（.mm/.cpp）+ frag（LOD bias）都从 .orig 拷回"""
+    files = list(files_for(path, target)) + list(shader_files(path))
+    n = 0
+    for f in files:
+        orig = pathlib.Path(str(f) + ".orig") if f.is_absolute() else pathlib.Path(str(path / f) + ".orig")
+        if orig.is_file():
+            shutil.copyfile(orig, f if f.is_absolute() else path / f)
+            n += 1
+    return f"已从 .orig 还原 {n} 个文件" if n else "没有备份，无需还原"
+
+
 def apply(path: pathlib.Path, target: str, revert: bool, variant: str = "linear") -> str:
     files = files_for(path, target)
     if revert:
-        n = 0
-        for f in files:
-            orig = pathlib.Path(str(path / f) + ".orig")
-            if orig.is_file():
-                shutil.copyfile(orig, path / f)
-                n += 1
-        return f"已从 .orig 还原 {n} 个文件" if n else "没有备份，无需还原"
+        return revert_all(path, target)
     new = VARIANTS[variant]
     changed = 0
     for f in files:
@@ -208,7 +261,12 @@ def main() -> int:
     ap.add_argument("--check", action="store_true")
     ap.add_argument("--target", choices=["ios", "android", "all"], default="all")
     ap.add_argument(
-        "--variant", choices=sorted(VARIANTS), default="linear",
+        "--bias", type=float, default=None,
+        help="给模型贴图采样加 LOD bias（负数=更细/更锐，例如 -0.5）。与超采样可叠加；"
+             "GLSL ES 1.00 支持不一，打完必须看真机画面",
+    )
+    ap.add_argument(
+        "--variant", choices=["off"] + sorted(VARIANTS), default="linear",
         help=(
             "linear=彻底关 mipmap（最锐，但发丝/腮红有点状噪光）；"
             "nearest=保留 mip 链只取最近一级（大厅 +6%，但派单特写 LOD 0.53 会被取整到 mip1 → −8.6%，慎用）"
@@ -223,12 +281,21 @@ def main() -> int:
         return 1
     for p in ps:
         before = status(p, args.target)
+        bias = bias_status(p)
         if args.check:
-            print(f"{p}\n  → [{args.target}] {before}")
+            print(f"{p}\n  → [{args.target}] {before} · {bias}")
             continue
         # ⚠️ 控制台编码可能是 GBK（Windows），打印只用 ASCII 箭头
-        after = apply(p, args.target, args.revert, args.variant)
-        print(f"{p}\n  -> [{args.target}] {before} => {after}")
+        if args.revert:
+            after = apply(p, args.target, True, args.variant)
+            print(f"{p}\n  -> [{args.target}] {before} => {after}")
+            continue
+        parts = []
+        if args.bias is not None:
+            parts.append(apply_bias(p, args.bias))
+        if args.variant != "off":
+            parts.append(apply(p, args.target, False, args.variant))
+        print(f"{p}\n  -> [{args.target}] {before} => " + "；".join(parts or ["未改"]))
     return 0
 
 

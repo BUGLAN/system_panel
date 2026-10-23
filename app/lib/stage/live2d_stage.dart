@@ -500,8 +500,10 @@ class Live2DStage extends StatefulWidget {
   /// 小族 1.40 ⇒ 平台视图按屏高 1.40 倍渲染（FBO 3914px 高），再由 Transform 缩到
   /// cam.s（大厅 0.92 → 1.52× 超采样），CoreAnimation 做降采样 ⇒ 中频 +50~53%、
   /// 高频仅 +74~162%（对照：关 mipmap 是 +900~2200%，肉眼点状噪光）。
-  /// 代价：显存/填充 ×2.3；派单（1.70 族）不变。细节与量测见 docs/46 §3.9。
-  static const List<double> kViewFamilies = <double>[1.40, 1.70];
+  /// ⚠️ 2026-10-24 深夜：1.40 → **1.55**（大厅 1.68×）。再往上会在 ~1.7× 饱和 ——
+  /// 超采样让插件算出的贴图 LOD 一路下降到 mip0，更多像素只是在双线性放大同一批 texel。
+  /// 代价：显存/填充 ×2.7；派单（1.70 族）不变。细节与量测见 docs/46 §3.9 / §3.10。
+  static const List<double> kViewFamilies = <double>[1.55, 1.70];
 
   /// 这一帧该用哪一族（取第一个 ≥ cam.s 的族）
   static double viewFamilyS(double camS) {

@@ -590,8 +590,29 @@ def write_physics(rig):
     return True
 
 
-def write_assets(manifest, tex_scale=1):
-    """moc3 解压 + 贴图拷出来（`tex_scale>1` 时用 Lanczos 上采样贴图）"""
+def _sharpen_rgba(src, dst, percent, radius=1.0, threshold=2):
+    """贴图预锐化（unsharp mask）——只动 RGB，**alpha 一律不碰**。
+
+    为什么：真机上贴图是被**缩小 ≈2.6×** 采样的（虹膜 96 texel → 屏上 37px），
+    所以「让画面更利」只能在贴图侧把边缘对比度提上来（相当于烘焙一次 unsharp），
+    缩小时这点过冲会被平均掉一半，剩下的正好是"更利"。
+    ⚠️ 不能锐化 alpha：蒙版边锐化会在部件交界处留下硬边/光晕，缩小后变成噪点。
+    """
+    from PIL import Image, ImageFilter  # noqa: PLC0415
+
+    im = Image.open(src).convert("RGBA")
+    r, g, b, a = im.split()
+    rgb = Image.merge("RGB", (r, g, b)).filter(
+        ImageFilter.UnsharpMask(
+            radius=float(radius), percent=int(percent), threshold=int(threshold)
+        )
+    )
+    rr, gg, bb = rgb.split()
+    Image.merge("RGBA", (rr, gg, bb, a)).save(dst, optimize=True)
+
+
+def write_assets(manifest, tex_scale=1, sharpen=0.0):
+    """moc3 解压 + 贴图拷出来（`tex_scale>1` 用 Lanczos 上采样；`sharpen>0` 预锐化）"""
     files = manifest["files"]
     for key, meta in files.items():
         rel = meta.get("asset")
@@ -605,7 +626,11 @@ def write_assets(manifest, tex_scale=1):
             (OUT / "textures").mkdir(parents=True, exist_ok=True)
             dst = OUT / "textures" / name
             if tex_scale <= 1:
-                shutil.copyfile(src, dst)
+                if sharpen > 0:
+                    _sharpen_rgba(src, dst, sharpen)
+                    print(f"  贴图 {name}: unsharp {sharpen:.0f}% (radius 1.0)")
+                else:
+                    shutil.copyfile(src, dst)
                 continue
             # ⚠️ 2026-10-11 iOS 真机「她有点糊」的修法：
             #    贴图是 2048²，而真机上她按「大厅 92% 屏高」渲染 ≈ 2571 物理像素高。
@@ -689,6 +714,11 @@ def main() -> int:
              "2× Lanczos 上采样只 +3%% 高频能量（插件 mipmap 链会把有效细节"
              "归一化），宿主主观验收为『更糊』、且 GPU 显存 4 倍 —— 故回到 1。"
              "将来若换 AI 放大（Real-ESRGAN 等真加细节）再开这个选项")
+    ap.add_argument(
+        "--sharpen", type=float, default=0.0,
+        help="贴图预锐化（unsharp mask 百分比，0=关）。2026-10-24：真机上贴图被缩小"
+             "≈2.6× 采样，想在屏幕侧『更利』只能先提贴图边缘对比度；只动 RGB、不动 alpha。"
+             "建议 40~80，超过 100 会在推近特写时看到光晕")
     args = ap.parse_args()
 
     manifest, nodes = load_prefab()
@@ -698,7 +728,7 @@ def main() -> int:
           f"物理 {'有' if phys else '无'}")
 
     OUT.mkdir(parents=True, exist_ok=True)
-    write_assets(manifest, args.tex_scale)
+    write_assets(manifest, args.tex_scale, args.sharpen)
     mn = write_motions(motions, args.slope_scale, args.fps)
     en = write_expressions(exprs) + write_sys_expressions()
     # ⚠️ 下标纪律：`setExpression(index)` 的下标 = model3.json Expressions
