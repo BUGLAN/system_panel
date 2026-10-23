@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../design/tokens.dart';
 import '../state/haptics.dart';
 import '../state/sfx.dart';
 import 'card_skins.dart';
@@ -276,8 +277,13 @@ class _CardTableState extends State<CardTable> with TickerProviderStateMixin {
     }
     if (!c.enabled) {
       // 不可用：点了她解释一句，**不落定**
-      Sfx.play('tap');
-      Haptics.buzz('choose');
+      //
+      // 2026-10-23：原来这里与「点开详情」共用 tap + choose —— 两声一模一样，
+      // 用户分不清「我点到了但买不起」和「我点开了」。改成最低档 detent
+      // （机械卡住的那一下，28ms）配 edge（拖到边界的震动），
+      // 与「点开」的 tap 在音色上彻底分开。
+      Sfx.play('detent', variant: 0);
+      Haptics.buzz('edge');
       return;
     }
     _locked = true;
@@ -558,8 +564,15 @@ class _PressFeedbackState extends State<_PressFeedback> {
         onTapUp: (TapUpDetails _) => setState(() => _down = false),
         onTapCancel: () => setState(() => _down = false),
         onTap: widget.onTap,
-        child: Transform.scale(
+        // 2026-10-23：按下与抬起分开计时 —— 按下 0ms（瞬时，手指要有回应）、
+        // 抬起 120ms 回弹（Motion.touchMs / Motion.releaseMs）。
+        // 原来两个方向都是瞬时，抬起来像被弹了一下而不是松开。
+        child: AnimatedScale(
           scale: reduce ? 1 : (_down ? kPressScale : 1),
+          duration: _down
+              ? const Duration(milliseconds: Motion.touchMs)
+              : const Duration(milliseconds: Motion.releaseMs),
+          curve: _down ? Curves.linear : Curves.easeOutCubic,
           child: Opacity(
             opacity: (reduce && _down) ? kPressDim : 1,
             child: widget.child,

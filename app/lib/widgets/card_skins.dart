@@ -600,7 +600,9 @@ class CardFace extends StatelessWidget {
         borderRadius: BorderRadius.circular(14),
         // 描边只做「轮廓」；层级交给材质与落影，不靠到处发光的青线
         border: Border.all(
-          color: lead ? C.blue.withAlpha(110) : C.line2,
+          color: !card.enabled
+              ? C.rS.withAlpha(120)
+              : (lead ? C.blue.withAlpha(120) : C.line2),
           width: 1,
         ),
         boxShadow: <BoxShadow>[
@@ -618,6 +620,13 @@ class CardFace extends StatelessWidget {
               offset: Offset(0, 8),
               blurRadius: 16,
             ),
+          // 顶部受光收口（1px，不增加绘制层）
+          const BoxShadow(
+            color: Color(0x14FFFFFF),
+            offset: Offset(0, 1),
+            blurRadius: 0,
+            spreadRadius: 0,
+          ),
         ],
       ),
       child: ClipPath(
@@ -765,28 +774,43 @@ class CardFace extends StatelessWidget {
                   //
                   // ⚠️ 2026-10-12：**只在领位显示**。原来四张牌都挂价签与持有数，
                   //    侧牌被压掉 54% 后这两行挤成一团（宿主截图⑤）。
-                  if (lead && chrome && card.price != null) ...<Widget>[
-                    Row(
-                      children: <Widget>[
-                        Expanded(
-                          child: Text(
-                            card.badge ?? '',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: fs(
-                              family: F.mono,
-                              size: 9,
-                              wght: 600,
-                              height: 1,
-                              color: C.mist,
-                            ),
+                  // 2026-10-23：价签改用 AnimatedSwitcher 平滑让位 ——
+                  //    换领位时淡入，不再在侧位那一帧突然出现/消失。
+                  AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 200),
+                    switchInCurve: Curves.easeOutCubic,
+                    // ⚠️ 不用默认的 Stack layoutBuilder：牌面只有 148 宽，
+                    //    过渡期叠两层会让行高抖动。这里**只留当前孩子** ——
+                    //    进场淡入、退场立即（退出本来就该比进场快，且侧位
+                    //    那一刻牌本身在缩，动效已经盖住）。
+                    layoutBuilder: (Widget? current, List<Widget> previous) =>
+                        current ?? const SizedBox.shrink(),
+                    child: (lead && chrome && card.price != null)
+                        ? Row(
+                            key: const ValueKey<String>('price.on'),
+                            children: <Widget>[
+                              Expanded(
+                                child: Text(
+                                  card.badge ?? '',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: fs(
+                                    family: F.mono,
+                                    size: 9,
+                                    wght: 600,
+                                    height: 1,
+                                    color: C.mist,
+                                  ),
+                                ),
+                              ),
+                              _hexPrice(card.price!, card.enabled),
+                            ],
+                          )
+                        : const SizedBox.shrink(
+                            key: ValueKey<String>('price.off'),
                           ),
-                        ),
-                        _hexPrice(card.price!, card.enabled),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                  ],
+                  ),
+                  const SizedBox(height: 10),
                   _statusLine(accent),
                 ],
               ),
@@ -1896,7 +1920,12 @@ extension _DutyFace on CardFace {
   Widget _dutyChip(BuildContext context, Dims d) {
     final bool solid = solidMaterial(context);
     final bool dim = card.dutyState == DutyState.abandoned;
-    return DecoratedBox(
+    // 2026-10-23 优化：DecoratedBox → AnimatedContainer，换领位时
+    // 描边与落影**补间**过渡（原来一帧硬切）。XS 微牌尺寸小、变化幅度必须更轻，
+    // 所以时长比货架卡（200ms）再短一档（180ms）。
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 180),
+      curve: Curves.easeOutCubic,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(10),
         border: Border.all(
@@ -1955,6 +1984,9 @@ extension _DutyFace on CardFace {
               ),
             ),
             _glass(lead: lead, solid: solid, radius: 10),
+            // 2026-10-23：XS 微牌补扫光 —— 竖牌与货架卡早就有，微牌缺一条，
+            // 选中时的「被读了一下」缺少光上的回应。
+            if (sweep > 0) _sweepBand(sweep),
             Positioned.fill(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(10, 9, 10, 11),
@@ -1977,17 +2009,23 @@ extension _DutyFace on CardFace {
                     ),
                     const SizedBox(height: 6),
                     // ④ 名称（XS 档最多两行，不再放别的区）
+                    // 2026-10-23：用 AnimatedDefaultTextStyle 让「换领位」时
+                    // 颜色与字重**补间**（原来 ice → blue 是一帧硬切）。
                     Expanded(
-                      child: Text(
-                        card.title,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
+                      child: AnimatedDefaultTextStyle(
+                        duration: const Duration(milliseconds: 180),
+                        curve: Curves.easeOutCubic,
                         style: fs(
                           family: F.cn,
                           size: 12,
                           wght: lead ? 700 : 500,
                           height: 1.25,
                           color: dim ? C.dim : (lead ? C.blue : C.ice),
+                        ),
+                        child: Text(
+                          card.title,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
                     ),
