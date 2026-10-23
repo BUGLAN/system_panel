@@ -492,7 +492,16 @@ class Live2DStage extends StatefulWidget {
   /// 族尺寸 ≥ 族内最大 `cam.s`，所以缩放系数恒 ≤ 1（只缩小、不放大 → 不糊）。
   /// 目前只有两族：小景别（boot/lobby/exec/result/full/panel/fail ≤ 1.05）
   /// 与大景别（talk 1.70 = 派单时推到她跟前）。
-  static const List<double> kViewFamilies = <double>[1.05, 1.70];
+  ///
+  /// ⚠️ **2026-10-24：小族从 1.05 提到 1.40 —— 这不是"几何回退"，是超采样（SSAA）**。
+  /// 病根：贴图相对屏幕本来就是 1:1（虹膜 96×112 texel ↔ 屏上 34~41px，mip LOD 1.07~1.22），
+  /// 所以「关 mipmap」换来的锐利全是混叠（发丝/腮红上的点状噪光，宿主 2026-10-24 判
+  /// 「锯齿太多了」）。真正能"又清晰又干净"的只有**多渲染像素再缩回去**：
+  /// 小族 1.40 ⇒ 平台视图按屏高 1.40 倍渲染（FBO 3914px 高），再由 Transform 缩到
+  /// cam.s（大厅 0.92 → 1.52× 超采样），CoreAnimation 做降采样 ⇒ 中频 +50~53%、
+  /// 高频仅 +74~162%（对照：关 mipmap 是 +900~2200%，肉眼点状噪光）。
+  /// 代价：显存/填充 ×2.3；派单（1.70 族）不变。细节与量测见 docs/46 §3.9。
+  static const List<double> kViewFamilies = <double>[1.40, 1.70];
 
   /// 这一帧该用哪一族（取第一个 ≥ cam.s 的族）
   static double viewFamilyS(double camS) {

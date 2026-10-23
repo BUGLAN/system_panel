@@ -1,10 +1,11 @@
-# 46 · Live2D 清晰度：DPR 与 mipmap（Android 已落地 / iOS 待验证）
+# 46 · Live2D 清晰度：DPR、mipmap 与超采样（Android 提 DPR / iOS 超采样，均已真机实测）
 
 > 起因：宿主「一直感觉此项目的 Live2D 与原数据的 Live2D 相比不够清晰」，并进一步指出
 > **「主要感觉放到 iOS 手机上有点模糊」**。
 > 本文记录：① 清晰度如何被拆成可验证维度；② MuMu 侧「保持 390×844dp、提高 DPR」的落地；
-> ③ iOS 侧「关掉 mipmap」的完整方案（**本机补丁已写，尚未打**）。
-> 最后更新：2026-10-24
+> ③ iOS 侧先试「关 mipmap」（§3.7/§3.8 三点实测 + 采样仿真，结论：那只是拿混叠换锐利）；
+> ④ **最终方案 = 超采样**（§3.9，2026-10-24 真机定案：清晰且无锯齿）。
+> 最后更新：2026-10-24（SSAA 定案）
 
 ---
 
@@ -13,9 +14,9 @@
 | 平台 | 瓶颈在哪 | 处置 | 状态 |
 |---|---|---|---|
 | **MuMu 模拟器** | 面板 1080×1920 只能给到 **DPR 2**，且用 `wm size` 覆盖时 SurfaceFlinger 还在缩放 | 面板改 **1170×2532@480 = 390×844dp @DPR3**，并清掉 wm 覆盖 → **1:1 零重采样** | ✅ **已落地** |
-| **iOS 真机** | DPR 恒为 3（`contentScaleFactor`，App 改不了），**瓶颈已换成贴图分辨率**：iPhone 15 Pro Max 上虹膜 ≈47.8px，而贴图里只有 124 texel ⇒ 只用到 38.6% | **关 mipmap**（`GL_LINEAR_MIPMAP_LINEAR` → `GL_LINEAR`，两处） | 📄 **方案已写，未打** |
+| **iOS 真机** | DPR 恒为 3（App 改不了）；贴图相对屏幕**本来就 1:1**（虹膜 96×112 texel ↔ 屏上 34~41px，LOD 1.07~1.22)⇒ 采样器没有可榨的油水 | **超采样**：平台视图族 1.05→1.40，按 1.52× 像素渲染再缩回屏幕；**mipmap 保持原版** | ✅ **已落地**（§3.9）：中频 +50~53%、无走样；`关 mipmap` 那条已被宿主观感否掉（§3.7「锯齿太多」） |
 
-**一句话**：MuMu 靠「提 DPR」解决了；iOS 的 DPR 已封顶，只能靠「关 mipmap 把贴图细节放出来」。
+**一句话**：MuMu 靠「提 DPR」；iOS 的 DPR 已封顶，所以靠**超采样**——多渲染像素再缩回屏幕（不是关 mipmap：那只是拿锯齿换锐利，宿主 2026-10-24 当场否掉）。
 
 ---
 
@@ -91,7 +92,7 @@ bash tools/mumu/set-panel-resolution.sh --show # 只看当前状态
 
 ---
 
-## 三、iOS：关掉 mipmap（方案，未执行）
+## 三、iOS：关掉 mipmap（已执行 · 2026-10-24 真机三点实测）
 
 ### 3.1 为什么 iOS 不能靠 DPR
 
@@ -112,8 +113,13 @@ DPR 是屏幕物理属性，App 改不了也不该改。按项目几何常量实
 | iPhone 15 Pro 393×852pt@3x | 894.6dp×3 = **2684 px** | 2352 px | ≈43.7 px | 2.84 |
 | MuMu 旧 780×1688@2x | 1772 px | 1553 px | 28.9 px | 4.30 |
 
-⇒ **iOS 的渲染密度本来就比 MuMu 高 66%**，它的瓶颈**不是 DPR，是贴图**：
-虹膜在 `texture_00` 里只有 124 texel，iOS 上摊到 47.8 px ⇒ **只用到 38.6% 的贴图分辨率**。
+⇒ **iOS 的渲染密度本来就比 MuMu 高 66%**。
+
+> ⚠️ **2026-10-24 实测修正（详见 §3.8）**：**瓶颈不是贴图**。虹膜在 `texture_00` 里是 **96×112 texel**
+> （旧数 124 / 60~77 / 「47.8 px」都不是虹膜：47.8px 是眼裂、60~77 是高光椭圆）；真机 lobby 上虹膜
+> **34~41 px** ⇒ texel/FBO px **2.10~2.34** ⇒ GPU 选 **LOD 1.07~1.22** ⇒ **正好 1:1**。
+> 即 mip 没有「把 38.6% 再砍一半」，它砍掉的正是屏幕表现不了的部分 —— 这一条决定了 §3.2 的补丁
+> 只能是**观感取舍**，不是修 bug。
 
 而插件又开着 mipmap 链 —— GPU 会按缩小倍数**选更小的一级**再采样，等于把这 38.6% 再砍一半。
 
@@ -132,18 +138,25 @@ DPR 是屏幕物理属性，App 改不了也不该改。按项目几何常量实
 当前状态（`python tools/l2d/patch_plugin.py --check`）：
 
 ```
-[all] 未打补丁（2/4 处仍是 mipmap）
+[all] 部分补丁（2/4 已打，2 处仍是 mipmap）
 ```
 
-即 **Android 两处已打、iOS 两处未打** —— 这正是本文要补的差。
+即 **iOS 两处已打（2026-10-24）、Android 两处仍是原版**。
+⚠️ 补丁只落在**本机 pub 缓存**，换机器 / `flutter pub cache repair` 后都要重跑；
+所以「Mac 上 iOS 已打、Windows 上 Android 已打」是**两台机器的各自状态**，不是同一份缓存。
 
 ### 3.3 执行方式
 
 ```bash
-python tools/l2d/patch_plugin.py --target ios   # 只打 iOS
-python tools/l2d/patch_plugin.py --check        # 确认 4/4 已打
-python tools/l2d/patch_plugin.py --revert       # 回滚（从 .orig 整文件还原）
+python tools/l2d/patch_plugin.py --target ios                  # 只打 iOS（默认 linear = 彻底关 mip）
+python tools/l2d/patch_plugin.py --target ios --variant nearest # 折中：保留 mip 链、只取最近一级
+python tools/l2d/patch_plugin.py --check                        # 看每个缓存当前是哪个口径
+python tools/l2d/patch_plugin.py --revert                       # 回滚（从 .orig 整文件还原）
 ```
+
+`--variant` 是 2026-10-24 真机三点实测后加的（见 §3.7）：`linear` 最锐但会有点状噪光；
+`nearest` 只是把「跨级三线性混合」换成「取最近一级 mip」，走样代价小得多。
+两种口径可以来回切（脚本一律以 `.orig` 原版为基准重写），每次切换 ≈1 分钟增量构建。
 
 只改本机 pub 缓存（`%LOCALAPPDATA%\Pub\Cache\...`），**不进仓库、不动 pubspec 锁**。
 ⚠️ `flutter pub cache repair` 或删缓存后要重跑。
@@ -179,6 +192,172 @@ Android 同款补丁实测：**中频 +29%、运动中高频 +45%**，代价是�
 
 ---
 
+### 3.7 真机三点实测（2026-10-24 · iPhone 15 Pro Max · iOS 27.0.1）
+
+§3.4 里预判「很可能重现 2026-10-11 的『变差了』」。这次不再靠肉眼单点判断，而是把三种口径
+**各构建一次、装到同一台真机、在同一个大厅机位截帧**，再按 §4 的量测法做对齐比较。
+
+**三点口径**
+
+| 记号 | `MIN_FILTER` | 含义 |
+|---|---|---|
+| ① 原版 | `GL_LINEAR_MIPMAP_LINEAR` | 跨级三线性（现状） |
+| ② mip 近邻 | `GL_LINEAR_MIPMAP_NEAREST` | 保留 mip 链，只取最近一级 |
+| ③ 关 mip | `GL_LINEAR` | §3.2 的老方案 |
+
+**命令链**（每次切换 ≈1 分钟：Xcode 增量只重编那 2 个文件）
+
+```bash
+python tools/l2d/patch_plugin.py --target ios --variant linear|nearest
+cd app && flutter build ios --release
+xcrun devicectl device install app --device 00008130-001169D830A1401C build/ios/iphoneos/Runner.app
+xcrun devicectl device process launch --device 00008130-001169D830A1401C com.systempanel.app
+xcrun devicectl device capture screenshot --device 00008130-001169D830A1401C --destination shot.png
+```
+
+**量测结果**（1290×2796，固定绝对窗口 ⇒ 几何天然归一化；三帧虹膜质心相差 ≤5px）
+
+| 窗口 | 频段 | ① 原版 | ② mip 近邻 | ③ 关 mip |
+|---|---|---|---|---|
+| 脸 360×300 | 中频 0.22–0.38 | 0.80% | 0.67%（−17%） | **2.55%（+219%）** |
+| | 高频 ≥0.60 | 0.01% | 0.01%（−12%） | **0.03%（+133%）** |
+| | 梯度 RMS | 0.0331 | 0.0341（+3%） | **0.0476（+44%）** |
+| 领口 260×230 | 中频 | 0.71% | 0.81%（+14%） | **1.97%（+178%）** |
+| | 高频 | 0.02% | 0.02%（−2%） | 0.03%（+48%） |
+| 发丝 180×300 | 中频 | 0.25% | 0.36%（+44%） | **0.93%（+270%）** |
+| | 高频 | 0.01% | 0.01%（+0%） | 0.01%（+60%） |
+
+并排放大图（3× 最近邻）：`.verify/l2d-clarity-ios/lead/ABC_lobby_{face,hair,full}.png`
+截图：`BEFORE_home.png`（①）/ `NEAR_boot_13.png`（②）/ `LIN_25.png`（③）
+
+**肉眼结论（与数字一致）**
+
+- ③ 关 mip：**确实明显更利** —— 睫毛、发丝边缘、缎带折线都出来了，但**腮红、发梢、缎带上出现
+  点状噪光**（走样）。§3.4 担心的那件事可以复现，2026-10-11 判「变差了」的原因也就对上了。
+- ② mip 近邻：发丝窗口量到 **+44% 中频**、高频几乎不动；人脸窗口的 −17% 属**帧间姿态/表情噪声**
+  （三帧眼型、嘴角本来就不同，谱能量对内容很敏感）。观感是「更利，但没有噪点」。
+- ① 原版：最干净，也最软。
+
+**量出来的另一条规律（比选哪个口径更重要）**
+
+同一台机器上，**她越小、关 mip 的走样越重**：开机页（`s=0.64`，贴图缩小 ≈3~4×）关 mip 后
+高频 **+550%**；大厅（`s=0.92`，缩小 ≈2.6×）只有 **+133%**。⇒ 真要在大厅关 mip，
+「让她显示得更大」（§3.6 第一条：构图放大）永远是更划算的那一半。
+
+**给宿主的切换口径**（都只动本机 pub 缓存，仓库零改动）
+
+```bash
+python tools/l2d/patch_plugin.py --target ios --variant nearest   # 推荐折中
+python tools/l2d/patch_plugin.py --target ios --variant linear    # 最锐（2026-10-24 装机验收用的就是这个）
+python tools/l2d/patch_plugin.py --revert --target ios            # 回原版
+# 之后都要：cd app && flutter build ios --release && 重装（改的是 native，热重载无效）
+```
+
+### 3.8 贴图密度裁决 + 采样仿真（2026-10-24 · 决定 §3.2 值不值得打）
+
+§3.1 的数字互相矛盾（124 texel / 60~77 texel），真机上又只有主观判断。这一轮先把
+**贴图密度**量死，再用**受控重采样仿真**回答「关 mip 到底能换到多少真实细节」。
+
+**① 贴图里虹膜到底多少 texel**（`texture_00`，HSV 金色阈值 + 连通域，阈值全扫一遍最大行宽恒 96）
+
+| 对象 | bbox | 尺寸 |
+|---|---|---|
+| **金色虹膜**（两眼共用一份） | x[1712,1808) y[7,119) | **96 × 112 texel** |
+| 虹膜深色上缘（渲染里“瞳孔感”的来源） | x[1712,1808) y[7,86) | 96 × 79 |
+| 眼白（薰衣草） | x[1526,1720) y[1694,1820) | 194 × 126 |
+| 睫毛（深蓝弧） | x[1506,1694) y[1653,1728) | 188 × 75 |
+| 金色高光椭圆 ×2 | (1591,1874)、(1524,1971) | 64 × 33 |
+
+旧数全部对不上：**124** 最接近“眼白短边 126”、**47.8 px** 是眼裂宽度、**60~77** 是高光椭圆。
+方向结论不变（比值仍 ≈2.5），但「只用到 38.6%」应改成 **37.5%**，且**它不是瓶颈**（见下）。
+
+**② texel/px 与 GPU 会选的 mip LOD**
+
+| 相机 | 族 | FBO 高 px | 屏上占高 | 虹膜屏 px | texel/FBO px | **LOD** |
+|---|---|---|---|---|---|---|
+| lobby 0.92 | 1.05 | 2935.8 | 2572 | 34~41 | 2.10~2.34 | **1.07~1.22** |
+| talk 1.70（派单） | 1.70 | 4753.2 | 4753 | 66.5 | 1.44 | **0.53** |
+| boot 0.64 | 1.05 | 2935.8 | 1789 | 25 | 2.34 | 1.22 |
+| MuMu DPR3 | 1.05 | 2658.6 | 2329 | 32.6 | 2.58 | 1.37 |
+| MuMu 旧 DPR2 | 1.05 | 1772.4 | 1553 | 21.7 | 3.87 | 1.95 |
+
+LOD 1.22 ⇒ mip 通带 0.214 c/texel，而屏幕能表现的上限是 0.1875 ⇒ **现状通带比屏幕上限还高 14%**：
+**iOS 现状是“略偏锐”，不是“被砍一半”**。这也解释了为什么 Android（LOD 1.37~1.95）打补丁收益大、
+iOS 打完只觉得“有噪点”。
+
+**③ 受控采样仿真**（真实贴图 patch 重采样，含 Flutter 合成那一层 0.876 降采样）
+
+| 变体 | 眼 中频 | 眼 高频 | 裙格 高频 | 结论 |
+|---|---|---|---|---|
+| a 现状 mip+三线性 | 2.503% | 0.362% | 1.650% | 基准 |
+| b 关 mip（§3.2 方案） | **2.816%（+12.5%）** | **1.053%（×2.9）** | **4.918%（×3.0）** | 中频小赚、高频代价 3× |
+| c mip 近邻 | 2.663%（+6.4%） | 0.514%（×1.4） | 2.322%（×1.4） | 但 **talk 会退**（见下） |
+| d LOD bias −0.5 | 2.701%（+7.9%） | 0.622%（×1.7） | 2.826%（×1.7） | 两相机都不退化，最优折中 |
+| e 2× Lanczos + 关 mip | 2.843% | 1.196% | 5.871% | 再证否一次 |
+
+- **mip 近邻不能当“无代价”选项**：talk 相机 LOD 0.53 会被 floor(LOD+0.5) 取整到 **mip1（半分辨率）**，
+  仿真中频 2.806 → 2.566 = **−8.6%**，也就是**派单推近会变糊**；它只在大厅 +6%。
+- **LOD bias −0.5 才是最该试的**（大厅 +7.9%、talk +9.4%），落地方式是给 frag shader 的
+  texture2D 带 bias。⚠️ 本轮**没打**：GLES2 头里没有 GL_TEXTURE_MAX_LOD 这个 token
+  （desktop / GLES3 才有），用 0x813B 硬写要自己确认不触发 GL error 0x500。下一轮从这里接。
+
+**④ 对你的实际含义**：iOS 已经到“屏幕分辨率上限”，**任何滤器改动换来的都是“更利”而不是
+“更多细节”**；真正还能增加观感的只剩 §3.6 的**构图放大**（她更大）或换**更高分辨率素材**
+（已被两次仿真证否：只加高频噪声）。2026-10-24 装机验收的版本是 **--variant linear（关 mip）**。
+
+### 3.9 【2026-10-24 定案】锯齿问题：开源做法 + 超采样（**这才是最终方案**）
+
+§3.7/§3.8 的结论「关 mipmap 换锐利」被宿主当场否掉：**「锯齿太多了」**。于是按宿主的要求去查
+开源实现，再回来做实验 —— 结论是：**不要动采样器，要多渲染像素**。
+
+#### ① 开源/官方是怎么做的（证据）
+
+| 结论 | 出处 |
+|---|---|
+| 官方 Cubism iOS 样例就是 `glGenerateMipmap` + `GL_LINEAR_MIPMAP_LINEAR` | [LAppTextureManager.mm#L87-L90](https://github.com/Live2D/CubismNativeSamples/blob/develop/Samples/OpenGL/Demo/proj.ios.cmake/src/LAppTextureManager.mm#L87-L90) |
+| 而且**每次绑贴图都重设过滤**（只改加载处会被覆盖 —— 这就是「两处必须一起改」的成因） | [CubismShader_OpenGLES2.cpp#L1097-L1102](https://github.com/Live2D/CubismNativeFramework/blob/develop/src/Rendering/OpenGL/CubismShader_OpenGLES2.cpp#L1097-L1102) |
+| 官方渲染器**不启用任何 MSAA / 各向异性**（默认 0，从不设置） | [CubismRenderer.cpp#L26](https://github.com/Live2D/CubismNativeFramework/blob/develop/src/Rendering/CubismRenderer.cpp#L26) |
+| Flutter 的平台视图缩放是引擎写 `embeddedView.layer.transform` 交给 CoreAnimation，**Impeller 不参与、也没有 filterQuality 开关**；CA 默认 `kCAFilterLinear`、不生成 mip | [FlutterPlatformViewsController.mm#L680-L698](https://github.com/flutter/flutter/blob/master/engine/src/flutter/shell/platform/darwin/ios/framework/Source/FlutterPlatformViewsController.mm#L680-L698) |
+| pixi 生态：糊 → `resolution: 2`（多渲染像素） | [pixi-live2d-display#146](https://github.com/guansss/pixi-live2d-display/issues/146) |
+| 高模缩小出锯齿 → 加 mipmap；作者原话就是「超采样 vs 分辨率」 | [untitled-pixi-live2d-engine#15](https://github.com/Untitled-Story/untitled-pixi-live2d-engine/issues/15) |
+| Ren'Py 用 `config.mesh_oversample` 修 Live2D 渲染糊 | [renpy#6921](https://github.com/renpy/renpy/issues/6921) |
+| **GLES2 硬边界**：没有 `GL_TEXTURE_MAX_LOD`、没有 multisample（要 `APPLE_framebuffer_multisample`）、gl2ext.h 里没有各向异性 token ⇒ MSAA / 各向异性 / MAX_LOD 三条路**直接否掉** | [gl2.h](https://github.com/KhronosGroup/OpenGL-Registry/blob/main/api/GLES2/gl2.h) · [gl2ext.h](https://github.com/KhronosGroup/OpenGL-Registry/blob/main/api/GLES2/gl2ext.h#L961-L976) |
+
+⇒ 业界一致的解法是 **「保 mipmap（干净）+ 多渲染像素再缩回去（更利）」**，也就是 SSAA；
+把采样器调硬（关 mip）只是把混叠当清晰度卖。
+
+#### ② 四种配置的真机实测（iPhone 15 Pro Max，同一大厅机位）
+
+| 配置 | 中频 0.22–0.38 | 高频 ≥0.60 | 肉眼 |
+|---|---|---|---|
+| a mipmap + 1.05 族（原版） | 基准 | 基准 | 干净但软 |
+| b **关 mipmap** + 1.05 族（§3.7 那版） | +219% | **+133%~2200%** | **点状噪光/阶梯边**（宿主否掉） |
+| c mipmap + 1.40 族 = **1.52× 超采样** | **+50~53%** | +74~162% | **更利、无点状噪光** ← 采用 |
+| d mipmap + 1.70 族 = 1.85× 超采样 | +73~81% | +103~187% | 略更利，但显存/填充 ×3.6 |
+
+并排放大图（3× 最近邻）：`.verify/l2d-clarity-ios/lead/FINAL_{face,hair}.png`（a / c / d 三档）
+截图：`REF_mip105_63.png`（a）· `SSAA140_72.png`（c）· `SSAA170_82.png`（d）
+（都带 `--dart-define=SHOT=lobby`，同一姿势、同一机位、可逐像素比）
+
+#### ③ 落地方案（本仓库当前状态）
+
+- `app/lib/stage/live2d_stage.dart`：`kViewFamilies = [1.40, 1.70]`（小景别 1.05 → 1.40）
+- **pub 缓存保持插件原版**（`patch_plugin.py --revert`）：mipmap + 三线性不动
+- ⚠️ 这是**超采样比**，不是几何回退：布局矩形按 1.40 倍屏高固定，缩放仍由 `Transform.scale(cam.s/族)` 表达，
+  她的**屏幕上大小/位置完全不变**，只是平台视图多渲染了 1.52× 的像素，再由 CoreAnimation 线性降采样
+- 代价：小景别 FBO 3914×2609 px（≈10.2M px，显存 ~61MB，填充 ×2.3）；派单 1.70 族不变。
+  掉帧就把常数退到 1.25（≈1.36×，仍有明显收益）
+- `test/stage_port_test.dart` 已同步：新增「大厅超采样比 ≥1.3×」的断言，防止有人把它改回 1.05
+
+#### ④ 还没用、但值得知道的
+
+- **LOD bias −0.5**（frag shader 的 `texture2D(..., -0.5)`）：仿真 +8~9%，可与超采样叠加；
+  本轮没打 —— GLSL ES 1.00 的 bias 参数各驱动支持不一，要先真机验编译（失败就是整个 shader 挂掉）。
+- **构图放大**（`lobby.s 0.92 → 1.05`）：改观感，要宿主点头；和超采样叠加是最「近看」的组合。
+- 贴图分辨率：**别再试**（两次仿真都证否，只加高频噪声）。
+
+---
+
 ## 四、可复用的量测方法（下次排查直接用）
 
 不要靠肉眼，也不要只看单一指标。**四个量一起看**才不会被骗：
@@ -207,5 +386,10 @@ Android 同款补丁实测：**中频 +29%、运动中高频 +45%**，代价是�
 ## 六、证据留档
 
 - MuMu 新旧对比：`.verify/l2d-dpr/`（`DPR2_780.png` / `FINAL_1170x2532.png` / `FINAL_window_awake.png` / `f_*.png`）
+- iOS 贴图密度 + 采样仿真的完整报告（2026-10-24）：`.verify/l2d-clarity-ios/measure-note.md`
+  （虹膜 96×112 texel 的连通域裁决、texel/px 与 LOD 对账、五种采样变体的 mid/high/shim 表、
+  `sim_sampling.py` / `sim_supersample.py`）
+- iOS 三点实测（2026-10-24）：`.verify/l2d-clarity-ios/`（`BEFORE_home.png` / `NEAR_boot_13.png` /
+  `LIN_25.png` / `lead/ABC_lobby_*.png` / `lead/AB_boot_face.png`；量测脚本 `lead/lobby_abc.py`）
 - 上一轮四路对比：`.verify/l2d-clarity-2/`（`SUMMARY_clarity_4way.png`、`cmp_eyes_1to1.png`）
 - 两处目录均在 `.gitignore` 的 `.verify/` 之下，**不入库**

@@ -318,11 +318,16 @@ void main() {
             reason: '${e.key} 的缩放系数必须 ≤ 1（放大 = 糊）',
           );
         }
-        // 小景别一族（含大厅/主线/结算），派单推近才换到 1.70 那族
-        expect(Live2DStage.viewFamilyS(.64), 1.05);
-        expect(Live2DStage.viewFamilyS(.92), 1.05);
-        expect(Live2DStage.viewFamilyS(1.05), 1.05);
+        // 小景别一族（含大厅/主线/结算），派单推近才换到 1.70 那族。
+        // ⚠️ 2026-10-24：小族从 1.05 提到 1.40 —— 那不是几何回退，是**超采样**：
+        //    贴图相对屏幕本来就 1:1，想"更清晰"只能多渲染像素再缩回去（docs/46 §3.9）。
+        expect(Live2DStage.viewFamilyS(.64), Live2DStage.kViewFamilies.first);
+        expect(Live2DStage.viewFamilyS(.92), Live2DStage.kViewFamilies.first);
+        expect(Live2DStage.viewFamilyS(1.05), Live2DStage.kViewFamilies.first);
         expect(Live2DStage.viewFamilyS(1.70), 1.70);
+        // 大厅（s=.92）必须拿到 ≥1.3× 的超采样比，否则"清晰"就只能靠关 mipmap
+        // 换来走样（宿主 2026-10-24：「锯齿太多了」）
+        expect(Live2DStage.viewFamilyS(.92) / .92, greaterThanOrEqualTo(1.3));
       });
 
       test('固定矩形 + 缩放 ≡ 原来那个矩形（中心/尺寸逐项相等）', () {
