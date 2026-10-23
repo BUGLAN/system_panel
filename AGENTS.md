@@ -172,7 +172,20 @@
   - 允许保留的只有**代码级**检查：`flutter analyze` + 与改动直接相关的 `flutter test`（秒级）。**不要**主动扩测
   - 宿主明确说"你去验/你测一下"时才走真机验证流程
   - 需要宿主确认的验收点，**一次列清楚**（要做什么、看哪里、预期什么），别来回问
-- **【宿主指定 · 2026-10-11】只要这一轮改动了 `app/`，会话最后必须跑 `flutter run`（真机）**：
+- **【宿主指定 · 2026-10-23】只要这一轮改动了 `app/`，会话最后必须构建并安装到 MuMu，交付"能跑的新包"**：
+  - **不是**只跑 `flutter analyze` / `flutter test` 就算完 —— 那是代码级检查，宿主看不到
+  - 标准收尾三步（缺一不可）：
+    ```bash
+    cd app && flutter build apk --debug
+    adb -s 127.0.0.1:16512 install -r build/app/outputs/flutter-apk/app-debug.apk
+    adb -s 127.0.0.1:16512 shell am force-stop com.systempanel.app \
+      && adb -s 127.0.0.1:16512 shell am start -n com.systempanel.app/.MainActivity
+    ```
+  - **验收标准**：截图确认新界面真的上来了（改了什么就看什么），再交给宿主
+  - ⚠️ 若这次改动涉及**已落到存档里的数据**（任务清单、目标文本等），要主动说明
+    "旧存档不会自动重生"，并给出重生路径（换目标 / 重置存档）
+  - 宿主明确说"不要装了/我自己来"时才跳过
+- **【宿主指定 · 2026-10-11】iOS 真机**（按需，不与上条冲突）：
   - 真机 UDID：`00008130-001169D830A1401C`（iPhone 15 Pro Max）；`cd app && flutter run -d 00008130-001169D830A1401C`
   - iOS 14+ 的 debug 包**不能从桌面图标启动**，必须由 Flutter 工具链拉起
   - 真机常走无线调试：掉线/unavailable 是常态，先 `xcrun devicectl list devices` 确认 connected 再跑
