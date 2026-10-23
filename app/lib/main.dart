@@ -69,6 +69,7 @@ import 'widgets/result_panel.dart';
 import 'widgets/plan_tag.dart';
 import 'widgets/sheet.dart';
 import 'widgets/table_overlay.dart';
+import 'dev/agent_bridge.dart';
 
 /// 宿主 SYSTEM —— Flutter 客户端。
 /// 设计真源：prototype/opus-v2-dir（原型即规格）。
@@ -79,7 +80,13 @@ void main() {
   ]);
   // 原型是全屏手机，没有系统栏
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+  // Agent 桥接：debug 构建下全局开语义树，让 uiautomator dump 读得到中文标签
+  AgentBridge.enableSemantics();
   runApp(const SysApp());
+  // 首帧后把组件树打到日志（logcat 可抓：adb logcat -s flutter）
+  if (AgentBridge.enabled) {
+    WidgetsBinding.instance.addPostFrameCallback((_) => AgentBridge.logTree());
+  }
 }
 
 class SysApp extends StatelessWidget {

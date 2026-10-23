@@ -6,6 +6,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import '../data/format.dart';
 import '../design/tokens.dart';
 import '../state/haptics.dart';
+import '../dev/agent_bridge.dart';
 import '../state/host_state.dart';
 import '../state/sfx.dart';
 import 'rail_base.dart';
@@ -294,19 +295,25 @@ class _DkState extends State<_Dk> {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      // 底栏/侧键的点按：原型 main.js:53 只 Sound.play('tap')（无震动）
-      onTap: widget.onTap == null
-          ? null
-          : () {
-              Sfx.play('tap');
-              widget.onTap!();
-            },
-      onTapDown: widget.onTap == null ? null : (_) => _set(true),
-      onTapUp: widget.onTap == null ? null : (_) => _set(false),
-      onTapCancel: widget.onTap == null ? null : () => _set(false),
-      behavior: HitTestBehavior.opaque,
-      child: _dkBody(context),
+    return AgentTag(
+      id: 'dock.${widget.label}',
+      label: widget.label,
+      button: true,
+      role: '侧键',
+      child: GestureDetector(
+        // 底栏/侧键的点按：原型 main.js:53 只 Sound.play('tap')（无震动）
+        onTap: widget.onTap == null
+            ? null
+            : () {
+                Sfx.play('tap');
+                widget.onTap!();
+              },
+        onTapDown: widget.onTap == null ? null : (_) => _set(true),
+        onTapUp: widget.onTap == null ? null : (_) => _set(false),
+        onTapCancel: widget.onTap == null ? null : () => _set(false),
+        behavior: HitTestBehavior.opaque,
+        child: _dkBody(context),
+      ),
     );
   }
 
@@ -753,8 +760,13 @@ class _CoreState extends State<_Core> with SingleTickerProviderStateMixin {
   @override
   Widget build(BuildContext context) {
     final bool plain = widget.running || widget.idle;
-    return AnimatedBuilder(
-      animation: _breath,
+    return AgentTag(
+      id: 'dock.cta',
+      label: '委托任务',
+      button: true,
+      role: '主按钮',
+      child: AnimatedBuilder(
+        animation: _breath,
       builder: (BuildContext _, Widget? _) {
         // reduced-motion：呼吸直接落终态（静止在中间值），ticker 已在
         // didChangeDependencies 里停掉
@@ -920,7 +932,8 @@ class _CoreState extends State<_Core> with SingleTickerProviderStateMixin {
             ),
           ),
         );
-      },
+        },
+      ),
     );
   }
 }

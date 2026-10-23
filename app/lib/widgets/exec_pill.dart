@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../data/format.dart';
 import '../design/tokens.dart';
+import '../dev/agent_bridge.dart';
 import '../state/sfx.dart';
 import 'rail_base.dart';
 
@@ -150,7 +151,12 @@ class _ExecPillState extends State<ExecPill> with TickerProviderStateMixin {
             );
           },
           child: Center(
-            child: GestureDetector(
+            child: AgentTag(
+              id: 'exec.pill',
+              label: '执行中计时',
+              button: true,
+              role: '状态胶囊',
+              child: GestureDetector(
               // 执行药丸：原型 `main.js:60` `$('#execPill')` → 只 `Sound.play('tap')`
               onTap: widget.onTap == null
                   ? null
@@ -220,6 +226,7 @@ class _ExecPillState extends State<ExecPill> with TickerProviderStateMixin {
             ),
           ),
         ),
+      ),
       ),
     );
   }
