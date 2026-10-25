@@ -450,7 +450,12 @@ class CardFace extends StatelessWidget {
     this.far = false,
     this.leadT = 1,
     this.run = -1,
+    this.foilLevel = 1,
   });
+
+  /// 全息箔强度（docs/48 §3）：牌桌按画质档传入（富效果 1 / 省电 0）。
+  /// 稀有度越高的牌越亮由 [GlassPainter] 自己按 accent 处理。
+  final double foilLevel;
 
   final CardSkin skin;
   final TableCard card;
@@ -580,11 +585,29 @@ class CardFace extends StatelessWidget {
         // 对角高光 + 边缘折射 + 内阴影
         Positioned.fill(
           child: CustomPaint(
-            painter: GlassPainter(lead: lead, phase: dragPhase, radius: radius),
+            painter: GlassPainter(
+              lead: lead,
+              phase: dragPhase,
+              radius: radius,
+              accent: card.accent ?? _rankAccent(),
+              // 全息箔只给领位；省电/减弱动态由调用方把 dragPhase 归零、
+              // 这里再看一次档位 —— 省电档箔层不画（它是氛围不是反馈）
+              foil: lead && card.enabled && !card.locked ? foilLevel : 0,
+              shine: sweep,
+            ),
           ),
         ),
       ],
     );
+  }
+
+  /// 委托牌没有 accent 时，用档位字母取稀有度色（边缘光跟稀有度走）
+  Color? _rankAccent() {
+    if (card.rank.isEmpty) return null;
+    const String ranks = 'FEDCBAS';
+    final int i = ranks.indexOf(card.rank);
+    if (i < 0) return null;
+    return const <Color>[C.rF, C.rE, C.rD, C.rC, C.rB, C.rA, C.rS][i];
   }
 
   // ── 补给 · 货架 ────────────────────────────────────────────
@@ -1450,6 +1473,10 @@ class GlassPainter extends CustomPainter {
     required this.lead,
     required this.phase,
     required this.radius,
+    this.accent,
+    this.foil = 0,
+    this.shine = 0,
+    this.ornament = true,
   });
 
   final bool lead;
@@ -1459,14 +1486,41 @@ class GlassPainter extends CustomPainter {
 
   final double radius;
 
+  // ── docs/48 §3「卡片材质 v2」（全部可选，旧调用点零改动）──────────
+  /// 边缘光的染色（稀有度色）；null = 电光青
+  final Color? accent;
+
+  /// 全息箔强度 0~1（领位 1、侧位 0；省电档由调用方传 0）
+  final double foil;
+
+  /// 一次性扫光进度 0~1（换领位那 520ms）：箔带从左扫到右
+  final double shine;
+
+  /// 三角角标 + 细扫描纹（领位才画）
+  final bool ornament;
+
+  static Color _a(Color c, double a) =>
+      c.withAlpha((a.clamp(0.0, 1.0) * 255).round());
+
   @override
   void paint(Canvas canvas, Size s) {
     final RRect rr = RRect.fromRectAndRadius(
       Offset.zero & s,
       Radius.circular(radius),
     );
+    final Color edge = accent ?? C.blue;
     canvas.save();
     canvas.clipRRect(rr);
+
+    // ⓪ 细扫描纹（领位）：每 3px 一条极淡横线 —— 「屏幕感」的材质颗粒
+    if (lead && ornament) {
+      final Paint line = Paint()
+        ..color = _a(Colors.white, .022)
+        ..strokeWidth = 1;
+      for (double y = 2; y < s.height; y += 3) {
+        canvas.drawLine(Offset(0, y), Offset(s.width, y), line);
+      }
+    }
 
     // ① 对角高光（Highlight.Default）：一条斜向光带，位置跟手
     final double ph = phase.clamp(-1.0, 1.0);
@@ -1488,7 +1542,7 @@ class GlassPainter extends CustomPainter {
               end: Alignment.centerRight,
               colors: <Color>[
                 Colors.white.withAlpha(0),
-                Colors.white.withAlpha(lead ? 30 : 16),
+                Colors.white.withAlpha(lead ? 26 : 14),
                 Colors.white.withAlpha(0),
               ],
               stops: const <double>[0, .5, 1],
@@ -1502,42 +1556,149 @@ class GlassPainter extends CustomPainter {
     );
     canvas.restore();
 
-    // ② 边缘折射：内缩一圈的渐变描边，左上亮、右下收 —— 玻璃的厚度
-    canvas.drawRRect(
-      rr.deflate(1),
+    // ② 全息箔：一条彩虹斜带（青 → 紫 → 粉 → 金），screen 混合 = 发光而不发灰。
+    //    位置 = 手势相位 + 一次性扫光；强度只给领位。
+    if (foil > 0) {
+      final double sweepX = shine > 0 && shine < 1 ? (-1.3 + 2.6 * shine) : 0;
+      final double fx = s.width * (.5 + .38 * ph + .5 * sweepX);
+      final double fw = s.width * 1.1;
+      canvas.save();
+      canvas.translate(fx, s.height * .5);
+      canvas.rotate(-.62);
+      final Rect fr = Rect.fromCenter(
+        center: Offset.zero,
+        width: fw,
+        height: s.height * 2.2,
+      );
+      final double fa = (.075 + (shine > 0 && shine < 1 ? .09 * math.sin(shine * math.pi) : 0)) * foil;
+      canvas.drawRect(
+        fr,
+        Paint()
+          ..blendMode = BlendMode.screen
+          ..shader = LinearGradient(
+            colors: <Color>[
+              _a(Pal.foil[0], 0),
+              _a(Pal.foil[0], fa),
+              _a(Pal.foil[1], fa),
+              _a(Pal.foil[2], fa * .9),
+              _a(Pal.foil[3], fa),
+              _a(Pal.foil[4], 0),
+            ],
+            stops: const <double>[0, .22, .42, .58, .76, 1],
+          ).createShader(fr),
+      );
+      canvas.restore();
+    }
+
+    // ③ 镜面高光：左上一团柔光（跟手轻微漂移）—— 「厚玻璃顶面」
+    final Offset gc = Offset(s.width * (.26 + .18 * ph), s.height * .10);
+    final double gr = s.width * .78;
+    canvas.drawCircle(
+      gc,
+      gr,
       Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.4
-        ..shader = LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
+        ..shader = RadialGradient(
           colors: <Color>[
-            Colors.white.withAlpha(lead ? 74 : 36),
-            Colors.white.withAlpha(0),
-            C.blue.withAlpha(lead ? 46 : 20),
+            _a(Colors.white, lead ? .085 : .04),
+            _a(Colors.white, 0),
           ],
-          stops: const <double>[0, .55, 1],
-        ).createShader(Offset.zero & s),
+        ).createShader(Rect.fromCircle(center: gc, radius: gr)),
     );
 
-    // ③ 内阴影（InnerShadow）：底边内侧一圈暗 —— 厚玻璃
-    final Rect low = Rect.fromLTWH(0, s.height * .60, s.width, s.height * .40);
+    // ④ 顶边斜面：1px 亮线，两端收 —— 玻璃的受光棱
+    canvas.drawRect(
+      Rect.fromLTWH(radius * .6, 1, s.width - radius * 1.2, 1),
+      Paint()
+        ..shader = LinearGradient(
+          colors: <Color>[
+            _a(Colors.white, 0),
+            _a(Colors.white, lead ? .42 : .18),
+            _a(Colors.white, 0),
+          ],
+        ).createShader(Rect.fromLTWH(0, 0, s.width, 2)),
+    );
+
+    // ⑤ 内阴影（InnerShadow）：底边内侧一圈暗 —— 厚玻璃
+    final Rect low = Rect.fromLTWH(0, s.height * .58, s.width, s.height * .42);
     canvas.drawRect(
       low,
       Paint()
         ..shader = LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: <Color>[const Color(0x00000000), const Color(0x66000000)],
+          colors: <Color>[const Color(0x00000000), const Color(0x73000000)],
         ).createShader(low),
     );
 
+    // ⑥ 底边稀有度光：底部一抹稀有度色的反光（像卡片立在发光台面上）
+    if (lead) {
+      final Rect foot = Rect.fromLTWH(0, s.height - 28, s.width, 28);
+      canvas.drawRect(
+        foot,
+        Paint()
+          ..shader = LinearGradient(
+            begin: Alignment.bottomCenter,
+            end: Alignment.topCenter,
+            colors: <Color>[_a(edge, .16), _a(edge, 0)],
+          ).createShader(foot),
+      );
+    }
+
     canvas.restore();
+
+    // ⑦ 边缘光：渐变描边，左上白亮 → 中段收 → 右下稀有度色 —— 玻璃的厚度
+    canvas.drawRRect(
+      rr.deflate(.8),
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = lead ? 1.3 : 1.0
+        ..shader = LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: <Color>[
+            Colors.white.withAlpha(lead ? 92 : 40),
+            _a(edge, lead ? .10 : .04),
+            _a(edge, lead ? .62 : .22),
+          ],
+          stops: const <double>[0, .5, 1],
+        ).createShader(Offset.zero & s),
+    );
+
+    // ⑧ 角标：右上 / 左下 / 右下三枚 L 形刻线（左上留给斜切与印位）
+    if (lead && ornament) {
+      final Paint br = Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.2
+        ..strokeCap = StrokeCap.square
+        ..color = _a(edge, .55);
+      const double m = 6; // 内缩
+      const double l = 9; // 臂长
+      final double w = s.width, h = s.height;
+      canvas.drawPath(
+        Path()
+          ..moveTo(w - m - l, m)
+          ..lineTo(w - m, m)
+          ..lineTo(w - m, m + l)
+          ..moveTo(m, h - m - l)
+          ..lineTo(m, h - m)
+          ..lineTo(m + l, h - m)
+          ..moveTo(w - m - l, h - m)
+          ..lineTo(w - m, h - m)
+          ..lineTo(w - m, h - m - l),
+        br,
+      );
+    }
   }
 
   @override
   bool shouldRepaint(GlassPainter old) =>
-      old.lead != lead || old.phase != phase || old.radius != radius;
+      old.lead != lead ||
+      old.phase != phase ||
+      old.radius != radius ||
+      old.accent != accent ||
+      old.foil != foil ||
+      old.shine != shine ||
+      old.ornament != ornament;
 }
 
 /// 货架：左上斜切 22px —— 形状真源已提到公开 API [ShelfClipper] / [shelfPath]，

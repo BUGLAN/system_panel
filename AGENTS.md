@@ -118,6 +118,7 @@
 | `45-安卓模拟器Agent操作方案.md` | **模拟器 Agent 操作方案**（mumu-control / MCP 评估 / 落地步骤） |
 | `46-Live2D清晰度-DPR与mipmap.md` | **清晰度四维量测法**；MuMu 面板 1170×2532@480（DPR3，中频 +110%）；**iOS 定案 = 超采样 1.68×**（族 1.55）+ 贴图预锐化（中频 +64~69%、无锯齿，§3.10）；`关 mipmap`（锯齿）与 shader LOD bias（模型不渲染）都已实测证否 |
 | `47-Live2D清晰度修复全过程.md` | **同类问题的过程复盘**：五个阶段（MuMu 提 DPR → 关 mipmap 被证否 → 贴图密度量死 → 查开源定超采样 → 拉满+预锐化）、量测五条纪律、踩过的坑与死路、下一步清单。遇到「糊/锯齿」先看这篇 |
+| `48-UI重设计-舞台与卡片v2.md` | **UI v2**：Live2D 舞台光（StageAura）、设计 token v2（Pal/Space/Radii/Elev/Ease/SpringSpec/SoundRule）、卡片材质 v2 + 3D 牌扇、GameButton、画质档（rich/lite/still）与音效规则表 |
 
 ---
 

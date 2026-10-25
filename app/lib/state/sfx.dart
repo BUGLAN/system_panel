@@ -4,6 +4,8 @@ import 'dart:math';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/foundation.dart';
 
+import '../design/tokens.dart' show SoundRule;
+
 /// ═══════════════════════════════════════════════════════════
 ///  音效总线（docs/22 R3）—— 素材是**离线烘好的包**（`tools/audio/` 生成，
 ///  参数照 `prototype/opus-v2-dir/js/audio.js` 那套 Web Audio 规格），
@@ -234,11 +236,37 @@ class Sfx {
   ///
   /// [variant] 用于**按档位变调**的事件（目前只有 `rank`：稀有度 F~S = 0~6）。
   /// 传别的 key 无副作用（越界会被 clamp 到列表内）。
-  static Future<void> play(String key, {int? variant}) async {
+  static Future<void> play(String key, {int? variant, double gain = 1}) async {
     if (!enabled) return;
     final String? f = _pick(key, variant);
     if (f == null) return;
-    await _playFile(f, key);
+    await _playFile(f, key, gain: gain);
+  }
+
+  /// 用户音量档（设置页「界面音量」低/中/高 → AgentSettings.gainOf）
+  static double userGain = .75;
+
+  /// 每个 cue 上一次出声的时间（节流用）
+  static final Map<String, DateTime> _lastCue = <String, DateTime>{};
+
+  /// 按**触发规则**出声（docs/48 §4，规则表在 tokens.dart `SoundRule.cues`）。
+  ///
+  /// 与 [play] 的区别：音量按规则缩放（过程音 soft、落定音满），且同一 cue
+  /// 有最小间隔 —— 连点/快速拖牌不会变成机关枪。未登记的 cue 名当作
+  /// 普通 key 直接播（不吞声）。
+  static Future<void> cue(String name, {int? variant}) async {
+    if (!enabled) return;
+    final SoundRule? r = SoundRule.cues[name];
+    if (r == null) return play(name, variant: variant);
+    if (r.minGapMs > 0) {
+      final DateTime now = DateTime.now();
+      final DateTime? last = _lastCue[name];
+      if (last != null && now.difference(last).inMilliseconds < r.minGapMs) {
+        return;
+      }
+      _lastCue[name] = now;
+    }
+    return play(r.key, variant: variant, gain: r.gain);
   }
 
   /// 打字机逐字音节（[emotion] 取 persona 的 12 情绪；[soft] = 她的低声/旁白）
@@ -279,7 +307,12 @@ class Sfx {
     }
   }
 
-  static Future<void> _playFile(String file, String key, {bool soft = false}) async {
+  static Future<void> _playFile(
+    String file,
+    String key, {
+    bool soft = false,
+    double gain = 1,
+  }) async {
     final _Slot? slot = await _take();
     if (slot == null) return; // 槽位全忙：这一发不播（不是失败，不记账）
     try {
@@ -295,7 +328,7 @@ class Sfx {
       // 用一个可诊断的丢弃换掉"一次卡顿拖垮整段逐字音"。
       final Future<void> playing = p.play(
         AssetSource(file),
-        volume: volume * (soft ? 0.5 : 1.0),
+        volume: (volume * userGain * gain * (soft ? 0.5 : 1.0)).clamp(0.0, 1.0),
       );
       if (!await _startedWithin(playing, _playWatchdog)) {
         dropCount++;

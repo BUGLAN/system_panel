@@ -114,7 +114,9 @@ class _TableOverlayState extends State<TableOverlay>
     final HostState? h = _host;
     if (h == null) return null;
     return switch (widget.scene) {
-      TableScene.supply => '◈ ${h.coins}',
+      // docs/48 §2：补给不再重复印余额 —— HUD 右上的金色货币胶囊就在
+      // 同一屏（宿主截图里「26」和「◈26」同时出现，读两遍）。
+      TableScene.supply => null,
       TableScene.titles =>
         '${h.ownedTitles.length.toString().padLeft(2, '0')} / '
             '${HostTitle.all.length.toString().padLeft(2, '0')}',

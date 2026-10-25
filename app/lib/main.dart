@@ -37,6 +37,8 @@ import 'stage/camera.dart';
 import 'stage/live2d_stage.dart';
 import 'stage/redraw_veil.dart';
 import 'stage/stage_port.dart';
+import 'stage/stage_aura.dart';
+import 'design/fidelity.dart';
 import 'state/app_clock.dart';
 import 'state/away.dart';
 import 'state/haptics.dart';
@@ -355,6 +357,10 @@ class _AppShellState extends State<AppShell>
   /// 点一下跳过打字机（原型 Tap.next()）
   int _tap = 0;
 
+  /// 舞台光脉冲令牌（docs/48 §2 ⑦）：戳她 / 发布 / 落定时 +1，
+  /// StageAura 收到变化就从地台扩散一圈光环。
+  int _auraPulse = 0;
+
   /// 震屏
   int _shake = 0;
   double _shakePx = 4;
@@ -470,6 +476,9 @@ class _AppShellState extends State<AppShell>
     // ① 非 LLM 设置：先落地（幂等，重复调用无害）
     Sfx.enabled = s.sound;
     Haptics.enabled = s.haptic;
+    // docs/48 §5：画质档 / 界面音量 —— 与 sound/haptic 同理，每次都落地
+    Fidelity.lowPower.value = s.fidelity == 'low';
+    Sfx.userGain = AgentSettings.gainOf(s.sfxVol);
     // 对白节奏（docs/22 §R4）与 sound/haptic 同理：**必须在下面的 LLM 早退守卫之前落地**，
     // 否则"只改节奏"会被整段吞掉（正是 R3 记的「能存能显没人消费」那个坑）
     if (_paceMs != s.paceMs) setState(() => _paceMs = s.paceMs);
@@ -1002,6 +1011,7 @@ class _AppShellState extends State<AppShell>
     final int i = math.min(LINES.poke.length - 1, ++_pokeN - 1);
     unawaited(Sfx.play('poke'));
     unawaited(Haptics.buzz('poke'));
+    setState(() => _auraPulse++);
     _stagePort?.act(i >= 3 ? 'fluster' : 'poke');
     final String emo = i >= 4
         ? 'cold'
@@ -1314,6 +1324,24 @@ class _AppShellState extends State<AppShell>
                 // 2026-10-13 宿主裁定：「此页面名牒册悬浮在档案上就行哦」——
                 // **不做让位**，牌桌就浮在投影面板之上（原来那版让面板退场是过度设计）
                 SheetBeam(visible: sheet),
+                // 舞台光（docs/48 §2）：背光晕 / 顶光束 / 暖边光 / 地台 / 浮尘。
+                // 层级：天幕之上、**她之下** —— 光只在她身后，绝不盖她。
+                // 位置全部由同一个 `_cam` 反算，推镜头时光跟着走。
+                StageAura(
+                  cam: _cam,
+                  mood: switch (_moment) {
+                    Moment.boot => StageMood.sleep,
+                    Moment.onboard || Moment.dispatch => StageMood.talk,
+                    Moment.exec => StageMood.focus,
+                    Moment.result => StageMood.reward,
+                    Moment.fail => StageMood.fail,
+                    _ => StageMood.calm,
+                  },
+                  pulse: _auraPulse,
+                  // 派单/结算让 UI 说话：光收一半；面板态她下半身被面板盖住
+                  intensity: boot ? .45 : (dispatch ? .6 : (sheet ? .7 : 1)),
+                  showDais: !sheet && !dispatch,
+                ),
                 // 她本人（`#stage`）—— 必须放在 Flutter UI **下面**：
                 // 平台视图是 opaque 的，会吃掉触摸；更靠上的组件先命中，
                 // 所以字幕/按钮/手势照样能点（原型里 `#stage` 也在 `#ui` 之前）。
@@ -2856,6 +2884,7 @@ class _AppShellState extends State<AppShell>
     // （和稍后单子落板的 `land` 是**两拍**：先"钉单"再"落板"，别合成一次）
     unawaited(Sfx.play('publish'));
     unawaited(Haptics.buzz('publish'));
+    _auraPulse++;
     // docs/24 #3 发布任务：摆个定格（kime + kime 脸），表情 3s 后还给当前情绪
     _stagePort?.perf('kime', 'exp_kime01');
     _takeDispatchLine(); // 发布文案接管：LLM 回了顶掉「接不接？」

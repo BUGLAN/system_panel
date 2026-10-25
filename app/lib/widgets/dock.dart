@@ -324,8 +324,13 @@ class _DkState extends State<_Dk> {
       width: 58,
       child: Column(
         children: <Widget>[
-          Transform.scale(
-            scale: _down ? .9 : 1,
+          // 按下 0ms 缩到 .9；抬起用 Ease.pop 弹回（docs/48 §5「键帽弹性」）
+          AnimatedScale(
+            scale: (_down && !reduce) ? .9 : 1,
+            duration: _down
+                ? Duration.zero
+                : const Duration(milliseconds: 240),
+            curve: Ease.pop,
             child: SizedBox(
               width: 44,
               height: 44,
@@ -333,22 +338,34 @@ class _DkState extends State<_Dk> {
                 clipBehavior: Clip.none,
                 children: <Widget>[
                   Positioned.fill(
+                    // docs/48 §4：侧键 = 一颗玻璃球（不是细线空心圈）：
+                    // 暗色球体 + 渐变边缘光 + 顶部镜面高光；按下时内圈点亮。
                     child: Container(
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        color: const Color(0x99061024), // rgba(6,16,36,.6)
-                        border: Border.all(color: C.line, width: 1),
-                        // .dk:active .ic { box-shadow: inset 0 0 0 1px var(--blue),
-                        //                   0 0 16px rgba(56,225,255,.4) }
-                        boxShadow: _down
-                            ? <BoxShadow>[
-                                BoxShadow(
-                                  color: C.blue.withAlpha(102),
-                                  blurRadius: 16,
-                                ),
-                              ]
-                            : null,
+                        gradient: RadialGradient(
+                          center: const Alignment(0, -.45),
+                          radius: .95,
+                          colors: _down
+                              ? const <Color>[Color(0xF0173A5E), Color(0xF0050C1C)]
+                              : const <Color>[Color(0xE6122640), Color(0xE603081A)],
+                        ),
+                        boxShadow: <BoxShadow>[
+                          // 落在台面上的阴影（立体感）
+                          const BoxShadow(
+                            color: Color(0x99000000),
+                            blurRadius: 8,
+                            offset: Offset(0, 3),
+                          ),
+                          // .dk:active —— 按下外辉
+                          if (_down)
+                            BoxShadow(
+                              color: C.blue.withAlpha(102),
+                              blurRadius: 16,
+                            ),
+                        ],
                       ),
+                      foregroundDecoration: _OrbRim(lit: _down),
                       child: Center(
                         child: SvgPicture.string(
                           widget.svg,
@@ -421,6 +438,84 @@ class _DkState extends State<_Dk> {
 }
 
 /// H-09 的 2px 进度弧（从正上方顺时针）
+/// 玻璃球的边缘光 + 镜面高光（画在图标之下的前景装饰；不吃布局）
+class _OrbRim extends Decoration {
+  const _OrbRim({required this.lit});
+
+  final bool lit;
+
+  @override
+  BoxPainter createBoxPainter([VoidCallback? onChanged]) => _OrbRimPainter(lit);
+
+  @override
+  bool operator ==(Object other) => other is _OrbRim && other.lit == lit;
+
+  @override
+  int get hashCode => lit.hashCode;
+}
+
+class _OrbRimPainter extends BoxPainter {
+  _OrbRimPainter(this.lit);
+
+  final bool lit;
+
+  @override
+  void paint(Canvas canvas, Offset offset, ImageConfiguration cfg) {
+    final Size s = cfg.size ?? Size.zero;
+    if (s.isEmpty) return;
+    final Rect r = offset & s;
+    final Offset c = r.center;
+    final double rad = s.shortestSide / 2;
+    // 渐变边缘光：左上亮 → 右下沉
+    canvas.drawCircle(
+      c,
+      rad - .6,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = lit ? 1.4 : 1.1
+        ..shader = LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: <Color>[
+            C.blue.withAlpha(lit ? 240 : 150),
+            C.blue.withAlpha(lit ? 90 : 26),
+            C.blue.withAlpha(lit ? 160 : 70),
+          ],
+          stops: const <double>[0, .55, 1],
+        ).createShader(r),
+    );
+    // 顶部镜面高光：一弯月牙
+    final Rect hl = Rect.fromCenter(
+      center: c + Offset(0, -rad * .48),
+      width: rad * 1.1,
+      height: rad * .5,
+    );
+    canvas.drawOval(
+      hl,
+      Paint()
+        ..shader = LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: <Color>[
+            Colors.white.withAlpha(lit ? 60 : 38),
+            Colors.white.withAlpha(0),
+          ],
+        ).createShader(hl),
+    );
+    // 按下：内圈点亮
+    if (lit) {
+      canvas.drawCircle(
+        c,
+        rad - 4,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1
+          ..color = C.blue.withAlpha(70),
+      );
+    }
+  }
+}
+
 class _ArcPainter extends CustomPainter {
   const _ArcPainter({required this.ratio});
 
@@ -432,6 +527,28 @@ class _ArcPainter extends CustomPainter {
     final Rect rect = Rect.fromCircle(center: c, radius: (s.width - 2) / 2);
     const double start = -math.pi / 2;
     final double sweep = 2 * math.pi * ratio.clamp(0.0, 1.0);
+    // 轨道（让「还差多少」也看得见）
+    canvas.drawCircle(
+      c,
+      rect.width / 2,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2
+        ..color = C.blue.withAlpha(30),
+    );
+    if (sweep <= 0) return;
+    canvas.drawArc(
+      rect,
+      start,
+      sweep,
+      false,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2
+        ..strokeCap = StrokeCap.round
+        ..color = C.blue.withAlpha(150)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2),
+    );
     canvas.drawArc(
       rect,
       start,

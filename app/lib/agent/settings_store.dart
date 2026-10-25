@@ -51,7 +51,23 @@ class AgentSettings {
     this.reasoningEffort = LlmConfig.kDefaultReasoningEffort,
     this.strictMode = kDefaultStrictMode,
     this.paceMs = kDefaultPaceMs,
+    this.fidelity = kDefaultFidelity,
+    this.sfxVol = kDefaultSfxVol,
   });
+
+  // ── docs/48 §5：舞台特效画质 + 界面音量 ────────────────────────
+  /// 舞台特效：`high` 全效果 / `low` 省电（静态舞台光、无粒子、无循环扫光）
+  static const String kDefaultFidelity = 'high';
+
+  /// 界面音量三档：`lo` / `mid` / `hi`（再乘 Sfx.volume 总音量）
+  static const String kDefaultSfxVol = 'mid';
+
+  /// 音量档 → 增益（Sfx.userGain）
+  static double gainOf(String v) => switch (v) {
+    'lo' => .45,
+    'hi' => 1.0,
+    _ => .75,
+  };
 
   /// 视觉校验开关（关 = 纯信任模式，证据全按「未校验」计）
   final bool visionEnabled;
@@ -88,6 +104,12 @@ class AgentSettings {
   /// 消费方：`LineLayer`（字幕）与 `ChatPanel`（聊天气泡）的打字机。
   final int paceMs;
 
+  /// 舞台特效画质（见 [kDefaultFidelity]）
+  final String fidelity;
+
+  /// 界面音量档（见 [kDefaultSfxVol]）
+  final String sfxVol;
+
   factory AgentSettings.fromJson(
     Map<String, dynamic>? json, {
     required AgentSettings fallback,
@@ -110,6 +132,8 @@ class AgentSettings {
       strictMode: pick<String>('strictMode', fallback.strictMode),
       // 老档没有这个 key → 落回 fallback（= 默认 34），不写迁移代码
       paceMs: pick<int>('paceMs', fallback.paceMs),
+      fidelity: pick<String>('fidelity', fallback.fidelity),
+      sfxVol: pick<String>('sfxVol', fallback.sfxVol),
     );
   }
 
@@ -125,6 +149,8 @@ class AgentSettings {
     'reasoningEffort': reasoningEffort,
     'strictMode': strictMode,
     'paceMs': paceMs,
+    'fidelity': fidelity,
+    'sfxVol': sfxVol,
   };
 
   AgentSettings copyWith({
@@ -139,6 +165,8 @@ class AgentSettings {
     String? reasoningEffort,
     String? strictMode,
     int? paceMs,
+    String? fidelity,
+    String? sfxVol,
   }) => AgentSettings(
     visionEnabled: visionEnabled ?? this.visionEnabled,
     baseUrl: baseUrl ?? this.baseUrl,
@@ -151,6 +179,8 @@ class AgentSettings {
     reasoningEffort: reasoningEffort ?? this.reasoningEffort,
     strictMode: strictMode ?? this.strictMode,
     paceMs: paceMs ?? this.paceMs,
+    fidelity: fidelity ?? this.fidelity,
+    sfxVol: sfxVol ?? this.sfxVol,
   );
 
   @override
@@ -166,7 +196,9 @@ class AgentSettings {
       other.voice == voice &&
       other.reasoningEffort == reasoningEffort &&
       other.strictMode == strictMode &&
-      other.paceMs == paceMs;
+      other.paceMs == paceMs &&
+      other.fidelity == fidelity &&
+      other.sfxVol == sfxVol;
 
   @override
   int get hashCode => Object.hash(
@@ -181,6 +213,8 @@ class AgentSettings {
     reasoningEffort,
     strictMode,
     paceMs,
+    fidelity,
+    sfxVol,
   );
 }
 

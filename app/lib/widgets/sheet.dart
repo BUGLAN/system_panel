@@ -176,6 +176,19 @@ class _SheetState extends State<Sheet> {
                       ),
                     ],
                   ),
+                  // docs/48 §2：面板上沿的「羽化」—— 原来面板在她胸口处一刀
+                  // 硬切（宿主截图：上半是她、下半突然一块黑板）。往上探 36px
+                  // 的渐变把切口溶进舞台；CustomPaint 而非 DecoratedBox，
+                  // 不污染按类型查找装饰的测试。
+                  const Positioned(
+                    left: 0,
+                    right: 0,
+                    top: -36,
+                    height: 36,
+                    child: IgnorePointer(
+                      child: CustomPaint(painter: _FeatherPainter()),
+                    ),
+                  ),
                   // .sh-edge —— 顶边那道光
                   Positioned(
                     left: 0,
@@ -1176,6 +1189,23 @@ class _SystemPaneState extends State<_SystemPane> {
               },
             ),
           ),
+          // docs/48 §4：音效要「克制」—— 三档音量，过程音再按规则打折
+          _setRow(
+            '界面音量',
+            '按键 / 翻牌 / 落定的音量；过程音自动更轻、连点自动节流',
+            _seg(
+              'sfxVol',
+              const <List<String>>[
+                <String>['lo', '低'],
+                <String>['mid', '中'],
+                <String>['hi', '高'],
+              ],
+              _s.sfxVol,
+              (String v) {
+                _update((AgentSettings s) => s.copyWith(sfxVol: v));
+              },
+            ),
+          ),
         ]);
       case _SetCat.voice:
         return _rows(<Widget>[
@@ -1238,6 +1268,22 @@ class _SystemPaneState extends State<_SystemPane> {
               _s.holo ? '1' : '0',
               (String v) {
                 _update((AgentSettings s) => s.copyWith(holo: v == '1'));
+              },
+            ),
+          ),
+          // docs/48 §5：低性能模式 —— 舞台光静态、去粒子、卡面箔不漂移
+          _setRow(
+            '舞台特效',
+            '舞台光呼吸 / 浮尘 / 卡面全息箔；省电档只保留一次性反馈',
+            _seg(
+              'fidelity',
+              const <List<String>>[
+                <String>['high', '高'],
+                <String>['low', '省电'],
+              ],
+              _s.fidelity,
+              (String v) {
+                _update((AgentSettings s) => s.copyWith(fidelity: v));
               },
             ),
           ),
@@ -1901,6 +1947,29 @@ class _ArchiveSwitchState extends State<_ArchiveSwitch> {
 enum SheetKind { archive, supply, system }
 
 /// `#beam` —— 从她胸口打到面板上沿的两条边 + 一个渐变三角
+/// 面板上沿的羽化渐变（透明 → 面板顶色）
+class _FeatherPainter extends CustomPainter {
+  const _FeatherPainter();
+
+  @override
+  void paint(Canvas canvas, Size s) {
+    final Rect r = Offset.zero & s;
+    canvas.drawRect(
+      r,
+      Paint()
+        ..shader = const LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: <Color>[Color(0x00061228), Color(0x66061228), Color(0xCC061228)],
+          stops: <double>[0, .6, 1],
+        ).createShader(r),
+    );
+  }
+
+  @override
+  bool shouldRepaint(_FeatherPainter old) => false;
+}
+
 class SheetBeam extends StatelessWidget {
   const SheetBeam({super.key, this.visible = true});
 

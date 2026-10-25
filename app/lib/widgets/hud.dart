@@ -377,6 +377,34 @@ class _LvRingPainter extends CustomPainter {
     final double r = _r * k;
     final Rect rect = Rect.fromCircle(center: c, radius: r);
 
+    // docs/48 §4「HUD 是仪表，不是图标」：
+    // ① 内盘：一枚有深度的暗色表盘（中心微亮 → 边缘沉）
+    canvas.drawCircle(
+      c,
+      r - _sw * k * .5,
+      Paint()
+        ..shader = RadialGradient(
+          center: const Alignment(0, -.35),
+          colors: <Color>[Pal.ink3, Pal.ink1.withAlpha(235)],
+        ).createShader(rect),
+    );
+    // ② 外圈刻度：36 格，每 9 格一根长刻（游戏仪表的读数感）
+    final Paint tick = Paint()
+      ..strokeWidth = .9 * k
+      ..strokeCap = StrokeCap.round;
+    for (int i = 0; i < 36; i++) {
+      final double a = -math.pi / 2 + i * math.pi / 18;
+      final bool major = i % 9 == 0;
+      tick.color = C.blue.withAlpha(major ? 120 : 40);
+      final double r0 = r + _sw * k * .5 + 1.2 * k;
+      final double r1 = r0 + (major ? 2.4 : 1.2) * k;
+      canvas.drawLine(
+        c + Offset(math.cos(a), math.sin(a)) * r0,
+        c + Offset(math.cos(a), math.sin(a)) * r1,
+        tick,
+      );
+    }
+    // ③ 轨道
     canvas.drawCircle(
       c,
       r,
@@ -389,13 +417,20 @@ class _LvRingPainter extends CustomPainter {
     // transform: rotate(-90deg)，从正上方起画
     const double start = -math.pi / 2;
     final double sweep = 2 * math.pi * ratio.clamp(0.0, 1.0);
+    if (sweep <= 0) return;
+    // ④ 进度弧：深青 → 冰白的扫掠渐变（越接近升级越亮）
     final Paint arc = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = _sw * k
       ..strokeCap = StrokeCap.round
-      ..color = C.blue;
-    // filter: drop-shadow(0 0 3px rgba(56,225,255,.9))
-    // H-03：静态 blur 3 → 2、α .9 → .78；跨级那拍才全亮（回到 3 / .9）
+      ..shader = SweepGradient(
+        startAngle: 0,
+        endAngle: math.max(sweep, .01),
+        transform: const GradientRotation(start),
+        colors: <Color>[const Color(0xFF1C8FD8), C.blue, C.ice],
+        stops: const <double>[0, .7, 1],
+      ).createShader(rect);
+    // filter: drop-shadow —— H-03：静态 blur 2 / .78；跨级那拍全亮（3 / .9）
     final bool hot = lit >= 1;
     canvas.drawArc(
       rect,
@@ -410,6 +445,17 @@ class _LvRingPainter extends CustomPainter {
         ..maskFilter = MaskFilter.blur(BlurStyle.normal, hot ? 3 : 2),
     );
     canvas.drawArc(rect, start, sweep, false, arc);
+    // ⑤ 弧头光点：经验条「正在走」的那一点
+    final double ea = start + sweep;
+    final Offset head = c + Offset(math.cos(ea), math.sin(ea)) * r;
+    canvas.drawCircle(
+      head,
+      3.2 * k,
+      Paint()
+        ..color = C.ice.withAlpha(150)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2.5),
+    );
+    canvas.drawCircle(head, 1.5 * k, Paint()..color = Colors.white);
   }
 
   @override
@@ -623,10 +669,19 @@ class _CoinState extends State<_Coin> with SingleTickerProviderStateMixin {
       // ⚠️ Flutter 的 Border 会占布局空间，CSS 的 inset box-shadow 不会 ——
       // 所以用 Border 模拟 inset 描边时，padding 要各减 1px 才与原型同宽。
       padding: const EdgeInsets.fromLTRB(9, 0, 11, 0),
+      // docs/48 §4：货币 = 金色（全 App 唯一的暖色读数），与青色的
+      // 经验 / 状态彻底分开 —— 一眼就知道「这是钱」。
       decoration: BoxDecoration(
-        color: const Color(0x9E08142A), // rgba(8,20,42,.62)
+        gradient: const LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: <Color>[Color(0xD9251A08), Color(0xD90B0A10)],
+        ),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0x2938E1FF), width: 1), // .16
+        border: Border.all(color: Pal.gold.withAlpha(96), width: 1),
+        boxShadow: <BoxShadow>[
+          BoxShadow(color: Pal.gold.withAlpha(28), blurRadius: 12),
+        ],
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -660,7 +715,10 @@ class _CoinState extends State<_Coin> with SingleTickerProviderStateMixin {
                   wght: 700,
                   ls: .45,
                   height: 1,
-                  color: C.ice,
+                  color: const Color(0xFFFFE7B0),
+                  shadows: <Shadow>[
+                    Shadow(color: Pal.gold.withAlpha(110), blurRadius: 8),
+                  ],
                 ),
               ),
             ),
@@ -725,10 +783,21 @@ class _MenuState extends State<_Menu> {
   }
 
   Widget _bars() {
-    return SizedBox(
+    // docs/48 §4：汉堡条落在一块斜切小铭牌上（与 CTA / 卡角同一套切角语言）
+    return Container(
       key: const Key('hud.menu'),
       width: 34,
       height: 34,
+      decoration: ShapeDecoration(
+        color: _down ? const Color(0xCC0E2340) : const Color(0x99060E1E),
+        shape: BeveledRectangleBorder(
+          borderRadius: const BorderRadius.only(
+            topLeft: Radius.circular(8),
+            bottomRight: Radius.circular(8),
+          ),
+          side: BorderSide(color: C.blue.withAlpha(_down ? 120 : 56)),
+        ),
+      ),
       child: Padding(
         padding: const EdgeInsets.only(right: 7),
         child: Column(

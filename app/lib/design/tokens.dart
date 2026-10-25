@@ -193,3 +193,203 @@ class WordSpec {
 
   static const double scale = 0.910;
 }
+
+/// ═══════════════════════════════════════════════════════════
+///  设计系统 v2「舞台 HUD」—— 2026-10-25 UI 重设计（docs/48）
+///
+///  一句话：**她是舞台，界面是 HUD**。所有 v2 令牌都围绕这条展开：
+///   · 颜色分三层 —— 舞台光（只属于她：青辉/暖边光）、HUD 墨层（界面底）、
+///     奖励色（金 / 暴击品红，只在「得到」那一拍出现）
+///   · 卡片是唯一允许有「材质」的东西（全息箔 + 镜面高光 + 边缘光）
+///   · 动效四档沿用 [Motion]；v2 只补**曲线**和**弹簧预设**的名字
+///   · 音效有**触发规则**（[SoundRule]）：哪些动作出声、多响、多密
+///
+///  ⚠️ 旧令牌（[C] / [F] / [Motion]）一个不删、数值不改：测试与历史文档
+///     都锚在它们上面。v2 只**新增**，组件逐个迁移。
+/// ═══════════════════════════════════════════════════════════
+
+/// v2 调色板（在 [C] 之上的语义层）
+class Pal {
+  const Pal._();
+
+  // ── HUD 墨层：由深到浅 4 级（界面底，永远比她暗）─────────────
+  static const Color ink0 = Color(0xFF02050C); // 最底（屏幕边缘/暗角）
+  static const Color ink1 = Color(0xFF060C1A); // 卡底 · 远
+  static const Color ink2 = Color(0xFF0B1528); // 卡底 · 近
+  static const Color ink3 = Color(0xFF13213B); // 抬起面（领位卡顶部）
+
+  // ── 舞台光：只属于她 ─────────────────────────────────────
+  /// 主辉光（背光）—— 与 [C.blue] 同族但更冷更柔
+  static const Color halo = Color(0xFF5BE6FF);
+
+  /// 暖边光（右上方的 key light，给她一圈「被照亮」的轮廓）
+  static const Color rim = Color(0xFFFFD3A1);
+
+  /// 地台光
+  static const Color dais = Color(0xFF38E1FF);
+
+  // ── 奖励色：只在「得到」那一拍 ────────────────────────────
+  static const Color gold = Color(0xFFFBBF24); // = 稀有度 B 金（不新增主题色）
+  static const Color goldDeep = Color(0xFFB7791F);
+  static const Color crit = Color(0xFFFF4FA3);
+  static const Color violet = Color(0xFF9B7BFF);
+
+  // ── 文本层级（压在墨层上）──────────────────────────────────
+  static const Color text1 = Color(0xFFF2FBFF); // 标题
+  static const Color text2 = Color(0xFFB9CCE4); // 正文
+  static const Color text3 = Color(0xFF7489A8); // 注释
+  static const Color text4 = Color(0xFF475A78); // 禁用
+
+  /// 全息箔的彩虹三段（青 → 紫 → 金），只给卡面箔层用
+  static const List<Color> foil = <Color>[
+    Color(0xFF38E1FF),
+    Color(0xFF9B7BFF),
+    Color(0xFFFF7AC8),
+    Color(0xFFFFC857),
+    Color(0xFF38E1FF),
+  ];
+
+  /// 舞台情绪色：按当前时刻给她的背光换色（[StageMood]）
+  static Color moodHalo(StageMood m) => switch (m) {
+    StageMood.calm => halo,
+    StageMood.focus => const Color(0xFF3FD0FF),
+    StageMood.talk => const Color(0xFF7FE9FF),
+    StageMood.reward => gold,
+    StageMood.fail => const Color(0xFFB84A5E),
+    StageMood.sleep => const Color(0xFF3A5D8F),
+  };
+}
+
+/// 舞台情绪（驱动背光色 / 呼吸速度 / 地台亮度）
+enum StageMood { calm, focus, talk, reward, fail, sleep }
+
+/// 间距 4 点栅格
+class Space {
+  const Space._();
+  static const double x1 = 4;
+  static const double x2 = 8;
+  static const double x3 = 12;
+  static const double x4 = 16;
+  static const double x5 = 20;
+  static const double x6 = 24;
+  static const double x8 = 32;
+
+  /// 屏幕左右安全边距（HUD / CTA 统一用它）
+  static const double gutter = 20;
+}
+
+/// 圆角
+class Radii {
+  const Radii._();
+  static const double chip = 8;
+  static const double card = 14;
+  static const double panel = 22;
+  static const double pill = 999;
+
+  /// HUD 斜切角（cut-corner）—— 游戏按钮的身份
+  static const double cut = 12;
+}
+
+/// 落影 / 辉光预设（全部是**单层**阴影：多层大半径阴影是 GPU 大户）
+class Elev {
+  const Elev._();
+
+  /// 贴地：侧位卡、底栏按键
+  static const List<BoxShadow> low = <BoxShadow>[
+    BoxShadow(color: Color(0x80000000), offset: Offset(0, 6), blurRadius: 14),
+  ];
+
+  /// 抬起：领位卡、弹层
+  static const List<BoxShadow> high = <BoxShadow>[
+    BoxShadow(
+      color: Color(0xB3020510),
+      offset: Offset(0, 18),
+      blurRadius: 34,
+      spreadRadius: -6,
+    ),
+  ];
+
+  /// 彩色辉光（领位卡底下那团「悬浮光」/ 主按钮外辉）
+  static List<BoxShadow> glow(Color c, {double a = .45, double r = 26}) =>
+      <BoxShadow>[
+        BoxShadow(
+          color: c.withAlpha((a * 255).round()),
+          blurRadius: r,
+          spreadRadius: -r * .35,
+        ),
+      ];
+}
+
+/// 曲线（与 [Motion] 的时长档配对使用）
+class Ease {
+  const Ease._();
+
+  /// 进场：快出慢停（= [kOut]）
+  static const Curve enter = kOut;
+
+  /// 退场：慢起快走
+  static const Curve exit = Cubic(.7, 0, .84, 0);
+
+  /// 强调：带一点点过冲（≤1.08，见 [Motion.maxOvershoot]）
+  static const Curve pop = Cubic(.34, 1.36, .64, 1);
+
+  /// 舞台慢推（= [kInOut]）
+  static const Curve glide = kInOut;
+
+  /// 呼吸（正弦感，用于循环）
+  static const Curve breathe = Cubic(.45, .05, .55, .95);
+}
+
+/// 弹簧预设（名字 → 刚度/阻尼比），组件里不许再写裸 k/ζ
+class SpringSpec {
+  const SpringSpec(this.k, this.zeta);
+  final double k;
+  final double zeta;
+
+  /// 按压回弹：脆、带一点过冲
+  static const SpringSpec press = SpringSpec(420, .62);
+
+  /// 卡牌倾斜跟手：软、不过冲
+  static const SpringSpec tilt = SpringSpec(180, .9);
+
+  /// 牌桌（= Motion.cardTableK/Zeta）
+  static const SpringSpec table = SpringSpec(Motion.cardTableK, Motion.cardTableZeta);
+
+  /// 相机（= Motion.cameraK/Zeta）
+  static const SpringSpec camera = SpringSpec(Motion.cameraK, Motion.cameraZeta);
+}
+
+/// 音效触发规则 —— **什么动作出声、多响、多密**（Sfx.cue 读它）。
+///
+///  铁律：
+///   1. 只有**落定**（提交 / 钤印 / 结算 / 升级）用满音量；过程音（按下、
+///      档位、翻面）一律 soft，且同一 key 有最小间隔，连点不会变成机关枪
+///   2. 按下**不出声**只震动；抬手（真的触发了）才出声 —— 防误触噪音
+///   3. 静音总开关 / 音量档由设置页控制（Sfx.enabled / Sfx.userGain）
+class SoundRule {
+  const SoundRule(this.key, {this.gain = 1, this.minGapMs = 0});
+
+  /// sfx.dart 的事件 key
+  final String key;
+
+  /// 相对音量 0~1（再乘总音量）
+  final double gain;
+
+  /// 同一 cue 两发之间的最小间隔
+  final int minGapMs;
+
+  static const Map<String, SoundRule> cues = <String, SoundRule>{
+    // 过程音（soft + 节流）
+    'ui.tap': SoundRule('tap', gain: .55, minGapMs: 60),
+    'ui.open': SoundRule('choose', gain: .45, minGapMs: 120),
+    'ui.close': SoundRule('detent', gain: .35, minGapMs: 120),
+    'card.focus': SoundRule('detent', gain: .5, minGapMs: 45),
+    'card.lift': SoundRule('deal', gain: .4, minGapMs: 90),
+    'card.deny': SoundRule('detent', gain: .6, minGapMs: 160),
+    'stage.touch': SoundRule('poke', gain: .8, minGapMs: 180),
+    // 落定音（满音量）
+    'card.commit': SoundRule('stamp'),
+    'reward.seal': SoundRule('seal'),
+    'reward.levelup': SoundRule('levelup'),
+  };
+}

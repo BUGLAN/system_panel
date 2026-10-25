@@ -12,6 +12,7 @@ import '../state/goal.dart';
 import '../state/haptics.dart';
 import '../state/sfx.dart';
 import 'card_table.dart';
+import 'game_button.dart';
 import 'press_scale.dart';
 import 'rail_base.dart';
 
@@ -1280,102 +1281,32 @@ class _MainViewState extends State<MainView> with TickerProviderStateMixin {
       MainCtaAction.newGoal || MainCtaAction.renew => onNewGoal,
       MainCtaAction.rest => null,
     };
-    return PressScale(
+    // docs/48 §4：主 CTA = 一颗有厚度的实体键（GameButton）。
+    // key / 高 56 / 斜切语言（M-20）不变；按下下沉 + 轻震、抬起弹回、落定出声。
+    return GameButton(
+      key: const Key('main.dispatch'),
+      label: label,
+      height: 56,
+      // 全部走完后立新目标是「兑现」那一拍的收尾：seal + 震（docs/39 §5.4）
+      cue: a == MainCtaAction.renew ? 'reward.seal' : 'ui.tap',
+      accent: a == MainCtaAction.renew ? Pal.gold : C.blue,
       onTap: fire == null
           ? null
           : () {
-              // docs/39 §5.4：普通点按归 tap；**全部走完之后立新目标**是「兑现」
-              // 那一拍的收尾，用 seal（与接单/提交同一档重量）；同时轻震一下。
-              // （§5.4 表里"接任务/提交 = seal + seal"；这里语义等价于"结账再开新账"。）
-              if (a == MainCtaAction.renew) {
-                Sfx.play('seal');
-                Haptics.buzz('seal');
-              } else {
-                Sfx.play('tap');
-              }
+              if (a == MainCtaAction.renew) Haptics.buzz('seal');
               fire();
             },
-      child: Container(
-        key: const Key('main.dispatch'),
-        height: 56,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: C.blue,
-          // M-20：cut-corner 14（不是 27 的圆药丸）—— 与牌屉动作区同一套斜切语言
-          borderRadius: const BorderRadius.only(
-            topLeft: Radius.circular(14),
-            bottomRight: Radius.circular(14),
-          ),
-          boxShadow: <BoxShadow>[
-            BoxShadow(color: C.blue.withAlpha(102), blurRadius: 28),
-          ],
-        ),
-        child: Stack(
-          children: <Widget>[
-            Positioned(
-              left: 0,
-              right: 0,
-              top: 0,
-              height: 1,
-              child: DecoratedBox(
-                decoration: BoxDecoration(color: Colors.white.withAlpha(153)),
-              ),
-            ),
-            // 状态切换 160ms（M-20）
-            AnimatedSwitcher(
-              duration: const Duration(milliseconds: 160),
-              child: Text(
-                label,
-                key: ValueKey<String>(label),
-                style: fs(
-                  family: F.cn,
-                  size: 15,
-                  wght: 600,
-                  ls: .9,
-                  height: 1,
-                  color: C.deep,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
     );
   }
 
   Widget _ghostButton() {
-    return PressScale(
-      onTap: onNewGoal == null
-          ? null
-          : () {
-              Sfx.play('tap');
-              onNewGoal!();
-            },
-      child: Container(
-        key: const Key('main.newGoal'),
-        height: 56,
-        padding: const EdgeInsets.symmetric(horizontal: 19),
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: const Color(0xB3040E20),
-          borderRadius: const BorderRadius.only(
-            topLeft: Radius.circular(14),
-            bottomRight: Radius.circular(14),
-          ),
-          border: Border.all(color: C.line, width: 1),
-        ),
-        child: Text(
-          '换目标',
-          style: fs(
-            family: F.cn,
-            size: 15,
-            wght: 600,
-            ls: .9,
-            height: 1,
-            color: C.ice,
-          ),
-        ),
-      ),
+    return GameButton(
+      key: const Key('main.newGoal'),
+      label: '换目标',
+      primary: false,
+      height: 56,
+      padding: const EdgeInsets.symmetric(horizontal: 19),
+      onTap: onNewGoal,
     );
   }
 }

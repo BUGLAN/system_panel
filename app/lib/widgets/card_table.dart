@@ -1,6 +1,9 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/physics.dart';
+
+import '../design/fidelity.dart';
 
 import '../design/tokens.dart';
 import '../state/haptics.dart';
@@ -394,11 +397,29 @@ class _CardTableState extends State<CardTable> with TickerProviderStateMixin {
         return a.compareTo(b);
       });
 
+    // docs/48 §3：领位脚下的「悬浮光池」—— 稀有度色的一团椭圆辉光 +
+    // 一条台面反光线。它告诉你「这张牌被举起来了」，并把牌和她脚下的
+    // 地台光连成同一套光源语言。单个渐变，不做 blur。
+    final int leadI = _rail.lead.clamp(0, _n - 1);
+    final Color pool = widget.cards[leadI].accent ?? C.blue;
+    final double poolOp = (_enter.value).clamp(0.0, 1.0) * (1 - frac.abs() * .6);
     final Widget body = Transform.rotate(
       angle: tilt,
       child: Stack(
         clipBehavior: Clip.none,
         children: <Widget>[
+          Positioned(
+            left: cx - dims.w * .85,
+            width: dims.w * 1.7,
+            top: _g.topPad + _g.dy0 + dims.h - 22,
+            height: 56,
+            child: IgnorePointer(
+              child: CustomPaint(
+                key: const Key('table.pool'),
+                painter: _PoolPainter(color: pool, opacity: poolOp),
+              ),
+            ),
+          ),
           for (final int i in order) _card(i, p, frac, cx, dims, ms, reduce),
         ],
       ),
@@ -496,9 +517,19 @@ class _CardTableState extends State<CardTable> with TickerProviderStateMixin {
         onTap: () => _tapCard(i),
         // RepaintBoundary 不裁切（它是**重绘隔离**，不是裁剪层）——
         // 牌面那圈 boxShadow 照旧溢出到牌外，观感不变；见 _PressFeedback 的说明
-        child: Transform.rotate(
+        tiltEnabled: !reduce,
+        glareColor: c.accent ?? C.blue,
+        child: Transform(
+          alignment: Alignment.center,
+          // docs/48 §3：**真 3D 牌扇**。原来侧牌只有平面旋转（rotateZ），读起来
+          // 是「贴纸转了个角」；现在侧牌再绕 Y 轴朝内转（像握在手里的一把牌，
+          // 牌面朝向持牌人），领位在拖拽时顺着手势轻微偏航 —— 有了透视，
+          // 远近关系不再只靠缩放压暗表达。
           // 入场时额外 +3.5° 甩出（√ep 收口：先转正、后落定）
-          angle: rot + enterRot,
+          transform: Matrix4.identity()
+            ..setEntry(3, 2, reduce ? 0 : 0.0011)
+            ..rotateZ(rot + enterRot)
+            ..rotateY(reduce ? 0 : (-a.clamp(-2.0, 2.0) * .16 + lean * .10)),
           child: Transform.scale(
             // 落定压印：两段（压入 → 回落），见上方 stampScale 的说明
             scale: pScale * stampScale,
@@ -523,6 +554,7 @@ class _CardTableState extends State<CardTable> with TickerProviderStateMixin {
                 leadT: isLead ? (reduce ? 1.0 : (sweep / .38).clamp(0.0, 1.0)) : 1,
                 // docs/39 M-09：只有 duty 的执行中会画光包（其余皮肤不看这个字段）
                 run: widget.run,
+                foilLevel: Fidelity.rich(context) ? 1 : 0,
               ),
             ),
           ),
@@ -551,41 +583,157 @@ const double kPressDim = .86;
 /// ⚠️ 缩放仍走 `Transform`（不改布局、不重排），与旧版一致；
 ///    RepaintBoundary **不裁切**（它只建独立图层），牌面那圈阴影照旧溢出。
 class _PressFeedback extends StatefulWidget {
-  const _PressFeedback({super.key, required this.onTap, required this.child});
+  const _PressFeedback({
+    super.key,
+    required this.onTap,
+    required this.child,
+    this.tiltEnabled = true,
+    this.glareColor = C.blue,
+  });
 
   final VoidCallback onTap;
 
   final Widget child;
 
+  /// 手指跟随倾斜（docs/48 §3）。减弱动态效果时关。
+  final bool tiltEnabled;
+
+  /// 镜面眩光的色温（稀有度色与白混合）
+  final Color glareColor;
+
   @override
   State<_PressFeedback> createState() => _PressFeedbackState();
 }
 
-class _PressFeedbackState extends State<_PressFeedback> {
+/// 跟手倾斜的最大角度（弧度，≈7°）
+const double kTiltMax = .12;
+
+class _PressFeedbackState extends State<_PressFeedback>
+    with SingleTickerProviderStateMixin {
   bool _down = false;
+
+  /// 手指在牌上的归一化位置（-1~1）；倾斜 / 眩光都读它
+  Offset _target = Offset.zero;
+  Offset _tilt = Offset.zero;
+
+  /// 抬手后的回正：弹簧（SpringSpec.tilt），每帧只重绘这一张牌
+  late final AnimationController _settle = AnimationController.unbounded(
+    vsync: this,
+  )..addListener(_onSettle);
+  Offset _settleFrom = Offset.zero;
+
+  void _onSettle() {
+    final double k = (1 - _settle.value).clamp(-0.2, 1.0);
+    setState(() => _tilt = _settleFrom * k);
+  }
+
+  @override
+  void dispose() {
+    _settle.dispose();
+    super.dispose();
+  }
+
+  void _aim(Offset local) {
+    if (!widget.tiltEnabled) return;
+    final Size? sz = context.size;
+    if (sz == null || sz.isEmpty) return;
+    _target = Offset(
+      ((local.dx / sz.width) * 2 - 1).clamp(-1.0, 1.0),
+      ((local.dy / sz.height) * 2 - 1).clamp(-1.0, 1.0),
+    );
+    _settle.stop();
+    setState(() => _tilt = _target);
+  }
+
+  void _release() {
+    if (_tilt == Offset.zero) {
+      if (_down) setState(() => _down = false);
+      return;
+    }
+    _down = false;
+    _settleFrom = _tilt;
+    _settle.value = 0;
+    _settle.animateWith(
+      SpringSimulation(
+        SpringDescription.withDampingRatio(
+          mass: 1,
+          stiffness: SpringSpec.tilt.k,
+          ratio: SpringSpec.tilt.zeta,
+        ),
+        0,
+        1,
+        0,
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     final bool reduce = railReduceMotion(context);
+    final double mag = _tilt.distance.clamp(0.0, 1.4);
+    Widget face = Opacity(
+      opacity: (reduce && _down) ? kPressDim : 1,
+      child: widget.child,
+    );
+    // 镜面眩光：只在按住/回正期间画（平时零成本）
+    if (!reduce && mag > .02) {
+      face = Stack(
+        clipBehavior: Clip.none,
+        children: <Widget>[
+          face,
+          Positioned.fill(
+            child: IgnorePointer(
+              child: CustomPaint(
+                painter: _GlarePainter(
+                  at: _tilt,
+                  strength: (mag / 1.0).clamp(0.0, 1.0),
+                  tint: widget.glareColor,
+                ),
+              ),
+            ),
+          ),
+        ],
+      );
+    }
     return RepaintBoundary(
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTapDown: (TapDownDetails _) => setState(() => _down = true),
-        onTapUp: (TapUpDetails _) => setState(() => _down = false),
-        onTapCancel: () => setState(() => _down = false),
-        onTap: widget.onTap,
-        // 2026-10-23：按下与抬起分开计时 —— 按下 0ms（瞬时，手指要有回应）、
-        // 抬起 120ms 回弹（Motion.touchMs / Motion.releaseMs）。
-        // 原来两个方向都是瞬时，抬起来像被弹了一下而不是松开。
-        child: AnimatedScale(
-          scale: reduce ? 1 : (_down ? kPressScale : 1),
-          duration: _down
-              ? const Duration(milliseconds: Motion.touchMs)
-              : const Duration(milliseconds: Motion.releaseMs),
-          curve: _down ? Curves.linear : Curves.easeOutCubic,
-          child: Opacity(
-            opacity: (reduce && _down) ? kPressDim : 1,
-            child: widget.child,
+      child: Listener(
+        // Listener 不进手势竞技场：拖牌（滑轨）与跟手倾斜可以同时发生
+        onPointerDown: (PointerDownEvent e) => _aim(e.localPosition),
+        onPointerMove: (PointerMoveEvent e) {
+          if (_down) {
+            _aim(e.localPosition);
+          } else if (_tilt != Offset.zero && !_settle.isAnimating) {
+            // 手指在拖滑轨（不是按住这张牌）→ 倾斜立刻回正，不让牌歪着被拖走
+            _release();
+          }
+        },
+        onPointerUp: (_) => _release(),
+        onPointerCancel: (_) => _release(),
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTapDown: (TapDownDetails _) => setState(() => _down = true),
+          onTapUp: (TapUpDetails _) => _release(),
+          onTapCancel: _release,
+          onTap: widget.onTap,
+          // 2026-10-23：按下与抬起分开计时 —— 按下 0ms（瞬时，手指要有回应）、
+          // 抬起 120ms 回弹（Motion.touchMs / Motion.releaseMs）。
+          child: AnimatedScale(
+            scale: reduce ? 1 : (_down ? kPressScale : 1),
+            duration: _down
+                ? const Duration(milliseconds: Motion.touchMs)
+                : const Duration(milliseconds: Motion.releaseMs),
+            curve: _down ? Curves.linear : Ease.pop,
+            child: (reduce || _tilt == Offset.zero)
+                ? face
+                : Transform(
+                    alignment: Alignment.center,
+                    // 按下的那一角往下压（像用指尖按住一张有厚度的卡）
+                    transform: Matrix4.identity()
+                      ..setEntry(3, 2, 0.0014)
+                      ..rotateX(_tilt.dy * kTiltMax)
+                      ..rotateY(-_tilt.dx * kTiltMax),
+                    child: face,
+                  ),
           ),
         ),
       ),
@@ -593,10 +741,103 @@ class _PressFeedbackState extends State<_PressFeedback> {
   }
 }
 
-/// 把「入场进度」包成一个 Listenable 给 AnimatedBuilder，顺带每帧回调一次。
-///
-/// 为什么需要它：末张那声发牌要踩在入场走到 88% 的那一帧（不用 `Future.delayed`
-/// —— 后者会给 widget 测试留 pending timer，仓库踩过）。
+/// 牌面镜面眩光：一团跟着指尖走的柔光（screen 混合，不发灰）
+class _GlarePainter extends CustomPainter {
+  const _GlarePainter({
+    required this.at,
+    required this.strength,
+    required this.tint,
+  });
+
+  final Offset at;
+  final double strength;
+  final Color tint;
+
+  @override
+  void paint(Canvas canvas, Size s) {
+    final RRect rr = RRect.fromRectAndRadius(
+      Offset.zero & s,
+      const Radius.circular(12),
+    );
+    canvas.save();
+    canvas.clipRRect(rr);
+    final Offset c = Offset(
+      s.width * (.5 + at.dx * .5),
+      s.height * (.5 + at.dy * .5),
+    );
+    final double r = s.width * .9;
+    final Color warm = Color.lerp(Colors.white, tint, .35)!;
+    canvas.drawCircle(
+      c,
+      r,
+      Paint()
+        ..blendMode = BlendMode.screen
+        ..shader = RadialGradient(
+          colors: <Color>[
+            warm.withAlpha((70 * strength).round()),
+            warm.withAlpha((18 * strength).round()),
+            warm.withAlpha(0),
+          ],
+          stops: const <double>[0, .35, 1],
+        ).createShader(Rect.fromCircle(center: c, radius: r)),
+    );
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(_GlarePainter old) =>
+      old.at != at || old.strength != strength || old.tint != tint;
+}
+
+/// 领位脚下的悬浮光池
+class _PoolPainter extends CustomPainter {
+  const _PoolPainter({required this.color, required this.opacity});
+
+  final Color color;
+  final double opacity;
+
+  @override
+  void paint(Canvas canvas, Size s) {
+    if (opacity <= .01) return;
+    final Offset c = Offset(s.width / 2, s.height * .42);
+    canvas.save();
+    canvas.translate(c.dx, c.dy);
+    canvas.scale(1, .28);
+    final double r = s.width / 2;
+    canvas.drawCircle(
+      Offset.zero,
+      r,
+      Paint()
+        ..shader = RadialGradient(
+          colors: <Color>[
+            color.withAlpha((90 * opacity).round()),
+            color.withAlpha((26 * opacity).round()),
+            color.withAlpha(0),
+          ],
+          stops: const <double>[0, .45, 1],
+        ).createShader(Rect.fromCircle(center: Offset.zero, radius: r)),
+    );
+    canvas.restore();
+    // 台面反光线
+    final Rect line = Rect.fromCenter(center: c, width: s.width * .62, height: 1.2);
+    canvas.drawRect(
+      line,
+      Paint()
+        ..shader = LinearGradient(
+          colors: <Color>[
+            color.withAlpha(0),
+            Color.lerp(color, Colors.white, .5)!.withAlpha((150 * opacity).round()),
+            color.withAlpha(0),
+          ],
+        ).createShader(line),
+    );
+  }
+
+  @override
+  bool shouldRepaint(_PoolPainter old) =>
+      old.color != color || old.opacity != opacity;
+}
+
 class _DealTicker extends ChangeNotifier {
   _DealTicker(this._target, this._onTick) {
     _target.addListener(_forward);

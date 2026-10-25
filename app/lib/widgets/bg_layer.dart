@@ -315,8 +315,10 @@ class _BgLayerState extends State<BgLayer> with TickerProviderStateMixin {
                 shaderCallback: (Rect r) => const LinearGradient(
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
-                  colors: <Color>[Color(0x2938E1FF), Color(0x0038E1FF)],
-                  stops: <double>[0, .75],
+                  // docs/48 §2：大字退到「环境层」—— 原来 .16 的填充 + .2 描边
+                  // 跟她抢视线（宿主截图里「骑行」的空心大字盖满她身后），减半。
+                  colors: <Color>[Color(0x1438E1FF), Color(0x0038E1FF)],
+                  stops: <double>[0, .7],
                 ).createShader(r),
                 child: _wordText(base),
               ),
@@ -326,7 +328,7 @@ class _BgLayerState extends State<BgLayer> with TickerProviderStateMixin {
                   foreground: Paint()
                     ..style = PaintingStyle.stroke
                     ..strokeWidth = 1.2
-                    ..color = const Color(0x3338E1FF),
+                    ..color = const Color(0x1C38E1FF),
                 ),
               ),
             ],
