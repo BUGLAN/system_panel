@@ -24,8 +24,10 @@ void main() {
       bodies.add(req.body);
       if (req.body.contains('set_goal_category')) {
         return http.Response(
-          _wrap('set_goal_category',
-              '{"id":"run","short":"骑自行车","days":14,"quota":10}'),
+          _wrap(
+            'set_goal_category',
+            '{"id":"run","short":"骑自行车","days":14,"quota":10}',
+          ),
           200,
           headers: <String, String>{'content-type': 'application/json'},
         );
@@ -52,11 +54,8 @@ void main() {
     final GoalMatchDraft md = GoalMatchDraft();
     final StrictAgentToolRegistry mt = StrictAgentToolRegistry();
     mt.register(setGoalCategoryTool(goalText: goal, draft: md));
-    final GoalMatch m = await GoalMatchAgent(client: client).match(
-      goalText: goal,
-      tools: mt,
-      draft: md,
-    );
+    final GoalMatch m = await GoalMatchAgent(client: client)
+        .match(goalText: goal, tools: mt, draft: md);
     expect(m.cat.id, 'run');
     expect(m.short, '骑自行车');
     expect(m.days, 14);
@@ -68,7 +67,15 @@ void main() {
     final PlanDraft pd = PlanDraft();
     final StrictAgentToolRegistry pt = StrictAgentToolRegistry();
     pt.register(
-      setPlanTool(goalText: goal, taskCount: need, days: m.days, draft: pd),
+      // 这条用例的模型脚本按「10 张」写；规则校验（档位阶梯/兑现单）
+      // 在 E2E 的第 ③ 步 buildGoalFromPlan 里照常跑，这里只验条数与形状。
+      setPlanTool(
+        goalText: goal,
+        taskCount: need,
+        days: m.days,
+        draft: pd,
+        validate: false,
+      ),
     );
     final PlanResult pr = await PlanAgent(client: client).generate(
       brief: PlanBrief(
@@ -93,10 +100,14 @@ void main() {
       at: DateTime(2026, 10, 23),
     );
     // ignore: avoid_print
-    print('PLAN len=${g.plan.length} days=${g.days} short=${g.short} cat=${g.cat}');
+    print(
+      'PLAN len=${g.plan.length} days=${g.days} short=${g.short} cat=${g.cat}',
+    );
     for (final PlanTask t in g.plan.take(3)) {
       // ignore: avoid_print
-      print('  [${t.rank}] ${t.minutes}min  ${t.short} | ${t.title} | ${t.proof}');
+      print(
+        '  [${t.rank}] ${t.minutes}min  ${t.short} | ${t.title} | ${t.proof}',
+      );
     }
     expect(g.plan.length, 10);
     expect(g.plan.first.title, contains('骑行'));
@@ -122,7 +133,15 @@ void main() {
     final PlanDraft pd = PlanDraft();
     final StrictAgentToolRegistry pt = StrictAgentToolRegistry();
     // 条数按次数配额要 10 张，模型却交了 14 张 → 形状层直接抛
-    pt.register(setPlanTool(goalText: goal, taskCount: 10, days: 14, draft: pd));
+    pt.register(
+      setPlanTool(
+        goalText: goal,
+        taskCount: 10,
+        days: 14,
+        draft: pd,
+        validate: false,
+      ),
+    );
     final PlanAgent agent = PlanAgent(
       client: LlmClient(
         config: const LlmConfig(apiKey: 'sk-test'),

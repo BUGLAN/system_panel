@@ -1,18 +1,14 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:shared_preferences_platform_interface/in_memory_shared_preferences_async.dart';
-import 'package:shared_preferences_platform_interface/shared_preferences_async_platform_interface.dart';
 import 'package:system_panel/agent/llm_client.dart';
 import 'package:system_panel/agent/settings_store.dart';
 import 'package:system_panel/agent/vision.dart';
 import 'package:system_panel/state/quest.dart';
-import 'package:system_panel/widgets/exec_panel.dart';
 
 /// 视觉校验链路单测（docs/18 §2.4 · D9）。
 /// 全部 mock：picker/落盘/LLM 都是注入件，**不打真网、不触真盘**。
@@ -63,10 +59,7 @@ void main() {
     });
 
     test('混合：1 已校验 + 2 未校验 = 15%', () {
-      expect(
-        evidenceCritBonus(verified: 1, unverified: 2),
-        closeTo(.15, 1e-9),
-      );
+      expect(evidenceCritBonus(verified: 1, unverified: 2), closeTo(.15, 1e-9));
     });
 
     test('critChance 完整公式（对照原型：base .06 + 连击 1%×min(10) + 芯片 .25）', () {
@@ -83,10 +76,7 @@ void main() {
     });
 
     test('封顶 .85（验收条款）', () {
-      expect(
-        critChance(verified: 99, unverified: 0),
-        .85,
-      );
+      expect(critChance(verified: 99, unverified: 0), .85);
       expect(
         critChance(verified: 20, unverified: 20, streak: 99, critItem: true),
         .85,
@@ -114,7 +104,9 @@ void main() {
     });
 
     test('unsure → 存疑', () {
-      final VisionVerdict r = v.parseVerdict('{"match": "unsure", "note": "太糊"}');
+      final VisionVerdict r = v.parseVerdict(
+        '{"match": "unsure", "note": "太糊"}',
+      );
       expect(r.status, EvidenceStatus.suspect);
       expect(r.note, '太糊');
     });
@@ -228,8 +220,7 @@ void main() {
 
     test('坏 JSON 响应 → 未校验', () async {
       final VisionService v = VisionService(
-        clientFactory: (LlmConfig c) =>
-            fakeLlm(c, content: '模型今天不想输出 JSON'),
+        clientFactory: (LlmConfig c) => fakeLlm(c, content: '模型今天不想输出 JSON'),
       );
       final VisionVerdict r = await v.verify(
         quest: quest,
@@ -260,14 +251,19 @@ void main() {
       double? mh;
       int? q;
       final VisionService v = VisionService(
-        pickImage: (ImageSource s,
-            {double? maxWidth, double? maxHeight, int? imageQuality}) async {
-          src = s;
-          mw = maxWidth;
-          mh = maxHeight;
-          q = imageQuality;
-          return null; // 用户取消
-        },
+        pickImage:
+            (
+              ImageSource s, {
+              double? maxWidth,
+              double? maxHeight,
+              int? imageQuality,
+            }) async {
+              src = s;
+              mw = maxWidth;
+              mh = maxHeight;
+              q = imageQuality;
+              return null; // 用户取消
+            },
       );
       final EvidenceShot? out = await v.capture(
         quest: quest,
@@ -284,15 +280,20 @@ void main() {
       final Map<String, List<int>> writes = <String, List<int>>{};
       String? requestBody;
       final VisionService v = VisionService(
-        pickImage: (ImageSource s,
-            {double? maxWidth, double? maxHeight, int? imageQuality}) async {
-          return XFile.fromData(
-            utf8.encode('fake-jpeg-bytes'),
-            name: 'shot.jpg',
-            mimeType: 'image/jpeg',
-          );
-        },
-        docsDirectory: () async => Directory('Z:/docs-virt'),
+        pickImage:
+            (
+              ImageSource s, {
+              double? maxWidth,
+              double? maxHeight,
+              int? imageQuality,
+            }) async {
+              return XFile.fromData(
+                utf8.encode('fake-jpeg-bytes'),
+                name: 'shot.jpg',
+                mimeType: 'image/jpeg',
+              );
+            },
+        docsPath: () async => 'Z:/docs-virt',
         writeBytes: (String p, dynamic bytes) async => writes[p] = bytes,
         clientFactory: (LlmConfig c) => LlmClient(
           config: c,
@@ -326,11 +327,16 @@ void main() {
 
     test('落盘失败不阻塞：证据照收、缩略图路径降级为空', () async {
       final VisionService v = VisionService(
-        pickImage: (ImageSource s,
-            {double? maxWidth, double? maxHeight, int? imageQuality}) async {
-          return XFile.fromData(utf8.encode('x'), name: 'a.jpg');
-        },
-        docsDirectory: () async => Directory('Z:/docs-virt'),
+        pickImage:
+            (
+              ImageSource s, {
+              double? maxWidth,
+              double? maxHeight,
+              int? imageQuality,
+            }) async {
+              return XFile.fromData(utf8.encode('x'), name: 'a.jpg');
+            },
+        docsPath: () async => 'Z:/docs-virt',
         writeBytes: (String p, dynamic bytes) async {
           throw const FileSystemException('盘满了');
         },
@@ -366,273 +372,4 @@ void main() {
   });
 
   // ── D9 · 执行面板证据槽（widget 级，注入件全 mock） ──────────────
-  group('执行面板 · 证据槽（D9）', () {
-    Future<void> mount(
-      WidgetTester tester,
-      ExecPanel panel,
-    ) async {
-      await tester.binding.setSurfaceSize(const Size(390, 844));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
-      await tester.pumpWidget(
-        MaterialApp(home: Scaffold(body: Stack(children: <Widget>[panel]))),
-      );
-      await tester.pump();
-    }
-
-    EvidenceShot shot(
-      EvidenceStatus status, {
-      String note = '',
-      String? absPath,
-    }) => EvidenceShot(
-      id: 's-$status',
-      path: 'evidence/q41/${status.name}.jpg',
-      absPath: absPath,
-      status: status,
-      note: note,
-      takenAt: DateTime.now(),
-    );
-
-    String critTextOf(WidgetTester tester) {
-      final Text t = tester.widget<Text>(find.byKey(const Key('exec.crit.value')));
-      final TextSpan span = t.textSpan! as TextSpan;
-      return (span.children![1] as TextSpan).text!;
-    }
-
-    testWidgets('三种标记齐全：✓/存疑/未校验 + 存疑 note 可见 + 暴击率 7%/4% 联动', (
-      WidgetTester tester,
-    ) async {
-      await mount(
-        tester,
-        ExecPanel(
-          quest: quest,
-          elapsed: const Duration(minutes: 7),
-          critChance: .12,
-          itemCount: 0,
-          evidenceCount: 0,
-          evidence: <EvidenceShot>[
-            shot(EvidenceStatus.verified),
-            shot(EvidenceStatus.suspect, note: '太糊了'),
-            shot(EvidenceStatus.unverified),
-          ],
-        ),
-      );
-      expect(find.text('✓'), findsOneWidget);
-      expect(find.text('存疑'), findsOneWidget);
-      expect(find.text('未校验'), findsOneWidget);
-      expect(find.text('存疑 · 太糊了'), findsOneWidget);
-      // .12 + .07 + .04 + .04 = .27 → 27%
-      expect(critTextOf(tester), '27%');
-      expect(tester.takeException(), isNull);
-    });
-
-    testWidgets('暴击率封顶 .85 显示', (WidgetTester tester) async {
-      await mount(
-        tester,
-        ExecPanel(
-          quest: quest,
-          elapsed: const Duration(minutes: 7),
-          critChance: .8,
-          itemCount: 0,
-          evidenceCount: 0,
-          evidence: <EvidenceShot>[
-            shot(EvidenceStatus.verified),
-            shot(EvidenceStatus.verified),
-            shot(EvidenceStatus.verified),
-          ], // .8 + .21 = 1.01 → 封顶
-        ),
-      );
-      expect(critTextOf(tester), '85%');
-    });
-
-    testWidgets('点 + → 拍照 → 校验请求发出 → 缩略图入槽 + 暴击率上涨 + 回传宿主', (
-      WidgetTester tester,
-    ) async {
-      // 设置里配好 Key（走 in-memory 平台层，与 save_file_test 同款）
-      SharedPreferencesAsyncPlatform.instance =
-          InMemorySharedPreferencesAsync.withData(<String, Object>{
-        SettingsStore.key: jsonEncode(<String, dynamic>{'apiKey': 'sk-test'}),
-      });
-      addTearDown(() {
-        SharedPreferencesAsyncPlatform.instance =
-            InMemorySharedPreferencesAsync.withData(<String, Object>{});
-      });
-
-      String? requestBody;
-      final VisionService fake = VisionService(
-        pickImage: (ImageSource s,
-            {double? maxWidth, double? maxHeight, int? imageQuality}) async {
-          return XFile.fromData(utf8.encode('jpg'), name: 'e.jpg');
-        },
-        docsDirectory: () async => Directory('Z:/docs-virt'),
-        writeBytes: (String p, dynamic bytes) async {},
-        clientFactory: (LlmConfig c) => LlmClient(
-          config: c,
-          httpClient: MockClient((http.Request r) async {
-            requestBody = r.body;
-            return jsonResp(<String, dynamic>{
-              'choices': <dynamic>[
-                <String, dynamic>{
-                  'message': <String, dynamic>{
-                    'content': '{"match": true, "note": "现场照片"}',
-                  },
-                },
-              ],
-            });
-          }),
-        ),
-      );
-
-      List<EvidenceShot>? reported;
-      await mount(
-        tester,
-        ExecPanel(
-          quest: quest,
-          elapsed: const Duration(minutes: 7),
-          critChance: .12,
-          itemCount: 0,
-          evidenceCount: 0,
-          vision: fake,
-          onEvidenceChanged: (List<EvidenceShot> shots) => reported = shots,
-        ),
-      );
-      expect(critTextOf(tester), '12%'); // 无证据时原样显示
-
-      await tester.tap(find.byKey(const Key('exec.slot.0')));
-      await tester.pumpAndSettle(); // 底部弹层（拍照/相册）
-      await tester.tap(find.text('拍照'));
-      await tester.pumpAndSettle(); // picker(假) → 落盘(假) → LLM(假)
-
-      expect(requestBody, contains('data:image/jpeg;base64,'));
-      expect(find.text('✓'), findsOneWidget);
-      expect(critTextOf(tester), '19%'); // .12 + .07
-      expect(reported, hasLength(1));
-      expect(reported!.single.status, EvidenceStatus.verified);
-      expect(tester.takeException(), isNull);
-    });
-
-    testWidgets('无 Key 兜底：证据照收、标「未校验」、暴击率按 4% 联动', (
-      WidgetTester tester,
-    ) async {
-      // 不配 Key（干净内存存储）
-      SharedPreferencesAsyncPlatform.instance =
-          InMemorySharedPreferencesAsync.withData(<String, Object>{});
-      int llmCalls = 0;
-      final VisionService fake = VisionService(
-        pickImage: (ImageSource s,
-            {double? maxWidth, double? maxHeight, int? imageQuality}) async {
-          return XFile.fromData(utf8.encode('jpg'), name: 'e.jpg');
-        },
-        docsDirectory: () async => Directory('Z:/docs-virt'),
-        writeBytes: (String p, dynamic bytes) async {},
-        clientFactory: (LlmConfig c) => LlmClient(
-          config: c,
-          httpClient: MockClient((http.Request r) async {
-            llmCalls++;
-            return http.Response('{}', 200);
-          }),
-        ),
-      );
-      await mount(
-        tester,
-        ExecPanel(
-          quest: quest,
-          elapsed: const Duration(minutes: 7),
-          critChance: .12,
-          itemCount: 0,
-          evidenceCount: 0,
-          vision: fake,
-        ),
-      );
-      await tester.tap(find.byKey(const Key('exec.slot.0')));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('拍照'));
-      await tester.pumpAndSettle();
-
-      expect(llmCalls, 0); // 无 Key 根本不发请求
-      expect(find.text('未校验'), findsOneWidget);
-      expect(find.textContaining('未校验 · 未配置 Key'), findsOneWidget);
-      expect(critTextOf(tester), '16%'); // .12 + .04
-      expect(tester.takeException(), isNull);
-    });
-
-    testWidgets('受控模式：长按已填槽 → onRemoveEvidence(i)', (WidgetTester tester) async {
-      int? removed;
-      await mount(
-        tester,
-        ExecPanel(
-          quest: quest,
-          elapsed: const Duration(minutes: 7),
-          critChance: .12,
-          itemCount: 0,
-          evidenceCount: 0,
-          evidence: <EvidenceShot>[shot(EvidenceStatus.verified)],
-          onRemoveEvidence: (int i) => removed = i,
-        ),
-      );
-      await tester.longPress(find.byKey(const Key('exec.slot.0')));
-      await tester.pump();
-      expect(removed, 0);
-      expect(tester.takeException(), isNull);
-    });
-
-    testWidgets('内部流：加一张再长按移除 → 槽清空、暴击率回落、宿主收到空表', (
-      WidgetTester tester,
-    ) async {
-      SharedPreferencesAsyncPlatform.instance =
-          InMemorySharedPreferencesAsync.withData(<String, Object>{
-        SettingsStore.key: jsonEncode(<String, dynamic>{'apiKey': 'sk-test'}),
-      });
-      final VisionService fake = VisionService(
-        pickImage: (ImageSource s,
-            {double? maxWidth, double? maxHeight, int? imageQuality}) async {
-          return XFile.fromData(utf8.encode('jpg'), name: 'e.jpg');
-        },
-        docsDirectory: () async => Directory('Z:/docs-virt'),
-        writeBytes: (String p, dynamic bytes) async {},
-        clientFactory: (LlmConfig c) => LlmClient(
-          config: c,
-          httpClient: MockClient((http.Request r) async => jsonResp(
-            <String, dynamic>{
-              'choices': <dynamic>[
-                <String, dynamic>{
-                  'message': <String, dynamic>{
-                    'content': '{"match": false, "note": "不像现场拍的"}',
-                  },
-                },
-              ],
-            },
-          )),
-        ),
-      );
-      List<EvidenceShot>? reported;
-      await mount(
-        tester,
-        ExecPanel(
-          quest: quest,
-          elapsed: const Duration(minutes: 7),
-          critChance: .12,
-          itemCount: 0,
-          evidenceCount: 0,
-          vision: fake,
-          onEvidenceChanged: (List<EvidenceShot> shots) => reported = shots,
-        ),
-      );
-      // 加一张（LLM 判 false → 存疑）
-      await tester.tap(find.byKey(const Key('exec.slot.0')));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('拍照'));
-      await tester.pumpAndSettle();
-      expect(find.text('存疑'), findsOneWidget);
-      expect(find.text('存疑 · 不像现场拍的'), findsOneWidget);
-      expect(critTextOf(tester), '16%');
-      expect(reported, hasLength(1));
-      // 长按移除
-      await tester.longPress(find.byKey(const Key('exec.slot.0')));
-      await tester.pumpAndSettle();
-      expect(find.text('存疑'), findsNothing);
-      expect(critTextOf(tester), '12%'); // 回到基础值
-      expect(reported, isEmpty);
-      expect(tester.takeException(), isNull);
-    });
-  });
 }

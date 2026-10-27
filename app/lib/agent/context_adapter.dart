@@ -79,7 +79,9 @@ class QuestFlowAdapter implements AgentContext {
       return ToolOutcome.fail('池子里的 F 级备胎也空了。原单先留着，明天再说。');
     }
     onChanged?.call();
-    final String why = (note == null || note.trim().isEmpty) ? '' : '（${note.trim()}）';
+    final String why = (note == null || note.trim().isEmpty)
+        ? ''
+        : '（${note.trim()}）';
     final String shame = out.shame ? '\n——退缩满三次，「口头巨人」给你挂上了。' : '';
     return ToolOutcome.ok(
       '换好了$why。「${nt.name}」现在是 ${nt.rank} 级 · ${nt.minutes} 分钟'

@@ -1,11 +1,12 @@
 import 'dart:async';
-import 'dart:io';
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/scheduler.dart';
+
+import 'agent_bridge_store.dart';
 
 /// ═══════════════════════════════════════════════════════════
 ///  AgentBridge —— 让 Flutter 界面「可被 Agent 看见」
@@ -158,13 +159,15 @@ class AgentBridge {
       } else if (w is RichText) {
         text = w.text.toPlainText();
       }
-      nodes.add(AgentNode(
-        type: w.runtimeType.toString(),
-        depth: depth,
-        key: w.key?.toString(),
-        text: text,
-        rect: rect,
-      ));
+      nodes.add(
+        AgentNode(
+          type: w.runtimeType.toString(),
+          depth: depth,
+          key: w.key?.toString(),
+          text: text,
+          rect: rect,
+        ),
+      );
       el.visitChildren((Element child) => walk(child, depth + 1));
     }
 
@@ -201,7 +204,8 @@ class AgentBridge {
   }
 
   static String _esc(Object? v) {
-    return (v ?? '').toString()
+    return (v ?? '')
+        .toString()
         .replaceAll(r'\', r'\\')
         .replaceAll('"', r'\"')
         .replaceAll('\n', r'\n');
@@ -214,7 +218,8 @@ class AgentBridge {
   static Future<Uint8List?> capture({double pixelRatio = 2.0}) async {
     if (!kAgentBridgeEnabled) return null;
     try {
-      final RenderObject? ro = WidgetsBinding.instance.rootElement?.renderObject;
+      final RenderObject? ro =
+          WidgetsBinding.instance.rootElement?.renderObject;
       ui.Image? img;
       if (ro is RenderRepaintBoundary && ro.hasSize) {
         img = await ro.toImage(pixelRatio: pixelRatio);
@@ -252,12 +257,9 @@ class AgentBridge {
     try {
       final Uint8List? bytes = await capture();
       if (bytes == null) return null;
-      final String dir = Platform.isAndroid ? '/sdcard/agent' : '/tmp/agent';
-      final Directory d = Directory(dir);
-      if (!await d.exists()) await d.create(recursive: true);
-      final int ts = DateTime.now().millisecondsSinceEpoch;
-      final String path = '$dir/${name}_$ts.png';
-      await File(path).writeAsBytes(bytes);
+      final String? saved = await saveAgentScreenshot(bytes, name);
+      if (saved == null) return null;
+      final String path = saved;
       debugPrint('[AgentBridge] screenshot -> $path');
       return path;
     } catch (e) {

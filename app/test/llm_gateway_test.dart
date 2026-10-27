@@ -21,41 +21,47 @@ void main() {
   }
 
   http.Response okJson(String content) => http.Response(
-        jsonEncode(<String, dynamic>{
-          'choices': <dynamic>[
-            <String, dynamic>{
-              'message': <String, dynamic>{'role': 'assistant', 'content': content},
-            },
-          ],
-        }),
-        200,
-        headers: <String, String>{
-          'content-type': 'application/json; charset=utf-8',
+    jsonEncode(<String, dynamic>{
+      'choices': <dynamic>[
+        <String, dynamic>{
+          'message': <String, dynamic>{'role': 'assistant', 'content': content},
         },
-      );
+      ],
+    }),
+    200,
+    headers: <String, String>{
+      'content-type': 'application/json; charset=utf-8',
+    },
+  );
 
   group('configured', () {
     test('没配 Key = false，complete 直接 null（零网络）', () async {
       bool called = false;
-      final LlmGateway gw = LlmGateway(LlmClient(
-        config: const LlmConfig(apiKey: ''),
-        httpClient: _FakeHttp((String _) async {
-          called = true;
-          return okJson('x');
-        }),
-      ));
+      final LlmGateway gw = LlmGateway(
+        LlmClient(
+          config: const LlmConfig(apiKey: ''),
+          httpClient: _FakeHttp((String _) async {
+            called = true;
+            return okJson('x');
+          }),
+        ),
+      );
       expect(gw.configured, isFalse);
       expect(
-        await gw.complete(messages: const <Map<String, dynamic>>[
-          <String, dynamic>{'role': 'user', 'content': 'hi'},
-        ]),
+        await gw.complete(
+          messages: const <Map<String, dynamic>>[
+            <String, dynamic>{'role': 'user', 'content': 'hi'},
+          ],
+        ),
         isNull,
       );
       expect(called, isFalse); // 没发请求
     });
 
     test('配了 Key = true', () {
-      final LlmGateway gw = LlmGateway(clientOf((String _) async => okJson('x')));
+      final LlmGateway gw = LlmGateway(
+        clientOf((String _) async => okJson('x')),
+      );
       expect(gw.configured, isTrue);
     });
   });
@@ -112,22 +118,28 @@ void main() {
 
     test('多模态消息照原样上行（image_url 不丢）', () async {
       String? sent;
-      final LlmGateway gw = LlmGateway(clientOf((String body) async {
-        sent = body;
-        return okJson('x');
-      }));
-      await gw.complete(messages: const <Map<String, dynamic>>[
-        <String, dynamic>{
-          'role': 'user',
-          'content': <Map<String, dynamic>>[
-            <String, dynamic>{'type': 'text', 'text': '看这张'},
-            <String, dynamic>{
-              'type': 'image_url',
-              'image_url': <String, String>{'url': 'data:image/png;base64,AAA'},
-            },
-          ],
-        },
-      ]);
+      final LlmGateway gw = LlmGateway(
+        clientOf((String body) async {
+          sent = body;
+          return okJson('x');
+        }),
+      );
+      await gw.complete(
+        messages: const <Map<String, dynamic>>[
+          <String, dynamic>{
+            'role': 'user',
+            'content': <Map<String, dynamic>>[
+              <String, dynamic>{'type': 'text', 'text': '看这张'},
+              <String, dynamic>{
+                'type': 'image_url',
+                'image_url': <String, String>{
+                  'url': 'data:image/png;base64,AAA',
+                },
+              },
+            ],
+          },
+        ],
+      );
       expect(sent, isNotNull);
       expect(sent!, contains('image_url'));
       expect(sent!, contains('data:image/png;base64,AAA'));

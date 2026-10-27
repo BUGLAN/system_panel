@@ -73,8 +73,7 @@ class ChatService {
   ];
 
   /// 与 copy.dart 同款 300 字符钳制（LLM 气话不能刷屏）
-  static String _clamp(String s) =>
-      s.length > 300 ? s.substring(0, 300) : s;
+  static String _clamp(String s) => s.length > 300 ? s.substring(0, 300) : s;
 
   /// 确定性选句（同输入稳定，可测；换句话说不必每次都同一句）
   static int _pick(List<String> pool, String seed) {
@@ -120,7 +119,9 @@ class ChatService {
       // 近 12 轮做上下文（旧→新）；更早的交给长期记忆
       final List<Map<String, dynamic>> wire = <Map<String, dynamic>>[
         for (final ChatMessage m
-            in history.length > 12 ? history.sublist(history.length - 12) : history)
+            in history.length > 12
+                ? history.sublist(history.length - 12)
+                : history)
           <String, dynamic>{
             'role': m.fromHost ? 'user' : 'assistant',
             'content': m.text,
@@ -148,11 +149,7 @@ class ChatService {
       if (t.text.isEmpty) {
         return _failure(userText, detail: '正文只有情绪标签，没有台词');
       }
-      return ChatMessage.sys(
-        _id(),
-        _clamp(t.text),
-        emotion: t.emotion,
-      );
+      return ChatMessage.sys(_id(), _clamp(t.text), emotion: t.emotion);
     } catch (e) {
       return _failure(userText, detail: '异常：$e');
     }
@@ -169,15 +166,25 @@ class ChatService {
   }) async {
     final LlmClient? cli = client;
     final AgentToolRegistry? reg = tools;
-    if (cli == null || reg == null || reg.isEmpty || cli.config.apiKey.trim().isEmpty) {
+    if (cli == null ||
+        reg == null ||
+        reg.isEmpty ||
+        cli.config.apiKey.trim().isEmpty) {
       return <ChatMessage>[
-        await reply(userText, history: history, scenario: scenario, statusLine: statusLine),
+        await reply(
+          userText,
+          history: history,
+          scenario: scenario,
+          statusLine: statusLine,
+        ),
       ];
     }
     try {
       final List<Map<String, dynamic>> wire = <Map<String, dynamic>>[
         for (final ChatMessage m
-            in history.length > 12 ? history.sublist(history.length - 12) : history)
+            in history.length > 12
+                ? history.sublist(history.length - 12)
+                : history)
           <String, dynamic>{
             'role': m.fromHost ? 'user' : 'assistant',
             'content': m.text,
@@ -193,7 +200,11 @@ class ChatService {
       );
       final List<LlmTool> defs = <LlmTool>[
         for (final AgentTool t in reg.all)
-          LlmTool(name: t.name, description: t.description, parameters: t.parameters),
+          LlmTool(
+            name: t.name,
+            description: t.description,
+            parameters: t.parameters,
+          ),
       ];
       final List<ChatMessage> out = <ChatMessage>[];
       for (int round = 0; round < maxToolRounds; round++) {
@@ -212,20 +223,26 @@ class ChatService {
           reasoningEffort: planReasoningEffort(cli.config.reasoningEffort),
         );
         if (!r.ok) {
-          out.add(_failure(
-            userText,
-            detail: '${r.failure?.name ?? 'unknown'} · ${r.detail ?? '无 detail'}',
-          ));
+          out.add(
+            _failure(
+              userText,
+              detail:
+                  '${r.failure?.name ?? 'unknown'} · ${r.detail ?? '无 detail'}',
+            ),
+          );
           return out;
         }
         if (r.toolCalls.isEmpty) {
           final TaggedReply t = Persona.splitTag(r.text);
           if (t.text.isEmpty) {
-            out.add(_failure(
-              userText,
-              detail: '正文为空（HTTP 200；推理模型可能把 max_tokens 用尽，'
-                  'finish_reason 多半是 length）',
-            ));
+            out.add(
+              _failure(
+                userText,
+                detail:
+                    '正文为空（HTTP 200；推理模型可能把 max_tokens 用尽，'
+                    'finish_reason 多半是 length）',
+              ),
+            );
             return out;
           }
           out.add(ChatMessage.sys(_id(), _clamp(t.text), emotion: t.emotion));
@@ -263,8 +280,9 @@ class ChatService {
   /// - **非严格模式**（release）：仍给兜底毒舌（无 Key/断网不得阻塞使用），
   ///   但句首 `〔兜底〕` 标注 + 括注原因——看得见降级，不会误以为她真这么说了。
   ChatMessage _failure(String seed, {String? detail}) {
-    final String why =
-        (detail == null || detail.trim().isEmpty) ? '未知原因' : detail.trim();
+    final String why = (detail == null || detail.trim().isEmpty)
+        ? '未知原因'
+        : detail.trim();
     if (strict) {
       return ChatMessage.sys(
         _id(),
@@ -296,6 +314,5 @@ class ChatService {
   }
 
   int _seq = 0;
-  String _id() =>
-      'c${DateTime.now().microsecondsSinceEpoch}_${_seq++}';
+  String _id() => 'c${DateTime.now().microsecondsSinceEpoch}_${_seq++}';
 }

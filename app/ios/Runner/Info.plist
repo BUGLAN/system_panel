@@ -26,10 +26,9 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
-	<!-- iOS 的 ATS 默认拦 http —— 舞台（Live2DWeb）靠 app 内 127.0.0.1 本机服务
-	     喂模型资产，必须放行本机网络（对应 Android 侧的
-	     android/app/src/main/res/xml/network_security_config.xml）。
-	     详见 HANDOFF-LIVE2D-IOS.md「WebView 路线的坑」。 -->
+	<!-- iOS 的 ATS 默认拦 http —— LLM 允许走本机 / 局域网的
+	     OpenAI 兼容端点（如 http://127.0.0.1:8000/v1），必须放行本机网络
+	     （对应 Android 侧的 network_security_config.xml）。 -->
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsLocalNetworking</key>

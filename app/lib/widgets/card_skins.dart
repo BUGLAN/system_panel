@@ -22,7 +22,7 @@ import '../design/tokens.dart';
 ///  ── 材质：液态玻璃（对齐 skill-liquid-glass / AndroidLiquidGlass）──
 ///  那个库的效果链是 **vibrancy → blur → lens + highlight + shadow/innerShadow**。
 ///  ⚠️ 这里**只用其中不采样背景的那几条**：宿主明确要求牌**不能模糊、不能遮挡**
-///  后面的 Live2D（后面还要拿它做角色口型），所以 `blur` / `lens` 一律不做，
+///  她身后的舞台，所以 `blur` / `lens` 一律不做，
 ///  只做「玻璃自己身上的光」：
 ///    · **表面色**（vibrancy）：一层极淡的白，把深底提起来
 ///    · **对角高光**（Highlight）：一条斜向光带，**位置跟着手势走**（液态感）
@@ -142,7 +142,7 @@ SkinGeom geomOf(CardSkin s) => switch (s) {
   // ⚠️ op（不透明度）**不参与让位**：宿主三次反馈「透明度太高」。
   //    牌底一律**全不透明**（0xFF…），退到后面靠的是**更暗的底 + 更小的缩放
   //    + 更紧的落影**（材质重量）。"玻璃感"由表面色 / 对角高光 / 边缘折射 /
-  //    内阴影给 —— 不靠真透明，所以后面的 Live2D 也永远透不出来。
+  //    内阴影给 —— 不靠真透明，所以背景永远透不出来。
   CardSkin.shelf => const SkinGeom(
     // 2026-10-12：96 → 112。原来 stride 96 < 牌宽 208，相邻牌压掉 112px（54%），
     // 侧牌文字被硬裁（宿主截图「本单暴击率 +25…」）。拉宽后侧牌露出可读宽度，
@@ -388,7 +388,7 @@ class ShelfColors {
 /// [radius] 传卡自己的圆角（货架 = [kShelfRadius]）。
 ///
 /// ⚠️ 这层**不采样背景**（不做 blur / lens）：宿主明确要求牌不能模糊、
-///    不能遮挡后面的 Live2D（后面还要拿它做角色口型）。
+///    不能遮挡她身后的舞台。
 class GlassLayer extends StatelessWidget {
   const GlassLayer({
     super.key,
@@ -1465,7 +1465,7 @@ class CardBackFace extends StatelessWidget {
 /// 液态玻璃：对角高光（跟手）+ 边缘折射 + 内阴影。
 ///
 /// **不采样背景**（不做 blur / lens）—— 宿主明确要求不能模糊、不能遮挡
-/// 后面的 Live2D。玻璃的「厚度」全靠这一层自己画的光。
+/// 背景。玻璃的「厚度」全靠这一层自己画的光。
 /// ⚠️ 这个类是**公开 API**（[GlassLayer] 与货架卡共用同一份画法）。
 ///    改成 public 只为了给「道具卡」这类外壳复用，画法一个字没动。
 class GlassPainter extends CustomPainter {
@@ -1570,7 +1570,10 @@ class GlassPainter extends CustomPainter {
         width: fw,
         height: s.height * 2.2,
       );
-      final double fa = (.075 + (shine > 0 && shine < 1 ? .09 * math.sin(shine * math.pi) : 0)) * foil;
+      final double fa =
+          (.075 +
+              (shine > 0 && shine < 1 ? .09 * math.sin(shine * math.pi) : 0)) *
+          foil;
       canvas.drawRect(
         fr,
         Paint()
@@ -2509,122 +2512,122 @@ extension _DutyFace on CardFace {
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: <Widget>[
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: <Widget>[
-                        // ① 角标
-                        Text(
-                          card.kicker ?? '',
-                          style: fs(
-                            family: F.mono,
-                            size: 9.5,
-                            wght: 500,
-                            ls: 1.7,
-                            height: 1.2,
-                            color: dim ? C.dim : C.blue,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Row(
+                      Expanded(
+                        child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: <Widget>[
-                            // ② 印位（docs/39 M-15：40 → 34，别让档位字母抢了题面）
+                            // ① 角标
                             Text(
-                              card.rank,
+                              card.kicker ?? '',
                               style: fs(
-                                family: F.num,
-                                size: 34,
-                                wght: 800,
-                                height: .9,
-                                color: accent,
-                                shadows: <Shadow>[
-                                  Shadow(
-                                    color: accent.withAlpha(110),
-                                    blurRadius: 18,
-                                  ),
-                                ],
+                                family: F.mono,
+                                size: 9.5,
+                                wght: 500,
+                                ls: 1.7,
+                                height: 1.2,
+                                color: dim ? C.dim : C.blue,
                               ),
                             ),
-                            const SizedBox(width: 10),
-                            // ④ 名称
-                            Expanded(
-                              child: Text(
-                                card.title,
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
+                            const SizedBox(height: 8),
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: <Widget>[
+                                // ② 印位（docs/39 M-15：40 → 34，别让档位字母抢了题面）
+                                Text(
+                                  card.rank,
+                                  style: fs(
+                                    family: F.num,
+                                    size: 34,
+                                    wght: 800,
+                                    height: .9,
+                                    color: accent,
+                                    shadows: <Shadow>[
+                                      Shadow(
+                                        color: accent.withAlpha(110),
+                                        blurRadius: 18,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                // ④ 名称
+                                Expanded(
+                                  child: Text(
+                                    card.title,
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: fs(
+                                      family: F.hd,
+                                      size: 19,
+                                      wght: 700,
+                                      ls: -.3,
+                                      height: 1.25,
+                                      color: dim ? C.dim : C.ice,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            // ⑤ 规则行
+                            if (card.dutyMeta != null)
+                              Text(
+                                card.dutyMeta!,
                                 style: fs(
-                                  family: F.hd,
-                                  size: 19,
-                                  wght: 700,
-                                  ls: -.3,
-                                  height: 1.25,
-                                  color: dim ? C.dim : C.ice,
+                                  family: F.cn,
+                                  size: 12.5,
+                                  wght: 500,
+                                  height: 1.35,
+                                  color: vibrancyText(lead: lead),
                                 ),
                               ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 14),
+                      // 右列：⑥ 报酬 + ⑦ 代价
+                      SizedBox(
+                        width: 108,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: <Widget>[
+                            Text(
+                              '报酬 · REWARD',
+                              style: fs(
+                                family: F.mono,
+                                size: 9,
+                                wght: 600,
+                                ls: 1.2,
+                                height: 1,
+                                color: C.mist,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            if (card.loot.isNotEmpty) _lootRow(),
+                            if (card.cost != null) ...<Widget>[
+                              const SizedBox(height: 8),
+                              Text(
+                                '-- ${card.cost} --',
+                                style: fs(
+                                  family: F.mono,
+                                  size: 9,
+                                  wght: 500,
+                                  ls: .6,
+                                  height: 1.2,
+                                  color: C.rS.withAlpha(200),
+                                ),
+                              ),
+                            ],
+                            const SizedBox(height: 12),
+                            Align(
+                              alignment: Alignment.centerLeft,
+                              child: _stateStamp(),
                             ),
                           ],
                         ),
-                        const SizedBox(height: 12),
-                        // ⑤ 规则行
-                        if (card.dutyMeta != null)
-                          Text(
-                            card.dutyMeta!,
-                            style: fs(
-                              family: F.cn,
-                              size: 12.5,
-                              wght: 500,
-                              height: 1.35,
-                              color: vibrancyText(lead: lead),
-                            ),
-                          ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: 14),
-                  // 右列：⑥ 报酬 + ⑦ 代价
-                  SizedBox(
-                    width: 108,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: <Widget>[
-                        Text(
-                          '报酬 · REWARD',
-                          style: fs(
-                            family: F.mono,
-                            size: 9,
-                            wght: 600,
-                            ls: 1.2,
-                            height: 1,
-                            color: C.mist,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        if (card.loot.isNotEmpty) _lootRow(),
-                        if (card.cost != null) ...<Widget>[
-                          const SizedBox(height: 8),
-                          Text(
-                            '-- ${card.cost} --',
-                            style: fs(
-                              family: F.mono,
-                              size: 9,
-                              wght: 500,
-                              ls: .6,
-                              height: 1.2,
-                              color: C.rS.withAlpha(200),
-                            ),
-                          ),
-                        ],
-                        const SizedBox(height: 12),
-                        Align(
-                          alignment: Alignment.centerLeft,
-                          child: _stateStamp(),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
                   // ② 证据带（docs/39 M-16）：原来是最下面那排**牌外**的
                   //    五个无标签虚线圈（真机上是「空板下的五个空圈」）。
                   //    移进卡里，按五态给内容 —— 这一段就是被它填掉的空白。
@@ -2706,7 +2709,9 @@ extension _DutyFace on CardFace {
     final DutyState s = card.dutyState;
     final int n = card.evidenceCount.clamp(0, 5);
     final bool readonly =
-        s == DutyState.done || s == DutyState.abandoned || s == DutyState.active;
+        s == DutyState.done ||
+        s == DutyState.abandoned ||
+        s == DutyState.active;
     final String label = switch (s) {
       DutyState.open => '证据 · 最多 5 张',
       DutyState.active => '证据 · 已拍 $n/5',
@@ -3008,11 +3013,7 @@ class _DutyRunPainter extends CustomPainter {
     final Rect r = Rect.fromLTWH(x0, 0, kRunW, s.height);
     final Paint glow = Paint()
       ..shader = LinearGradient(
-        colors: <Color>[
-          C.blue.withAlpha(0),
-          C.blue.withAlpha(200),
-          C.ice,
-        ],
+        colors: <Color>[C.blue.withAlpha(0), C.blue.withAlpha(200), C.ice],
       ).createShader(r)
       ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4);
     canvas.drawRect(r, glow);

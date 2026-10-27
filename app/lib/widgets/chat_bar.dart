@@ -95,7 +95,8 @@ class ChatBar extends StatefulWidget {
 class _ChatBarState extends State<ChatBar> {
   TextEditingController? _own;
 
-  TextEditingController get _c => widget.controller ?? (_own ??= TextEditingController());
+  TextEditingController get _c =>
+      widget.controller ?? (_own ??= TextEditingController());
 
   void _fire() {
     final String text = _c.text.trim();

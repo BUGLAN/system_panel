@@ -123,6 +123,8 @@ class PlanAgent {
         temperature: 0.7,
         maxTokens: maxTokens,
         reasoningEffort: planReasoningEffort(client.config.reasoningEffort),
+        // 拆解是长推理 + 工具循环：单轮 40s 属正常（12s 会误判成超时）
+        timeout: const Duration(seconds: 90),
       );
       if (!r.ok) {
         throw PlanGenerationError(
@@ -164,6 +166,14 @@ class PlanAgent {
           final String line = '${c.name} 参数不合法：${e.detail}';
           receipts.add(line);
           feed.writeln(line);
+        } on PlanRuleError catch (e) {
+          // ⚠️ 规则错（档位越界 / 首目标给了 S / 条数不对）同样是「模型差一点
+          //    就对了」：把原因回填让她重交，而不是整份计划直接作废。
+          //    只有轮数用尽才把最后一次原因抛出去（界面照实显示）。
+          if (round >= maxRounds) rethrow;
+          final String line = '${c.name} 被规则驳回：${e.detail}。请按规则重交整份计划。';
+          receipts.add(line);
+          feed.writeln(line);
         }
       }
       // 工具已经交上计划且这一轮没干别的 → **立刻收工**。
@@ -172,8 +182,9 @@ class PlanAgent {
       //    空的（结构化输出走 tool_calls），那样会一直空转到轮数用尽再抛，
       //    明明计划已经拿到了。她的解释可以为 null（PlanResult.line 允许空）。
       if (draft.tasks != null) {
-        final bool otherCalls =
-            r.toolCalls.any((LlmToolCall c) => c.name != 'set_plan');
+        final bool otherCalls = r.toolCalls.any(
+          (LlmToolCall c) => c.name != 'set_plan',
+        );
         if (!otherCalls) {
           final TaggedReply t = Persona.splitTag(r.text);
           return PlanResult(
@@ -191,7 +202,8 @@ class PlanAgent {
       });
       msgs.add(<String, dynamic>{
         'role': 'user',
-        'content': '〔系统回执〕刚才的工具调用结果：\n${feed.toString().trim()}'
+        'content':
+            '〔系统回执〕刚才的工具调用结果：\n${feed.toString().trim()}'
             '${draft.tasks == null ? '\n\n（主线还没交上来：调用 set_plan 把 ${brief.taskCount} 张交上来。）' : '\n\n（主线已收到。**现在就不要再调用任何工具**，只用一句话告诉他为什么这么排。）'}',
       });
     }

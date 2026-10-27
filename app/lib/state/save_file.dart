@@ -157,7 +157,8 @@ class SaveData {
       queue: json['queue'] is List
           ? <Quest>[
               for (final Object? q in json['queue'] as List)
-                if (q is Map) QuestFlow.questFromJson(Map<String, dynamic>.from(q)),
+                if (q is Map)
+                  QuestFlow.questFromJson(Map<String, dynamic>.from(q)),
             ]
           : fallback.queue,
       activeJson: json['active'] is Map
@@ -172,7 +173,9 @@ class SaveData {
   Map<String, dynamic> toJson() => <String, dynamic>{
     'host': host.toJson(),
     'goal': goal.toJson(),
-    'queue': <Map<String, dynamic>>[for (final Quest q in queue) QuestFlow.questToJson(q)],
+    'queue': <Map<String, dynamic>>[
+      for (final Quest q in queue) QuestFlow.questToJson(q),
+    ],
     if (activeJson != null) 'active': activeJson,
     if (lastSeen != null) 'lastSeen': lastSeen!.toIso8601String(),
   };

@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'llm_client.dart';
@@ -53,6 +54,9 @@ class AgentSettings {
     this.paceMs = kDefaultPaceMs,
     this.fidelity = kDefaultFidelity,
     this.sfxVol = kDefaultSfxVol,
+    this.temperature = kDefaultTemperature,
+    this.contextLen = kDefaultContextLen,
+    this.stream = kDefaultStream,
   });
 
   // ── docs/48 §5：舞台特效画质 + 界面音量 ────────────────────────
@@ -61,6 +65,46 @@ class AgentSettings {
 
   /// 界面音量三档：`lo` / `mid` / `hi`（再乘 Sfx.volume 总音量）
   static const String kDefaultSfxVol = 'mid';
+
+  // ── LLM 采样参数（参考稿没有，按「补全缺失组件」要求新增）────────
+  //
+  // 这三项都**真的**接进请求体（见 llm_client.dart 的 _chat）：
+  //   temperature  → `temperature`
+  //   contextLen   → `max_tokens` 的预算上限（0 = 用调用点默认）
+  //   stream       → `stream`（当前客户端按整包解析，开了也只影响服务端分块）
+  //
+  // ⚠️ 默认值与 [LlmConfig] 的既有行为保持一致，老档缺字段时行为不变。
+
+  /// 默认温度：参考旧代码里台词/聊天用的 0.8（拆解另有 0.3 的调用点覆盖）
+  static const double kDefaultTemperature = .8;
+
+  /// 默认上下文预算：0 = 跟随调用点（kDefaultMaxTokens / kToolLoopMaxTokens）
+  static const int kDefaultContextLen = 0;
+
+  /// 流式开关默认关（客户端是整包解析，开了只让端点分块传输）
+  static const bool kDefaultStream = false;
+
+  /// 温度可选档（设置页滑杆的刻度）
+  static const List<double> kTemperatureStops = <double>[
+    0,
+    .2,
+    .4,
+    .6,
+    .8,
+    1,
+    1.2,
+    1.5,
+  ];
+
+  /// 上下文长度可选档（0 = 跟随调用点）
+  static const List<int> kContextStops = <int>[
+    0,
+    2048,
+    4096,
+    8192,
+    16384,
+    32768,
+  ];
 
   /// 音量档 → 增益（Sfx.userGain）
   static double gainOf(String v) => switch (v) {
@@ -110,6 +154,16 @@ class AgentSettings {
   /// 界面音量档（见 [kDefaultSfxVol]）
   final String sfxVol;
 
+  // ── LLM 采样参数（真接进请求体，见 [kDefaultTemperature] 上方注释）──
+  /// 采样温度（0~1.5）
+  final double temperature;
+
+  /// 响应预算（`max_tokens`）；0 = 跟随调用点默认
+  final int contextLen;
+
+  /// 是否向端点请求流式（`stream: true`）
+  final bool stream;
+
   factory AgentSettings.fromJson(
     Map<String, dynamic>? json, {
     required AgentSettings fallback,
@@ -134,6 +188,12 @@ class AgentSettings {
       paceMs: pick<int>('paceMs', fallback.paceMs),
       fidelity: pick<String>('fidelity', fallback.fidelity),
       sfxVol: pick<String>('sfxVol', fallback.sfxVol),
+      // 老档没有这三个 key → 落回 fallback（= 默认），不写迁移代码
+      temperature: json['temperature'] is num
+          ? (json['temperature'] as num).toDouble()
+          : fallback.temperature,
+      contextLen: pick<int>('contextLen', fallback.contextLen),
+      stream: pick<bool>('stream', fallback.stream),
     );
   }
 
@@ -151,6 +211,9 @@ class AgentSettings {
     'paceMs': paceMs,
     'fidelity': fidelity,
     'sfxVol': sfxVol,
+    'temperature': temperature,
+    'contextLen': contextLen,
+    'stream': stream,
   };
 
   AgentSettings copyWith({
@@ -167,6 +230,9 @@ class AgentSettings {
     int? paceMs,
     String? fidelity,
     String? sfxVol,
+    double? temperature,
+    int? contextLen,
+    bool? stream,
   }) => AgentSettings(
     visionEnabled: visionEnabled ?? this.visionEnabled,
     baseUrl: baseUrl ?? this.baseUrl,
@@ -181,6 +247,9 @@ class AgentSettings {
     paceMs: paceMs ?? this.paceMs,
     fidelity: fidelity ?? this.fidelity,
     sfxVol: sfxVol ?? this.sfxVol,
+    temperature: temperature ?? this.temperature,
+    contextLen: contextLen ?? this.contextLen,
+    stream: stream ?? this.stream,
   );
 
   @override
@@ -198,7 +267,10 @@ class AgentSettings {
       other.strictMode == strictMode &&
       other.paceMs == paceMs &&
       other.fidelity == fidelity &&
-      other.sfxVol == sfxVol;
+      other.sfxVol == sfxVol &&
+      other.temperature == temperature &&
+      other.contextLen == contextLen &&
+      other.stream == stream;
 
   @override
   int get hashCode => Object.hash(
@@ -215,6 +287,9 @@ class AgentSettings {
     paceMs,
     fidelity,
     sfxVol,
+    temperature,
+    contextLen,
+    stream,
   );
 }
 
@@ -272,6 +347,10 @@ class SettingsStore {
   Future<AgentSettings> load() async {
     try {
       final String? raw = await _p().getString(key);
+      debugPrint(
+        '[settings] load key=$key rawLen=${raw?.length ?? -1} '
+        'apiKey=${(raw == null || raw.isEmpty) ? '<none>' : '<present>'}',
+      );
       if (raw == null || raw.isEmpty) return const AgentSettings();
       final Object? decoded = jsonDecode(raw);
       if (decoded is! Map<String, dynamic>) return const AgentSettings();

@@ -10,7 +10,13 @@ import 'package:system_panel/state/sfx.dart';
 void main() {
   group('音效槽位保持时长', () {
     test('短音仍是 250ms（逐字音那条高频路不许变慢）', () {
-      for (final String k in <String>['tap', 'choose', 'detent', 'deal', 'rung']) {
+      for (final String k in <String>[
+        'tap',
+        'choose',
+        'detent',
+        'deal',
+        'rung',
+      ]) {
         expect(
           Sfx.holdForTest(k),
           const Duration(milliseconds: 250),
@@ -24,7 +30,10 @@ void main() {
       expect(Sfx.holdForTest('seal').inMilliseconds, greaterThan(1260));
       expect(Sfx.holdForTest('impact').inMilliseconds, greaterThan(1290));
       expect(Sfx.holdForTest('boot').inMilliseconds, greaterThan(3650));
-      expect(Sfx.holdForTest('stamp').inMilliseconds, greaterThanOrEqualTo(290));
+      expect(
+        Sfx.holdForTest('stamp').inMilliseconds,
+        greaterThanOrEqualTo(290),
+      );
     });
 
     test('未登记的 key 回落到默认 250ms（新增短音不必改表）', () {

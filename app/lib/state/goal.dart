@@ -222,7 +222,8 @@ class Goal {
   /// 清单里第一张还没做完的（null = 全部走完）
   int get firstOpenIndex {
     for (int i = 0; i < plan.length; i++) {
-      if (plan[i].state == PlanState.todo || plan[i].state == PlanState.active) {
+      if (plan[i].state == PlanState.todo ||
+          plan[i].state == PlanState.active) {
         return i;
       }
     }
@@ -235,9 +236,12 @@ class Goal {
 
   /// 已过天数（第 1 天 = 立目标当天）
   int passedDays(DateTime now) {
-    final int d = DateTime(now.year, now.month, now.day)
-            .difference(DateTime(at.year, at.month, at.day))
-            .inDays +
+    final int d =
+        DateTime(
+          now.year,
+          now.month,
+          now.day,
+        ).difference(DateTime(at.year, at.month, at.day)).inDays +
         1;
     return d < 1 ? 1 : d;
   }
@@ -342,12 +346,8 @@ class Goal {
   );
 
   /// 未绑定：没有目标也没有任务
-  factory Goal.empty() => Goal(
-    text: '',
-    short: '',
-    at: DateTime.now(),
-    plan: const <PlanTask>[],
-  );
+  factory Goal.empty() =>
+      Goal(text: '', short: '', at: DateTime.now(), plan: const <PlanTask>[]);
 
   bool get isEmpty => plan.isEmpty;
 

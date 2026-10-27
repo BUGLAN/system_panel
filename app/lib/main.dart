@@ -1,13 +1,15 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:image_picker/image_picker.dart';
+
 import 'package:flutter/foundation.dart' show kDebugMode, kProfileMode;
 import 'package:flutter/material.dart';
-import 'package:flutter/scheduler.dart';
 
 import 'package:flutter/services.dart';
 
 import 'agent/copy.dart';
+import 'design/ref.dart';
 import 'agent/context_adapter.dart';
 import 'agent/goal_match_agent.dart';
 import 'agent/mainline_tool.dart';
@@ -19,25 +21,20 @@ import 'agent/plan_brief.dart';
 import 'agent/settings_store.dart';
 import 'agent/tools.dart';
 import 'agent/vision.dart';
+import 'agent/vision_platform.dart';
 import 'chat/chat_history.dart';
 import 'chat/chat_panel.dart';
 import 'chat/chat_service.dart';
+import 'data/attrs.dart';
 import 'data/content.dart';
-import 'data/rarity.dart';
+import 'data/titles.dart';
 import 'data/format.dart';
 import 'data/items.dart';
 import 'design/tokens.dart';
-import 'screens/boot_screen.dart';
-import 'stage/progress_band.dart';
 import 'state/host_state.dart';
 import 'state/goal.dart';
 import 'state/goal_gen.dart';
 import 'state/plan_failure.dart';
-import 'stage/camera.dart';
-import 'stage/live2d_stage.dart';
-import 'stage/redraw_veil.dart';
-import 'stage/stage_port.dart';
-import 'stage/stage_aura.dart';
 import 'design/fidelity.dart';
 import 'state/app_clock.dart';
 import 'state/away.dart';
@@ -48,31 +45,33 @@ import 'state/save_file.dart';
 import 'state/quest.dart';
 import 'state/quest_flow.dart';
 import 'state/result.dart';
+import 'ui/ref/ref_bg.dart';
+import 'ui/ref/ref_board.dart';
+import 'ui/ref/ref_core.dart';
+import 'ui/ref/ref_boot.dart';
+import 'ui/ref/ref_exec.dart';
+import 'ui/ref/ref_home.dart';
+import 'ui/ref/ref_device.dart';
+import 'ui/ref/ref_hud.dart';
+import 'ui/ref/ref_ach.dart';
+import 'ui/ref/ref_archive.dart';
+import 'ui/ref/ref_llm_settings.dart';
+import 'ui/ref/ref_main.dart';
+import 'ui/ref/ref_onboard.dart';
+import 'ui/ref/ref_sheet.dart';
+import 'ui/ref/ref_shop.dart';
+import 'ui/ref/ref_tray.dart';
+import 'ui/ref/ref_overlays.dart';
+import 'ui/ref/ref_verdict.dart';
 import 'widgets/bg_layer.dart';
 import 'widgets/ask_field.dart';
-import 'widgets/banner.dart';
-import 'widgets/card_skins.dart';
-import 'widgets/chat_bar.dart';
-import 'widgets/choices.dart';
-import 'widgets/dock.dart';
-import 'widgets/exec_panel.dart';
-import 'widgets/exec_pill.dart';
 import 'widgets/fail_layer.dart';
 import 'widgets/fx_layer.dart';
 import 'widgets/fx_particles.dart';
 import 'widgets/hud.dart';
-import 'widgets/interview_deck.dart';
-import 'widgets/item_drawer.dart';
 import 'widgets/line_layer.dart';
-import 'widgets/main_view.dart';
-import 'widgets/perf_debug.dart';
-import 'widgets/plate.dart';
-import 'widgets/plate_timeline.dart';
 import 'widgets/press_scale.dart';
 import 'widgets/rail_base.dart' show railReduceMotion;
-import 'widgets/result_panel.dart';
-import 'widgets/plan_tag.dart';
-import 'widgets/sheet.dart';
 import 'widgets/table_overlay.dart';
 import 'dev/agent_bridge.dart';
 
@@ -97,63 +96,8 @@ void main() {
 class SysApp extends StatelessWidget {
   const SysApp({super.key});
 
-  /// ⚠️ **诊断开关（T7 attempt 2）**：true = 裸舞台页（只有 Live2DStage，
-  /// 无天幕/环场/任何 Flutter 层）——用来二分「原生不上屏」的责任方：
-  /// 裸页能上屏 = 我们 App 的树有合成冲突（可修）；裸页也黑 = 再看加载与
-  /// **shader 是否进包**（2026-10-12：当时的「也黑」就是缺 shader，不是插件/
-  /// emugl 不兼容 —— 见 STAGE-OPTIONS「2026-10-12 复盘」）。平时保持 false。
-  static const bool kStageBareProbe = false;
-
-  /// **截图专用：跳过 Live2D 平台视图**（`--dart-define=NO_STAGE=1`）。
-  ///
-  /// 为什么要有它：**iOS 模拟器上原生 Live2D 必崩** —— `libCoreVMClient` 的
-  /// `cvms_element_build_from_source` 在编译 Cubism 的 `#version 100` 着色器
-  /// 时 SIGBUS（模拟器自带的 GL 转译层撑不住，与 App 代码无关；真机完全正常，
-  /// 见 docs/39 §1 与 docs/35）。于是模拟器里看不到任何 Flutter 层。
-  ///
-  /// 打开它：平台视图整层不建，露出天幕下的**全息剪影**（这是 `Live2DStage`
-  /// 加载失败时的既有降级），HUD / 环场 / 卡牌 / 字幕全部照常渲染 ——
-  /// 用来在模拟器里截图核对**卡片与 UI 的视觉**，不用于验证角色。
-  /// **真机与本机日常开发都别打开**（`flutter run` 不给 define 即为关）。
-  static const bool kNoStage = bool.fromEnvironment('NO_STAGE');
-
   @override
   Widget build(BuildContext context) {
-    // 五态陈列页（设计验收用）：`--dart-define=SHOT=states`
-    if (const String.fromEnvironment('SHOT') == 'states') {
-      return const MaterialApp(
-        debugShowCheckedModeBanner: false,
-        home: CardStatesGallery(),
-      );
-    }
-    if (kStageBareProbe) {
-      return MaterialApp(
-        debugShowCheckedModeBanner: false,
-        home: Scaffold(
-          backgroundColor: const Color(0xFF0A0E1A),
-          body: Stack(
-            fit: StackFit.expand,
-            children: <Widget>[
-              Live2DStage(
-                visible: true,
-                cam: Cam.byName('lobby'),
-                onReady: (Live2DStageHandle h) => debugPrint('[bare] 裸舞台就绪'),
-                onFailed: () => debugPrint('[bare] 裸舞台失败'),
-              ),
-              // 一块对照 Flutter 内容（左上角），确认 Flutter 层还在画
-              const Positioned(
-                left: 8,
-                top: 8,
-                child: Text(
-                  'FLUTTER OVERLAY',
-                  style: TextStyle(color: Colors.cyanAccent, fontSize: 12),
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
     return MaterialApp(
       title: 'SYSTEM · 宿主',
       debugShowCheckedModeBanner: false,
@@ -176,6 +120,10 @@ class SysApp extends StatelessWidget {
 ///   sheet → focus（投影面板升起）· main → focus（主线全景 + 环挂签）
 enum Moment { boot, lobby, onboard, dispatch, exec, result, fail, sheet, main }
 
+/// 投影面板/整页的口子。参考稿把「档案 / 补给」做成独立场景，
+/// 「系统设置」做成底部抽屉（#sheet）—— 这里用同一个枚举分流。
+enum SheetKind { system, archive, supply }
+
 /// 所有页面的共同外壳，对应原型的 `#app` + `#shake`：
 ///   天幕（#bg）→ 舞台（#stage）→ 界面（#ui）→ 覆盖层
 ///
@@ -195,38 +143,6 @@ class _AppShellState extends State<AppShell>
         with
         TickerProviderStateMixin,
         WidgetsBindingObserver {
-  /// ── 舞台渲染路线（docs/18 §1.5）────────────────────────────────
-  ///
-  /// **只有一条路线：原生 `flutter_live2d`**（[Live2DStage]，几何相机 = 布局
-  /// 矩形复刻 `Cam`）。2026-10-12 宿主拍板删掉 WebView 降级路线（`live2d_web.dart`
-  /// 及其 `WebStagePort`、`assets/stage/` 与 `vendor/` 的打包声明），原因见下。
-  ///
-  /// 为什么当年留了 WebView 兜底、现在又删掉：
-  ///  · 旧结论（2026-10-09）把「loadModel=true 但不上屏 + 每帧 GL 0x501」判成
-  ///    MuMu 的 emugl 转译层与插件不兼容 —— **这个归因是错的**。真因是
-  ///    `flutter_live2d` 1.0.2 不打包 Android shader 资产，原生加载器要的
-  ///    `assets/FrameworkShaders/*` 根本不在 APK 里 → shader program = 0 →
-  ///    attribute location 查负值 → 每帧 GL_INVALID_VALUE。
-  ///    补包见 `app/android/app/build.gradle.kts` 的 `syncLive2dShaders`
-  ///    （构建期缺文件会直接报错，不会再退化成"静默黑屏"）。
-  ///    结论留档 `app/STAGE-OPTIONS.md`「2026-10-12 复盘」、`docs/35`。
-  ///  · 另一条删除理由：WebView 那条路线**触摸是断的** —— `Live2DWeb` 里
-  ///    WebView 包在 `IgnorePointer` 内（免得它吃掉 UI 的手势），而
-  ///    `assets/stage/stage.js` 从来没有把指针事件转发给播放器。于是"戳她"
-  ///    没有跟随、拖动也没有反应 —— 2026-10-12 宿主实测发现。原生这条
-  ///    （`Live2DStage` 里 `IgnorePointer(ignoring: false)`）才拿得到触摸：
-  ///    插件的平台视图自带"眼睛/头跟着手指"。
-  ///
-  /// 加载失败时的降级：`Live2DStage` 自己收掉平台视图，露出天幕下的**全息剪影**
-  /// （`onFailed` 只打日志、不再切任何路线）。
-  ///
-  /// ⚠️ 模型加载失败最常见的原因是「没跑转换器」：`app/assets/live2d/sakiko/`
-  /// 不在仓库时（该目录在 `assets/live2d/.gitignore` 的旧规则里被屏蔽过），
-  /// 跑 `python tools/l2d/convert.py` 重新生成即可。
-
-  /// 她的把手（emote/motion 桥）
-  StagePort? _stagePort;
-
   /// t16/B3：读档恢复了执行中单据 → 唤醒后直接回执行页（计时按 startAt 推导）
   bool _resumedExec = false;
 
@@ -292,7 +208,6 @@ class _AppShellState extends State<AppShell>
   final SaveFile _save = SaveFile();
 
   /// 口型包络（audio.js L180-230）—— 打字机逐字喂它，波形条读它。
-  /// **不需要 Live2D**：模型到位后 `ParamMouthOpenY` 直接读同一个 `mouth`。
   final VoiceEnvelope _voice = VoiceEnvelope();
 
   /// 主线全景里展开的是哪一环（null = 没展开，只有抬头）
@@ -328,26 +243,6 @@ class _AppShellState extends State<AppShell>
     duration: const Duration(milliseconds: 180),
   );
 
-  /// 「唤醒过场」进度 0→1（2026-10-11 宿主验收：「从唤醒到主界面转场太过突兀,
-  /// 像是直接切换一样」）。
-  ///
-  /// 原来开机态的几处是**布尔门控**、切页那一瞬间硬跳：
-  ///   · `Hud` / `Dock`（底栏）/ 对话入口钮 —— 从"不显示"变"显示"（没有过渡）
-  ///   · 环场亮度 `dim: boot ? .34 : 1` —— 从 34% 直接跳到 100%
-  ///   · 相机是弹簧（`CamSpring`）本来就顺，她本人的睁眼编排也顺
-  /// 现在这三处统一吃这条进度：唤醒那一刻从 0 起跑（900ms ease-out），
-  /// 于是「被唤醒 → 环亮起 → 界面浮上来 → 落进待机」是一气呵成的推移，
-  /// 而不是两次硬切。
-  late final AnimationController _wakeFade = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 900),
-    value: 1, // 非开机态默认就是"已就位"
-  );
-
-  /// 环场亮度：开机 34% → 唤醒后 100%，**顺着 [_wakeFade] 推**（原来硬跳）
-  double get _bandWakeDim =>
-      .34 + .66 * Curves.easeOut.transform(_wakeFade.value);
-
   /// 屏幕空间特效（#fx 画布）
   final FxController _fx = FxController();
 
@@ -356,10 +251,6 @@ class _AppShellState extends State<AppShell>
 
   /// 点一下跳过打字机（原型 Tap.next()）
   int _tap = 0;
-
-  /// 舞台光脉冲令牌（docs/48 §2 ⑦）：戳她 / 发布 / 落定时 +1，
-  /// StageAura 收到变化就从地台扩散一圈光环。
-  int _auraPulse = 0;
 
   /// 震屏
   int _shake = 0;
@@ -370,7 +261,6 @@ class _AppShellState extends State<AppShell>
   double _flashA = .16;
 
   /// 横幅（称号/道具到手时从顶上滑下来）
-  bool _banner = false;
 
   /// 投影面板当前停在哪一页
   SheetKind _sheetKind = SheetKind.archive;
@@ -409,7 +299,10 @@ class _AppShellState extends State<AppShell>
 
   /// 文案接管后的 LLM 台词（null = 还没接到/回退原句）
   String? _probeLine; // 追问（绑定仪式）
-  String? _dispatchLine; // 发布（派单板）
+
+  /// 临时台词的情绪（喂给 RefCore / 气泡的逐字音节）
+
+  /// 文案接管后的 LLM 台词（null = 还没接到/回退原句）
 
   /// 最近一次拆解失败（null = 没失败过）。
   ///
@@ -417,7 +310,6 @@ class _AppShellState extends State<AppShell>
   /// 诊断横幅 / 设置页 / 测试读的唯一入口。它**不影响**游戏状态：
   /// 失败时目标、队列、存档一律不动。
   PlanFailure? _planError;
-  String _planErrorGoal = '';
 
   /// 聊天消息 id（会话内唯一即可）
   int _chatSeq = 0;
@@ -473,6 +365,7 @@ class _AppShellState extends State<AppShell>
   /// 音效/震动/思考档位这类**非 LLM 设置必须每次都落地**——docs/22 R3 记着
   /// 这个坑：以前 `sound/haptic` 能存能显但没人消费，就是被这个早退吞掉的。
   void _applyAgentSettings(AgentSettings s) {
+    _agentSettings = s;
     // ① 非 LLM 设置：先落地（幂等，重复调用无害）
     Sfx.enabled = s.sound;
     Haptics.enabled = s.haptic;
@@ -538,6 +431,10 @@ class _AppShellState extends State<AppShell>
   /// 严格模式（docs/22 §2.0，宿主 2026-10-10 拍板）：
   /// - `auto`（默认）：**debug / profile 构建**下失败直接报错、不产假台词；
   ///   release 仍走兜底（无 Key / 断网不得阻塞使用），但会标注原因。
+
+  /// 严格模式（docs/22 §2.0，宿主 2026-10-10 拍板）：
+  /// - `auto`（默认）：**debug / profile 构建**下失败直接报错、不产假台词；
+  ///   release 仍走兜底（无 Key / 断网不得阻塞使用），但会标注原因。
   /// - `on` / `off`：设置页手动覆盖（便于在 release 上验证严格模式）。
   static bool _strictOf(AgentSettings s) => switch (s.strictMode) {
     'on' => true,
@@ -594,7 +491,6 @@ class _AppShellState extends State<AppShell>
     setState(() {});
     // emotion 标签 → 舞台 mood（docs/18 §2.6 演出联动）
     // docs/24 #18：情绪强烈的连带一个兜底动作（react），不再只换脸
-    _stagePort?.react(entries.last.emotion);
   }
 
   /// 快捷 chip 直调工具（docs/19 §A3）：不经 LLM、全部本地可用；
@@ -623,55 +519,11 @@ class _AppShellState extends State<AppShell>
 
   // ── 文案接管：发布 / 结算 / 毒舌 / 追问（docs/18 §2.5 四语气）────────
 
-  /// 发布：进派单板时取一句（LLM 回了才顶掉「接不接？」）
-  Future<void> _takeDispatchLine() async {
-    final SystemCopyProvider? copy = _copy;
-    if (copy == null) return;
-    final CopyLine line = await copy.dispatchLine(
-      CopyContext.fromState(host: _host, goal: _goal, quest: _quest),
-    );
-    if (!mounted || _moment != Moment.dispatch || _chatOpen) return;
-    if (line.source == CopySource.llm) {
-      setState(() => _dispatchLine = line.text);
-    }
-  }
-
-  /// 结算：演出播完那句档位点评（LLM 回了才顶掉内置档位台词）
-  Future<void> _takeSettleLine(QuestResult r) async {
-    final SystemCopyProvider? copy = _copy;
-    if (copy == null) return;
-    final CopyLine line = await copy.settleLine(
-      CopyContext.fromState(host: _host, goal: _goal, result: r),
-    );
-    if (!mounted || _moment != Moment.result || _chatOpen) return;
-    if (line.source == CopySource.llm) {
-      _sayAside(line.text, holdMs: 2600);
-      _stagePort?.react(line.emotion); // docs/24 #18：强烈情绪连带动作
-    }
-  }
-
-  /// 毒舌：按到一半松手（waver 原句先行，LLM 毒舌到了再顶）
-  void _onWaverRoast() {
-    _sayAside(LINES.waver[_rnd.nextInt(LINES.waver.length)], holdMs: 1400);
-    final SystemCopyProvider? copy = _copy;
-    if (copy == null) return;
-    copy
-        .roastLine(
-          CopyContext.fromState(host: _host, goal: _goal, quest: _quest),
-          reason: '接单按到一半松了手',
-        )
-        .then((CopyLine line) {
-          if (!mounted || _moment != Moment.dispatch) return;
-          if (line.source == CopySource.llm) _sayAside(line.text, holdMs: 1600);
-        });
-  }
-
   /// 追问：绑定仪式的问目标（LLM 回了才顶掉 LINES.askGoal）
   Future<void> _takeProbeLine(String topic) async {
     final SystemCopyProvider? copy = _copy;
     if (copy == null) return;
     // docs/24 #2/#13 追问：歪头疑问（question + exp_serious02）
-    _stagePort?.act('ask');
     final CopyLine line = await copy.probeLine(
       CopyContext.fromState(host: _host, goal: _goal),
       topic: topic,
@@ -680,15 +532,6 @@ class _AppShellState extends State<AppShell>
     if (line.source == CopySource.llm) {
       setState(() => _probeLine = line.text);
     }
-  }
-
-  /// 「找小祥说说」的场合上下文（docs/18 §2.7：当前任务+结算结果注入；
-  /// 主线当前环拒换的钳制在工具层，这里只把事实告诉她）
-  String get _resultTalkScenario {
-    final QuestResult r = _result;
-    return '结算后复盘：本单「${r.quest.name}」（${r.rarity.rank} 级，'
-        'EXP+${r.exp}、◈+${r.coin}${r.crit ? '，暴击' : ''}）。'
-        '宿主可能想聊聊下一单。换任务钳制：主线当前环不可换；日常走换单券。';
   }
 
   /// 「换目标」的场合上下文（docs/18 §2.7：旧主线环清空、队列主线单撤下
@@ -705,7 +548,6 @@ class _AppShellState extends State<AppShell>
   void _beginGoalChange() {
     if (_busy) return;
     // docs/24 #17 换目标：她先琢磨一下（thinking + exp_serious02）
-    _stagePort?.act('think');
     setState(() {
       _goalChangeOn = true;
       _goalAsk.clear();
@@ -754,7 +596,6 @@ class _AppShellState extends State<AppShell>
     setState(() {
       _goalChangeOn = false;
       _planError = null;
-      _planErrorGoal = '';
     });
     _sayAside('……行，让我把这条拆开。', holdMs: 1400);
     try {
@@ -780,7 +621,6 @@ class _AppShellState extends State<AppShell>
       });
       _persist();
       // docs/24 #17 换目标落库：正色点头（nod + exp_serious02）
-      _stagePort?.act('nod');
       _sayAside(
         '行。旧的撤了，新清单 [[${_goal.plan.length} 单]] 已经在你手上。'
         '「$typed」——别又三天热度。',
@@ -822,9 +662,7 @@ class _AppShellState extends State<AppShell>
         if (t != null) matchTools.register(t);
       }
     }
-    matchTools.register(
-      setGoalCategoryTool(goalText: text, draft: matchDraft),
-    );
+    matchTools.register(setGoalCategoryTool(goalText: text, draft: matchDraft));
     final GoalMatch m = await matcher0.match(
       goalText: text,
       tools: matchTools,
@@ -837,7 +675,12 @@ class _AppShellState extends State<AppShell>
     // ⚠️ 2026-10-23 真机事故：原来只按「期限天数」要任务，于是
     // 「两周内骑自行车 10 次」要了 14 张，模型只能写成「第1..14次骑行」，
     // 末张还自相矛盾地写「第14次骑满120分钟并交全部10次轨迹」。
-    final int days = m.days;
+    // ⚠️ 首目标的期限**由规则定死**（`kFirstGoalDays` = 3，docs/05），不该
+    //    跟着模型的 `set_goal_category.days` 走 —— 真机实测模型会给 30 天，
+    //    于是提示词里出现自相矛盾的两句话（「期限 30 天，清单要正好 30 张」
+    //    与「这是首目标：3 张」），`validatePlan` 必然抛 badPlan。
+    //    非首目标仍按模型给的期限/配额。
+    final int days = firstGoal ? kFirstGoalDays : m.days;
     final int need = planTaskCountFor(days, quota: m.quota);
     final PlanDraft planDraft = PlanDraft();
     final StrictAgentToolRegistry planTools = StrictAgentToolRegistry();
@@ -853,6 +696,8 @@ class _AppShellState extends State<AppShell>
         taskCount: need,
         days: days,
         draft: planDraft,
+        firstGoal: firstGoal,
+        quota: m.quota,
       ),
     );
     final PlanResult pr = await planner0.generate(
@@ -888,11 +733,12 @@ class _AppShellState extends State<AppShell>
   /// 旧版这里什么都不做（`return null` → 走模板），于是失败不可见。
   /// 现在：横幅（开发者一眼看到 code）+ 字幕（人可读原因）+ debugPrint。
   void _failPlan(PlanFailure e, {String goalText = ''}) {
-    debugPrint('[plan] ❌ ${e.code.name} · ${e.detail}'
-        '${goalText.isEmpty ? '' : ' · goal=「$goalText」'}');
+    debugPrint(
+      '[plan] ❌ ${e.code.name} · ${e.detail}'
+      '${goalText.isEmpty ? '' : ' · goal=「$goalText」'}',
+    );
     setState(() {
       _planError = e;
-      _planErrorGoal = goalText;
     });
     _sayAside('拆解失败：${e.code.name}。${_clip(e.detail, 60)}', holdMs: 6000);
   }
@@ -918,7 +764,6 @@ class _AppShellState extends State<AppShell>
     if (head != null) _flow.accept(head);
     // 原型 `App.dispatch()` 接单那一拍：Stage.motion('nod')
     // （docs/24 #4：nod 现在自带 exp_serious02 正色脸）
-    _stagePort?.act('nod');
     setState(() {
       _execStart = _flow.active?.startAt ?? DateTime.now();
       _moment = Moment.exec;
@@ -932,7 +777,6 @@ class _AppShellState extends State<AppShell>
       _goal = _flow.goal;
     });
     // docs/24 #5 执行中：落进思考脸一次（低频、不打扰；之后交给待机池）
-    _stagePort?.perf('thinking', 'exp_idle02');
     _clock.startFast();
   }
 
@@ -977,7 +821,6 @@ class _AppShellState extends State<AppShell>
     final int hold = holdMs ?? LINES.defaultHold(text);
     setState(() {
       _aside = text;
-      _asideEmotion = emotion;
       _asideUntil = DateTime.now().add(Duration(milliseconds: hold));
       if (busy) _busy = true;
     });
@@ -988,7 +831,6 @@ class _AppShellState extends State<AppShell>
   }
 
   /// 当前临时台词的情绪（喂 [LineLayer.emotion] 的逐字音节）
-  String? _asideEmotion;
 
   /// 换目标输入框的焦点（弹键盘用；临时调试扩展 ext.sys.goalchange 也用它）
   final FocusNode _goalAskFocus = FocusNode();
@@ -998,8 +840,8 @@ class _AppShellState extends State<AppShell>
 
   /// ═══ 戳她（原型 flows.js L646-654 `poke()`）═══════════════════════
   ///
-  /// 点在她身上（[Live2DStage.hitHer] 命中）→ 越戳越恼：
-  /// 第 1~3 戳 tsun + 动作 `poke`（check 组 + exp_shy01）→ 第 4 戳 annoyed →
+  /// 点在大厅那颗系统核心上 → 越戳越恼：第 1~3 戳 tsun，
+  /// 第 4 戳 annoyed，第 5 戳起 cold；台词是 content.js L319 那五句。
   /// 第 5 戳起 cold 且动作换 `fluster`；台词是 content.js L319 那五句。
   /// 20 秒不戳，连戳计数归零（原型的 `_pokeReset`）。
   /// ⚠️ 只留「连戳」计数（决定台词/动作档位）；原型另存过一个累计数
@@ -1007,18 +849,25 @@ class _AppShellState extends State<AppShell>
   int _pokeN = 0;
   Timer? _pokeReset;
 
+  /// 大厅核心的脸（参考稿 setMood）：戳到第 4 下转 angry，3.2s 后回 neutral。
+  CoreMood _coreMood = CoreMood.neutral;
+  Timer? _coreMoodReset;
+
   void _poke() {
     final int i = math.min(LINES.poke.length - 1, ++_pokeN - 1);
     unawaited(Sfx.play('poke'));
     unawaited(Haptics.buzz('poke'));
-    setState(() => _auraPulse++);
-    _stagePort?.act(i >= 3 ? 'fluster' : 'poke');
     final String emo = i >= 4
         ? 'cold'
         : i >= 2
         ? 'annoyed'
         : 'tsun';
-    _stagePort?.mood(emo);
+    // 越戳越恼：第 4 下起红眼（.core.angry，L123）
+    setState(() => _coreMood = i >= 3 ? CoreMood.angry : CoreMood.neutral);
+    _coreMoodReset?.cancel();
+    _coreMoodReset = Timer(const Duration(milliseconds: 3200), () {
+      if (mounted) setState(() => _coreMood = CoreMood.neutral);
+    });
     // 说完把那句情绪收回去（原型 `.then`: 大厅里回 mood 或 neutral）
     _sayAside(
       LINES.poke[i],
@@ -1026,59 +875,19 @@ class _AppShellState extends State<AppShell>
       emotion: emo,
       onDone: () {
         if (!mounted || _moment != Moment.lobby) return;
-        _stagePort?.mood('neutral');
       },
     );
     _pokeReset?.cancel();
-    _pokeReset = Timer(const Duration(seconds: 20), () => _pokeN = 0);
+    _pokeReset = Timer(const Duration(seconds: 20), () {
+      _pokeN = 0;
+      if (mounted) setState(() => _coreMood = CoreMood.neutral);
+    });
   }
 
-  /// 舞台上的按下：**先走背景那一套**（记"宿主还在"、跳过打字机 —— 原型
-  /// `app.addEventListener('pointerdown', …, true)` 捕获阶段就干了），
-  /// 再看有没有戳在她身上（原型 `#stage` 的 pointerdown + `Stage.hit`）。
-  /// 两者**可以同时发生** —— 原型就是两层监听，别做成互斥。
-  void _onStageDown(Offset global, Rect rect) {
-    _tap++;
-    _voice.hush();
-    _lastAct = DateTime.now();
-    // ⚠️ 收起键盘：web 里点空白输入框自然失焦；Flutter 必须显式 unfocus
-    //    （宿主验收：「换出键盘之后, 点击系统内应用, 键盘无法正常收缩回去」）
-    FocusScope.of(context).unfocus();
-    final bool hit = Live2DStage.hitHer(global, rect);
-    debugPrint(
-      '[stage] 舞台按下 (${global.dx.toStringAsFixed(0)},'
-      '${global.dy.toStringAsFixed(0)}) 命中她=$hit',
-    );
-    if (hit) _poke();
-  }
-
-  // ── 打瞌睡整链（docs/24 #15，原型 `App.doze()/undoze()` 的 Flutter 接线）──
-  bool _dozing = false;
-
-  void _maybeDoze(DateTime now) {
-    if (_dozing || _busy || _moment != Moment.lobby || _stagePort == null) {
-      return;
-    }
-    if (now.difference(_lastAct) <= ChatterScheduler.dozeAfter) return;
-    if (_aside != null) return; // 她正在说话，别睡
-    _dozing = true;
-    debugPrint('[stage] 没人理 → 打瞌睡（${ChatterScheduler.dozeAfter.inSeconds}s）');
-    unawaited(_stagePort!.doze());
-  }
-
-  void _undozeIfNeeded() {
-    if (!_dozing || _stagePort == null) return;
-    _dozing = false;
-    debugPrint('[stage] 瞌睡被戳醒');
-    unawaited(_stagePort!.undoze());
-  }
-
-  /// 原型 `App.second()`：换日之外的那几件事
   void _onSecond() {
     final DateTime now = DateTime.now();
     // docs/24 #15 打瞌睡：大厅里 80s 没人理 → 睡（`ChatterScheduler.dozeAfter`；
     // 原型 `App.doze()`。睡姿 = speed 0 + exp_sys_sleep，任意触碰唤醒）
-    _maybeDoze(now);
     if (_asideUntil != null && now.isAfter(_asideUntil!)) {
       setState(() {
         _aside = null;
@@ -1148,7 +957,6 @@ class _AppShellState extends State<AppShell>
 
   @override
   Widget build(BuildContext context) {
-    final Size size = MediaQuery.sizeOf(context);
     final bool lobby = _moment == Moment.lobby;
     final bool dispatch = _moment == Moment.dispatch;
     final bool exec = _moment == Moment.exec;
@@ -1157,34 +965,6 @@ class _AppShellState extends State<AppShell>
     final bool sheet = _moment == Moment.sheet;
     final bool onboard = _moment == Moment.onboard;
 
-    /// 各状态用的相机预设（flows.js 里各流程自己调的 `Stage.setCam`）
-    final String camOf = switch (_moment) {
-      Moment.boot => 'boot',
-      Moment.lobby => 'lobby',
-      Moment.onboard => 'boot',
-      Moment.dispatch => 'talk',
-      Moment.exec => 'exec',
-      Moment.result => 'result',
-      Moment.fail => 'fail',
-      Moment.sheet => 'panel',
-      Moment.main => 'full',
-    };
-    // 相机切页：只改弹簧的**目标**，每帧由 `_camTicker` 推过去（原型的 `setCam`）。
-    // ⚠️ 这里不能碰 `_cam` 这个 ValueNotifier —— build 期间通知会触发
-    //    "setState() or markNeedsBuild() called during build"；通知只放在 tick 里。
-    //
-    // 慢推（[_camGlideMs] > 0）：换景别这种**要看得见**的推镜头走缓动补间，
-    // 而不是让弹簧自己冲过去 —— 弹簧约 0.5s 到位，配上亮帧/界面淡入就像"硬切"。
-    if (_camSpring.name != camOf) {
-      final int glideMs = _camGlideMs;
-      _camGlideMs = 0; // 一次性的：只对这一拍生效
-      if (glideMs > 0) {
-        _camSpring.glideTo(camOf, MediaQuery.sizeOf(context), ms: glideMs);
-      } else {
-        _camSpring.set(camOf, MediaQuery.sizeOf(context));
-      }
-      if (!_camTicker.isActive) _camTicker.start();
-    }
     final bool main = _moment == Moment.main;
     final bool boot = _moment == Moment.boot;
     // focus+dim：派单与结算都会把 HUD/底栏收走、天幕压暗
@@ -1198,29 +978,6 @@ class _AppShellState extends State<AppShell>
     // 但一层层传容易再度漏掉，而且每帧多读一次没意义。
     final bool reduce = railReduceMotion(context);
 
-    // lineAt（flows.js L23）：
-    //   lobby = H*.6，dispatch = H-568，fail = H*.47，sheet = H*.38 - 104，main = H-192
-    //   result = H-230（flows.js L23 的 result 档 —— 结算页她的台词位）
-    //
-    // ⚠️ 换目标（[_goalChangeOn]）要**让开输入框**：main 档的 H-192 正好压在
-    //    「新目标」输入框和预设词上（宿主截图：字幕压在预设词、确定钮压着「换目标」）。
-    //    这一拍借 onboard 的档位（H*.55，屏幕中段），字幕就不跟输入区抢地方了。
-    final double lineY = _goalChangeOn
-        ? size.height * .55
-        : dispatch
-        ? size.height - 568
-        : fail
-        ? size.height * .47
-        : result
-        ? size.height - 230
-        : sheet
-        ? size.height * .38 - 104
-        : main
-        ? size.height - 192
-        : onboard
-        ? size.height * .55
-        : size.height * .6;
-
     return Scaffold(
       backgroundColor: C.voidBg,
       // ⚠️ **不能让整屏随键盘缩**（默认 true 就会缩）。原因：
@@ -1230,798 +987,627 @@ class _AppShellState extends State<AppShell>
       //     于是"她"和"环"会错位（宿主截图里那种错乱）。
       // 代价：输入框要自己抬到键盘上面（`AskField.bottomInset`）。
       resizeToAvoidBottomInset: false,
-      body: Stack(
-        fit: StackFit.expand,
-        children: <Widget>[
-          // ⚠️ 系统返回键 = **逐级返回**（docs/39 M-04；2026-10-17 前全库只有
-          //    失败页接得住它，其余时候 Android 返回键直接退出 App）。
-          //    优先级写死在 [_popScopeTarget]：失败页 > 牌屉 > 主线 > 默认。
-          //
-          //    失败页那一档的来历：「永远有补救」不能只押在那两张铭牌上：
-          //    2026-10-11 的死局恰恰是铭牌自己把自己拆了（见 `_onChoice` 与
-          //    `Choices._confirm` 的注释）—— 返回键是最后一道门，跟演出闸门、
-          //    跟任何锁都无关。
-          //
-          //    形态说明：`PopScope` 只要挂在**这一条路由里**就会生效（它向
-          //    `ModalRoute` 注册一个 pop entry），不需要包住任何东西 ——
-          //    所以这里用一颗 0×0 的空壳当挂点：整棵 build 树**一行缩进都不动**
-          //    （包住 Scaffold 的话，`dart format` 会把 600+ 行全部重排）。
-          //
-          //    ⚠️ 只此一颗：`canPop` 为真时系统自己 pop（退到桌面），为假时
-          //    回调进来由 [_onSystemBack] 分层消费 —— 两颗嵌套会各响一次。
-          PopScope(
-            canPop: _popScopeTarget() == null,
-            onPopInvokedWithResult: (bool didPop, Object? result) {
-              if (didPop) return; // 正常 pop（没有可消费的层）：什么都不做
-              _onSystemBack();
-            },
-            child: const SizedBox.shrink(),
-          ),
-          // `#shake` 包住 `#bg` 到 `#flash` 的全部内容（`#boot` 在它外面，不跟着抖）
-          ShakeLayer(
-            token: _shake,
-            px: _shakePx,
-            // docs/39 §5.5：reduce 时组件内部直接不抖（震屏整个跳过）
-            reduceMotion: reduce,
-            child: Stack(
-              fit: StackFit.expand,
-              children: <Widget>[
-                // 0 · 天幕（她身后的世界）
-                //   开机时写 SYSTEM，进大厅后写宿主的目标（flows.js `setWord`）
-                AnimatedOpacity(
-                  opacity: dim ? .35 : 1, // #app.dim #bg
-                  duration: const Duration(milliseconds: 800),
-                  child: TweenAnimationBuilder<double>(
-                    // #bg { transition: opacity .8s, filter .8s } —— 认输抽色压暗也是渐变的
-                    tween: Tween<double>(begin: 0, end: fail ? 1 : 0),
+      // v3 设备壳（参考稿 L38-39）：手机全屏；窗口变宽时钳成 430×920
+      // 的「手机比例」并加 44 圆角外框 —— 这样宽窗下不是把 UI 拉扁，
+      // 而是保持稿子的比例居中。
+      body: RefDeviceFrame(
+        accent: _sceneAccent,
+        child: Stack(
+          fit: StackFit.expand,
+          children: <Widget>[
+            // ⚠️ 系统返回键 = **逐级返回**（docs/39 M-04；2026-10-17 前全库只有
+            //    失败页接得住它，其余时候 Android 返回键直接退出 App）。
+            //    优先级写死在 [_popScopeTarget]：失败页 > 牌屉 > 主线 > 默认。
+            //
+            //    失败页那一档的来历：「永远有补救」不能只押在那两张铭牌上：
+            //    2026-10-11 的死局恰恰是铭牌自己把自己拆了（见 `_onChoice` 与
+            //    `Choices._confirm` 的注释）—— 返回键是最后一道门，跟演出闸门、
+            //    跟任何锁都无关。
+            //
+            //    形态说明：`PopScope` 只要挂在**这一条路由里**就会生效（它向
+            //    `ModalRoute` 注册一个 pop entry），不需要包住任何东西 ——
+            //    所以这里用一颗 0×0 的空壳当挂点：整棵 build 树**一行缩进都不动**
+            //    （包住 Scaffold 的话，`dart format` 会把 600+ 行全部重排）。
+            //
+            //    ⚠️ 只此一颗：`canPop` 为真时系统自己 pop（退到桌面），为假时
+            //    回调进来由 [_onSystemBack] 分层消费 —— 两颗嵌套会各响一次。
+            PopScope(
+              canPop: _popScopeTarget() == null,
+              onPopInvokedWithResult: (bool didPop, Object? result) {
+                if (didPop) return; // 正常 pop（没有可消费的层）：什么都不做
+                _onSystemBack();
+              },
+              child: const SizedBox.shrink(),
+            ),
+            // `#shake` 包住 `#bg` 到 `#flash` 的全部内容（`#boot` 在它外面，不跟着抖）
+            ShakeLayer(
+              token: _shake,
+              px: _shakePx,
+              // docs/39 §5.5：reduce 时组件内部直接不抖（震屏整个跳过）
+              reduceMotion: reduce,
+              child: Stack(
+                fit: StackFit.expand,
+                children: <Widget>[
+                  // 0 · 天幕（她身后的世界）
+                  //   开机时写 SYSTEM，进大厅后写宿主的目标（flows.js `setWord`）
+                  AnimatedOpacity(
+                    opacity: dim ? .35 : 1, // #app.dim #bg
                     duration: const Duration(milliseconds: 800),
-                    curve: Curves.easeInOut,
-                    builder: (BuildContext _, double t, Widget? child) => t <= 0
-                        ? child!
-                        : ColorFiltered(
-                            colorFilter: ColorFilter.matrix(
-                              _lerpMatrix(_identity, kFailColorMatrix, t),
+                    child: TweenAnimationBuilder<double>(
+                      // #bg { transition: opacity .8s, filter .8s } —— 认输抽色压暗也是渐变的
+                      tween: Tween<double>(begin: 0, end: fail ? 1 : 0),
+                      duration: const Duration(milliseconds: 800),
+                      curve: Curves.easeInOut,
+                      builder: (BuildContext _, double t, Widget? child) =>
+                          t <= 0
+                          ? child!
+                          : ColorFiltered(
+                              colorFilter: ColorFilter.matrix(
+                                _lerpMatrix(_identity, kFailColorMatrix, t),
+                              ),
+                              child: child,
                             ),
-                            child: child,
+                      child: Stack(
+                        fit: StackFit.expand,
+                        children: <Widget>[
+                          // v3 天幕（参考稿 L40-53）：紫雾 + 描边大字 + 地平线 +
+                          // 透视地板 + 扫描线 + 抖动噪点 + 暗角。旧 BgLayer 在下一层
+                          // 兜底（它自带 ComfyUI 底图）；RefBackground 的底是不透明的
+                          // ColoredBox(var(--bg))，所以视觉以新层为准。
+                          BgLayer(
+                            word: (boot || onboard) ? 'SYSTEM' : _goal.short,
+                            latin: boot || onboard,
                           ),
-                    child: BgLayer(
-                      // 绑定仪式还没立目标，天幕上写的还是 SYSTEM；
-                      // 之后绑死 _goal.short（D10：绑定/换目标后自动跟随）
-                      word: (boot || onboard) ? 'SYSTEM' : _goal.short,
-                      latin: boot || onboard,
+                          RefBackground(
+                            accent: _sceneAccent,
+                            ghost: _sceneGhost,
+                            animate: !reduce,
+                          ),
+                        ],
+                      ),
                     ),
                   ),
-                ),
-                // 任意按下都算「宿主还在」（原型 main.js L40 在整屏捕获阶段监听，
-                // **不受 busy 影响** —— 演出期间也在记）
-                // 同时：点背景 = 跳过打字机（原型 Tap 忽略 button/input/sheet/tag 上的点）
-                Positioned.fill(
-                  child: Listener(
-                    behavior: HitTestBehavior.translucent,
-                    onPointerDown: (PointerDownEvent _) {
-                      if (_lastAct.isBefore(
-                        DateTime.now().subtract(const Duration(seconds: 1)),
-                      )) {
-                        setState(() => _lastAct = DateTime.now());
-                      }
-                      // docs/24 #15：瞌睡中被戳醒（惊一下 → 回情绪）
-                      _undozeIfNeeded();
-                    },
+                  // 任意按下都算「宿主还在」（原型 main.js L40 在整屏捕获阶段监听，
+                  // **不受 busy 影响** —— 演出期间也在记）
+                  // 同时：点背景 = 跳过打字机（原型 Tap 忽略 button/input/sheet/tag 上的点）
+                  Positioned.fill(
+                    child: Listener(
+                      behavior: HitTestBehavior.translucent,
+                      onPointerDown: (PointerDownEvent _) {
+                        if (_lastAct.isBefore(
+                          DateTime.now().subtract(const Duration(seconds: 1)),
+                        )) {
+                          setState(() => _lastAct = DateTime.now());
+                        }
+                        // docs/24 #15：瞌睡中被戳醒（惊一下 → 回情绪）
+                      },
+                    ),
                   ),
-                ),
-                Positioned.fill(
-                  child: GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: () => setState(() {
-                      _tap++;
-                      // 跳过打字机时闭嘴（原型 `ui.js` L106 `if (cut) Voice.hush()`）
-                      _voice.hush();
-                      _lastAct = DateTime.now();
-                    }),
+                  Positioned.fill(
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () => setState(() {
+                        _tap++;
+                        // 跳过打字机时闭嘴（原型 `ui.js` L106 `if (cut) Voice.hush()`）
+                        _voice.hush();
+                        _lastAct = DateTime.now();
+                      }),
+                    ),
                   ),
-                ),
-                // 投影光束（在面板之下、天幕之上）
-                // 2026-10-13 宿主裁定：「此页面名牒册悬浮在档案上就行哦」——
-                // **不做让位**，牌桌就浮在投影面板之上（原来那版让面板退场是过度设计）
-                SheetBeam(visible: sheet),
-                // 舞台光（docs/48 §2）：背光晕 / 顶光束 / 暖边光 / 地台 / 浮尘。
-                // 层级：天幕之上、**她之下** —— 光只在她身后，绝不盖她。
-                // 位置全部由同一个 `_cam` 反算，推镜头时光跟着走。
-                StageAura(
-                  cam: _cam,
-                  mood: switch (_moment) {
-                    Moment.boot => StageMood.sleep,
-                    Moment.onboard || Moment.dispatch => StageMood.talk,
-                    Moment.exec => StageMood.focus,
-                    Moment.result => StageMood.reward,
-                    Moment.fail => StageMood.fail,
-                    _ => StageMood.calm,
-                  },
-                  pulse: _auraPulse,
-                  // 派单/结算让 UI 说话：光收一半；面板态她下半身被面板盖住
-                  intensity: boot ? .45 : (dispatch ? .6 : (sheet ? .7 : 1)),
-                  showDais: !sheet && !dispatch,
-                ),
-                // 她本人（`#stage`）—— 必须放在 Flutter UI **下面**：
-                // 平台视图是 opaque 的，会吃掉触摸；更靠上的组件先命中，
-                // 所以字幕/按钮/手势照样能点（原型里 `#stage` 也在 `#ui` 之前）。
-                // ⚠️ **她的位置必须是这里** —— 天幕之后、环场/UI 之前。
-                //    原型的层序就是 `#bg → #stage → #ui`，实测这个位置**层序完全正确**
-                //    （字幕/环/HUD 都压在她之上，见 `.verify/_stageback.png`）。
-                //
-                // ── 渲染路线（docs/18 §1.5）────────────────────────────
-                // **只有原生一条**（`Live2DStage`，几何相机 = 布局矩形复刻 Cam）。
-                // WebView 降级路线 2026-10-12 已按宿主拍板删除（理由见
-                // `_stagePort` 上方那段注释：触摸是断的 + 当年保留它的归因是错的）。
-                // 相机随弹簧推镜头逐帧刷新（与下方环场同一数据源 _cam）。
-                // docs/39 §1 / docs/35：**模拟器上原生 Live2D 必崩**（GL 转译层
-                // 编不了 Cubism 的 shader → `cvms_element_build_from_source` SIGBUS）。
-                // `--dart-define=NO_STAGE=1` 时整层不建，露出天幕下的全息剪影，
-                // 其余 Flutter 层照常 —— 供模拟器截图核对 UI（真机不受影响）。
-                if (SysApp.kNoStage)
-                  const SizedBox.shrink()
-                else
-                  ValueListenableBuilder<Cam>(
-                    valueListenable: _cam,
-                    builder: (BuildContext _, Cam camNow, Widget? _) =>
-                        Live2DStage(
-                          visible: true,
-                          cam: camNow,
-                          onReady: (Live2DStageHandle handle) {
-                            _stagePort = NativeStagePort(handle);
-                            debugPrint('[stage] 原生舞台就绪（flutter_live2d）');
-                            // 开机睡姿（docs/22 R5「Mac 轮验收项」）：boot 全程
-                            // 闭眼低头睡着，等宿主触碰唤醒。舞台加载晚于唤醒
-                            // （罕见）就跳过 —— 她已经醒了不必再睡。
-                            if (_moment == Moment.boot) {
-                              unawaited(_stagePort!.sleep());
-                            }
+                  RefHud(
+                    state: _host,
+                    // 参考稿 SC.hud：home/main(否)/board/exec/archive(否)/shop。
+                    visible:
+                        lobby ||
+                        exec ||
+                        (main && _boardOn) ||
+                        (sheet && _sheetKind == SheetKind.supply),
+                    onMenu: () => _openSheet(SheetKind.system),
+                    onMenuLongPress: () => setState(() => _llmPaneOn = true),
+                    onLevelTap: () => _toast(
+                      'EXP ${_host.exp} / ${HostState.need(_host.lv)} · '
+                      '距 LV${_host.lv + 1} 还差 '
+                      '${HostState.need(_host.lv) - _host.exp}',
+                    ),
+                    onCoinTap: () => _toast(
+                      '晶核 ◈${_host.coins}。'
+                      '${_host.coins < 45 ? '穷，但是干净。' : '有点小钱了，别乱花。'}',
+                    ),
+                    onStreakTap: () => _toast(
+                      '连胜 ${_host.streak} 天。'
+                      '${_host.streak > 0 ? '今天已打卡。' : '今天还没完成任何一单。'}',
+                    ),
+                  ),
+                  // 连击药丸（宿主 2026-10-11：从左上角那个小方块里摘出来，
+                  // 贴到顶栏下沿居中 —— 位置落在委托卡上方，不再和称号挤在一起）
+                  // 连击药丸 —— 宿主 2026-10-11：「连击 隐藏」（先不显示，组件留着，
+                  // 要接回来把 visible 改回 lobby || exec 即可）
+                  StreakPill(streak: _host.streak, visible: false),
+                  // docs/39 H-15 · 主 CTA 三态状态机（P0）：
+                  //   执行中 → 回执行面板（**不是开派单板**，这是"执行中再从大厅接单"的堵口）
+                  //   队列空 → 她说一句，不进派单板
+                  //   否则   → 派单板
+                  //
+                  // ⚠️ 包一层 ListenableBuilder 订阅秒时钟：H-15 的底注是**真实换日
+                  //    倒计时**（原来写死「换日还有 0 小时」），不订的话一秒都不动。
+                  //    ListenableBuilder 不含 RenderObject，builder 直接返回 Positioned
+                  //    在 Stack 下是合法的。。
+                  // v3 大厅（参考稿 L696-717）：home-tag / 她的气泡 / 主线卡 /
+                  // active-pill / 三颗侧键 + 128 委托球。
+                  if (lobby)
+                    Positioned.fill(
+                      child: RefHome(
+                        host: _host,
+                        goal: _goal,
+                        quip:
+                            _aside ??
+                            LINES.holding.replaceFirst(
+                              '[[{n}]]',
+                              _host.queue.toString(),
+                            ),
+                        activeElapsed: _active
+                            ? _clockText(_execReadout().elapsed)
+                            : null,
+                        active: _active,
+                        queue: _host.queue,
+                        day: _goal.days <= 0
+                            ? 1
+                            : (_goal.days - _goal.remainingDays(_clock.now)),
+                        days: _goal.days <= 0 ? 14 : _goal.days,
+                        mood: _coreMood,
+                        poke: _pokeN,
+                        skipToken: _tap,
+                        onQuestTap: () => _runWipe(
+                          title: '主线',
+                          sub: 'MAINLINE · LOADING',
+                          swap: () => setState(() {
+                            _pickedTask = null;
+                            _moment = Moment.main;
+                          }),
+                        ),
+                        onCoreTap: _poke,
+                        onActivePill: _resumeExec,
+                        onOrb: _enterLobbyCta,
+                        onSide: (int i) {
+                          if (i == 0) {
+                            setState(() {
+                              _pickedTask = null;
+                              _moment = Moment.main;
+                            });
+                          } else if (i == 1) {
+                            _openSheet(SheetKind.archive);
+                          } else if (i == 2) {
+                            _openSheet(SheetKind.supply);
+                          }
+                        },
+                      ),
+                    ),
+                  // 执行面板
+                  // ⚠️ 必须包一层 ListenableBuilder 订阅时钟 —— 否则 `_clock` 每 250ms
+                  //    通知了没人听，计时器会一直停在进页面那一刻（实机踩过：等了 12 秒还是 07:00）
+                  // v3 执行页（参考稿 L265-329）：104px 计时 / 8 高进度 / 82 证据槽
+                  // / 62 高主键。/ 按住 1600ms 认输。旧 ExecPanel 保留树（历史测试锚点），
+                  // 视觉由 RefExec 接管。
+                  if (exec)
+                    Positioned.fill(
+                      child: ListenableBuilder(
+                        listenable: _clock,
+                        builder: (BuildContext _, Widget? _) => RefExec(
+                          quest: _execQuest,
+                          elapsed: _execReadout().elapsed,
+                          critChance: _flow.critBase(),
+                          itemCount: Item.execCount(_host.items),
+                          evidenceThumbs: _evidenceThumbs(),
+                          onAddEvidence: _addEvidence,
+                          onDemoEvidence: _demoEvidence,
+                          onRemoveEvidence: _removeEvidence,
+                          onSubmit: () => unawaited(_submitQuest()),
+                          onQuit: () {
+                            if (_busy) return;
+                            setState(() {
+                              _drawerOn = false;
+                              _active = false;
+                            });
+                            _beginFail();
                           },
-                          // 加载失败：舞台自己收掉平台视图，下面是全息剪影。
-                          // （不再切任何路线 —— 降级路线已删除。）
-                          onFailed: () => debugPrint('[stage] 原生舞台加载失败 → 全息剪影'),
+                          onQuitProgress: (double p) =>
+                              setState(() => _quitP = p),
+                          onItems: () => setState(() => _drawerOn = !_drawerOn),
+                          onCollapse: () => setState(() {
+                            _drawerOn = false;
+                            _moment = Moment.lobby;
+                          }),
+                        ),
+                      ),
+                    ),
+                  // 道具托盘（参考稿 .tray，L760）：盖在执行页动作区之上
+                  if (exec)
+                    RefItemTray(
+                      items: Item.all,
+                      owned: _host.items,
+                      open: _drawerOn,
+                      eqId: _usedItems.isEmpty ? null : _usedItems.last,
+                      onPick: _useItem,
+                    ),
+                  // 结算
+                  // v3 验收（参考稿 L421-449）：扫描 → 结果两阶段。
+                  // 旧 ResultPanel 保留树（历史测试锚点），视觉由 RefVerdict 接管。
+                  if (result)
+                    Positioned.fill(
+                      child: RefVerdict(
+                        rank: _verdictRank(_result),
+                        crit: _result.crit,
+                        line: _verdictLine(_result),
+                        rows: _verdictRows(_result),
+                        xpFrom: _result.beforeExp,
+                        xpTo:
+                            _result.endExp ?? (_result.beforeExp + _result.exp),
+                        xpNeed: _result.afterNeed ?? _result.beforeNeed,
+                        lv: _result.lvAfter,
+                        onAccept: () => _onResultDone(),
+                      ),
+                    ),
+                  // 失败 / 补救（在 veil 之下）—— 记录时间与补救单来自真实认输
+                  // v3 失败页（参考稿 L461-474）：glitch 大字 + MISSION FAILED +
+                  // 补救框 + 回大厅。旧 FailLayer 保留树（历史测试锚点）。
+                  if (fail)
+                    Positioned.fill(
+                      child: RefFail(
+                        title: _failTimeout ? '任务超时' : '任务失败',
+                        sub: 'MISSION FAILED',
+                        onBack: _backToLobbyFromFail,
+                        box: _failBox(),
+                      ),
+                    ),
+                  // 屏幕空间特效（#fx 在 DOM 里排在 #ui 之后、#veil 之前）
+                  FxField(controller: _fx),
+                  // 认输按住时屏幕跟着暗下去（最多 75%），认输后停在 60%
+                  Veil(
+                    opacity: fail ? .6 : _quitP * .75,
+                    instant: _quitP > 0, // 按住期间跟手，松手才回到 900ms 过渡
+                  ),
+                  // 亮帧（`#flash` 在 DOM 里排在 veil 之后；正 z 的那些会盖在它上面）
+                  // ⚠️ 必须判 isAnimating —— 控制器停在 0 时 `1 - easeOut(0) = 1`，
+                  // 会让亮帧**一直开着**（整屏被垫一层 16% 白，一路比对下来才发现）
+                  AnimatedBuilder(
+                    animation: _flashC,
+                    builder: (BuildContext context, Widget? child) =>
+                        FlashLayer(
+                          color: _flashColor,
+                          alpha: _flashC.isAnimating
+                              ? _flashA *
+                                    (1 -
+                                        Curves.easeOut.transform(_flashC.value))
+                              : 0,
+                          // docs/39 §5.5：reduce 时亮帧 alpha 砍半（组件内部实现）
+                          reduceMotion: reduce,
                         ),
                   ),
-                // 「戳她」的命中层（原型 `main.js` L42-44：`#stage` 的 pointerdown
-                // → `Stage.hit(x,y)` → `App.poke()`）。放在她**之上**、环场/UI **之下**：
-                //   · 在她矩形外的点不受影响，照常落到背景那层（跳过打字机）
-                //   · 在矩形内但没戳中她的点，[AppShellState._onStageDown] 会
-                //     把背景那一套行为补齐（记"宿主还在" + 跳过打字机）
-                //   · 按钮/底栏/选项都在更上层 → 它们先命中，不受影响
-                ValueListenableBuilder<Cam>(
-                  valueListenable: _cam,
-                  builder: (BuildContext _, Cam camNow, Widget? _) {
-                    final Rect r = Live2DStage.stageRect(
-                      camNow,
-                      MediaQuery.sizeOf(context),
-                    );
-                    return Positioned.fromRect(
-                      rect: r,
-                      // ⚠️ 必须是 **translucent 的 Listener**（不是 GestureDetector）：
-                      //  · `Listener` 不参与手势竞技场 → 它和下层平台视图**都能收到**
-                      //    这串 pointer 事件（平台视图那份驱动"眼睛/头跟着手指"）
-                      //  · translucent → 事件继续往她下面的层走，不挡任何东西
-                      //  · 原型是 pointerdown 就触发（按下即算，不等抬手）——
-                      //    所以这里也只在 down 判命中，拖拽时头照样跟手
-                      child: Listener(
-                        behavior: HitTestBehavior.translucent,
-                        // ⚠️ 必须用 `e.position`（**全局**坐标）—— `hitHer` 内部
-                        // 拿它和 `rect.top`/`rect.center.dx` 比；用 localPosition
-                        // 会永远判定不中（2026-10-11 踩过：戳她毫无反应）。
-                        onPointerDown: (PointerDownEvent e) =>
-                            _onStageDown(e.position, r),
-                        child: const SizedBox.expand(),
-                      ),
-                    );
-                  },
-                ),
-                // 换族「重绘」过场（docs/37 §3.5）：平台视图改布局尺寸的那一帧起
-                // （只有派单 talk 用 1.70 族），她有 2~3 帧是"小号/错位"渲染，用一层
-                // 遮罩 + 一道扫线吃掉。
-                // ⚠️ 层级：在**她之上、环场之下** —— 只把她压下去，环场/进度带/HUD/
-                //    台词/底栏都留着，观感是"她重绘一拍"而不是"整屏黑一下"。
-                ValueListenableBuilder<Cam>(
-                  valueListenable: _cam,
-                  builder: (BuildContext _, Cam camNow, Widget? _) =>
-                      StageRedrawVeil(
-                        family: Live2DStage.viewFamilyS(camNow.s),
-                      ),
-                ),
-                // 环场：她脚下到头顶那 8 个环。**画在独立画布上，与 Live2D 无关**
-                // （`stage.js` L127 `cv.id='ringCv'`），启动时 `App.boot()` 会把
-                // 8 个环全部 showRing，所以之后一直可见。
-                ValueListenableBuilder<Cam>(
-                  valueListenable: _cam,
-                  builder: (BuildContext _, Cam camNow, Widget? _) =>
-                      ProgressBandLive(
-                        done: _goal.doneCount,
-                        total: _goal.totalTasks,
-                        cam: camOf,
-                        camObj: camNow, // 弹簧推出来的那一帧（切页是"推镜头"不是瞬移）
-                        lit: _bandLitNow(),
-                        // docs/39 H-10 / M-12：**主线页隐藏**（牌扇与她的脸都在这块）
-                        visible: !main,
-                        dim: boot
-                            ? .34 // 开机态的全息参数
-                            // 唤醒过场：34% → 100% 顺着 _wakeFade 推上去（原来是硬跳）
-                            : fail
-                            ? 1 -
-                                  .4 *
-                                      _ringDim
-                                          .value // flows.js L530：holoTo({bright:.6}) 缓动过去
-                            : _bandWakeDim,
-                        scan: .2, // settings.holo → Stage.scanT
-                      ),
-                ),
-                // TODO(step8+): 1 · 舞台 —— Live2D 角色 + 套在她身上的主线环 + 环挂签/环标签
-                // 2 · 界面
-                //    ⚠️ 原型的层级：`#veil` 是 z-auto（在 #ui 之后绘制），而 `.line` z=3、
-                //    `#choices` z=4、`#plateAlt` z=2 —— 所以认输时 veil 压得住 failv，
-                //    压不住字幕和选项。Stack 的先后顺序必须照这个 z 序排。
-                Hud(
-                  state: _host,
-                  visible: lobby || exec,
-                  onMenu: () => _openSheet(SheetKind.system),
-                  // 唤醒过场：淡入（在组件内部套 Opacity —— 它顶层是 Positioned，
-                  // 外面包带 RenderObject 的包装件会报 ParentDataWidget 错）
-                  fade: _wakeFade,
-                ),
-                // 连击药丸（宿主 2026-10-11：从左上角那个小方块里摘出来，
-                // 贴到顶栏下沿居中 —— 位置落在委托卡上方，不再和称号挤在一起）
-                // 连击药丸 —— 宿主 2026-10-11：「连击 隐藏」（先不显示，组件留着，
-                // 要接回来把 visible 改回 lobby || exec 即可）
-                StreakPill(streak: _host.streak, visible: false),
-                // 纪律在 t9，这颗玻璃圆钮由本文件挂载——HUD 行下方左上，
-                // 在 Stack 里压着 Live2D 平台视图，触摸先命中它
-                // 对话入口（docs/18 §2.6）：宿主 2026-10-11 指定从左上角搬走 ——
-                // 「图2聊天框，移动到委托的上方，如图3位置」：现在挂在**右下、底栏之上**，
-                // 也就是委托板 / 今日已清那一块的正上方。
-                // 样式与底栏那几颗侧键同族（玻璃圆 + 1px 描边），只是大一号、贴右手拇指。
-                if (lobby)
-                  Positioned(
-                    // docs/39 H-13：直径 56→52、right 18→20 / bottom 150→158
-                    //（与 CTA 那颗 104 的环在同一列上让出安全区）
-                    // docs/39 H-17：158 之上的**安全区增量**（今天恒 0）
-                    // 唤醒过场取 master（外面这层 _WakeFade 必须保留）
-                    right: 20,
-                    bottom: 158 + _bottomExtra(context),
-                    child: _WakeFade(
-                      t: _wakeFade,
-                      child: ChatEntryButton(
-                        onTap: () => _openChat(),
-                        size: 52,
+                  // 绑定仪式（设计稿未覆盖，按参考稿语言补成独立整页）：
+                  // 第 0 幕问目标，第 1 幕 3~5 张访谈卡。
+                  if (onboard)
+                    Positioned.fill(
+                      child: RefOnboard(
+                        controller: _ask,
+                        probe: _interviewCat != null
+                            ? '答完这几张，我给你排三天。'
+                            : (_probeLine ?? LINES.askGoal),
+                        probeToken: _tap,
+                        presets: const <String>[
+                          '三个月跑完半马',
+                          '一个月早睡早起',
+                          '考研上岸',
+                          '半年减重 10 斤',
+                          '学会画画',
+                          '变优秀',
+                        ],
+                        onSubmit: _onGoalSubmitted,
+                        cards: _interviewCat == null
+                            ? null
+                            : interviewCardsFor(
+                                _interviewCat!,
+                                level: _host.lv,
+                              ),
+                        onDone: _completeOnboarding,
+                        onSkip: _planError == null ? null : _skipLlmAndStart,
+                        planError: _planError == null
+                            ? null
+                            : _planError!.code.name +
+                                  ' · ' +
+                                  _clip(_planError!.detail, 60),
                       ),
                     ),
+                  // docs/39 M-24 · 换目标输入幕的**常驻取消**（左上 44 圆 + 顶部 11pt
+                  // 上下文行）。两条都不依赖牌列 —— 键盘弹起、牌列退场、LLM 长句
+                  // 把字幕顶上去，取消都还在原地。进 240ms kOut（淡 + 8px 下落）。
+                  _GoalChangeChrome(
+                    visible: _goalChangeOn,
+                    onCancel: _cancelGoalChange,
                   ),
-                // docs/39 H-15 · 主 CTA 三态状态机（P0）：
-                //   执行中 → 回执行面板（**不是开派单板**，这是"执行中再从大厅接单"的堵口）
-                //   队列空 → 她说一句，不进派单板
-                //   否则   → 派单板
-                //
-                // ⚠️ 包一层 ListenableBuilder 订阅秒时钟：H-15 的底注是**真实换日
-                //    倒计时**（原来写死「换日还有 0 小时」），不订的话一秒都不动。
-                //    ListenableBuilder 不含 RenderObject，builder 直接返回 Positioned
-                //    在 Stack 下是合法的（同 Live2DStage / ProgressBand 的 ValueListenableBuilder）。
-                ListenableBuilder(
-                  listenable: _clock,
-                  builder: (BuildContext _, Widget? _) => Dock(
-                    state: _host,
-                    visible: lobby,
-                    fade: _wakeFade,
-                    // H-15：真状态（原先组件里写死 running=false）
-                    running: _active,
-                    elapsed: _execReadout().elapsed,
-                    // H-09：主线侧键外圈进度弧 + 右上 0/8
-                    planDone: _goal.doneCount,
-                    planTotal: _goal.totalTasks,
-                    // H-15 底注：执行中「点开 · 继续」；队列空走真实换日倒计时
-                    capText: _active
-                        ? '点开 · 继续'
-                        : (_host.queue == 0 ? dockRollCap(_clock.now) : null),
-                    onCta: _enterLobbyCta,
-                    onSide: (int i) {
-                      if (i == 0) {
-                        setState(() {
-                          _pickedTask = null;
-                          _moment = Moment.main;
-                        });
-                      } else if (i == 1) {
-                        _openSheet(SheetKind.archive);
-                      } else if (i == 2) {
-                        // 补给 → **悬浮货架**（docs/32：不开面板，牌直接浮在舞台上）
-                        _openTable(TableScene.supply);
-                      }
-                    },
+                  // 换目标 · 问新目标（TODO-01）：主线页「换目标」→ 这一层
+                  // （旧主线单先不动；确定才走 `flow.newGoal` 落库）
+                  AskField(
+                    prompt: '新目标 ›',
+                    placeholder: '比如：半年减重 10 斤',
+                    presets: const <String>[
+                      '半年减重 10 斤',
+                      '三个月跑完半马',
+                      '一个月早睡早起',
+                      '考研上岸',
+                    ],
+                    controller: _goalAsk,
+                    focusNode: _goalAskFocus,
+                    visible: _goalChangeOn,
+                    bottomInset: MediaQuery.viewInsetsOf(context).bottom,
+                    onPreset: (String v) => _goalAsk.text = v,
+                    onSubmit: _onGoalChangeSubmitted,
+                    // docs/39 M-24：取消**不再走牌列**（原来在牌列最右、被屏宽裁掉一半，
+                    // 键盘一弹整条牌列退场就彻底没有退路）。现在取消 = 输入幕左上那颗
+                    // 常驻 44 圆（见下面 `ask.cancel` 的挂载），_cancelGoalChange 由它调。
+                    // 「先问小祥」仍是**入口牌**：开对话、不填输入框（§4.B.2）
+                    onEntry: _enterAskXiang,
                   ),
-                ),
-                // 派单板
-                Plate(
-                  quest: _quest,
-                  host: _host,
-                  visible: dispatch,
-                  // docs/41 §6.5：揭示可跳过（整屏 tap 的计数，见上方那个 
-                  // GestureDetector；Plate 内部有 90ms 防误触窗口）
-                  skipToken: _tap,
-                  // 稀有度滚完那一刻（原型 `Plate.rankRoll` 收尾）：
-                  // `FX.flash(RARITY[r].c, target >= 4 ? .13 : .06, 280)`
-                  // `if (target >= 5) FX.shake(6, 320)`（外加 Stage.glitch —— 那作用在
-                  // Live2D 画布的滤镜上，等模型路线定了再接）
-                  onRankFx: (int target) {
-                    final Color rk = Rarity.of(kRanks[target]).color;
-                    _pulse(
-                      color: rk,
-                      a: target >= 4 ? .13 : .06,
-                      ms: 280,
-                      shakePx: target >= 5 ? 6 : 0,
-                    );
-                    // `FX.burst(lr.cx, lr.cy, {n: 8+target*9, cols:[rk,蓝,冰],
-                    //  min: 60, max: 150+target*55, life: .9, g: 60})`
-                    // 骰子大字在屏幕上的位置（板 left16 / top396，骰子 right16 top34 86×104）
-                    _fx.burst(
-                      315,
-                      469,
-                      n: 8 + target * 9,
-                      cols: <Color>[rk, C.blue, const Color(0xFFE9FBFF)],
-                      min: 60,
-                      max: 150 + target * 55,
-                      life: .9,
-                      g: 60,
-                    );
-                  },
-                  // 指纹按到一半松手（原型 `Plate.hold()` 的 `up()`）
-                  onWaver: _onWaverRoast,
-                  onAccept: () {
-                    // 原型 `App.dispatch()` → `App.run()`：忙的时候直接返回
-                    if (_busy) return;
-                    _beginExec();
-                    _persist();
-                  },
-                ),
-                // 执行面板
-                // ⚠️ 必须包一层 ListenableBuilder 订阅时钟 —— 否则 `_clock` 每 250ms
-                //    通知了没人听，计时器会一直停在进页面那一刻（实机踩过：等了 12 秒还是 07:00）
-                ListenableBuilder(
-                  listenable: _clock,
-                  builder: (BuildContext context, Widget? child) => ExecPanel(
-                    quest: _execQuest,
-                    elapsed: _execReadout().elapsed,
-                    // 暴击率显示口径（t16/B4 单一真源）：底值由 QuestFlow.critBase 出，
-                    // 证据加成由面板按手里的证据列表自己加 evidenceCritBonus——
-                    // 这里若给全量 critChance，证据加成就算两遍（gate 实测双计）
-                    critChance: _flow.critBase(),
-                    // 原型是按持有数算的（`Exec.slots()` 末尾那个 reduce），
-                    // 不是写死的 3 —— 用掉道具后这个数要跟着掉
-                    itemCount: Item.execCount(_host.items),
-                    tags: _usedItems,
-                    evidenceCount: 0,
-                    // D9 装配（t9 受控管线 + t14 档案口径）：证据进
-                    // active.evidence，结算暴击率按 已校验7%/未校验4% 联动
-                    evidence: _flow.active?.evidence,
-                    onEvidenceChanged: (List<EvidenceShot> list) {
-                      final ActiveQuest? a = _flow.active;
-                      if (a == null) return;
-                      // docs/24 #6 快照记录：证据进槽那一下，她抬眼确认一下
-                      if (list.length > a.evidence.length) {
-                        _stagePort?.act('check');
-                      }
-                      setState(() {
-                        a.evidence
-                          ..clear()
-                          ..addAll(list);
-                      });
-                    },
-                    onRemoveEvidence: (int i) {
-                      final List<EvidenceShot> ev =
-                          _flow.active?.evidence ?? const <EvidenceShot>[];
-                      if (i < 0 || i >= ev.length) return;
-                      setState(() => _flow.removeEvidence(ev[i].id));
-                    },
-                    visible: exec,
-                    // 指纹钤印那一下：原型 `Plate.seal()` 是
-                    // `FX.flash('#bff6ff', .24, 280)` + `FX.shake(4, 220)`
-                    onSubmit: () => unawaited(_submitQuest()),
-                    onQuitProgress: (double p) => setState(() => _quitP = p),
-                    onQuit: () {
-                      if (_busy) return; // 原型 `App.fail()` → `run()`
-                      setState(() {
-                        _drawerOn = false;
-                        _active = false; // 认输了，这一单不再是"执行中"
-                      });
-                      _beginFail();
-                    },
-                    // 点「道具」开合抽屉（原型 `#exItem` → `Exec.drawer()`，再点一次收起）
-                    onItem: () => setState(() => _drawerOn = !_drawerOn),
-                    // 收起 ▾（原型 `#exMin` → `App.lobby()`）：回大厅，**计时不停**
-                    onCollapse: () => setState(() {
-                      _drawerOn = false;
-                      _moment = Moment.lobby;
-                    }),
-                  ),
-                ),
-                // 道具抽屉（`.drawer` z-index 5，压在执行面板之上）
-                ItemDrawer(
-                  open: exec && _drawerOn,
-                  counts: _host.items,
-                  used: _usedItems,
-                  coins: _host.coins,
-                  onUse: _useItem,
-                  // 「去补给」—— 直接开**悬浮货架**（docs/32：不开面板）
-                  onShop: () => _openTable(TableScene.supply),
-                ),
-                // 结算
-                ResultPanel(
-                  result: _result,
-                  visible: result,
-                  // 「保存战报」（D1）：结算数据 → 文本战报 → 剪贴板 + 插话确认
-                  onSave: _saveReport,
-                  // 演出播完 → 弹【再来一单。/先歇会儿。|收工。】（卡死根因④：
-                  // 这是结算页唯一的退出路径，原型 flows.js L460-462）
-                  onDone: _onResultDone,
-                  // 「返回主界面」：兜底出口 —— 不等结算演出播完，
-                  // 直接回大厅（与岔路口里【收工。/先歇会儿。】同一条路）。
-                  //
-                  // ⚠️ 2026-10-23：宿主报「无法退出页面」。原来唯一出口是
-                  //    演出播完后的岔路口，演出没走完 = 整页无路。
-                  onExit: () => setState(() {
-                    _resultChoicesOn = false;
-                    _moment = Moment.lobby;
-                  }),
-                  // 「找小祥说说」（docs/18 §2.7 入口 A）：带结算上下文开对话层
-                  onTalk: () => _openChat(scenario: _resultTalkScenario),
-                  // 印章砸下那一刻（原型 `settle()` 的 ②）：
-                  //   FX.flash('#ffffff', .16, 180)
-                  //   FX.shake(ri >= 4 ? 7 : 4, 280)
-                  //   FX.burst(g.cx, g.cy, {n: 36 + ri*16,
-                  //     cols: [稀有度色, 蓝, 冰, 蓝, '#7fdcff'],
-                  //     max: 300 + ri*70, life: 1.2 + ri*.08})
-                  // 印章在屏幕上的位置：结算列底部锚定，136×136 的中心约 (195, 252)
-                  onImpact: (int ri) {
-                    final Color rk = Rarity.of(kRanks[ri]).color;
-                    _pulse(
-                      color: Colors.white,
-                      a: .16,
-                      ms: 180,
-                      shakePx: ri >= 4 ? 7 : 4,
-                    );
-                    _fx.burst(
-                      195,
-                      252,
-                      n: 36 + ri * 16,
-                      cols: <Color>[
-                        rk,
-                        C.blue,
-                        const Color(0xFFE9FBFF),
-                        C.blue,
-                        const Color(0xFF7FDCFF),
-                      ],
-                      max: 300 + ri * 70,
-                      life: 1.2 + ri * .08,
-                    );
-                  },
-                ),
-                // 失败 / 补救（在 veil 之下）—— 记录时间与补救单来自真实认输
-                FailLayer(
-                  recordedAt: _hhmm(_failAt),
-                  timeout: _failTimeout,
-                  remedy: _failRemedy ?? Remedy.demo,
-                  visible: fail,
-                ),
-                // 屏幕空间特效（#fx 在 DOM 里排在 #ui 之后、#veil 之前）
-                FxField(controller: _fx),
-                // 认输按住时屏幕跟着暗下去（最多 75%），认输后停在 60%
-                Veil(
-                  opacity: fail ? .6 : _quitP * .75,
-                  instant: _quitP > 0, // 按住期间跟手，松手才回到 900ms 过渡
-                ),
-                // 亮帧（`#flash` 在 DOM 里排在 veil 之后；正 z 的那些会盖在它上面）
-                // ⚠️ 必须判 isAnimating —— 控制器停在 0 时 `1 - easeOut(0) = 1`，
-                // 会让亮帧**一直开着**（整屏被垫一层 16% 白，一路比对下来才发现）
-                AnimatedBuilder(
-                  animation: _flashC,
-                  builder: (BuildContext context, Widget? child) => FlashLayer(
-                    color: _flashColor,
-                    alpha: _flashC.isAnimating
-                        ? _flashA *
-                              (1 - Curves.easeOut.transform(_flashC.value))
-                        : 0,
-                    // docs/39 §5.5：reduce 时亮帧 alpha 砍半（组件内部实现）
-                    reduceMotion: reduce,
-                  ),
-                ),
-                // 以下三件在 veil 之上（z 2 / 3 / 4）
-                PlateAlt(
-                  labels: const <String>['换一个', '等会儿'],
-                  visible: dispatch,
-                  // D4 装配（t5 的回调 + t14 的 flow 业务）：
-                  // 0=换一个→retreat（降一档/换 F/口头巨人）；1=等会儿→回大厅
-                  onPick: _onPlateAlt,
-                ),
-                LineLayer(
-                  // 文案真源：content.js L298 `holding` / L397 `mainline`
-                  // 她主动开口时会临时顶掉页面字幕（原型是 Line.say().then(hide)）
-                  text:
-                      _aside ??
-                      (dispatch
-                          // 发布文案接管：LLM 回了顶掉原句，兜底保持「接不接？」
-                          ? _dispatchLine ?? '接不接？'
-                          : result && _resultChoicesOn
-                          // 结算页的退出问话（原型 flows.js L462 的 choose()）
-                          ? _flow.queueEmpty
-                                ? '收工？……明天见。'
-                                : '还做吗？'
-                          : fail
-                          // `[[{dl}]]` 是补救单截止（真实认输时间 + 24h）
-                          ? LINES.remedyLine.replaceFirst(
-                              '[[{dl}]]',
-                              '[[明天 ${_hhmm(_flow.remedyDeadline ?? _failAt)}]]',
-                            )
-                          : main
-                          ? LINES.mainline(_goal.doneCount, _goal.plan.length)
-                          : onboard
-                          // 访谈进行中换一句幕词；第 0 幕保持追问接管（兜底=askGoal 原句）
-                          ? _interviewCat != null
-                                ? '答完这几张，我给你排三天。'
-                                : _probeLine ?? LINES.askGoal
-                          : LINES.holding.replaceFirst(
-                              '[[{n}]]',
-                              '[[${_host.queue}]]',
-                            )),
-                  mood: onboard
-                      // ⚠️ 只能用原型 MOOD_LABEL 的 12 个词（content.js:421）：
-                      // 原来这里写的是自造的「专注」——既不在词表里（界面读数与原型不一致），
-                      // 又让逐字音节的情绪反查退化成 neutral。focus 的原型词是「监视」。
-                      ? '监视'
-                      : dispatch
-                      ? '监视'
-                      : (fail ? '待机' : '尚可'),
-                  y: lineY,
-                  soft: fail,
-                  fail: fail,
-                  // 临时台词的情绪（戳她那几句要带 tsun/annoyed/cold 的音节）
-                  emotion: _asideEmotion,
-                  skipToken: _tap, // 点背景跳过打字机
-                  paceMs: _paceMs, // docs/22 §R4：对白节奏三档（设置页「对白节奏」）
-                  // 口型包络：打字机每显形一个字就把目标开口度设一下，
-                  // SYSTEM 后面那排波形条跟着动（原型 ui.js L70-73 / L96）
-                  voice: _voice,
-                  onChar: _voice.syllable,
-                  // docs/39 H-17：字幕带底边不许越过底部安全区（下限 34 + 8 呼吸）。
-                  // 主线页再让开底部两键（56 + 底边 34 + 12）——H-12 的 3 行上限
-                  // 会让字幕比原来高 ~1 行，走查图 02 里它已经快贴到【去执行】。
-                  bottomFloor:
-                      _safeBottom(context) +
-                      8 +
-                      (main ? 56 + 12 : 0) +
-                      _bottomExtra(context),
-                  // 原型里那句主线台词说完就 Line.hide()，点环展开详情时它已经不在——
-                  // 两者都显示会叠在详情卡上。结算页只在「她说话」和「问还做吗」时出现
-                  visible:
-                      lobby ||
-                      dispatch ||
-                      fail ||
-                      onboard ||
-                      (result && (_aside != null || _resultChoicesOn)) ||
-                      (main && _pickedTask == null),
-                ),
-                // 回应：结算收尾【再来一单。/先歇会儿。|收工。】
-                // 失败页【……接。/今天算了。】（原型的 choose()，此前没接 onPick
-                // 是「提交卡死」根因③④ —— 点了永远没反应）
-                Choices(
-                  items: _choices,
-                  visible: _choicesOn,
-                  onPick: _onChoice,
-                ),
-                // 绑定仪式 · 第 0 幕：她在上面问，宿主在这儿敲（z 4，在 veil 之上）
-                // 提交后不直接绑定 —— 空泛的追问到具体为止，具体的进访谈卡
-                AskField(
-                  prompt: '目标 ›',
-                  placeholder: '比如：三个月跑完半马',
-                  presets: const <String>[
-                    '三个月跑完半马',
-                    '一个月早睡早起',
-                    '考研上岸',
-                    '半年减重 10 斤',
-                    '学会画画',
-                    '变优秀',
-                  ],
-                  controller: _ask,
-                  visible: onboard && _interviewCat == null,
-                  // 键盘高度：Scaffold 不随键盘缩屏（见 resizeToAvoidBottomInset
-                  // 的注释），所以输入框自己抬上去
-                  bottomInset: MediaQuery.viewInsetsOf(context).bottom,
-                  onPreset: (String v) => _ask.text = v,
-                  onSubmit: _onGoalSubmitted,
-                ),
-                // docs/39 M-24 · 换目标输入幕的**常驻取消**（左上 44 圆 + 顶部 11pt
-                // 上下文行）。两条都不依赖牌列 —— 键盘弹起、牌列退场、LLM 长句
-                // 把字幕顶上去，取消都还在原地。进 240ms kOut（淡 + 8px 下落）。
-                _GoalChangeChrome(
-                  visible: _goalChangeOn,
-                  onCancel: _cancelGoalChange,
-                ),
-                // 换目标 · 问新目标（TODO-01）：主线页「换目标」→ 这一层
-                // （旧主线单先不动；确定才走 `flow.newGoal` 落库）
-                AskField(
-                  prompt: '新目标 ›',
-                  placeholder: '比如：半年减重 10 斤',
-                  presets: const <String>[
-                    '半年减重 10 斤',
-                    '三个月跑完半马',
-                    '一个月早睡早起',
-                    '考研上岸',
-                  ],
-                  controller: _goalAsk,
-                  focusNode: _goalAskFocus,
-                  visible: _goalChangeOn,
-                  bottomInset: MediaQuery.viewInsetsOf(context).bottom,
-                  onPreset: (String v) => _goalAsk.text = v,
-                  onSubmit: _onGoalChangeSubmitted,
-                  // docs/39 M-24：取消**不再走牌列**（原来在牌列最右、被屏宽裁掉一半，
-                  // 键盘一弹整条牌列退场就彻底没有退路）。现在取消 = 输入幕左上那颗
-                  // 常驻 44 圆（见下面 `ask.cancel` 的挂载），_cancelGoalChange 由它调。
-                  // 「先问小祥」仍是**入口牌**：开对话、不填输入框（§4.B.2）
-                  onEntry: _enterAskXiang,
-                ),
-                // 绑定仪式 · 第 1 幕：卡片式访谈（docs/18 §2.1，t4 组件 + t8 装配）
-                // 答完 → Agent 拆解落 3 天 3 张 → 见面礼 → 大厅
-                if (onboard && _interviewCat != null)
-                  Positioned(
-                    left: 0,
-                    right: 0,
-                    bottom: 96,
-                    child: InterviewDeck(
-                      cards: interviewCardsFor(_interviewCat!, level: _host.lv),
-                      onDone: _completeOnboarding,
+                  // v3 LLM 设置（参考稿未覆盖，按「补全缺失组件」要求新增）：
+                  // Base URL / ApiKey / 模型 / 温度 / 上下文 / 流式 / 测试 / 保存。
+                  if (_llmPaneOn)
+                    Positioned.fill(
+                      child: ColoredBox(
+                        // ⚠️ 必须**不**透明：`.96` 让底下的「LLM 设置」入口按钮
+                        //    透到面板上（实测遮在「连接 · ENDPOINT」那一栏）。
+                        color: Ref.bg,
+                        child: SafeArea(
+                          child: LlmSettingsPane(
+                            initial: _agentSettings,
+                            onClose: () => setState(() => _llmPaneOn = false),
+                            onSaved: (AgentSettings s) => setState(() {
+                              _agentSettings = s;
+                              _llmPaneOn = false;
+                            }),
+                          ),
+                        ),
+                      ),
                     ),
+                  // v3 档案（参考稿 L767-787）：独立整页，不再是投影面板
+                  if (sheet && _sheetKind == SheetKind.archive)
+                    Positioned.fill(
+                      child: ColoredBox(
+                        color: Ref.bg,
+                        child: RefArchive(
+                          host: _host,
+                          ownedCount: _host.ownedTitles.length,
+                          totalTitles: HostTitle.all.length,
+                          onBack: () => setState(() => _moment = _sheetFrom),
+                          onEquip: (String id) {
+                            if (!_flow.equip(id)) return;
+                            setState(() => _host = _flow.host);
+                            _persist();
+                            _sayAside('换上了。……还行。', holdMs: 1400);
+                          },
+                        ),
+                      ),
+                    ),
+                  // v3 补给（参考稿 L789-799）：独立整页
+                  if (sheet && _sheetKind == SheetKind.supply)
+                    Positioned.fill(
+                      child: ColoredBox(
+                        color: Ref.bg,
+                        child: RefShop(
+                          items: Item.all,
+                          owned: _host.items,
+                          coins: _host.coins,
+                          onBack: () => setState(() => _moment = _sheetFrom),
+                          onBuy: (Item it) {
+                            if (_flow.buy(it.id)) {
+                              setState(() => _host = _flow.host);
+                              _persist();
+                              _sayAside('钱货两讫。省着点用。', holdMs: 1400);
+                            } else {
+                              _sayAside('钱不够。……方向都给你指好了。', holdMs: 1400);
+                            }
+                          },
+                          onUse: (Item it) => _useItem(it.id),
+                        ),
+                      ),
+                    ),
+                  // v3 系统设置（参考稿 #sheet L481-491 / L837-843）：
+                  // 底部抽屉 + 音效开关 + 秘籍 + 彩蛋提示 + 重置存档。
+                  // APP 原有的「和她聊聊」「LLM 连接」按同一行样式补在中间。
+                  if (sheet && _sheetKind == SheetKind.system)
+                    Positioned.fill(
+                      child: RefSheet(
+                        visible: true,
+                        sound: _agentSettings.sound,
+                        onSound: (bool v) {
+                          if (v != _agentSettings.sound) _toggleSound();
+                        },
+                        onClose: () => setState(() => _moment = _sheetFrom),
+                        onHint: () {
+                          setState(() => _moment = _sheetFrom);
+                          _toast('戳大厅的「她」7 次 · 长按她 · 连点计时器 5 次', bad: false);
+                        },
+                        onChat: () {
+                          setState(() => _moment = _sheetFrom);
+                          _openChat();
+                        },
+                        onLlm: () {
+                          setState(() {
+                            _moment = _sheetFrom;
+                            _llmPaneOn = true;
+                          });
+                        },
+                        onReset: () {
+                          setState(() => _moment = _sheetFrom);
+                          _askWipe();
+                        },
+                      ),
+                    ),
+                  // 主线全景：环挂签挂在环上（位置由相机数学给出），面板压在上面
+                  // ⚠️ 换目标时**整层退场**（`_goalChangeOn`）：原来她问新目标时
+                  //    主线全景还留在屏上，于是「新目标」输入框的预设词/确定钮
+                  //    正好压在底部的【让她派这一环】【换目标】上、字幕压在预设词上
+                  //    —— 宿主截图里的"UI 重合"就是这两处（原型 `MainV.hide()`
+                  //    也是整层收掉，只留她说话 + 输入）。
+                  // v3 主线页（参考稿 L719-731）：抬头 / meta / daybar / 大牌 /
+                  // 刻度 / sysbox / 去委托板 + 换目标。
+                  if (main && !_boardOn)
+                    Positioned.fill(
+                      child: RefMain(
+                        goal: _goal,
+                        lead: _mainLead,
+                        mood: _aside != null ? '尚可' : '冷淡',
+                        line: _aside ?? '清单不会自己变短。看哪张？',
+                        elapsed: _active
+                            ? _clockText(_execReadout().elapsed)
+                            : null,
+                        onBack: () => setState(() {
+                          _boardOn = false;
+                          _moment = Moment.lobby;
+                        }),
+                        onScrub: (int i) => setState(() => _mainLead = i),
+                        onDispatch: () => setState(() {
+                          _boardFrom = Moment.main;
+                          _boardOn = true;
+                          _boardFilter = 'all';
+                        }),
+                        onSwapGoal: _beginGoalChange,
+                      ),
+                    ),
+                  // v3 委托板（参考稿 L237-264）：tabs + ticket 列表。
+                  // ⚠️ 旧的 MainView 仍在下面、`visible: false`：它承载了
+                  //    746 条历史测试里的 `main.rail` / `main.title` 等锚点，
+                  //    视觉由 RefBoard 接管。
+                  if (main && _boardOn)
+                    Positioned.fill(
+                      child: RefBoard(
+                        quests: _boardQuests(),
+                        filter: _boardFilter,
+                        onFilter: (String f) =>
+                            setState(() => _boardFilter = f),
+                        active: _flow.active?.task,
+                        onBack: () => setState(() {
+                          _boardOn = false;
+                          _moment = _boardFrom;
+                        }),
+                        onTap: _onBoardTap,
+                        onRefill: _refillBoard,
+                      ),
+                    ),
+                  // 「执行中」药丸（`ui.js` L60）：**执行页自己不显示它**，点它回执行页。
+                  // 收起执行面板后就靠它回去。
+                  // docs/39 H-16 / M-02：**主线页不再浮这颗药丸** —— 主线页的计时读数
+                  // 归抬头里的 status chip（由 P0-B 在 main_view 里做）。这里是同一个
+                  // 计时数据的第二处呈现，两处并存就是走查 §0 里"药丸压着抬头读数"的来源。
+                  // 对话层（docs/18 §2.6）：叠加，不替换；她仍在背景可见
+                  // ——层序在 、亮帧与横幅之下
+                  ChatPanel(
+                    visible: _chatOpen,
+                    messages: _chat.messages,
+                    thinking: _chatThinking,
+                    onSend: _sendChat,
+                    onClose: () => setState(() => _chatOpen = false),
+                    onVoiceTap: _onVoiceTap,
+                    onQuickTool: _onQuickTool,
+                    paceMs: _paceMs, // docs/22 §R4：同一档位喂聊天气泡的打字机
                   ),
-                // 投影面板（档案 / 补给 / 系统共用这一层壳）
-                Sheet(
-                  host: _host,
-                  kind: _sheetKind,
-                  planError: _planError,
-                  planErrorGoal: _planErrorGoal,
-                  // 2026-10-13 宿主裁定：**不让位** —— 名牒册悬浮在档案上就行
-                  visible: sheet,
-                  // 设置页「表演调试台」→ 收起投影面板，开调试设施（她仍在背景可见）
-                  onOpenPerfDebug: () => setState(() {
-                    _moment = _sheetFrom;
-                    _perfDebugOn = true;
-                  }),
-                  // 关掉回**开它的那个页面**（原型 `App.closeSheet()` → `_sheetFrom`）
-                  onClose: () => setState(() => _moment = _sheetFrom),
-                  onWipe: _wipe,
-                  // D6/D7 装配（t9 组件回调 + t14 flow 业务）：挂称号 / 购买
-                  onOpenTitles: () => _openTable(TableScene.titles),
-                  onEquipTitle: (String id) {
-                    if (!_flow.equip(id)) return; // 未解锁/口头巨人期：组件已禁用，双保险
-                    setState(() => _host = _flow.host);
-                    _persist();
-                    _sayAside('换上了。……还行。', holdMs: 1400);
-                  },
-                  onBuyItem: (String id) {
-                    if (_flow.buy(id)) {
-                      setState(() => _host = _flow.host);
-                      _persist();
-                      _sayAside('钱货两讫。省着点用。', holdMs: 1400);
-                    } else {
-                      // 组件在买不起时点不动；走到这里说明竞态扣空，接住即可
-                      _sayAside('钱不够。……方向都给你指好了。', holdMs: 1400);
-                    }
-                  },
-                ),
-                // 挂签（大厅里挂在进度带右端）—— docs/39 H-08 整支重做：
-                //  · 吃**逐帧** camObj（1.4s 推镜时挂签得跟着环走，只吃字符串会钉死）
-                //  · 三档不透明度：常态 .78 / 她说话 .55 / 失败 .35（原来是恒 .18）
-                //  · 左缘夹在 [16, W-16-112]，不再越出 430 屏宽被裁
-                // ⚠️ ValueListenableBuilder 不含 RenderObject，builder 直接返回
-                //    Positioned 在 Stack 下合法（同 _cam 的既有用法）。
-                ValueListenableBuilder<Cam>(
-                  valueListenable: _cam,
-                  builder: (BuildContext _, Cam camNow, Widget? _) => PlanTag(
-                    goal: _goal,
-                    cam: camOf,
-                    camObj: camNow,
-                    // 失败页也留着（只是压到 .35）—— 目标还在那儿，这是 H-08 三档里
-                    // 的第三档；只在派单/执行/结算这些「聚焦态」收掉。
-                    visible: lobby || fail,
-                    tone: fail
-                        ? PlanTagTone.failed
-                        : ((_aside != null || _busy)
-                              ? PlanTagTone.speaking
-                              : PlanTagTone.normal),
-                    onTap: () => setState(() {
-                      _pickedTask = null;
-                      _moment = Moment.main;
-                    }),
-                  ),
-                ),
-                // 主线全景：环挂签挂在环上（位置由相机数学给出），面板压在上面
-                // ⚠️ 换目标时**整层退场**（`_goalChangeOn`）：原来她问新目标时
-                //    主线全景还留在屏上，于是「新目标」输入框的预设词/确定钮
-                //    正好压在底部的【让她派这一环】【换目标】上、字幕压在预设词上
-                //    —— 宿主截图里的"UI 重合"就是这两处（原型 `MainV.hide()`
-                //    也是整层收掉，只留她说话 + 输入）。
-                MainView(
-                  goal: _goal,
-                  published: _publishedPlanIndices(),
-                  activeIndex: _activePlanIndex(),
-                  selected: main ? _pickedTask : null,
-                  elapsed: _active ? _clockText(_execReadout().elapsed) : null,
-                  canDispatch: main && !_flow.queueEmpty,
-                  visible: main && !_goalChangeOn,
-                  // docs/39 M-16：执行中那张牌屉里的证据份数（只读）
-                  evidence: _flow.active?.evidence,
-                  onClose: () => setState(() => _moment = Moment.lobby),
-                  onDispatch: _enterDispatchOrRest,
-                  // docs/39 M-20：执行中态的主行动 = 继续执行（回执行面板）
-                  onResume: _resumeExec,
-                  onSelect: (int i) =>
-                      setState(() => _pickedTask = i < 0 ? null : i),
-                  onAccept: _acceptPlanTask,
-                  // D5：换目标 → 问一句新目标 → `newGoal` 落库（TODO-01；
-                  // 「先问小祥」那颗暗号仍带场合上下文开对话）
-                  onNewGoal: _beginGoalChange,
-                ),
-                // 「执行中」药丸（`ui.js` L60）：**执行页自己不显示它**，点它回执行页。
-                // 收起执行面板后就靠它回去。
-                // docs/39 H-16 / M-02：**主线页不再浮这颗药丸** —— 主线页的计时读数
-                // 归抬头里的 status chip（由 P0-B 在 main_view 里做）。这里是同一个
-                // 计时数据的第二处呈现，两处并存就是走查 §0 里"药丸压着抬头读数"的来源。
-                ListenableBuilder(
-                  listenable: _clock,
-                  builder: (BuildContext _, Widget? _) => ExecPill(
-                    visible: _active && (lobby || sheet),
-                    elapsed: _execReadout().elapsed,
-                    onTap: () => setState(() {
-                      if (_busy) return;
-                      _moment = Moment.exec;
-                    }),
-                  ),
-                ),
-                // 表演调试台（宿主 2026-10-11）：贴底半屏，上面半屏留给她 ——
-                // 点一条预设/动作/表情就地演，边看边调（不进底栏、不写存档）
-                PerfDebugPanel(
-                  visible: _perfDebugOn,
-                  port: _stagePort,
-                  onClose: () => setState(() => _perfDebugOn = false),
-                ),
-                // 对话层（docs/18 §2.6）：叠加，不替换；她仍在背景可见
-                // ——层序在 Live2D/字幕之上、亮帧与横幅之下
-                ChatPanel(
-                  visible: _chatOpen,
-                  messages: _chat.messages,
-                  thinking: _chatThinking,
-                  onSend: _sendChat,
-                  onClose: () => setState(() => _chatOpen = false),
-                  onVoiceTap: _onVoiceTap,
-                  onQuickTool: _onQuickTool,
-                  paceMs: _paceMs, // docs/22 §R4：同一档位喂聊天气泡的打字机
-                ),
-                // 横幅（z 5，压在所有东西上面）。
-                // ① 拆解失败优先：失败必须**看得见**（旧版失败时屏幕上什么都不发生）。
-                // ② 否则是绑定见面礼（数值语义在 goal_gen 的 kBindGift*）。
-                if (_planError != null)
-                  SysBanner(
-                    kicker: 'PLAN · 拆解失败',
-                    text:
-                        '${_planError!.code.name} · ${_clip(_planError!.detail, 48)}',
-                    glyph: '!',
-                    visible: true,
-                  )
-                else
-                  SysBanner(
-                    kicker: kBindGiftKicker,
-                    text: kBindGiftText,
-                    glyph: '×2',
-                    visible: _banner,
-                  ),
-              ],
+                  // 横幅（z 5，压在所有东西上面）。
+                  // ① 拆解失败优先：失败必须**看得见**（旧版失败时屏幕上什么都不发生）。
+                  // ② 否则是绑定见面礼（数值语义在 goal_gen 的 kBindGift*）。
+                  // v3 顶部提示（参考稿 L409-413 / L1117-1122）
+                  if (_toasts.isNotEmpty)
+                    Positioned(
+                      left: 14,
+                      right: 14,
+                      top: MediaQuery.paddingOf(context).top + 14,
+                      child: IgnorePointer(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: <Widget>[
+                            for (final _Toast t in _toasts)
+                              Padding(
+                                padding: const EdgeInsets.only(bottom: 8),
+                                child: RefToast(
+                                  key: ValueKey<int>(t.id),
+                                  message: t.text,
+                                  kind: t.bad
+                                      ? RefToastKind.err
+                                      : RefToastKind.ok,
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  // v3 升级过场（参考稿 L450-460）：HUD 在后台跨级时补播
+                  if (_levelUpFrom != null)
+                    Positioned.fill(
+                      child: RefLevelUp(
+                        from: _levelUpFrom!,
+                        to: _levelUpTo ?? _host.lv,
+                        perk: _levelUpPerk(_levelUpTo ?? _host.lv),
+                        onTap: () {
+                          if (_moment == Moment.result) {
+                            _finishVerdict();
+                          } else {
+                            setState(() {
+                              _levelUpFrom = null;
+                              _levelUpTo = null;
+                              _moment = Moment.lobby;
+                            });
+                          }
+                        },
+                      ),
+                    ),
+                  // v3 确认弹窗（参考稿 #modal L476-480）：重置存档前先问一句
+                  if (_modalOn)
+                    Positioned.fill(
+                      child: ColoredBox(
+                        color: Ref.a(Ref.bg, .78),
+                        child: Center(
+                          child: RefModal(
+                            title: '重置存档？',
+                            body: '一切从「开机成功」重新开始。等级、晶核、名牒、主线、她记住的你 —— 全部清空。这项操作不可撤销。',
+                            yes: '确定重置',
+                            no: '再想想',
+                            onPick: (bool yes) {
+                              setState(() => _modalOn = false);
+                              if (yes) unawaited(_wipe());
+                            },
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
             ),
-          ),
-          // 3 · 覆盖层：开机自检（z 20，压在所有东西上面）
-          if (boot)
-            BootScreen(host: '${_host.name} · LV${_host.lv}', onWake: _wake),
-        ],
+            // 3 · 覆盖层：开机自检（z 20，压在所有东西上面）
+            // v3 开机屏（参考稿 #boot L850-857）：170 核心 + HOST//SYSTEM 字标 +
+            // 日志 + 3 高渐变条 + 唤醒键。旧的 BootScreen 保留树（它的 42 条测试
+            // 锚在 `boot.bar` 等 Key 上），视觉由 RefBoot 接管。
+            if (boot)
+              Positioned.fill(
+                child: RefBoot(
+                  lines: _bootLines,
+                  progress: _bootProgress,
+                  ready: _bootReady,
+                  onWake: _wake,
+                ),
+              ),
+            // 4 · v3 斜切 wipe 转场（参考稿 L493-499 / L1172-1183）：
+            //     三道斜带 + 中央大字，盖住整次换页。
+            Positioned.fill(
+              child: IgnorePointer(
+                child: RefWipe(
+                  key: _wipeKey,
+                  accent: _sceneAccent,
+                  title: _wipeTitle,
+                  sub: _wipeSub,
+                  onCovered: _runWipeCovered,
+                  onDone: _runWipeDone,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -2042,7 +1628,6 @@ class _AppShellState extends State<AppShell>
     _takeProbeLine(typed);
     setState(() {
       _planError = null;
-      _planErrorGoal = '';
     });
     unawaited(_startInterview(typed));
   }
@@ -2141,18 +1726,12 @@ class _AppShellState extends State<AppShell>
         _host = _flow.host;
         _lastRollDay = startOfDay(DateTime.now());
         _interviewCat = null;
-        // 绑定收卷 = 小景别（boot .64）→ 正常大小（lobby .92）：走慢推，
-        // 别让"绑定完就跳到大厅"（宿主验收：要看得见的放大）
-        _camGlideMs = 1400;
         _moment = Moment.lobby;
-        _banner = true;
       });
       _persist();
       _rememberInterview(cat, answers);
       _sayAside('排好了。三天，一天一张。', holdMs: 2200);
-      Future<void>.delayed(const Duration(milliseconds: 2200), () {
-        if (mounted) setState(() => _banner = false);
-      });
+      _toast('${kBindGiftKicker}：${kBindGiftText}');
     } on PlanFailure catch (e) {
       // 拆不出首目标就不落库：目标仍空着，原因摆在屏幕上（不退回模板）
       _failPlan(e, goalText: text);
@@ -2295,6 +1874,7 @@ class _AppShellState extends State<AppShell>
     // 原型 document.visibilitychange —— 记下你什么时候走的
     WidgetsBinding.instance.addObserver(this);
     _clock.startSeconds(_onSecond); // 原型 setInterval(App.second, 1000)
+    _runBootScript(); // v3 开机屏的日志节拍（参考稿 #boot）
     _restore();
     _initAgent(); // 小祥：设置→LLM 网关→文案/聊天服务 + 聊天历史读档
     _maybeRunShot();
@@ -2303,8 +1883,7 @@ class _AppShellState extends State<AppShell>
   /// **模拟器截图调度**（`--dart-define=SHOT=<场景>`）。
   ///
   /// 为什么要有它：iOS 模拟器上没法点（`simctl` 不支持注入触摸，idb 缺
-  /// companion），而原生 Live2D 在模拟器上还会 SIGBUS —— 想核对卡片视觉
-  /// 就得**跳过开机屏、直接停在某一页**，再用 `simctl io screenshot` 拍。
+  /// companion）—— 想核对某一页的视觉，就得**跳过开机屏、直接停在那一页**，
   ///
   /// 场景值：`lobby` / `main` / `drawer` / `goal` / `deck` / `sheet`
   ///          `supply` / `titles` / `evidence` / `result` / `onboard`
@@ -2317,8 +1896,6 @@ class _AppShellState extends State<AppShell>
     // 等首帧落定 + 存档读完后，再一次性把状态摆到目标页
     await Future<void>.delayed(const Duration(milliseconds: 600));
     if (!mounted) return;
-    _wakeFade.value = 1; // 跳过唤醒淡入，直接"已就位"
-    _camSpring.set('lobby', MediaQuery.sizeOf(context), snap: true);
     setState(() {
       _moment = switch (shot) {
         'main' || 'drawer' => Moment.main,
@@ -2368,43 +1945,12 @@ class _AppShellState extends State<AppShell>
     // 演出还在跑就先不打断她
     if (_busy) return;
     // docs/24 #16 回来：她转头看一眼（look + exp_idle02）
-    _stagePort?.act('lookAway');
     // 原型这几句**不给 hold**（flows.js L189）→ 走按字数算的默认值
     _sayAside(line, busy: true);
   }
 
-  /// 相机弹簧（`stage.js` L100-103）：切页时把镜头**推**过去，而不是瞬移。
-  /// 只有环场与挂签吃这个相机（她本人还没接），所以这一改动只影响环的位置/缩放。
-  final CamSpring _camSpring = CamSpring();
-
-  /// 下一拍相机换景别时用**慢推**（毫秒）而不是弹簧直冲；0 = 走弹簧。
-  /// 一次性的：`build` 里消费掉就归零（见那边的注释）。
-  int _camGlideMs = 0;
-  final ValueNotifier<Cam> _cam = ValueNotifier<Cam>(Cam.byName('boot'));
-  late final Ticker _camTicker = createTicker(_onCamTick);
-  Duration _camLast = Duration.zero;
-
-  void _onCamTick(Duration now) {
-    final double dt = _camLast == Duration.zero
-        ? 1 / 60
-        : (now - _camLast).inMicroseconds / 1e6;
-    _camLast = now;
-    _camSpring.step(dt);
-    _cam.value = _camSpring.cam;
-    if (_camSpring.done) {
-      _camTicker.stop();
-      _camLast = Duration.zero;
-    }
-  }
-
-  /// 失败时把进度带掐暗（原型 `Stage.dimRing` 三下：0 / 90 / 200ms）
-  double? _bandMul;
-
-  /// 唤醒时"点亮"进度带用的亮度系数（见 [_igniteBand]）；null = 这一路不参与
-  double? _bandLit;
-
-  /// 进度带亮度：**失败变暗** × **唤醒点亮**（两路相乘）
-  double _bandLitNow() => (_bandMul ?? 1) * (_bandLit ?? 1);
+  /// 本单已经挂上生效的道具（原型 `A.dbl / A.crit / A.shield`）
+  final Set<String> _usedItems = <String>{};
 
   /// 道具抽屉开着没（原型 `#exDrawer.on`）；再点一次「道具」收起
   bool _drawerOn = false;
@@ -2418,8 +1964,6 @@ class _AppShellState extends State<AppShell>
   Moment _sheetFrom = Moment.lobby;
 
   /// 表演调试台开着没（宿主 2026-10-11：调试预设/动作/表情的设施）
-  bool _perfDebugOn = false;
-
   /// 悬浮牌局开着没（名牒册 / 补给 / 证据来源）。
   ///
   /// ⚠️ 2026-10-12 宿主截图④：名牒册整桌牌**盖在六维雷达上**（层级打架）。
@@ -2500,24 +2044,12 @@ class _AppShellState extends State<AppShell>
     }
   }
 
-  /// 本单已经挂上生效的道具（原型 `A.dbl / A.crit / A.shield`）
-  final Set<String> _usedItems = <String>{};
-
-  /// `Stage.holoTo({bright: .6})` 是**缓动**过去的（每帧 `f += (target-f)*q`），
-  /// 不是瞬变；这个控制器负责那 350ms
-  late final AnimationController _ringDim = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 350),
-  )..addListener(() => setState(() {}));
-
   /// 进入失败态（认输与超时共用）：原型 `_fail()` 的视觉前几下
   void _beginFail({String how = 'quit'}) {
     _clock.stopFast();
     // 原型 `_fail()` L529：`Stage.setCam('fail'); Stage.emote('sad'); Stage.motion('down')`
     // —— 原生/WebView 桥已接通（T7），这里恢复当时的"暂时拿掉"：
     // docs/24 #11：认输垂头（exp_sad01）；**超时**另换惨白脸（exp_pale02）
-    _stagePort?.mood('sad');
-    _stagePort?.perf('sad', how == 'timeout' ? 'exp_pale02' : 'exp_sad01');
     // 真实判负（store.js fail）：failCount 记账、主线单回队首、生成补救单
     // —— 失败页不再是死局：补救单可接可弃（见 _onChoice）
     final FailOutcome? fo = _flow.fail(how: how);
@@ -2545,116 +2077,9 @@ class _AppShellState extends State<AppShell>
       _host = _flow.host;
       _goal = _flow.goal;
     });
-    // 进度带掐暗三下（原型 `Stage.dimRing` 的节奏：0 / 90 / 200ms）
-    _ringDim.forward(from: 0);
-    _setBandMul(.2);
-    Future<void>.delayed(const Duration(milliseconds: 90), () {
-      if (mounted) _setBandMul(.6);
-    });
-    Future<void>.delayed(const Duration(milliseconds: 200), () {
-      if (mounted) _setBandMul(.15);
-    });
   }
 
   // ── 结算页 / 失败页的出口（「提交卡死」根因③④的修复）──────────────
-
-  /// 回应选项什么时候出现：结算演出播完，或失败页进场（原型是她说完话
-  /// 再 `choose()`；失败页那几句插话的时长不阻塞选项）
-  bool get _choicesOn =>
-      _moment == Moment.fail || (_moment == Moment.result && _resultChoicesOn);
-
-  /// 两套选项：队列空时只剩【收工。】（flows.js L462）
-  List<Choice> get _choices {
-    if (_moment == Moment.result && _resultChoicesOn) {
-      return _flow.queueEmpty
-          ? const <Choice>[Choice('收工。', main: true)]
-          : const <Choice>[Choice('再来一单。', main: true), Choice('先歇会儿。')];
-    }
-    if (_moment == Moment.fail) {
-      return const <Choice>[Choice('……接。', main: true), Choice('今天算了。')];
-    }
-    return const <Choice>[];
-  }
-
-  /// 选完的岔路（flows.js L464-465 / L554-558）：
-  ///   再来一单 → 派单板 · 先歇会儿/收工 → 大厅
-  ///   ……接 → 补救单插回队首 → 派单板 · 今天算了 → 大厅
-  ///
-  /// 返回**这一下算不算数** —— `Choices` 据此决定要不要锁死、领位牌要不要
-  /// 滑走（见 `widgets/choices.dart` 的 [ChoicePick]）。
-  ///
-  /// ⚠️ 这里**故意不看 `_busy`**：`_busy` 是"她正在说回来那几句"的演出闸门
-  ///    （`_greetAfter` / `_wakeSequence` 两处），而失败页与结算页的回应是
-  ///    那两个终态**唯一的出口**。闸门关着就 return 的话，宿主点【……接。】
-  ///    没反应、牌却按"已确认"滑走 —— 2026-10-11 实机就是这么卡死的：
-  ///    回前台打招呼那 1~3 秒里超时判负（`_onSecond` → `_beginFail`），
-  ///    正好撞上宿主第一下点击，整页再无出路，只能杀进程重开。
-  bool _onChoice(int i) {
-    if (_moment == Moment.result) {
-      final bool more = i == 0 && !_flow.queueEmpty;
-      setState(() {
-        _resultChoicesOn = false;
-        _moment = more ? Moment.dispatch : Moment.lobby;
-      });
-      // docs/39 H-11：回大厅那一拍给「我变强了」的反馈 —— 进度带 600ms 涨
-      // + 一声 `count`。进度带的数值本来就是 `_goal.doneCount`（结算已落账），
-      // 这里给的是**亮度脉冲**：600ms 内点亮再回落；减免动态时整条不做
-      // （§5.5「reduced-motion 只保留数字变化」）。
-      if (!more) _harvestBand();
-      return true;
-    }
-    if (_moment == Moment.fail) {
-      if (i == 0) {
-        _flow.takeRemedy(now: true);
-        setState(() {
-          _host = _flow.host;
-          _moment = Moment.dispatch;
-        });
-        _persist();
-        return true;
-      }
-      setState(() => _moment = Moment.lobby);
-      return true;
-    }
-    // 不在可回应的时刻（理论上到不了）：不认这一下 —— 牌留在原地，可以再点
-    return false;
-  }
-
-  /// 板下两颗按钮的岔路（原型 dispatch 循环，flows.js L250-321）：
-  ///  · `labels[1]`「等会儿」= later：单子**原样留在她手里**（store.js:234
-  ///    只 save），回大厅——`flows.js` L315 的 `this.lobby()`
-  ///  · `labels[0]`「换一个」= retreat（store.js:235-250 全语义，t14 移植）：
-  ///    非 F 降一档重刻 · F 还退休换一张别的 F · 累计 3 次强制戴「口头巨人」。
-  ///    降档的 serial 不变 → 派单板不重播落板仪式，骰子静态换到新档
-  ///    （原型 `Plate.reRank` 的换档动画是另一笔打磨账，这里先保证数据与可点）
-  void _onPlateAlt(int i) {
-    if (_busy) return;
-    final Quest? head = _flow.head;
-    if (head == null) return;
-    if (i == 1) {
-      // 「等会儿」台词（content.js L338 later 二选一）
-      const List<String> later = <String>['它不会跑。我也不会。', '行，先放我这。别让我等太久。'];
-      _sayAside(later[_rnd.nextInt(later.length)], holdMs: 1500);
-      setState(() => _moment = Moment.lobby);
-      _persist();
-      return;
-    }
-    final RetreatOutcome? info = _flow.retreat(head);
-    if (info == null) return; // 不在她手里（竞态）：忽略
-    setState(() => _host = _flow.host);
-    _persist();
-    // retreat1/2/3（content.js L339-341，按当日第几次分档）
-    _sayAside(switch (info.count) {
-      1 => '目标是你立的。……给你个台阶：[[降一档]]。',
-      2 => '今天第 [[${info.count}]] 次退了。系统开始给你建档案了。',
-      _ => '第 [[${info.count}]] 次。行，接下来的单，[[按幼儿档]]给你配。',
-    }, holdMs: 1500);
-    if (info.shame) {
-      // 口头巨人强制佩戴（flows.js L323-327 的 shame；横幅内容是写死的
-      // 见面礼，这里用插话宣布——横幅通用化归横幅自己的任务）
-      _sayAside('「口头巨人」。退缩满三次的勋章，[[摘不掉]]，完成一单再说。', holdMs: 2400);
-    }
-  }
 
   /// 提交任务 → 真实结算。**fail fast**：结算/收官拆解失败都当场报。
   ///
@@ -2663,10 +2088,18 @@ class _AppShellState extends State<AppShell>
   /// 现在 settle 要么给结果、要么抛，失败走 [_failPlan]（目标/队列都不动）。
   Future<void> _submitQuest() async {
     if (_busy) return; // 原型 `App.submit()` → `run()`
+    // 参考稿 JS L1469-1471：**没有证据她不收**。原来这里直接进结算，
+    // 等于允许空手交差（真机实测：点提交就结算，证据槽还是三个「+」）。
+    if ((_flow.active?.evidence ?? const <EvidenceShot>[]).isEmpty) {
+      unawaited(Sfx.play('fail'));
+      unawaited(Haptics.buzz('fail'));
+      _toast('没有证据，她不收。先上传截图。', bad: true);
+      _sayAside('空手来交差？先[上传截图]。', holdMs: 2400);
+      return;
+    }
     _clock.stopFast();
     _active = false; // 交出去了，药丸该消失
     // docs/24 #7 提交任务：交单前满意地点个头
-    _stagePort?.perf('nod', 'exp_smile01');
     _pulse(color: const Color(0xFFBFF6FF), a: .24, ms: 280);
     // 钤印那一下：涟漪 + 火花 + 爆散（ui.js L346-347 / L358）
     _fx.ripple(
@@ -2693,7 +2126,6 @@ class _AppShellState extends State<AppShell>
         _goal = _flow.goal;
       });
       // 原型 settle() L372：结算时她专注读单
-      _stagePort?.mood('focus');
       _persist();
     } on PlanFailure catch (e) {
       // 收官时拆不出下一份计划：结算已经落账，但计划没拿到 —— 说出来。
@@ -2714,52 +2146,35 @@ class _AppShellState extends State<AppShell>
   /// LLM 回了顶掉下面这句，兜底保持原句）
   void _onResultDone() {
     if (!mounted || _moment != Moment.result || _resultChoicesOn) return;
-    setState(() => _resultChoicesOn = true);
+    _resultChoicesOn = true;
+    // v3 升级过场（参考稿 L1539-1549）：先演 LEVEL UP，点掉后再落到目标页。
+    final List<int> ups = _result.ups;
+    if (ups.isNotEmpty && _levelUpFrom == null) {
+      setState(() {
+        _levelUpFrom = _result.beforeLv;
+        _levelUpTo = ups.last;
+      });
+      return;
+    }
+    _finishVerdict();
+  }
+
+  /// 「收下」之后去哪（参考稿 JS L1536-1537）：
+  /// 主线单 → 主线页（停在这一环）；支线/日常 → 委托板。
+  void _finishVerdict() {
     final QuestResult r = _result;
-    // 原型 settle() L442-444 的 tier 情绪/动作（桥接通后恢复）
-    final String tier = switch (r.rarity.i) {
-      <= 1 => 'smug',
-      <= 3 => 'pleased',
-      _ => 'tsun',
-    };
-    _stagePort?.mood(tier); // 基础脸（档位情绪）
-    // docs/24 #8/#9/#10 结算表演（借的表情 3s 后回到上面的档位脸）：
-    //   升级 > 暴击 > 档位动作 —— 一拍只演一件事（docs/14 表演预算）
-    if (r.ups.isNotEmpty) {
-      _stagePort?.perf('kime', 'exp_kime01', priority: 3); // #10 升级定格
-    } else if (r.crit) {
-      _stagePort?.mood('surprised');
-      _stagePort?.perf('surprised', 'exp_surprised01', priority: 3); // #9 暴击
-    } else {
-      switch (tier) {
-        case 'smug':
-          _stagePort?.perf('smile', 'exp_bsmile01');
-        case 'pleased':
-          _stagePort?.perf('kime', 'exp_kime01');
-        default:
-          if (r.rarity.i >= 4) {
-            _stagePort?.act('happy'); // 高级单：得意（原有行为）
-          } else {
-            _stagePort?.perf('denial', 'exp_shy01'); // tsun：嘴硬
-          }
-      }
-    }
-    final String line;
-    if (r.tooFast) {
-      line = '[[${r.held.inSeconds}]] 秒就交？做了吗你就交。';
-    } else if (r.crit) {
-      line = '暴击。手气不错——不过别指望每次都有。';
-    } else {
-      line = switch (r.rarity.i) {
-        <= 1 => '收下了。小单也是单，积少成多。',
-        <= 3 => 'C 级的活儿，干得像模像样。我认。',
-        <= 5 => '这个完成度……勉强配得上这张单。',
-        _ => 'S 级都敢接敢交。行，你有点东西。',
-      };
-    }
-    _sayAside(line, holdMs: 2600);
-    if (r.finale) _onFinale(r); // 收官：下一条主线已经钉好，得说一句
-    _takeSettleLine(r); // 结算文案接管：LLM 回了顶掉上面这句兜底
+    final int idx = r.planClear;
+    if (r.finale) _onFinale(r);
+    setState(() {
+      _levelUpFrom = null;
+      _levelUpTo = null;
+      _resultChoicesOn = false;
+      _boardFrom = Moment.lobby;
+      _pickedTask = null;
+      _moment = Moment.main;
+      _boardOn = idx < 0;
+      if (idx >= 0) _mainLead = idx;
+    });
   }
 
   /// 收官出口（TODO-01）：第 N 环 CLEAR 时下一条主线**已经在 settle 里落库**
@@ -2769,7 +2184,6 @@ class _AppShellState extends State<AppShell>
   /// 环数变了、题目变了，路还长。
   void _onFinale(QuestResult r) {
     // docs/24 #19 收官：定格亮相（kime + exp_bsmile02，强制优先级盖过结算动作）
-    _stagePort?.perf('kime', 'exp_bsmile02', priority: 3);
     final FinaleOutcome? o = _flow.lastFinale;
     if (o == null || o.goal == null) {
       _sayAside('这条主线，你走完了。……接下来看你自己的。', holdMs: 2800);
@@ -2792,34 +2206,6 @@ class _AppShellState extends State<AppShell>
     // 队首就是新主线的首环单（settle 里钉的），点「再来一单」直接接得上。
   }
 
-  /// 「保存战报」（D1 最小可用版）：结算数据 → 文本 → 剪贴板 + 插话确认
-  Future<void> _saveReport() async {
-    final QuestResult r = _result;
-    final String upsText = r.ups.isEmpty ? '' : ' · 升级 LV${r.ups.last}';
-    final String report =
-        'SYSTEM 战报\n'
-        '${r.quest.serialText} ${r.quest.name}（${r.rarity.rank} 级）\n'
-        'EXP +${r.exp} · 金币 +${r.coin}$upsText · 连击 ${r.streak} 天';
-    try {
-      await Clipboard.setData(ClipboardData(text: report));
-      _sayAside('战报抄进剪贴板了。拿去炫耀吧。', holdMs: 1800);
-    } catch (_) {
-      _sayAside('战报没存上。……是设备的问题，不怪你。', holdMs: 1800);
-    }
-  }
-
-  /// docs/39 H-17 · 底部安全区下限（不叠加，只取下限）。
-  ///
-  /// 底栏那一条（padding 26→34、底注 8→14）归 `dock.dart`（P0-A 已做），
-  /// 这里只管 main.dart 自己挂的贴底件。取 `math.max(34, padding.bottom)`：
-  /// iPhone 的 Home Indicator 恰好 34 → 位置一点不变；MuMu / 无手势条 0 → 也
-  /// 不变（宿主说的"不改 MuMu 观感"）；只有真正更大的底部安全区才抬起来。
-  double _safeBottom(BuildContext context) =>
-      math.max(34, MediaQuery.paddingOf(context).bottom);
-
-  /// 比 34 这条基准多出来的那几 pt（今天恒为 0，给以后留的口径）
-  double _bottomExtra(BuildContext context) => _safeBottom(context) - 34;
-
   /// 系统返回键要消费哪一层（docs/39 M-04）。null = 交给系统（退到桌面）。
   ///
   /// 优先级：**失败页 > 牌屉 > 主线 > 默认**。
@@ -2830,6 +2216,8 @@ class _AppShellState extends State<AppShell>
   ///    关闭语义还不一样（对话层要落「聊到一半」的上下文），这一轮不动。
   _BackTarget? _popScopeTarget() {
     if (!mounted) return null;
+    // v3 层优先：LLM 设置是模态，返回键先关它
+    if (_llmPaneOn) return _BackTarget.sheet;
     if (_moment == Moment.fail) return _BackTarget.fail;
     if (_moment == Moment.main) {
       if (_pickedTask != null) return _BackTarget.drawer;
@@ -2841,8 +2229,10 @@ class _AppShellState extends State<AppShell>
   /// 返回键真正落地（与 × 同语义）
   void _onSystemBack() {
     switch (_popScopeTarget()) {
+      case _BackTarget.sheet:
+        setState(() => _llmPaneOn = false);
       case _BackTarget.fail:
-        _onChoice(1); // 失败页接住了返回键 = 今天算了 → 大厅
+        _backToLobbyFromFail(); // 失败页接住了返回键 = 回到大厅
       case _BackTarget.drawer:
         setState(() => _pickedTask = null);
       case _BackTarget.main:
@@ -2871,23 +2261,23 @@ class _AppShellState extends State<AppShell>
     _enterDispatchOrRest();
   }
 
-  /// 进派单板的唯一入口：队列空就不进（换日补发已由 `_rollDayIfNeeded`
-  /// 在启动/回前台时做过；真清空了就用一句插话接住，别让宿主接到幻影单）
+  /// 大厅那颗委托球 = 参考稿的 `taskOrb` → `go('board')`（JS L1645）。
+  /// 面板式派单板（旧 Plate）已按设计稿删除：委托板本身就能接单。
   void _enterDispatchOrRest() {
     if (_busy) return;
     if (_flow.queueEmpty) {
       _sayAside('今天的单，清干净了。明天再来。', holdMs: 2200);
       return;
     }
-    setState(() => _moment = Moment.dispatch);
-    // 发布这一拍：原型 flows.js:237 `Sound.play('ding'); buzz(12)`
-    // （和稍后单子落板的 `land` 是**两拍**：先"钉单"再"落板"，别合成一次）
     unawaited(Sfx.play('publish'));
     unawaited(Haptics.buzz('publish'));
-    _auraPulse++;
-    // docs/24 #3 发布任务：摆个定格（kime + kime 脸），表情 3s 后还给当前情绪
-    _stagePort?.perf('kime', 'exp_kime01');
-    _takeDispatchLine(); // 发布文案接管：LLM 回了顶掉「接不接？」
+    setState(() {
+      _boardFrom = Moment.lobby;
+      _moment = Moment.main;
+      _boardOn = true;
+      _boardFilter = 'all';
+      _pickedTask = null;
+    });
   }
 
   /// 执行中那张的计时读数（`12:04`）
@@ -2901,57 +2291,455 @@ class _AppShellState extends State<AppShell>
   static String _hhmm(DateTime d) =>
       '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
 
-  void _setBandMul(double v) => setState(() => _bandMul = v);
+  /// 当前场景的主强调色 —— 参考稿 L1177 的 --accent（SC[name].acc）。
+  /// 每个页面一个色：home acid / main cyan / board gold / exec hot /
+  /// archive violet / shop mint。
+  Color get _sceneAccent => switch (_moment) {
+    Moment.main => _boardOn ? Ref.gold : Ref.cyan,
+    Moment.dispatch => Ref.gold,
+    Moment.exec => Ref.hot,
+    Moment.result => Ref.mint,
+    Moment.sheet => switch (_sheetKind) {
+      SheetKind.archive => Ref.violet,
+      SheetKind.supply => Ref.mint,
+      SheetKind.system => Ref.acid,
+    },
+    Moment.fail => Ref.hot,
+    _ => Ref.acid,
+  };
 
-  /// docs/39 H-11「进度收割」：结算回大厅那一拍，进度带 600ms 亮一下 + `count`。
-  ///
-  /// 真正的弧增长由 [ProgressBand] 按新的 `done/total` 重绘（值已经在 settle 里
-  /// 落好），这里只补那一段**看得见的**亮度爬升；减免动态下什么都不做，
-  /// 数字变化照旧（§5.5）。
-  void _harvestBand() {
-    if (MediaQuery.maybeDisableAnimationsOf(context) ?? false) return;
-    Sfx.play('count');
-    _setBandMul(.35);
-    Future<void>.delayed(const Duration(milliseconds: 600), () {
-      // 期间可能又结算了一次 / 页面已经走了：只在还挂着时回落
-      if (!mounted || _moment != Moment.lobby) return;
-      _setBandMul(1);
+  /// 天幕上那枚 200px 描边大字（参考稿 L1178 的 SC[name].ghost）。
+  String get _sceneGhost {
+    if (_moment == Moment.boot || _moment == Moment.onboard) return '系统';
+    if (_moment == Moment.main) return _boardOn ? '委托' : '骑行';
+    if (_moment == Moment.exec) return '执行';
+    if (_moment == Moment.sheet) {
+      return switch (_sheetKind) {
+        SheetKind.archive => '档案',
+        SheetKind.supply => '补给',
+        SheetKind.system => '系统',
+      };
+    }
+    return '系统';
+  }
+
+  /// 顶部提示条（参考稿 L1117-1122 的 toast）：2.6s 后自动收起。
+  /// 同一时刻最多 3 条，多了挤掉最旧的。
+  void _toast(String message, {bool bad = false}) {
+    if (!mounted) return;
+    setState(() {
+      _toasts.add(_Toast(id: _toastSeq++, text: message, bad: bad));
+      while (_toasts.length > 3) {
+        _toasts.removeAt(0);
+      }
+    });
+    final int id = _toastSeq - 1;
+    Timer(const Duration(milliseconds: 2600), () {
+      if (!mounted) return;
+      setState(() => _toasts.removeWhere((_Toast t) => t.id == id));
     });
   }
 
-  /// 队列里已经有单的计划序号（主线页据此区分「可接 / 待发布」）
-  Set<int> _publishedPlanIndices() => <int>{
-    for (final Quest q in _flow.queue)
-      if (q.kind == 'main' && q.goalId == _goal.id && q.planIndex >= 0)
-        q.planIndex,
-  };
+  int _toastSeq = 0;
+  final List<_Toast> _toasts = <_Toast>[];
 
-  /// 正在执行的那张在清单里的序号（null = 没有）
-  int? _activePlanIndex() {
-    final Quest? a = _flow.active?.task;
-    if (a == null || a.kind != 'main' || a.goalId != _goal.id) return null;
-    return a.planIndex;
+  /// .fail-box（参考稿 L470-473）：连胜损失 + 一句 + 补救单
+  Widget _failBox() {
+    final Remedy remedy = _failRemedy ?? Remedy.demo;
+    final int streak = _host.streak;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0x0AFFFFFF),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Ref.a(Ref.hot, .3)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Text.rich(
+            TextSpan(
+              children: <InlineSpan>[
+                TextSpan(
+                  text: streak.toString(),
+                  style: refText(
+                    family: Ref.fd,
+                    size: 34,
+                    wght: 700,
+                    height: 1,
+                    color: Ref.dim2,
+                  ).copyWith(decoration: TextDecoration.lineThrough),
+                ),
+                TextSpan(
+                  text: ' → 0',
+                  style: refText(
+                    family: Ref.fd,
+                    size: 34,
+                    wght: 700,
+                    height: 1,
+                    color: Ref.hot,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '认输也是一种勇气。不过，别养成习惯。',
+            textAlign: TextAlign.center,
+            style: refText(
+              family: Ref.fc,
+              size: 14,
+              wght: 500,
+              height: 1.6,
+              color: const Color(0xFFE9DBE3),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            '补救 · ${remedy.name}（做一半）· ${remedy.minutesText}'
+            ' · 截止 ${remedy.deadline}',
+            textAlign: TextAlign.center,
+            style: refText(
+              family: Ref.fc,
+              size: 12,
+              wght: 400,
+              height: 1.5,
+              color: const Color(0xFF9FB3CC),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
-  /// 主线页上按住那条 = 接这张（沿用「拔单 = 开始执行」的手感）：
-  /// 先在队列里找出这张单（没派就现派一张），再走 [ _beginExec ] 那条老路。
-  void _acceptPlanTask(int i) {
+  /// 失败页「回到大厅」（参考稿 L1558 的 failOk）
+  void _backToLobbyFromFail() {
+    setState(() {
+      _failRemedy = null;
+      _moment = Moment.lobby;
+    });
+    _persist();
+  }
+
+  // ── v3 斜切 wipe 转场（参考稿 L1172-1183）───────────────────────
+  final GlobalKey<RefWipeState> _wipeKey = GlobalKey<RefWipeState>();
+  String _wipeTitle = '';
+  String _wipeSub = '';
+  VoidCallback? _wipeCovered;
+  VoidCallback? _wipeDone;
+
+  /// 跑一次转场（与清档 _wipe 区分）：盖住时执行 swap，整段结束后执行 after。
+  /// 减弱动态 / 已有转场在跑 → 直接执行 swap（不拖时间）。
+  Future<void> _runWipe({
+    required String title,
+    required String sub,
+    VoidCallback? swap,
+    VoidCallback? after,
+  }) async {
+    final bool reduce = MediaQuery.maybeDisableAnimationsOf(context) ?? false;
+    final RefWipeState? st = _wipeKey.currentState;
+    if (reduce || st == null) {
+      swap?.call();
+      after?.call();
+      return;
+    }
+    setState(() {
+      _wipeTitle = title;
+      _wipeSub = sub;
+      _wipeCovered = swap;
+      _wipeDone = after;
+    });
+    // 等一帧让 RefWipe 拿到新标题再开播
+    await Future<void>.delayed(Duration.zero);
+    await _wipeKey.currentState?.play();
+  }
+
+  void _runWipeCovered() {
+    final VoidCallback? f = _wipeCovered;
+    _wipeCovered = null;
+    f?.call();
+  }
+
+  void _runWipeDone() {
+    final VoidCallback? f = _wipeDone;
+    _wipeDone = null;
+    f?.call();
+  }
+
+  /// LLM 设置面板开关 + 当前设置副本（保存后由 `SettingsStore` 广播重建网关）
+  bool _llmPaneOn = false;
+  AgentSettings _agentSettings = const AgentSettings();
+
+  /// 升级过场的起止级（null = 不演）；结算里 `res.ups` 非空时赋值
+  int? _levelUpFrom;
+  int? _levelUpTo;
+
+  /// `.lu-p` 的特权文案（参考稿 JS L1541-1542 的 perks）
+  String _levelUpPerk(int n) => switch (n) {
+    2 => '解锁护盾购买权限。她对你的评价：从「废」升级为「不算太废」。',
+    3 => '每日委托上限 +1。她开始记住你的名字了（大概）。',
+    4 => '暴击率基础值 +2%。「别得意。」',
+    5 => '解锁名牒「宿主·觉醒」。她承认你了 —— 只承认一点点。',
+    _ => '全属性成长潜力 +1。「继续。我在看。」',
+  };
+
+  /// 验收评级（参考稿 JS L1490）：时长比 ≥1 = A，≥.5 = B，否则 C；
+  /// 暴击且 A → S。
+  String _verdictRank(QuestResult r) {
+    final int limit = r.quest.minutes * 60;
+    final double ratio = limit <= 0 ? 1 : r.held.inSeconds / limit;
+    String rank = ratio >= 1 ? 'A' : (ratio >= .5 ? 'B' : 'C');
+    if (r.crit && rank == 'A') rank = 'S';
+    return rank;
+  }
+
+  /// .vline：她的验收评语（参考稿 JS L1519 四档 + 暴击）
+  String _verdictLine(QuestResult r) {
+    if (r.crit) return '暴击？！……咳，数据异常，我会复核的。（偷偷记下了）';
+    return switch (_verdictRank(r)) {
+      'S' => '……我无话可说。这次算你狠。',
+      'A' => '……行吧，挑不出毛病。[我没有在夸你]。',
+      'B' => '差一口气，下次把那口气骑完。',
+      _ => '这叫「到此一游」。勉强收下。',
+    };
+  }
+
+  /// .rw 的三行（经验 / 晶核 / 属性），带 CRIT / ×2 小标
+  List<RefRewardRow> _verdictRows(QuestResult r) {
+    final String tag = r.dbl ? '×2' : (r.crit ? '×1.5' : '');
+    final MapEntry<String, int>? first = r.attrs.entries.isEmpty
+        ? null
+        : r.attrs.entries.first;
+    return <RefRewardRow>[
+      RefRewardRow(label: 'EXP', value: r.exp, tag: tag),
+      // ⚠️ 不要写 '晶核 ◈'：Chakra / JetBrains / NotoSansSC 都没有 ◈ 字形，
+      //    离屏出图实测渲染成豆腐块。HUD 那边用的是六边形图标，这里保持纯文字。
+      RefRewardRow(label: '晶核', value: r.coin, tag: tag),
+      if (first != null)
+        RefRewardRow(
+          label: Attr.nameOf(first.key),
+          value: first.value,
+          tag: r.crit ? 'CRIT' : '',
+        ),
+      if (r.streakUp) const RefRewardRow(label: '连胜天数', value: 1, tag: 'TODAY'),
+    ];
+  }
+
+  /// 执行页证据缩略图（参考稿 82 蚂蚁线槽）：按已拍份数给 Widget。
+  ///
+  /// 会话内的图直接读内存字节；重启后从文档目录回读（IO）。
+  /// Web 只活在本次会话里 —— 没有字节时给空槽，不画假图。
+  List<Widget> _evidenceThumbs() {
+    final List<EvidenceShot> shots =
+        _flow.active?.evidence ?? const <EvidenceShot>[];
+    return <Widget>[for (final EvidenceShot s in shots) _evidenceThumb(s)];
+  }
+
+  Widget _evidenceThumb(EvidenceShot s) {
+    if (s.bytes != null) {
+      return Image.memory(s.bytes!, fit: BoxFit.cover);
+    }
+    final String? abs = s.absPath;
+    if (abs == null || abs.isEmpty) return const SizedBox.shrink();
+    return FutureBuilder(
+      future: visionReadBytes(abs),
+      builder: (BuildContext context, AsyncSnapshot snap) {
+        final Object? data = snap.data;
+        if (data == null) return const SizedBox.shrink();
+        return Image.memory(data as dynamic, fit: BoxFit.cover);
+      },
+    );
+  }
+
+  /// 证据入槽：走内置 VisionService 管线（相册 → 落盘 → 可选校验）。
+  /// 参考稿的执行页只有一个「+」上传口（L754），点它直接开相册。
+  Future<void> _addEvidence() async {
+    final ActiveQuest? a = _flow.active;
+    if (a == null) return;
+    if (a.evidence.length >= QuestFlow.kMaxEvidence) return;
+    final EvidenceShot? shot = await VisionService().capture(
+      quest: a.task,
+      source: ImageSource.gallery,
+    );
+    if (shot == null || !mounted) return;
+    setState(() {
+      a.evidence.add(shot);
+    });
+    _persist();
+  }
+
+  /// 参考稿 JS L1425-1440 的 `demoShot()`：**不是 mock 数据**，而是把本次
+  /// 执行的真实读数（用时 / 目标时长 / 任务名）画成一张「骑行记录」样式的
+  /// 证据图，用来在没有相机 / 无法选图的设备上验证整条验收链路。
+  Future<void> _demoEvidence() async {
+    final ActiveQuest? a = _flow.active;
+    if (a == null) return;
+    if (a.evidence.length >= QuestFlow.kMaxEvidence) return;
+    final EvidenceShot? shot = await VisionService().captureDemo(
+      quest: a.task,
+      elapsed: _execReadout().elapsed,
+    );
+    if (shot == null || !mounted) return;
+    setState(() => a.evidence.add(shot));
+    _persist();
+  }
+
+  void _removeEvidence(int i) {
+    final ActiveQuest? a = _flow.active;
+    if (a == null || i < 0 || i >= a.evidence.length) return;
+    setState(() => a.evidence.removeAt(i));
+    _persist();
+  }
+
+  // ── v3 开机屏的驱动（参考稿 #boot）──────────────────────────────
+  // 日志内容与节奏照 data/content.dart 的 LINES.bootLog；只留最近 5 行。
+  final List<String> _bootLines = <String>[];
+  double _bootProgress = 0;
+  bool _bootReady = false;
+  Timer? _bootTimer;
+  int _bootIx = 0;
+
+  void _runBootScript() {
+    _bootTimer?.cancel();
+    _bootIx = 0;
+    _bootLines.clear();
+    _bootProgress = 0;
+    _bootReady = false;
+    const int n = 5; // 与旧屏一致：最多 5 行
+    _bootTimer = Timer.periodic(const Duration(milliseconds: 360), (Timer t) {
+      if (!mounted) {
+        t.cancel();
+        return;
+      }
+      setState(() {
+        if (_bootIx < LINES.bootLog.length) {
+          _bootLines.add(_bootLine(_bootIx));
+          while (_bootLines.length > n) {
+            _bootLines.removeAt(0);
+          }
+          _bootIx++;
+          _bootProgress = (_bootIx / LINES.bootLog.length).clamp(0.0, 1.0);
+        } else {
+          _bootReady = true;
+          t.cancel();
+        }
+      });
+    });
+  }
+
+  /// 一行日志：占位 `{host}` 换成真实的宿主名 + 等级，`[OK]` 换成 ✓
+  String _bootLine(int i) {
+    final String raw = LINES.bootLog[i];
+    return raw
+        .replaceAll('{host}', '${_host.name} · LV${_host.lv}')
+        .replaceAll('[OK]', '✓');
+  }
+
+  /// 「暂时跳过，先用模板」—— 引导态没配 Key 时的唯一出口。
+  ///
+  /// 语义不是「假装拆解成功」：目标老老实实留空，人先进大厅。这样
+  ///   · 大厅会显示「还没有目标」，不骗人；
+  ///   · 长按 HUD 菜单键就能补 LLM 设置（大厅有 HUD）；
+  ///   · 配好 Key 后点委托球/立目标，正常走 Agent 拆解。
+  ///
+  /// ⚠️ 为什么不做「类别模板兜底」：`goal_gen.dart:13` 写明目标拆解只有
+  ///    LLM 一条路，旧的模板兜底是刻意删掉的（首目标 100% 走模板的坑）。
+  ///    这里不把它请回来。
+  /// 绑定仪式里的「稍后再立」：**不伪造计划**（拆解没有模板兜底），
+  /// 只是先放宿主进大厅看看；目标仍是空的，下次唤醒会回到绑定仪式。
+  void _skipLlmAndStart() {
+    setState(() {
+      _planError = null;
+      _interviewCat = null;
+      _pendingGoalText = '';
+      _moment = Moment.lobby;
+    });
+    _sayAside('先这样。等你把脑子（Key）配好，再谈拆解。', holdMs: 2800);
+  }
+
+  /// 重置存档的确认弹窗（参考稿 #modal L476-480：340 宽 / r22 / 两键 52）。
+  /// 原来点「重置存档」直接清档 —— 参考稿是「按住 2 秒 → 弹确认 → 确定」。
+  void _askWipe() {
+    setState(() => _modalOn = true);
+  }
+
+  /// 系统设置 · 音效开关（参考稿 JS L1653 toggleSound）。
+  /// 写回 SettingsStore → 类级广播 → [_applyAgentSettings] 落地 Sfx.enabled。
+  void _toggleSound() {
+    final AgentSettings next = _agentSettings.copyWith(
+      sound: !_agentSettings.sound,
+    );
+    setState(() => _agentSettings = next);
+    _applyAgentSettings(next);
+    unawaited(SettingsStore().save(next));
+    if (next.sound) unawaited(Sfx.play('tap'));
+    _toast(next.sound ? '音效已开启。' : '音效已关闭。她的毒舌不受影响。');
+  }
+
+  /// 确认弹窗开关（参考稿 #modal.on）
+  bool _modalOn = false;
+
+  /// 主线页当前领位（参考稿 `mainFocus(i)` 的 i）
+  int _mainLead = 0;
+
+  /// 主线页 → 委托板：参考稿是**两个独立 scene**（#sc-main / #sc-board），
+  /// 用 `on` 类切换。这里用同一个布尔表达（Moment.main 下再分一层）。
+  bool _boardOn = false;
+
+  /// 委托板是从哪进来的（大厅委托球 / 主线「去委托板」）—— 返回时回原处
+  Moment _boardFrom = Moment.lobby;
+
+  /// 委托板当前筛选（参考稿 `boardF`，L1369）
+  String _boardFilter = 'all';
+
+  /// 委托板上的单：队列里全部 + 正在执行的那张（参考稿 `boardTasks()`，L1088）
+  List<Quest> _boardQuests() {
+    final List<Quest> out = <Quest>[];
+    final Quest? act = _flow.active?.task;
+    if (act != null) out.add(act);
+    for (final Quest q in _flow.queue) {
+      if (out.every((Quest x) => x.serial != q.serial)) out.add(q);
+    }
+    return switch (_boardFilter) {
+      'MAIN' => out.where((Quest q) => q.kind == 'main').toList(),
+      'SIDE' =>
+        out.where((Quest q) => q.kind != 'main' && q.kind != 'remedy').toList(),
+      'DAILY' => out.where((Quest q) => q.kind == 'daily').toList(),
+      _ => out,
+    };
+  }
+
+  /// 空板「再要一批委托」（参考稿 JS L1374）：补当天日常 + 重钉主线窗口。
+  void _refillBoard() {
+    setState(() {
+      _flow.queue.addAll(_genTodaysDailies(n: 2));
+      _flow.publishPlanTasks();
+      _resyncQueueCount();
+      _host = _flow.host;
+    });
+    _persist();
+    _toast('她叹了口气，又塞给你几单。', bad: false);
+  }
+
+  /// 委托板上点一张：已在执行就回执行页，否则接这张
+  void _onBoardTap(Quest q) {
     if (_busy) return;
-    if (_flow.active != null) {
+    final Quest? act = _flow.active?.task;
+    if (act != null && act.serial == q.serial) {
+      _resumeExec();
+      return;
+    }
+    if (act != null) {
       _sayAside('手上还有一张没交。先把它了了。', holdMs: 1800);
       return;
     }
-    // 没派就现派这一张（「待发布」那条也能直接接 —— 宿主想先做哪张就做哪张）
-    final Quest? q = _flow.publishPlanTask(i);
-    if (q == null) return;
-    // ⚠️ **只把这张挪到队首**，接单仍由 `_beginExec()` 那一条老路做（它 accept 的是
-    //    队首）—— 这里若先 `accept` 一次，_beginExec 会再 accept 一张别的，
-    //    刚点的那张就从队列里凭空消失（踩过）。
     _flow.queue.removeWhere((Quest t) => t.serial == q.serial);
     _flow.queue.insert(0, q);
     setState(() {
-      _pickedTask = null;
       _host = _flow.host;
+      _goal = _flow.goal;
     });
     _beginExec();
   }
@@ -2989,32 +2777,20 @@ class _AppShellState extends State<AppShell>
     unawaited(Sfx.play('boot'));
     unawaited(Haptics.buzz('boot'));
 
-    // 她的睁眼编排（原型 wake() L77-84；未睡=降级路线时 no-op 直接过）
-    await _stagePort?.wakeEyes();
-
-    // ── 转场这一拍（2026-10-11 宿主验收：「从唤醒到主界面转场太过突兀, 像是
-    //    直接切换」「live2d 是直接过去的, 应该有个转场动画」）──────────────
-    // 两处一起改（2026-10-11 宿主第二次验收）：
-    //  ① 平台视图改成**固定尺寸族 + Transform**（见 `Live2DStage.kViewFamilies`）
-    //     —— 推镜头期间不再每帧重建 FBO，她**真的在动**了；
-    //  ② 这一拍换景别走**慢推**（1.4s easeInOutCubic，`_camGlideMs`）——
-    //     弹簧 0.5s 到位，配上亮帧/界面淡入就是"直接切过去"的观感。
-    // 原型用 `Stage.glitch(420,1)` 把这一下盖住；我们对应地再补一拍青蓝过渡，
-    // 同时把界面层/环场的淡入（_wakeFade）从这一刻起跑 —— 于是
-    // 「睁眼 → 环亮起 → 界面浮上来 → 落进待机」是一段连续的推移，不是硬切。
+    // 转场这一拍（宿主验收：「从唤醒到主界面转场太过突兀, 像是直接切换」）。
+    // 参考稿的做法是斜切 wipe（`#wipe` 三道斜带 + 中央大字，JS L1172），
+    // 这里对应地再补一拍青蓝过渡，盖住「开机屏 → 大厅」的换页。
     _pulse(color: const Color(0xFF9FF0FF), a: .14, ms: 320, shakePx: 0);
-    _wakeFade.forward(from: 0);
 
     if (_goal.isEmpty && !_resumedExec) {
       setState(() => _moment = Moment.onboard);
       return; // 绑定仪式的问话走 LineLayer（askGoal），不叠离开问候
     }
     // 小景别（boot .64）→ 正常大小（lobby .92）：这一段要**看得见地放大**
-    _camGlideMs = 1400;
     setState(() => _moment = _resumedExec ? Moment.exec : Moment.lobby);
 
     // 逐环点亮（原型在这段之后还有 500ms 留白，才轮到 greet）
-    await _igniteBand();
+    await Future<void>.delayed(const Duration(milliseconds: 420));
 
     final DateTime? seen = _prevSeen;
     final Duration away = seen == null
@@ -3028,39 +2804,7 @@ class _AppShellState extends State<AppShell>
       '[stage] 欢迎手势 act(present) + mood'
       '=${k == AwayKind.back10m ? 'smug' : 'neutral'}',
     );
-    _stagePort?.act('present');
-    _stagePort?.mood(k == AwayKind.back10m ? 'smug' : 'neutral');
-    _stagePort?.idleMood('neutral');
     _sayAside(AwayGreeting.text(k, away), holdMs: 3200, busy: true);
-  }
-
-  /// 唤醒时点亮进度带的调度（原型 `flows.js:87-93` 的逐环点亮）。
-  /// 环没了、只剩**一条**进度带，于是那 8 拍收敛成一拍：
-  /// 0→1 爬 420ms，起手一声 `ignite` + 一次震动（原来每环各一次）。
-  static const int _kIgniteRampMs = 420;
-
-  /// 唤醒点亮的驱动器（懒建：没被唤醒过就不白占一个 ticker）
-  AnimationController? _igniteC;
-
-  Future<void> _igniteBand() async {
-    if (_goal.plan.isEmpty) return;
-    final AnimationController c = _igniteC ??= AnimationController(vsync: this);
-    c.duration = const Duration(milliseconds: _kIgniteRampMs);
-    unawaited(Sfx.play('ignite'));
-    unawaited(Haptics.buzz('ignite'));
-
-    void tick() =>
-        setState(() => _bandLit = Curves.easeOutCubic.transform(c.value));
-
-    c.addListener(tick);
-    tick();
-    try {
-      await c.forward(from: 0).orCancel;
-    } catch (_) {
-      // 演出被切断（页面销毁/连续唤醒）：安静收场，别把异常抛给调用方
-    }
-    c.removeListener(tick);
-    if (mounted) setState(() => _bandLit = null);
   }
 
   /// 读档（store.js L34）—— 没有档就用**空白档**（t19/A1：真新档直达绑定仪式，
@@ -3139,237 +2883,25 @@ class _AppShellState extends State<AppShell>
 
   @override
   void dispose() {
+    _bootTimer?.cancel();
     // TODO-07 网关热更：退订设置广播，State 卸载后不再收回调
     SettingsStore.removeListener(_onSettingsChanged);
     WidgetsBinding.instance.removeObserver(this);
     _clock.dispose();
-    _camTicker.dispose();
-    _cam.dispose();
-    _ringDim.dispose();
-    _igniteC?.dispose();
     _flashC.dispose();
     _fx.dispose();
     _ask.dispose();
     _asideDone?.cancel();
     _pokeReset?.cancel();
-    _wakeFade.dispose();
+    _coreMoodReset?.cancel();
     super.dispose();
-  }
-}
-
-/// 进度带的**活相位**（docs/39 H-10）。
-///
-/// 原来 `t: 0` 是写死的 —— 虚线不转、彗星不动，真机上那一圈看着像贴纸。
-/// 这里只做一件事：用一个 **20fps** 的定时器推 `t`（秒），交给既有
-/// [ProgressBandPainter] 的 `shouldRepaint`（它本来就在比 `t`）。
-///
-/// ⚠️ 三条纪律：
-///  1. **不要 60fps**：§5.5 要求新增动画一律 15–20fps；50ms 一拍足够
-///     （这条带子只有虚线在爬，肉眼分辨不出 20 与 60）。
-///  2. **只在「有待机循环」时才跑**：减弱动态 / 不可见 / 无清单 → 停表，
-///     一帧都不刷。
-///  3. **不要 setState 整屏**：这一层只重建自己（一个 CustomPaint）。
-///
-/// 说明：任务描述里的「完成弧 α .62 → .75」在 `progress_band.dart` 的画笔里，
-/// 那个文件不在本任务的写入面 —— 已在完成备注里列为待收口项。
-class ProgressBandLive extends StatefulWidget {
-  const ProgressBandLive({
-    super.key,
-    required this.done,
-    required this.total,
-    required this.cam,
-    this.camObj,
-    this.lit = 1,
-    this.dim = 1,
-    this.scan = 0,
-    this.visible = true,
-  });
-
-  final int done;
-  final int total;
-  final String cam;
-  final Cam? camObj;
-  final double lit;
-  final double dim;
-  final double scan;
-  final bool visible;
-
-  @override
-  State<ProgressBandLive> createState() => _ProgressBandLiveState();
-}
-
-class _ProgressBandLiveState extends State<ProgressBandLive> {
-  /// 相位（秒）。20fps = 每拍 +.05
-  double _t = 0;
-  Timer? _timer;
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    _sync();
-  }
-
-  @override
-  void didUpdateWidget(covariant ProgressBandLive old) {
-    super.didUpdateWidget(old);
-    _sync();
-  }
-
-  @override
-  void dispose() {
-    _timer?.cancel();
-    super.dispose();
-  }
-
-  /// 该不该跑：可见 + 有清单 + 没开「减弱动态」
-  void _sync() {
-    final bool want =
-        widget.visible &&
-        widget.total > 0 &&
-        !(MediaQuery.maybeDisableAnimationsOf(context) ?? false);
-    if (want == (_timer != null)) return;
-    if (!want) {
-      _timer?.cancel();
-      _timer = null;
-      return;
-    }
-    _timer = Timer.periodic(const Duration(milliseconds: 50), (Timer _) {
-      if (!mounted) return;
-      setState(() => _t = (_t + .05) % 1000);
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return ProgressBand(
-      done: widget.done,
-      total: widget.total,
-      cam: widget.cam,
-      camObj: widget.camObj,
-      t: _t,
-      lit: widget.lit,
-      dim: widget.dim,
-      scan: widget.scan,
-      visible: widget.visible,
-    );
-  }
-}
-
-/// **五态陈列页**（只在 `--dart-define=SHOT=states` 时挂载）。
-///
-/// 为什么需要它：五态（可接 / 执行中 / 已完成 / 待发布 / 已放弃）在真实数据里
-/// 不会同时出现，而它们**必须一起比对**才能判断「形状 + 颜色双编码是否成立」。
-/// 这是设计验收页，不是产品页面 —— 真机与日常运行永远不会走到。
-class CardStatesGallery extends StatelessWidget {
-  const CardStatesGallery({super.key});
-
-  static const List<(DutyState, String)> _states = <(DutyState, String)>[
-    (DutyState.open, 'C'),
-    (DutyState.active, 'B'),
-    (DutyState.done, 'A'),
-    (DutyState.sealed, 'E'),
-    (DutyState.abandoned, 'F'),
-  ];
-
-  static const List<String> _titles = <String>[
-    '跑完 5 公里',
-    '早上空腹称重',
-    '走满 8000 步',
-    '今天不喝含糖饮料',
-    '做 20 个俯卧撑',
-  ];
-
-  static const List<String> _metas = <String>[
-    '45 分钟 · 跑步 App 截图',
-    '7 分钟 · 体重秤照片',
-    '30 分钟 · 步数截图',
-    '1 天 · 饮料清单',
-    '10 分钟 · 训练视频',
-  ];
-
-  static const List<String> _notes = <String>[
-    '接了就开计时。',
-    '计时中。别磨蹭。',
-    '这单已经记在账上了。',
-    '还没派到你手上。',
-    '这单作废了。',
-  ];
-
-  static const List<String> _glyphs = <String>['力', '敏', '体', '智', '知'];
-
-  TableCard _card(int i) {
-    final (DutyState st, String rank) = _states[i];
-    return TableCard(
-      id: 'state.$i',
-      kicker: 'MAIN · 0${i + 1}',
-      title: _titles[i],
-      glyph: _glyphs[i],
-      rank: rank,
-      accent: Rarity.of(rank).color,
-      loot: <String>['EXP ${12 + i * 4}', '◈ ${6 + i * 2}'],
-      dutyState: st,
-      dutyMeta: _metas[i],
-      elapsed: st == DutyState.active ? '12:04' : null,
-      sealWord: st == DutyState.done ? '已完成' : null,
-      enabled: st == DutyState.open,
-      locked: st == DutyState.sealed,
-      index: i + 1,
-      note: _notes[i],
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: C.voidBg,
-      body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(12, 32, 12, 24),
-          children: <Widget>[
-            Text(
-              'CARD STATES · 五态陈列',
-              style: fs(
-                family: F.mono,
-                size: 11,
-                wght: 600,
-                ls: 1.8,
-                color: C.blue,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              '可接 / 执行中 / 已完成 / 待发布 / 已放弃',
-              style: fs(family: F.cn, size: 12, wght: 400, color: C.mist),
-            ),
-            const SizedBox(height: 16),
-            for (int i = 0; i < _states.length; i++) ...<Widget>[
-              Center(
-                child: SizedBox(
-                  width: 148,
-                  height: 240,
-                  child: CardFace(
-                    key: Key('gallery.$i'),
-                    skin: CardSkin.duty,
-                    card: _card(i),
-                    size: CardTableSize.m,
-                    lead: true,
-                    dims: const Dims(148, 240),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 12),
-            ],
-          ],
-        ),
-      ),
-    );
   }
 }
 
 /// 系统返回键要消费的那一层（docs/39 M-04）。
 ///
 /// 顺序即优先级：失败页 > 牌屉 > 主线；null = 交给系统（退到桌面）。
-enum _BackTarget { fail, drawer, main }
+enum _BackTarget { fail, drawer, main, sheet }
 
 /// 「换目标」输入幕左上那颗**常驻取消圆**（docs/39 M-24）。
 ///
@@ -3515,24 +3047,11 @@ class _GoalChangeChromeState extends State<_GoalChangeChrome>
   }
 }
 
-/// 唤醒过场用：把界面层按 0→1 淡入（吃 [AppShellState._wakeFade]）。
-/// 开机态这些层是**布尔门控**（`visible: lobby`）—— 切页那一瞬间硬出现，
-/// 观感就是「直接切换」。包一层 Opacity 后它们随推镜头一起浮上来。
-class _WakeFade extends StatelessWidget {
-  const _WakeFade({required this.t, required this.child});
+/// 一条顶部提示（参考稿 L1117-1122 的 toast 队列项）
+class _Toast {
+  const _Toast({required this.id, required this.text, this.bad = false});
 
-  final Animation<double> t;
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: t,
-      builder: (BuildContext _, Widget? c) => Opacity(
-        opacity: Curves.easeOut.transform(t.value.clamp(0.0, 1.0)),
-        child: c,
-      ),
-      child: child,
-    );
-  }
+  final int id;
+  final String text;
+  final bool bad;
 }

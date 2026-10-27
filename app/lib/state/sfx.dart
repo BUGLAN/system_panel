@@ -52,14 +52,16 @@ class Sfx {
     'poke': <String>['audio/poke.wav'],
     'choose': <String>['audio/choose.wav'],
     'land': <String>['audio/land.wav'], // 委托单落板
-    'rung': <String>[ // 稀有度逐级滚（原型按步进变调 → 烘成 5 档）
+    'rung': <String>[
+      // 稀有度逐级滚（原型按步进变调 → 烘成 5 档）
       'audio/rung_0.wav',
       'audio/rung_1.wav',
       'audio/rung_2.wav',
       'audio/rung_3.wav',
       'audio/rung_4.wav',
     ],
-    'rank': <String>[ // 稀有度落定：原型按 RARITY.i（F~S = 0~6）变调变重
+    'rank': <String>[
+      // 稀有度落定：原型按 RARITY.i（F~S = 0~6）变调变重
       'audio/rank_0.wav',
       'audio/rank_1.wav',
       'audio/rank_2.wav',
@@ -68,7 +70,8 @@ class Sfx {
       'audio/rank_5.wav',
       'audio/rank_6.wav',
     ],
-    'ignite': <String>[ // 点亮进度带（唤醒时）：原型 `audio.js:88-91` 分三档变调
+    'ignite': <String>[
+      // 点亮进度带（唤醒时）：原型 `audio.js:88-91` 分三档变调
       'audio/ignite_0.wav',
       'audio/ignite_1.wav',
       'audio/ignite_2.wav',
@@ -88,7 +91,8 @@ class Sfx {
       'audio/detent_4.wav',
     ],
     'stamp': <String>['audio/stamp.wav'], // 落定压印（0.29s，比 seal 轻得多）
-    'deal': <String>[ // 发牌（一次最多 2 声：首张 0 + 末张 4）
+    'deal': <String>[
+      // 发牌（一次最多 2 声：首张 0 + 末张 4）
       'audio/deal_0.wav',
       'audio/deal_1.wav',
       'audio/deal_2.wav',
@@ -98,7 +102,8 @@ class Sfx {
     'seal': <String>['audio/seal.wav'], // 按满接单 / 提交钤印
     'publish': <String>['audio/ding.wav'], // 发布（原型叫 ding，「只属于派单」）
     'impact': <String>['audio/impact.wav'], // 结算砸印
-    'count': <String>[ // EXP 滚数（原型每 55ms 一发）
+    'count': <String>[
+      // EXP 滚数（原型每 55ms 一发）
       'audio/count_0.wav',
       'audio/count_1.wav',
       'audio/count_2.wav',
@@ -117,8 +122,18 @@ class Sfx {
 
   /// 逐字音节（打字机每个显形字一发）：`syl_<情绪>_<变体>.wav`
   static const List<String> _emotions = <String>[
-    'neutral', 'smug', 'cold', 'annoyed', 'pleased', 'tsun',
-    'joy', 'proud', 'surprised', 'sad', 'focus', 'sleep',
+    'neutral',
+    'smug',
+    'cold',
+    'annoyed',
+    'pleased',
+    'tsun',
+    'joy',
+    'proud',
+    'surprised',
+    'sad',
+    'focus',
+    'sleep',
   ];
 
   static final Random _rnd = Random();
@@ -350,11 +365,13 @@ class Sfx {
   /// 起播是否在 [timeout] 内成功（超时返回 false；异常照旧往上传）
   static Future<bool> _startedWithin(Future<void> playing, Duration timeout) {
     final Completer<bool> c = Completer<bool>();
-    playing.then((_) {
-      if (!c.isCompleted) c.complete(true);
-    }).catchError((Object e, StackTrace s) {
-      if (!c.isCompleted) c.completeError(e, s);
-    });
+    playing
+        .then((_) {
+          if (!c.isCompleted) c.complete(true);
+        })
+        .catchError((Object e, StackTrace s) {
+          if (!c.isCompleted) c.completeError(e, s);
+        });
     Timer(timeout, () {
       if (!c.isCompleted) c.complete(false);
     });

@@ -141,7 +141,10 @@ void main() {
             userText: '明天还跑吗？',
             history: const <Map<String, dynamic>>[
               <String, dynamic>{'role': 'user', 'content': '我今晚开始夜跑'},
-              <String, dynamic>{'role': 'assistant', 'content': '跑一次算什么。坚持一周再来说。'},
+              <String, dynamic>{
+                'role': 'assistant',
+                'content': '跑一次算什么。坚持一周再来说。',
+              },
             ],
             memoryDigest: '- 宿主说想夜跑减肥',
           );
@@ -167,9 +170,7 @@ void main() {
 
     test('情绪标签在第二段也要剥掉并取到情绪（docs/22 F-8）', () {
       // ① 真实观察到的形状：第一段没有标签，标签在第二段开头（旧实现直接漏进正文）
-      final TaggedReply t = Persona.splitTag(
-        '先把它做完。\n[focus] 下一步只做一件：上床。',
-      );
+      final TaggedReply t = Persona.splitTag('先把它做完。\n[focus] 下一步只做一件：上床。');
       expect(t.text, '先把它做完。\n下一步只做一件：上床。');
       expect(t.text, isNot(contains('[')));
       expect(t.emotion, 'focus'); // 旧实现只认整条行首 → 这里会退化成 neutral
@@ -188,15 +189,19 @@ void main() {
     test('★ 记忆持久化：写一条 → 「杀进程重启」（全新 MemoryStore 实例）→ 还在，且注入对话', () async {
       final MemoryStore before = MemoryStore();
       await before.add('宿主说想夜跑减肥', source: MemorySource.chat, weight: 2);
-      await before.add('宿主通常 1-2 点睡', source: MemorySource.interview, weight: 2);
+      await before.add(
+        '宿主通常 1-2 点睡',
+        source: MemorySource.interview,
+        weight: 2,
+      );
 
       // 重启 = 全新实例读同一个存档 key
       final MemoryStore after = MemoryStore();
       final List<MemoryEntry> all = await after.entries();
-      expect(all.map((MemoryEntry e) => e.text), containsAll(<String>[
-        '宿主说想夜跑减肥',
-        '宿主通常 1-2 点睡',
-      ]));
+      expect(
+        all.map((MemoryEntry e) => e.text),
+        containsAll(<String>['宿主说想夜跑减肥', '宿主通常 1-2 点睡']),
+      );
 
       // 新对话能引用先前内容：digest 注入 system prompt
       final String digest = await after.digest('夜跑');
@@ -219,10 +224,7 @@ void main() {
       );
       final List<MemoryEntry> all = await m.entries();
       expect(all.length, MemoryStore.maxEntries);
-      expect(
-        all.map((MemoryEntry e) => e.text),
-        contains('首胜里程碑：第一周全勤'),
-      );
+      expect(all.map((MemoryEntry e) => e.text), contains('首胜里程碑：第一周全勤'));
       expect(all.map((MemoryEntry e) => e.text), isNot(contains('闲聊碎片 0')));
     });
 
@@ -264,14 +266,17 @@ void main() {
         context: MockAgentContext(),
         memory: MemoryStore(),
       );
-      expect(reg.names, containsAll(<String>[
-        'get_status',
-        'swap_quest',
-        'adjust_plan',
-        'remember',
-        'recall',
-        'summarize_progress',
-      ]));
+      expect(
+        reg.names,
+        containsAll(<String>[
+          'get_status',
+          'swap_quest',
+          'adjust_plan',
+          'remember',
+          'recall',
+          'summarize_progress',
+        ]),
+      );
       expect(reg.length, 6);
     });
 
@@ -288,11 +293,13 @@ void main() {
         expect((f['description'] as String), isNotEmpty);
         expect(f['parameters'], isA<Map<String, dynamic>>());
       }
-      final Map<String, dynamic> remember = tools
-          .firstWhere((Map<String, dynamic> t) => (t['function'] as Map<String, dynamic>)['name'] == 'remember');
+      final Map<String, dynamic> remember = tools.firstWhere(
+        (Map<String, dynamic> t) =>
+            (t['function'] as Map<String, dynamic>)['name'] == 'remember',
+      );
       expect(
         ((remember['function'] as Map<String, dynamic>)['parameters']
-                as Map<String, dynamic>)['required'],
+            as Map<String, dynamic>)['required'],
         contains('text'),
       );
     });
@@ -303,7 +310,10 @@ void main() {
         goal: Goal.demo(),
         queue: <Quest>[_q()],
       );
-      final AgentToolRegistry reg = defaultAgentTools(context: ctx, memory: MemoryStore());
+      final AgentToolRegistry reg = defaultAgentTools(
+        context: ctx,
+        memory: MemoryStore(),
+      );
       final ToolOutcome out = await reg.execute('get_status');
       expect(out.ok, isTrue);
       expect(out.message, contains('LV7'));
@@ -316,11 +326,18 @@ void main() {
     test('swap_quest：队首日常被换成候选单，onChanged 通知（工具调用改变应用状态）', () async {
       final List<String> actions = <String>[];
       final MockAgentContext ctx = MockAgentContext(
-        queue: <Quest>[_q(), _q(serial: 78, name: '晨间拉伸')],
-        nextCandidate: () => _q(serial: 88, name: '拉伸 15 分钟', rank: 'E', minutes: 15),
+        queue: <Quest>[
+          _q(),
+          _q(serial: 78, name: '晨间拉伸'),
+        ],
+        nextCandidate: () =>
+            _q(serial: 88, name: '拉伸 15 分钟', rank: 'E', minutes: 15),
         onChanged: actions.add,
       );
-      final AgentToolRegistry reg = defaultAgentTools(context: ctx, memory: MemoryStore());
+      final AgentToolRegistry reg = defaultAgentTools(
+        context: ctx,
+        memory: MemoryStore(),
+      );
       final ToolOutcome out = await reg.execute('swap_quest', <String, dynamic>{
         'note': '今天腿疼',
       });
@@ -336,7 +353,10 @@ void main() {
         queue: <Quest>[Quest.demo],
         nextCandidate: () => _q(),
       );
-      final AgentToolRegistry reg = defaultAgentTools(context: ctx, memory: MemoryStore());
+      final AgentToolRegistry reg = defaultAgentTools(
+        context: ctx,
+        memory: MemoryStore(),
+      );
       final ToolOutcome out = await reg.execute('swap_quest');
       expect(out.ok, isFalse);
       expect(out.message, contains('主线'));
@@ -359,10 +379,15 @@ void main() {
 
     test('adjust_plan：改时限钳制 5~180、降档、顺延都生效', () async {
       final MockAgentContext ctx = MockAgentContext(queue: <Quest>[_q()]);
-      final AgentToolRegistry reg = defaultAgentTools(context: ctx, memory: MemoryStore());
+      final AgentToolRegistry reg = defaultAgentTools(
+        context: ctx,
+        memory: MemoryStore(),
+      );
 
       expect(
-        (await reg.execute('adjust_plan', <String, dynamic>{'minutes': 300})).ok,
+        (await reg.execute('adjust_plan', <String, dynamic>{
+          'minutes': 300,
+        })).ok,
         isTrue,
       );
       expect(ctx.queue.first.minutes, 180); // 上限钳制
@@ -370,7 +395,9 @@ void main() {
       await reg.execute('adjust_plan', <String, dynamic>{'minutes': 1});
       expect(ctx.queue.first.minutes, 5); // 下限钳制
 
-      await reg.execute('adjust_plan', <String, dynamic>{'postponeMinutes': 15});
+      await reg.execute('adjust_plan', <String, dynamic>{
+        'postponeMinutes': 15,
+      });
       expect(ctx.queue.first.minutes, 20); // 5 + 15 顺延
 
       await reg.execute('adjust_plan', <String, dynamic>{'rank': 'b'});
@@ -382,10 +409,14 @@ void main() {
 
     test('adjust_plan：主线单拒调', () async {
       final MockAgentContext ctx = MockAgentContext(queue: <Quest>[Quest.demo]);
-      final AgentToolRegistry reg = defaultAgentTools(context: ctx, memory: MemoryStore());
-      final ToolOutcome out = await reg.execute('adjust_plan', <String, dynamic>{
-        'minutes': 10,
-      });
+      final AgentToolRegistry reg = defaultAgentTools(
+        context: ctx,
+        memory: MemoryStore(),
+      );
+      final ToolOutcome out = await reg.execute(
+        'adjust_plan',
+        <String, dynamic>{'minutes': 10},
+      );
       expect(out.ok, isFalse);
       expect(out.message, contains('主线'));
     });
@@ -400,9 +431,15 @@ void main() {
         'text': ' 宿主每周三加班到十点 ',
       });
       expect(out.ok, isTrue);
-      expect((await memory.entries()).map((MemoryEntry e) => e.text), contains('宿主每周三加班到十点'));
+      expect(
+        (await memory.entries()).map((MemoryEntry e) => e.text),
+        contains('宿主每周三加班到十点'),
+      );
 
-      expect((await reg.execute('remember', <String, dynamic>{'text': '  '})).ok, isFalse);
+      expect(
+        (await reg.execute('remember', <String, dynamic>{'text': '  '})).ok,
+        isFalse,
+      );
 
       final ToolOutcome recall = await reg.execute('recall', <String, dynamic>{
         'query': '加班',
@@ -445,7 +482,10 @@ void main() {
           },
         ],
       );
-      final AgentToolRegistry reg = defaultAgentTools(context: ctx, memory: MemoryStore());
+      final AgentToolRegistry reg = defaultAgentTools(
+        context: ctx,
+        memory: MemoryStore(),
+      );
       final ToolOutcome out = await reg.execute('summarize_progress');
       expect(out.ok, isTrue);
       expect(out.message, contains('执行 3 单'));
@@ -463,9 +503,15 @@ void main() {
         nextCandidate: () => _q(serial: 88),
       );
       final MemoryStore memory = MemoryStore();
-      final AgentToolRegistry reg = defaultAgentTools(context: ctx, memory: memory);
+      final AgentToolRegistry reg = defaultAgentTools(
+        context: ctx,
+        memory: memory,
+      );
       for (final String name in reg.names) {
-        await reg.execute(name, name == 'remember' ? <String, dynamic>{'text': '测试记忆'} : null);
+        await reg.execute(
+          name,
+          name == 'remember' ? <String, dynamic>{'text': '测试记忆'} : null,
+        );
       }
       expect(ctx.host.lv, HostState.demo.lv);
       expect(ctx.host.exp, HostState.demo.exp);
@@ -482,14 +528,19 @@ void main() {
         AgentTool(
           name: 'open_sheet',
           description: '打开宿主档案页（示例：任何页面操作都能注册成工具）',
-          parameters: const <String, dynamic>{'type': 'object', 'properties': <String, dynamic>{}},
+          parameters: const <String, dynamic>{
+            'type': 'object',
+            'properties': <String, dynamic>{},
+          },
           run: (Map<String, dynamic> args) async =>
               ToolOutcome.ok('档案页打开了。', data: args),
         ),
       );
       expect(reg.contains('open_sheet'), isTrue);
       expect(reg.length, 7);
-      final ToolOutcome out = await reg.execute('open_sheet', <String, dynamic>{'tab': 'attrs'});
+      final ToolOutcome out = await reg.execute('open_sheet', <String, dynamic>{
+        'tab': 'attrs',
+      });
       expect(out.ok, isTrue);
       expect(out.data?['tab'], 'attrs');
 
@@ -499,7 +550,10 @@ void main() {
         AgentTool(
           name: 'boom',
           description: '内部抛异常的工具',
-          parameters: const <String, dynamic>{'type': 'object', 'properties': <String, dynamic>{}},
+          parameters: const <String, dynamic>{
+            'type': 'object',
+            'properties': <String, dynamic>{},
+          },
           run: (Map<String, dynamic> args) async => throw StateError('炸了'),
         ),
       );
@@ -523,7 +577,10 @@ void main() {
       ]) {
         expect(line.source, CopySource.template);
         expect(line.text, isNotEmpty);
-        expect(line.text.length, lessThanOrEqualTo(SystemCopyProvider.maxChars));
+        expect(
+          line.text.length,
+          lessThanOrEqualTo(SystemCopyProvider.maxChars),
+        );
         expect(RegExp(r'\{[a-z]+\}').firstMatch(line.text), isNull);
       }
     });
@@ -553,7 +610,9 @@ void main() {
       expect((await p.settleLine(_ctx(rank: 'B'))).emotion, 'smug');
       expect((await p.settleLine(_ctx(rank: 'S'))).emotion, 'proud');
       // top 池两句话都带真实结算数字（10 EXP / 20◈ / 6 连击）——渲染必居其一
-      final CopyLine top = await p.settleLine(_ctx(rank: 'S', exp: 10, coin: 20));
+      final CopyLine top = await p.settleLine(
+        _ctx(rank: 'S', exp: 10, coin: 20),
+      );
       const String withLoot = 'S 级都让你啃下来了。……有点东西。[[10]] EXP、◈[[20]]，拿好。';
       const String withStreak = '这一单我记进档案了。[[6]] 连击，就是你现在的名字。';
       expect(top.text == withLoot || top.text == withStreak, isTrue);
@@ -607,7 +666,9 @@ void main() {
       for (int i = 0; i < 320; i++) {
         long.write('啰');
       }
-      final SystemCopyProvider p = SystemCopyProvider(llm: _FakeLlm(reply: long.toString()));
+      final SystemCopyProvider p = SystemCopyProvider(
+        llm: _FakeLlm(reply: long.toString()),
+      );
       final CopyLine line = await p.roastLine(_ctx());
       expect(line.text.length, SystemCopyProvider.maxChars);
     });
@@ -615,7 +676,9 @@ void main() {
     test('兜底铁律：LLM 返回 null/空串/纯标签/抛异常，全部逐字回退内置模板且不抛', () async {
       final CopyContext ctx = _ctx();
       for (final String? reply in <String?>[null, '', '[smug]', '   ']) {
-        final SystemCopyProvider p = SystemCopyProvider(llm: _FakeLlm(reply: reply));
+        final SystemCopyProvider p = SystemCopyProvider(
+          llm: _FakeLlm(reply: reply),
+        );
         final CopyLine line = await p.settleLine(ctx);
         expect(line.source, CopySource.template);
         expect(line.text, isNotEmpty);
@@ -664,10 +727,8 @@ void main() {
   // ═══════════ ⑤ QuestFlowAdapter（docs/19 §A3 真实适配器）═══════════
 
   group('QuestFlowAdapter：QuestFlow 数据源的真实 AgentContext', () {
-    QuestFlowAdapter adapterOf(
-      QuestFlow flow, {
-      void Function()? onChanged,
-    }) => QuestFlowAdapter(flowOf: () => flow, onChanged: onChanged);
+    QuestFlowAdapter adapterOf(QuestFlow flow, {void Function()? onChanged}) =>
+        QuestFlowAdapter(flowOf: () => flow, onChanged: onChanged);
 
     test('statusSummary：读的是 QuestFlow 真实档案/队列/主线进度', () {
       final QuestFlow f = QuestFlow.demo();
@@ -711,9 +772,10 @@ void main() {
         queue: <Quest>[_q(rank: 'D', minutes: 30)],
       );
       int notified = 0;
-      final ToolOutcome out = adapterOf(f, onChanged: () => notified++).swapQuest(
-        note: '腿疼',
-      );
+      final ToolOutcome out = adapterOf(
+        f,
+        onChanged: () => notified++,
+      ).swapQuest(note: '腿疼');
       expect(out.ok, isTrue);
       expect(out.message, contains('换好了'));
       expect(out.message, contains('腿疼'));
@@ -756,7 +818,10 @@ void main() {
       a.adjustQuestPlan(rank: 'b');
       expect(f.queue.first.rank, 'B');
       // 六维点数随档位重分：总和 == 新档 pt
-      final int sum = f.queue.first.attrs.values.fold(0, (int a, int b) => a + b);
+      final int sum = f.queue.first.attrs.values.fold(
+        0,
+        (int a, int b) => a + b,
+      );
       expect(sum, Rarity.of('B').pt);
 
       a.adjustQuestPlan(rank: '不认识的档');
@@ -771,7 +836,10 @@ void main() {
       expect(main.ok, isFalse);
       expect(main.message, contains('主线'));
 
-      final QuestFlow empty = QuestFlow(host: HostState.demo, goal: Goal.demo());
+      final QuestFlow empty = QuestFlow(
+        host: HostState.demo,
+        goal: Goal.demo(),
+      );
       expect(adapterOf(empty).adjustQuestPlan(minutes: 10).ok, isFalse);
       expect(adapterOf(empty).swapQuest().ok, isFalse);
     });

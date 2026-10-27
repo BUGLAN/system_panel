@@ -78,8 +78,11 @@ class LlmConfig {
     String? model,
     this.reasoningEffort = kDefaultReasoningEffort,
     this.strict = false,
-  })  : baseUrl = baseUrl ?? kDefaultBase,
-        model = model ?? kDefaultModel;
+    this.temperature,
+    this.contextLen = 0,
+    this.stream = false,
+  }) : baseUrl = baseUrl ?? kDefaultBase,
+       model = model ?? kDefaultModel;
 
   static const String kDefaultBase = 'https://api.deepseek.com';
 
@@ -101,6 +104,33 @@ class LlmConfig {
   /// 严格模式（docs/22 §2.0）：开发构建下失败**不伪装成正常回复**。
   /// 客户端本身只把它带在配置上（诊断/上层决策用），不改变失败折叠行为。
   final bool strict;
+
+  // ── 采样参数（设置页可调；参考稿没有，按「补全缺失组件」新增）────
+  //
+  // 三条都**真的进请求体**，不是摆设：
+  //   [temperature] null = 调用点自己决定（多数调用点显式传 0.8 / 0.3）
+  //   [contextLen]  0 = 用调用点的 maxTokens；>0 = 作为**上限**钳制它
+  //   [stream]      true 时向端点要 `stream: true`（客户端仍按整包解析）
+  // 为什么 contextLen 是"上限"而不是"覆盖"：拆解/工具循环有自己的预算
+  // （kPlanMaxTokens / kToolLoopMaxTokens），设置页不该把它们压低。
+  /// 默认温度（null = 调用点决定）
+  final double? temperature;
+
+  /// 响应预算上限；0 = 不钳制
+  final int contextLen;
+
+  /// 是否请求流式响应
+  final bool stream;
+
+  /// 把调用点的温度与配置合并：调用点显式给了就用它，否则用设置页的。
+  double? resolveTemperature(double? asked) => asked ?? temperature;
+
+  /// 把调用点的 maxTokens 与配置上限合并（取小；0 = 不限制）。
+  int? resolveMaxTokens(int? asked) {
+    if (contextLen <= 0) return asked;
+    if (asked == null) return contextLen;
+    return asked < contextLen ? asked : contextLen;
+  }
 
   /// 别名归一化表 —— 全小写键。ENV.md 实测 v4.1flash 不存在 → deepseek-flash。
   /// 新端点换名只改这张表，设置页文案不动。
@@ -139,7 +169,7 @@ class LlmMessage {
 
   LlmMessage.system(String text) : this('system', text);
   LlmMessage.user(String text, {List<String> images = const <String>[]})
-      : this('user', text, images: images);
+    : this('user', text, images: images);
   LlmMessage.assistant(String text) : this('assistant', text);
 
   final String role;
@@ -168,7 +198,11 @@ class LlmMessage {
 
 /// function calling 的工具声明（OpenAI tools 数组格式）
 class LlmTool {
-  const LlmTool({required this.name, required this.description, this.parameters});
+  const LlmTool({
+    required this.name,
+    required this.description,
+    this.parameters,
+  });
 
   final String name;
   final String description;
@@ -181,14 +215,23 @@ class LlmTool {
     'function': <String, dynamic>{
       'name': name,
       'description': description,
-      'parameters': parameters ?? <String, dynamic>{'type': 'object', 'properties': <String, dynamic>{}},
+      'parameters':
+          parameters ??
+          <String, dynamic>{
+            'type': 'object',
+            'properties': <String, dynamic>{},
+          },
     },
   };
 }
 
 /// 模型要求调用的一个工具
 class LlmToolCall {
-  const LlmToolCall({required this.id, required this.name, this.arguments = const <String, dynamic>{}});
+  const LlmToolCall({
+    required this.id,
+    required this.name,
+    this.arguments = const <String, dynamic>{},
+  });
 
   final String id;
   final String name;
@@ -203,9 +246,9 @@ class LlmReply {
     this.model,
     this.finishReason,
     this.reasoningTokens,
-  })  : ok = true,
-        failure = null,
-        detail = null;
+  }) : ok = true,
+       failure = null,
+       detail = null;
 
   const LlmReply.failure(this.failure, this.detail)
     : ok = false,
@@ -271,13 +314,13 @@ class LlmClient {
   /// 旧版 `maxTokens: 8` 会永远返回空正文/截断，却因为只看「HTTP 200」而显示成功——
   /// 宿主看到的「测试连接通了、聊天却兜底」就是它造成的错觉。
   Future<LlmReply> ping() => chat(
-        messages: <LlmMessage>[
-          LlmMessage.system('你是系统娘小祥，只用一句话回答，不要解释。'),
-          LlmMessage.user('ping'),
-        ],
-        maxTokens: 512,
-        temperature: 0,
-      );
+    messages: <LlmMessage>[
+      LlmMessage.system('你是系统娘小祥，只用一句话回答，不要解释。'),
+      LlmMessage.user('ping'),
+    ],
+    maxTokens: 512,
+    temperature: 0,
+  );
 
   /// 释放底层 http.Client（TODO-07 网关热更：设置变更重建客户端时**必须**
   /// 关掉旧的，别让连接池一直挂着）。关闭瞬间还在途的请求会收
@@ -294,6 +337,7 @@ class LlmClient {
     double? temperature,
     int? maxTokens,
     String? reasoningEffort,
+    Duration? timeout,
   }) async {
     final Stopwatch sw = Stopwatch()..start();
     LlmReply r = await _chat(
@@ -302,6 +346,7 @@ class LlmClient {
       temperature: temperature,
       maxTokens: maxTokens,
       reasoningEffort: reasoningEffort,
+      timeout: timeout,
     );
     // 思考把预算吃光 → **抬预算重来一次**。
     //
@@ -312,14 +357,17 @@ class LlmClient {
     //    实测 6 次里 2 次命中，比例不低。
     final int? bumped = _escalatedBudget(maxTokens);
     if (bumped != null && r.starvedByThinking) {
-      debugPrint('[llm] 空正文（思考吃光 max_tokens=$maxTokens，'
-          'reasoning=${r.reasoningTokens}，finish=${r.finishReason}）→ 抬到 $bumped 重来一次');
+      debugPrint(
+        '[llm] 空正文（思考吃光 max_tokens=$maxTokens，'
+        'reasoning=${r.reasoningTokens}，finish=${r.finishReason}）→ 抬到 $bumped 重来一次',
+      );
       r = await _chat(
         messages: messages,
         tools: tools,
         temperature: temperature,
         maxTokens: bumped,
         reasoningEffort: reasoningEffort,
+        timeout: timeout,
       );
     }
     sw.stop();
@@ -330,14 +378,18 @@ class LlmClient {
     if (r.ok) {
       // tools=N：工具循环第一轮就是「200 + content 空 + 有 tool_calls」，
       // 不打出调用数会被误读成"空正文的成功"（task-4 验收建议）
-      debugPrint('[llm] ok model=${config.normalizedModel} '
-          'effort=${reasoningEffort ?? config.reasoningEffort} max_tokens=$maxTokens '
-          'chars=${r.text.length} tools=${r.toolCalls.length} '
-          '${sw.elapsedMilliseconds}ms');
+      debugPrint(
+        '[llm] ok model=${config.normalizedModel} '
+        'effort=${reasoningEffort ?? config.reasoningEffort} max_tokens=$maxTokens '
+        'chars=${r.text.length} tools=${r.toolCalls.length} '
+        '${sw.elapsedMilliseconds}ms',
+      );
     } else {
-      debugPrint('[llm] 失败 kind=${r.failure?.name} model=${config.normalizedModel} '
-          'effort=${reasoningEffort ?? config.reasoningEffort} ${sw.elapsedMilliseconds}ms '
-          'detail=${r.detail}');
+      debugPrint(
+        '[llm] 失败 kind=${r.failure?.name} model=${config.normalizedModel} '
+        'effort=${reasoningEffort ?? config.reasoningEffort} ${sw.elapsedMilliseconds}ms '
+        'detail=${r.detail}',
+      );
     }
     return r;
   }
@@ -352,8 +404,9 @@ class LlmClient {
     final int base = current ?? kDefaultMaxTokens;
     if (base >= kMaxEscalatedTokens) return null;
     final int tripled = base * 3;
-    final int target =
-        tripled > kMaxEscalatedTokens ? kMaxEscalatedTokens : tripled;
+    final int target = tripled > kMaxEscalatedTokens
+        ? kMaxEscalatedTokens
+        : tripled;
     return target > base ? target : null;
   }
 
@@ -363,12 +416,20 @@ class LlmClient {
     double? temperature,
     int? maxTokens,
     String? reasoningEffort,
+    Duration? timeout,
   }) async {
+    // ⚠️ 工具循环（目标匹配 / 拆解）一轮常常要 10~40s：推理模型先想再调工具。
+    //    全局 12s 会把「模型正在正常思考」误判成 timeout —— 这正是本地实测
+    //    「第 1 轮请求失败：timeout」的根因。调用点可传更长的时限。
+    final Duration limit = timeout ?? this.timeout;
     if (config.apiKey.trim().isEmpty) {
       return const LlmReply.failure(LlmFailure.noKey, '未配置 API Key');
     }
     // 本发实际用的思考档位：调用点覆盖 > 配置（设置页「思考档位」）
     final String effort = (reasoningEffort ?? config.reasoningEffort).trim();
+    // 采样参数：调用点 > 设置页（null = 不带该字段，交端点默认）
+    final double? temp = config.resolveTemperature(temperature);
+    final int? budget = config.resolveMaxTokens(maxTokens);
     final Uri uri = Uri.parse(config.endpoint);
     final Map<String, String> headers = <String, String>{
       'Content-Type': 'application/json',
@@ -380,11 +441,14 @@ class LlmClient {
         for (final LlmMessage m in messages) m.toJson(),
       ],
       if (tools != null && tools.isNotEmpty)
-        'tools': <Map<String, dynamic>>[for (final LlmTool t in tools) t.toJson()],
+        'tools': <Map<String, dynamic>>[
+          for (final LlmTool t in tools) t.toJson(),
+        ],
       // 推理档位：按调用覆盖优先（台词走 `none`，拆解/工具循环走配置档位）
       if (effort.trim().isNotEmpty) 'reasoning_effort': effort,
-      'temperature': ?temperature,
-      'max_tokens': ?maxTokens,
+      'temperature': ?temp,
+      'max_tokens': ?budget,
+      if (config.stream) 'stream': true,
     });
 
     // 严格模式（docs/22 §2.0 / 验收 F-5）：**开发期不重试** —— 一次就把真因报出来，
@@ -397,7 +461,7 @@ class LlmClient {
       try {
         final http.Response resp = await _http
             .post(uri, headers: headers, body: payload)
-            .timeout(timeout);
+            .timeout(limit);
         // HTTP 状态错误不重试：4xx/5xx 重试也不会好
         if (resp.statusCode != 200) {
           return LlmReply.failure(
@@ -408,7 +472,7 @@ class LlmClient {
         return _parseOk(resp.body, config);
       } on TimeoutException {
         lastKind = LlmFailure.timeout;
-        lastDetail = '请求超时（>${timeout.inMilliseconds}ms）';
+        lastDetail = '请求超时（>${limit.inMilliseconds}ms）';
       } catch (e) {
         // SocketException / ClientException / 其余传输层异常一律按断网兜底
         lastKind = LlmFailure.network;
@@ -433,7 +497,10 @@ class LlmClient {
       }
       final Object? first = choicesRaw.first;
       if (first is! Map<String, dynamic>) {
-        return const LlmReply.failure(LlmFailure.badResponse, 'choices[0] 不是对象');
+        return const LlmReply.failure(
+          LlmFailure.badResponse,
+          'choices[0] 不是对象',
+        );
       }
       final Object? msgRaw = first['message'];
       if (msgRaw is! Map<String, dynamic>) {
@@ -450,11 +517,13 @@ class LlmClient {
           if (c is! Map<String, dynamic>) continue;
           final Object? fn = c['function'];
           if (fn is! Map<String, dynamic>) continue;
-          calls.add(LlmToolCall(
-            id: '${c['id'] ?? ''}',
-            name: '${fn['name'] ?? ''}',
-            arguments: _decodeArguments(fn['arguments']),
-          ));
+          calls.add(
+            LlmToolCall(
+              id: '${c['id'] ?? ''}',
+              name: '${fn['name'] ?? ''}',
+              arguments: _decodeArguments(fn['arguments']),
+            ),
+          );
         }
       }
       return LlmReply.success(

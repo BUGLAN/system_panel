@@ -19,12 +19,24 @@ class Rewards {
 
   /// 经验表（F 兼容档 = 0）
   static const Map<String, int> kExpByRank = <String, int>{
-    'F': 0, 'E': 1, 'D': 2, 'C': 4, 'B': 6, 'A': 8, 'S': 10,
+    'F': 0,
+    'E': 1,
+    'D': 2,
+    'C': 4,
+    'B': 6,
+    'A': 8,
+    'S': 10,
   };
 
   /// 金币表（F3 / E~C 5 / B7 / A10 / S20）
   static const Map<String, int> kCoinByRank = <String, int>{
-    'F': 3, 'E': 5, 'D': 5, 'C': 5, 'B': 7, 'A': 10, 'S': 20,
+    'F': 3,
+    'E': 5,
+    'D': 5,
+    'C': 5,
+    'B': 7,
+    'A': 10,
+    'S': 20,
   };
 
   static int expOf(String rank) => kExpByRank[rank] ?? 0;
@@ -58,8 +70,7 @@ class Rewards {
     final int baseExp = (expOf(rank) * k).round();
     final int exp =
         baseExp * (crit ? kCritMultiplier : 1) * (dbl ? kDblMultiplier : 1);
-    final int coin =
-        (coinOf(rank) * k).round() * (crit ? kCritMultiplier : 1);
+    final int coin = (coinOf(rank) * k).round() * (crit ? kCritMultiplier : 1);
     return Payout(baseExp: baseExp, exp: exp, coin: coin);
   }
 }

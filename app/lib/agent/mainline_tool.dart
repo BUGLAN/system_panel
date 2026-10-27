@@ -66,7 +66,9 @@ Map<String, dynamic> setPlanSchema(int taskCount) => <String, dynamic>{
           },
           'minutes': <String, dynamic>{
             'type': 'integer',
-            'description': '预计耗时（分钟），5~180',
+            'description':
+                '预计耗时（分钟）。**必须在该档位上限内**：'
+                'F≤20 / E≤30 / D≤40 / C≤60 / B≤90 / A≤120 / S≤180',
           },
           'rank': <String, dynamic>{
             'type': 'string',
@@ -93,19 +95,35 @@ AgentTool setPlanTool({
   required int days,
   required PlanDraft draft,
   void Function()? onStaged,
+  bool firstGoal = false,
+  int quota = 0,
+
+  /// 规则校验（档位阶梯 / 首目标只能 E/D/C / 兑现单）**在生产路径开启**。
+  ///
+  /// 为什么放在工具里：PlanAgent 只在工具抛错时才把原因回填给模型重交。
+  /// 校验留在 agent 循环之外（buildGoalFromPlan）的话，模型永远不知道自己
+  /// 错在哪，整份计划直接作废 —— 本地实测「首目标给了 S 档」连续两轮都
+  /// 撞在这上面。测试可以传 false，只验形状。
+  bool validate = true,
 }) {
   return AgentTool(
     name: 'set_plan',
     description:
         '把宿主的目标「$goalText」（期限 $days 天）拆成 $taskCount 张任务、交上来当计划。'
         '调用前先用 get_status 看他的现状（等级/连败/最弱维），'
-        '必要时用 recall 翻一下他以前说过什么。必须正好 $taskCount 张。',
+        '必要时用 recall 翻一下他以前说过什么。必须正好 $taskCount 张。'
+        '${firstGoal ? '这是**首目标**：档位只能是 E/D/C。' : '档位不许倒退，最后一张必须是 S 级兑现单。'}'
+        '每张 minutes 必须在该档位上限内。',
     parameters: setPlanSchema(taskCount),
     run: (Map<String, dynamic> args) async {
       draft.attempts++;
       final Object? raw = args['tasks'];
       if (raw is! List || raw.isEmpty) {
-        throw PlanShapeError(-1, 'tasks', 'tasks 必须是数组，且正好 $taskCount 张，实际给了 ${raw is List ? raw.length : raw.runtimeType}');
+        throw PlanShapeError(
+          -1,
+          'tasks',
+          'tasks 必须是数组，且正好 $taskCount 张，实际给了 ${raw is List ? raw.length : raw.runtimeType}',
+        );
       }
       if (raw.length != taskCount) {
         throw PlanShapeError(
@@ -118,7 +136,11 @@ AgentTool setPlanTool({
       for (int i = 0; i < raw.length; i++) {
         final Object? item = raw[i];
         if (item is! Map) {
-          throw PlanShapeError(i, 'tasks', '第 ${i + 1} 张不是对象（是 ${item.runtimeType}）');
+          throw PlanShapeError(
+            i,
+            'tasks',
+            '第 ${i + 1} 张不是对象（是 ${item.runtimeType}）',
+          );
         }
         final String short = _str(item['short']);
         final String title = _str(item['title']);
@@ -128,14 +150,25 @@ AgentTool setPlanTool({
         final int? minutes = minutesRaw is num
             ? minutesRaw.toInt()
             : int.tryParse(_str(minutesRaw));
-        if (short.isEmpty) throw PlanShapeError(i, 'short', '第 ${i + 1} 张的 short 是空的');
-        if (title.isEmpty) throw PlanShapeError(i, 'title', '第 ${i + 1} 张的 title 是空的');
-        if (proof.isEmpty) throw PlanShapeError(i, 'proof', '第 ${i + 1} 张的 proof 是空的');
+        if (short.isEmpty)
+          throw PlanShapeError(i, 'short', '第 ${i + 1} 张的 short 是空的');
+        if (title.isEmpty)
+          throw PlanShapeError(i, 'title', '第 ${i + 1} 张的 title 是空的');
+        if (proof.isEmpty)
+          throw PlanShapeError(i, 'proof', '第 ${i + 1} 张的 proof 是空的');
         if (!Rarity.ranks.contains(rank)) {
-          throw PlanShapeError(i, 'rank', '第 ${i + 1} 张的 rank「${_str(item['rank'])}」不是 ${Rarity.ranks.join('/')}');
+          throw PlanShapeError(
+            i,
+            'rank',
+            '第 ${i + 1} 张的 rank「${_str(item['rank'])}」不是 ${Rarity.ranks.join('/')}',
+          );
         }
         if (minutes == null || minutes <= 0) {
-          throw PlanShapeError(i, 'minutes', '第 ${i + 1} 张的 minutes 不是正整数（收到 ${minutesRaw ?? 'null'}）');
+          throw PlanShapeError(
+            i,
+            'minutes',
+            '第 ${i + 1} 张的 minutes 不是正整数（收到 ${minutesRaw ?? 'null'}）',
+          );
         }
         out.add(
           TaskSpec(
@@ -146,6 +179,23 @@ AgentTool setPlanTool({
             rank: rank,
           ),
         );
+      }
+      // ⚠️ **规则校验必须在这里跑**（不是等 agent 循环结束后在 buildGoalFromPlan 里）。
+      //    PlanAgent 只在工具内抛 PlanShapeError 时才会「回填原因让模型重交」；
+      //    校验留在外面，模型永远不知道第 3 张给了 S、C 档写了 120 分钟，
+      //    整份计划直接作废 —— 本地实测连续两轮都撞在这上面。
+      try {
+        if (validate) {
+          validatePlan(
+            days: days,
+            tasks: out,
+            quota: quota,
+            firstGoal: firstGoal,
+          );
+        }
+      } on PlanRuleError catch (e) {
+        // 折成「形状错」交给 agent 循环：PlanAgent 会把原因回填给模型重交。
+        throw PlanShapeError(-1, 'tasks', e.detail);
       }
       draft.tasks = out;
       onStaged?.call();
@@ -213,8 +263,9 @@ class GoalMatchDraft {
 }
 
 /// 类别 id 的枚举（schema 用）——**模型只能从这十个里选**。
-List<String> get goalCategoryIds =>
-    <String>[for (final GoalCategory c in kGoalCatOrder) c.id];
+List<String> get goalCategoryIds => <String>[
+  for (final GoalCategory c in kGoalCatOrder) c.id,
+];
 
 /// 匹配工具的 JSON Schema。
 Map<String, dynamic> setGoalCategorySchema() => <String, dynamic>{
@@ -275,7 +326,7 @@ AgentTool setGoalCategoryTool({
         -1,
         'id',
         '类别「$id」不在可选列表里。必须从这几个 id 里选一个：'
-        '${goalCategoryIds.join(' / ')}',
+            '${goalCategoryIds.join(' / ')}',
       );
     }
     final Object? rawShort = args['short'];
@@ -284,7 +335,9 @@ AgentTool setGoalCategoryTool({
       throw const PlanShapeError(-1, 'short', '天幕短字是空的');
     }
     final Object? rawDays = args['days'];
-    final int? days = rawDays is num ? rawDays.toInt() : int.tryParse('$rawDays');
+    final int? days = rawDays is num
+        ? rawDays.toInt()
+        : int.tryParse('$rawDays');
     if (days == null) {
       throw PlanShapeError(-1, 'days', '期限不是整数（收到 $rawDays）');
     }

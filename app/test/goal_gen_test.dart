@@ -100,8 +100,16 @@ void main() {
       expect(
         <String>[for (final GoalCategory c in kGoalCatOrder) c.id],
         <String>[
-          'run', 'slim', 'fit', 'lang', 'exam',
-          'sleep', 'make', 'code', 'bold', 'gen',
+          'run',
+          'slim',
+          'fit',
+          'lang',
+          'exam',
+          'sleep',
+          'make',
+          'code',
+          'bold',
+          'gen',
         ],
       );
       expect(goalCats.length, 10);
@@ -140,9 +148,7 @@ void main() {
 
   group('访谈卡组 3~5 张（依据等级设定合适内容）', () {
     test('新宿主 lv1 = 类别 3 张（docs/18 第 2.1 节 示例形态）', () {
-      final List<InterviewCard> cards = interviewCardsFor(
-        goalCats['sleep']!,
-      );
+      final List<InterviewCard> cards = interviewCardsFor(goalCats['sleep']!);
       expect(cards.length, 3);
       expect(cards.map((InterviewCard c) => c.id), <String>[
         'sleep.schedule',
@@ -188,9 +194,27 @@ void main() {
 
   /// 造一批合规任务（首目标：3 张 E/D/C）
   List<TaskSpec> firstTasks() => const <TaskSpec>[
-    TaskSpec(short: '定闹钟', title: '定好明早的闹钟', proof: '闹钟截图', minutes: 5, rank: 'E'),
-    TaskSpec(short: '23:30', title: '今晚 23:30 前上床', proof: '屏幕使用时间截图', minutes: 20, rank: 'D'),
-    TaskSpec(short: '不赖床', title: '闹钟响后 5 分钟内起床', proof: '起床时间截图', minutes: 10, rank: 'C'),
+    TaskSpec(
+      short: '定闹钟',
+      title: '定好明早的闹钟',
+      proof: '闹钟截图',
+      minutes: 5,
+      rank: 'E',
+    ),
+    TaskSpec(
+      short: '23:30',
+      title: '今晚 23:30 前上床',
+      proof: '屏幕使用时间截图',
+      minutes: 20,
+      rank: 'D',
+    ),
+    TaskSpec(
+      short: '不赖床',
+      title: '闹钟响后 5 分钟内起床',
+      proof: '起床时间截图',
+      minutes: 10,
+      rank: 'C',
+    ),
   ];
 
   /// 造一批合规任务（长计划：n 张，低开高走，末张 S 级兑现单）
@@ -257,7 +281,10 @@ void main() {
   group('计划规则 · validatePlan **fail fast**', () {
     test('合规清单通过（首目标 / 长计划两条路）', () {
       validatePlan(days: 3, tasks: firstTasks(), firstGoal: true);
-      expect(() => validatePlan(days: 14, tasks: longTasks(14)), returnsNormally);
+      expect(
+        () => validatePlan(days: 14, tasks: longTasks(14)),
+        returnsNormally,
+      );
     });
 
     test('条数不对 → PlanRuleError（不补齐、不截断）', () {
@@ -316,9 +343,27 @@ void main() {
     test('档位倒退 → PlanRuleError（低开高走是全链约束）', () {
       // E → E → C 不算倒退
       final List<TaskSpec> flat = <TaskSpec>[
-        const TaskSpec(short: 'a', title: 'b', proof: 'c', minutes: 20, rank: 'E'),
-        const TaskSpec(short: 'a', title: 'b', proof: 'c', minutes: 20, rank: 'E'),
-        const TaskSpec(short: 'a', title: 'b', proof: 'c', minutes: 20, rank: 'C'),
+        const TaskSpec(
+          short: 'a',
+          title: 'b',
+          proof: 'c',
+          minutes: 20,
+          rank: 'E',
+        ),
+        const TaskSpec(
+          short: 'a',
+          title: 'b',
+          proof: 'c',
+          minutes: 20,
+          rank: 'E',
+        ),
+        const TaskSpec(
+          short: 'a',
+          title: 'b',
+          proof: 'c',
+          minutes: 20,
+          rank: 'C',
+        ),
       ];
       expect(
         () => validatePlan(days: 3, tasks: flat, firstGoal: true),
@@ -326,9 +371,27 @@ void main() {
       );
       // D → E 是倒退
       final List<TaskSpec> back = <TaskSpec>[
-        const TaskSpec(short: 'a', title: 'b', proof: 'c', minutes: 20, rank: 'D'),
-        const TaskSpec(short: 'a', title: 'b', proof: 'c', minutes: 20, rank: 'E'),
-        const TaskSpec(short: 'a', title: 'b', proof: 'c', minutes: 20, rank: 'C'),
+        const TaskSpec(
+          short: 'a',
+          title: 'b',
+          proof: 'c',
+          minutes: 20,
+          rank: 'D',
+        ),
+        const TaskSpec(
+          short: 'a',
+          title: 'b',
+          proof: 'c',
+          minutes: 20,
+          rank: 'E',
+        ),
+        const TaskSpec(
+          short: 'a',
+          title: 'b',
+          proof: 'c',
+          minutes: 20,
+          rank: 'C',
+        ),
       ];
       expect(
         () => validatePlan(days: 3, tasks: back, firstGoal: true),
@@ -418,7 +481,11 @@ void main() {
       expect(g.cat, 'sleep');
       expect(g.short, '早起');
       expect(g.plan.length, 3);
-      expect(g.plan.map((PlanTask t) => t.rank).toList(), <String>['E', 'D', 'C']);
+      expect(g.plan.map((PlanTask t) => t.rank).toList(), <String>[
+        'E',
+        'D',
+        'C',
+      ]);
       expect(g.plan.every((PlanTask t) => t.finalTask), isFalse);
       expect(g.firstOpenIndex, 0);
       expect(g.interview['sleep.schedule'], '0-1 点睡 8 点起');
@@ -477,9 +544,15 @@ void main() {
   group('答案三用 · ② 日常池（与目标拆解无关的产品内容）', () {
     test('目标类型专属池在前、通用池补位', () {
       final List<DailyTemplate> pool = dailyPoolFor('sleep');
-      expect(pool.length, goalCats['sleep']!.daily.length + kDailyCommon.length);
+      expect(
+        pool.length,
+        goalCats['sleep']!.daily.length + kDailyCommon.length,
+      );
       expect(pool.first.title, '睡前 30 分钟不碰手机');
-      expect(pool[goalCats['sleep']!.daily.length].title, kDailyCommon.first.title);
+      expect(
+        pool[goalCats['sleep']!.daily.length].title,
+        kDailyCommon.first.title,
+      );
     });
 
     test('gen 池 = 兜底专属池 + 通用池；未知类型兜底到 gen', () {
@@ -559,7 +632,9 @@ void main() {
           );
         }
       }
-      final Set<String> used = <String>{for (final List<String> d in days) ...d};
+      final Set<String> used = <String>{
+        for (final List<String> d in days) ...d,
+      };
       expect(used.length, greaterThanOrEqualTo(20));
     });
   });
@@ -614,14 +689,10 @@ void main() {
     });
 
     test('老档缺新字段 → 合并出默认值，不触发绑定流', () {
-      final Map<String, dynamic> raw =
-          jsonDecode(
-                '''
+      final Map<String, dynamic> raw = jsonDecode('''
         {"text":"三个月跑完半马","short":"半马","at":"2026-10-01T08:00:00.000",
          "rings":[{"short":"穿上跑鞋","title":"换上跑鞋，出门快走 15 分钟","proof":"运动 App 记录或出门自拍","minutes":20,"rank":"F","state":"done"}]}
-      ''',
-              )
-              as Map<String, dynamic>;
+      ''') as Map<String, dynamic>;
       final Goal g = Goal.fromJson(raw, fallback: Goal.empty());
       expect(g.cat, '');
       expect(g.days, 1);
@@ -666,7 +737,10 @@ void main() {
         firstGoal: true,
       );
       await SaveFile().save(
-        SaveData(host: HostState.empty.copyWith(name: '新宿主'), goal: goal),
+        SaveData(
+          host: HostState.empty.copyWith(name: '新宿主'),
+          goal: goal,
+        ),
       );
       final SaveData back = await SaveFile().load();
       expect(back.goal.days, 3);

@@ -154,7 +154,7 @@ class Motion {
 
 /// 舞台锚点。
 ///
-/// 原型里这些值由 Live2D 模型实测比例 + 镜头矩阵算出（`Stage.toScreen`），
+/// 这些值来自原型的舞台比例 + 镜头矩阵（`Stage.toScreen`），
 /// 模型还没移植，所以这里固定为**运行中原型量出来的 boot 镜头值**：
 ///   Stage.W×H = 390×844，eyes=(195, 227.93)，chest=(195, 375.67)，bodyH=540.16
 /// 模型落地后这一层要改成由舞台实时提供。
@@ -353,10 +353,16 @@ class SpringSpec {
   static const SpringSpec tilt = SpringSpec(180, .9);
 
   /// 牌桌（= Motion.cardTableK/Zeta）
-  static const SpringSpec table = SpringSpec(Motion.cardTableK, Motion.cardTableZeta);
+  static const SpringSpec table = SpringSpec(
+    Motion.cardTableK,
+    Motion.cardTableZeta,
+  );
 
   /// 相机（= Motion.cameraK/Zeta）
-  static const SpringSpec camera = SpringSpec(Motion.cameraK, Motion.cameraZeta);
+  static const SpringSpec camera = SpringSpec(
+    Motion.cameraK,
+    Motion.cameraZeta,
+  );
 }
 
 /// 音效触发规则 —— **什么动作出声、多响、多密**（Sfx.cue 读它）。

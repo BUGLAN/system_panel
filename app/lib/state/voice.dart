@@ -13,7 +13,7 @@ import 'dart:math' as math;
 ///  tick(dt) { this.mouth += (this._target - this.mouth) * (1 - Math.pow(.00002, dt)); },
 ///  ```
 ///
-///  **这条链路不需要 Live2D 模型**：SYSTEM 后面那排波形条就是它驱动的
+///  **这条链路不需要角色模型**：SYSTEM 后面那排波形条就是它驱动的
 ///  （`ui.js` L70-73）。AGENTS.md 说的"电子音节先行"正是指这个 ——
 ///  先把口型/波形做出来，模型到位后 `ParamMouthOpenY` 直接读同一个 `mouth`。
 /// ═══════════════════════════════════════════════════════════

@@ -34,7 +34,10 @@ void main() {
       'choices': <dynamic>[
         <String, dynamic>{
           'finish_reason': 'length',
-          'message': <String, dynamic>{'content': '', 'reasoning_content': '想…'},
+          'message': <String, dynamic>{
+            'content': '',
+            'reasoning_content': '想…',
+          },
         },
       ],
       'usage': <String, dynamic>{
@@ -187,14 +190,13 @@ void main() {
       expect(sent.last['max_tokens'], 1024);
 
       // ② 不传覆盖 → 用配置（拆解 / 工具循环走这条）
-      await withConfig('low').chat(
-        messages: <LlmMessage>[LlmMessage.user('hi')],
-        maxTokens: 2048,
-      );
+      await withConfig('low')
+          .chat(messages: <LlmMessage>[LlmMessage.user('hi')], maxTokens: 2048);
       expect(sent.last['reasoning_effort'], 'low');
 
       // ③ 配置为空 + 不传覆盖 → 整个字段不发（端点自己决定）
-      await withConfig(null).chat(messages: <LlmMessage>[LlmMessage.user('hi')]);
+      await withConfig(null)
+          .chat(messages: <LlmMessage>[LlmMessage.user('hi')]);
       expect(sent.last.containsKey('reasoning_effort'), isFalse);
 
       // ④ 配置为空但调用点指定 → 照样发得出去
@@ -240,9 +242,9 @@ void main() {
           return okBody('x');
         }),
       );
-      final LlmReply r = await client.chat(messages: <LlmMessage>[
-        LlmMessage.user('hi'),
-      ]);
+      final LlmReply r = await client.chat(
+        messages: <LlmMessage>[LlmMessage.user('hi')],
+      );
       expect(r.ok, isFalse);
       expect(r.failure, LlmFailure.noKey);
       expect(calls, 0);
@@ -261,10 +263,9 @@ void main() {
           return okBody('pong');
         }),
       );
-      final LlmReply r = await client.chat(messages: <LlmMessage>[
-        LlmMessage.system('sys'),
-        LlmMessage.user('u'),
-      ]);
+      final LlmReply r = await client.chat(
+        messages: <LlmMessage>[LlmMessage.system('sys'), LlmMessage.user('u')],
+      );
       expect(r.ok, isTrue);
       expect(r.text, 'pong');
       expect(r.model, 'deepseek-flash'); // 归一化后的名字回填
@@ -283,26 +284,89 @@ void main() {
           return okBody('seen');
         }),
       );
-      final LlmReply r = await client.chat(messages: <LlmMessage>[
-        LlmMessage.user('看这张', images: <String>['data:image/jpeg;base64,QUJD']),
-      ]);
+      final LlmReply r = await client.chat(
+        messages: <LlmMessage>[
+          LlmMessage.user(
+            '看这张',
+            images: <String>['data:image/jpeg;base64,QUJD'],
+          ),
+        ],
+      );
       expect(r.ok, isTrue);
       final List<dynamic> parts =
           ((body!['messages'] as List<dynamic>).first
-              as Map<String, dynamic>)['content'] as List<dynamic>;
+                  as Map<String, dynamic>)['content']
+              as List<dynamic>;
       expect(parts[0]['type'], 'text');
       expect(parts[0]['text'], '看这张');
       expect(parts[1]['type'], 'image_url');
       expect(parts[1]['image_url']['url'], 'data:image/jpeg;base64,QUJD');
     });
 
-    test('function calling：tools 发出 + tool_calls 解析（arguments 字符串→Map）', () async {
-      Map<String, dynamic>? body;
+    test(
+      'function calling：tools 发出 + tool_calls 解析（arguments 字符串→Map）',
+      () async {
+        Map<String, dynamic>? body;
+        final LlmClient client = LlmClient(
+          config: const LlmConfig(apiKey: 'sk-test'),
+          httpClient: MockClient((http.Request r) async {
+            body = jsonDecode(r.body) as Map<String, dynamic>;
+            return http.Response(
+              jsonEncode(<String, dynamic>{
+                'choices': <dynamic>[
+                  <String, dynamic>{
+                    'message': <String, dynamic>{
+                      'content': '',
+                      'tool_calls': <dynamic>[
+                        <String, dynamic>{
+                          'id': 'call_1',
+                          'type': 'function',
+                          'function': <String, dynamic>{
+                            'name': 'get_status',
+                            'arguments': '{"want":"lv"}',
+                          },
+                        },
+                      ],
+                    },
+                  },
+                ],
+              }),
+              200,
+            );
+          }),
+        );
+        final LlmReply r = await client.chat(
+          messages: <LlmMessage>[LlmMessage.user('查状态')],
+          tools: <LlmTool>[
+            LlmTool(
+              name: 'get_status',
+              description: '查 LV/金币/连击',
+              parameters: <String, dynamic>{
+                'type': 'object',
+                'properties': <String, dynamic>{},
+              },
+            ),
+          ],
+        );
+        expect(r.ok, isTrue);
+        final List<dynamic> tools = body!['tools'] as List<dynamic>;
+        expect((tools.first as Map<String, dynamic>)['type'], 'function');
+        expect(
+          ((tools.first as Map<String, dynamic>)['function']
+              as Map<String, dynamic>)['name'],
+          'get_status',
+        );
+        expect(r.toolCalls.single.id, 'call_1');
+        expect(r.toolCalls.single.name, 'get_status');
+        expect(r.toolCalls.single.arguments, <String, dynamic>{'want': 'lv'});
+      },
+    );
+
+    test('arguments 坏 JSON → 空参数兜底，不炸', () async {
       final LlmClient client = LlmClient(
         config: const LlmConfig(apiKey: 'sk-test'),
-        httpClient: MockClient((http.Request r) async {
-          body = jsonDecode(r.body) as Map<String, dynamic>;
-          return http.Response(
+        httpClient: MockClient(
+          (http.Request r) async => http.Response(
             jsonEncode(<String, dynamic>{
               'choices': <dynamic>[
                 <String, dynamic>{
@@ -310,11 +374,10 @@ void main() {
                     'content': '',
                     'tool_calls': <dynamic>[
                       <String, dynamic>{
-                        'id': 'call_1',
-                        'type': 'function',
+                        'id': 'c',
                         'function': <String, dynamic>{
-                          'name': 'get_status',
-                          'arguments': '{"want":"lv"}',
+                          'name': 'x',
+                          'arguments': '{broken',
                         },
                       },
                     ],
@@ -323,63 +386,12 @@ void main() {
               ],
             }),
             200,
-          );
-        }),
+          ),
+        ),
       );
       final LlmReply r = await client.chat(
-        messages: <LlmMessage>[LlmMessage.user('查状态')],
-        tools: <LlmTool>[
-          LlmTool(
-            name: 'get_status',
-            description: '查 LV/金币/连击',
-            parameters: <String, dynamic>{
-              'type': 'object',
-              'properties': <String, dynamic>{},
-            },
-          ),
-        ],
+        messages: <LlmMessage>[LlmMessage.user('u')],
       );
-      expect(r.ok, isTrue);
-      final List<dynamic> tools = body!['tools'] as List<dynamic>;
-      expect((tools.first as Map<String, dynamic>)['type'], 'function');
-      expect(
-        ((tools.first as Map<String, dynamic>)['function']
-            as Map<String, dynamic>)['name'],
-        'get_status',
-      );
-      expect(r.toolCalls.single.id, 'call_1');
-      expect(r.toolCalls.single.name, 'get_status');
-      expect(r.toolCalls.single.arguments, <String, dynamic>{'want': 'lv'});
-    });
-
-    test('arguments 坏 JSON → 空参数兜底，不炸', () async {
-      final LlmClient client = LlmClient(
-        config: const LlmConfig(apiKey: 'sk-test'),
-        httpClient: MockClient((http.Request r) async => http.Response(
-          jsonEncode(<String, dynamic>{
-            'choices': <dynamic>[
-              <String, dynamic>{
-                'message': <String, dynamic>{
-                  'content': '',
-                  'tool_calls': <dynamic>[
-                    <String, dynamic>{
-                      'id': 'c',
-                      'function': <String, dynamic>{
-                        'name': 'x',
-                        'arguments': '{broken',
-                      },
-                    },
-                  ],
-                },
-              },
-            ],
-          }),
-          200,
-        )),
-      );
-      final LlmReply r = await client.chat(messages: <LlmMessage>[
-        LlmMessage.user('u'),
-      ]);
       expect(r.ok, isTrue);
       expect(r.toolCalls.single.arguments, isEmpty);
     });
@@ -394,9 +406,9 @@ void main() {
           return okBody('ok');
         }),
       );
-      final LlmReply r = await client.chat(messages: <LlmMessage>[
-        LlmMessage.user('hi'),
-      ]);
+      final LlmReply r = await client.chat(
+        messages: <LlmMessage>[LlmMessage.user('hi')],
+      );
       expect(r.ok, isTrue);
       expect(calls, 2);
     });
@@ -412,9 +424,9 @@ void main() {
           return okBody('late');
         }),
       );
-      final LlmReply r = await client.chat(messages: <LlmMessage>[
-        LlmMessage.user('hi'),
-      ]);
+      final LlmReply r = await client.chat(
+        messages: <LlmMessage>[LlmMessage.user('hi')],
+      );
       expect(r.ok, isFalse);
       expect(r.failure, LlmFailure.timeout);
       expect(calls, 2);
@@ -430,9 +442,9 @@ void main() {
           return http.Response('{"error":"auth"}', 401);
         }),
       );
-      final LlmReply r = await client.chat(messages: <LlmMessage>[
-        LlmMessage.user('hi'),
-      ]);
+      final LlmReply r = await client.chat(
+        messages: <LlmMessage>[LlmMessage.user('hi')],
+      );
       expect(r.ok, isFalse);
       expect(r.failure, LlmFailure.httpError);
       expect(calls, 1);
@@ -443,19 +455,40 @@ void main() {
       Future<LlmFailure> kindOf(String body) async {
         final LlmClient client = LlmClient(
           config: const LlmConfig(apiKey: 'k'),
-          httpClient: MockClient((http.Request r) async => http.Response(body, 200)),
+          httpClient: MockClient(
+            (http.Request r) async => http.Response(body, 200),
+          ),
         );
-        final LlmReply r = await client.chat(messages: <LlmMessage>[
-          LlmMessage.user('hi'),
-        ]);
+        final LlmReply r = await client.chat(
+          messages: <LlmMessage>[LlmMessage.user('hi')],
+        );
         return r.failure!;
       }
 
-      test('纯文本', () async => expect(await kindOf('not json'), LlmFailure.badResponse));
-      test('JSON 数组', () async => expect(await kindOf('[1,2]'), LlmFailure.badResponse));
-      test('缺 choices', () async => expect(await kindOf('{}'), LlmFailure.badResponse));
-      test('choices 空', () async => expect(await kindOf('{"choices":[]}'), LlmFailure.badResponse));
-      test('缺 message', () async => expect(await kindOf('{"choices":[{"x":1}]}'), LlmFailure.badResponse));
+      test(
+        '纯文本',
+        () async => expect(await kindOf('not json'), LlmFailure.badResponse),
+      );
+      test(
+        'JSON 数组',
+        () async => expect(await kindOf('[1,2]'), LlmFailure.badResponse),
+      );
+      test(
+        '缺 choices',
+        () async => expect(await kindOf('{}'), LlmFailure.badResponse),
+      );
+      test(
+        'choices 空',
+        () async =>
+            expect(await kindOf('{"choices":[]}'), LlmFailure.badResponse),
+      );
+      test(
+        '缺 message',
+        () async => expect(
+          await kindOf('{"choices":[{"x":1}]}'),
+          LlmFailure.badResponse,
+        ),
+      );
     });
 
     test('ping() 发**真实形状**探测请求（docs/22 R1：不再是 maxTokens 8 的假绿灯）', () async {
@@ -489,10 +522,14 @@ void main() {
         return body!;
       }
 
-      expect((await bodyOf(const LlmConfig(apiKey: 'k')))['reasoning_effort'], 'low');
       expect(
-        (await bodyOf(const LlmConfig(apiKey: 'k', reasoningEffort: 'max')))[
-            'reasoning_effort'],
+        (await bodyOf(const LlmConfig(apiKey: 'k')))['reasoning_effort'],
+        'low',
+      );
+      expect(
+        (await bodyOf(
+          const LlmConfig(apiKey: 'k', reasoningEffort: 'max'),
+        ))['reasoning_effort'],
         'max',
       );
       expect(
@@ -520,7 +557,9 @@ void main() {
           (http.Request r) async => http.Response('{"error":"boom"}', 500),
         ),
       );
-      final LlmReply r = await bad.chat(messages: <LlmMessage>[LlmMessage.user('x')]);
+      final LlmReply r = await bad.chat(
+        messages: <LlmMessage>[LlmMessage.user('x')],
+      );
       expect(r.failure, LlmFailure.httpError);
       expect(LlmTelemetry.calls, 2);
       expect(LlmTelemetry.failures, 1);
@@ -550,8 +589,9 @@ void main() {
             throw http.ClientException('boom');
           }),
         );
-        final LlmReply r =
-            await c.chat(messages: <LlmMessage>[LlmMessage.user('x')]);
+        final LlmReply r = await c.chat(
+          messages: <LlmMessage>[LlmMessage.user('x')],
+        );
         expect(r.failure, LlmFailure.network);
         return n;
       }
@@ -564,8 +604,10 @@ void main() {
       expect(const LlmReply.success(text: '嗯。').hasText, isTrue);
       expect(const LlmReply.success(text: '   ').hasText, isFalse);
       expect(const LlmReply.success(text: '').hasText, isFalse);
-      expect(const LlmReply.failure(LlmFailure.noKey, '未配置 API Key').hasText,
-          isFalse);
+      expect(
+        const LlmReply.failure(LlmFailure.noKey, '未配置 API Key').hasText,
+        isFalse,
+      );
     });
   });
 }

@@ -58,6 +58,18 @@ class PlanBrief {
     if (firstGoal) {
       b.writeln('这是**首目标**：3 张，档位只能 E/D/C，一张一天，先验证他能坚持。');
     }
+    // ⚠️ 档位时限上限必须写进提示词。真机实测：模型不知道这条阶梯，
+    //    给了「D 档 45 分钟」，`validatePlan` 直接抛
+    //    「时限 45 分钟越界（D 档允许 5~40）」，整次拆解白跑。
+    b
+      ..writeln('每张的 minutes 必须落在档位上限之内（超了整份作废）：')
+      ..writeln(
+        <String>[
+          for (final String r in <String>['F', 'E', 'D', 'C', 'B', 'A', 'S'])
+            '$r ≤ ${rankCapMinutes(r)} 分钟',
+        ].join(' · '),
+      )
+      ..writeln('兑现单（最后一张）时限必须 ≥ $kPlanFinalMinutes 分钟。');
     b
       ..writeln()
       ..writeln('用 set_plan 把这 $taskCount 张交上来。');

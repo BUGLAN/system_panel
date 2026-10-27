@@ -206,8 +206,7 @@ class _AskFieldState extends State<AskField> {
   /// 不显示：她的脸是第一位，而选中值在输入框里本来就看得见。
   bool _tagFits(BuildContext context) {
     final double h = MediaQuery.sizeOf(context).height;
-    final double barTop =
-        h - _safeBottom(context) - widget.bottomInset - 54;
+    final double barTop = h - _safeBottom(context) - widget.bottomInset - 54;
     return barTop - 8 - _kTagH > h * .45;
   }
 

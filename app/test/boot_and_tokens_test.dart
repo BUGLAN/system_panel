@@ -180,9 +180,7 @@ void main() {
       await tester.pumpWidget(const SizedBox());
     });
 
-    testWidgets('门禁②：演出起来后再点不重复触发（快进节拍里也不许插队）', (
-      WidgetTester tester,
-    ) async {
+    testWidgets('门禁②：演出起来后再点不重复触发（快进节拍里也不许插队）', (WidgetTester tester) async {
       int wakes = 0;
       await tester.pumpWidget(
         MaterialApp(
@@ -229,9 +227,7 @@ void main() {
       await tester.pumpWidget(const SizedBox());
     });
 
-    testWidgets('门禁③：日志已滚完时点一下 → 立刻唤醒（不多等一拍）', (
-      WidgetTester tester,
-    ) async {
+    testWidgets('门禁③：日志已滚完时点一下 → 立刻唤醒（不多等一拍）', (WidgetTester tester) async {
       int wakes = 0;
       await tester.pumpWidget(
         MaterialApp(
@@ -257,9 +253,7 @@ void main() {
       await tester.pumpWidget(const SizedBox());
     });
 
-    testWidgets('进度条与「唤醒序列就绪」落在同一拍（按真机 16ms 逐帧读）', (
-      WidgetTester tester,
-    ) async {
+    testWidgets('进度条与「唤醒序列就绪」落在同一拍（按真机 16ms 逐帧读）', (WidgetTester tester) async {
       await tester.pumpWidget(
         const MaterialApp(home: Scaffold(body: BootScreen())),
       );

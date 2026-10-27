@@ -126,11 +126,7 @@ class _BootScreenState extends State<BootScreen> with TickerProviderStateMixin {
       bar: .08,
       hold: Duration(milliseconds: 240),
     ),
-    const _Step(
-      line: '字形载入 ✓',
-      bar: .18,
-      hold: Duration(milliseconds: 560),
-    ),
+    const _Step(line: '字形载入 ✓', bar: .18, hold: Duration(milliseconds: 560)),
     // 原型这一段由 Stage.init 的模型加载进度驱动（bar 18% → 88%）；
     // 模型还没移植，先用一个「就绪」占位，bar 直接跳到 88%
     const _Step(line: '就绪', bar: .88, hold: Duration(milliseconds: 160)),

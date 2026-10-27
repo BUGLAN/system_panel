@@ -40,3 +40,7 @@ prototype/*/voice/*.wav
 prototype/app-v2/
 prototype/app2/
 prototype/ink/
+
+# 本地快速验证用的平台 runner（2026-10-27：脱离 MuMu 逐页对稿）
+app/web/
+app/windows/

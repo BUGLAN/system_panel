@@ -53,6 +53,7 @@ abstract interface class CopyLlmGateway {
     double? temperature,
     int? maxTokens,
     Duration? timeout,
+
     /// 本发的思考档位覆盖：`null` = 用配置（设置页）。台词链路传
     /// [kLineReasoningEffort]（`none`）—— 一句话不需要推理，把它关掉
     /// 比拿一个小 max_tokens 硬扛稳得多也快得多。
@@ -68,7 +69,11 @@ enum CopySource { llm, template }
 
 /// 一句她说的话。
 class CopyLine {
-  const CopyLine({required this.text, required this.source, required this.emotion});
+  const CopyLine({
+    required this.text,
+    required this.source,
+    required this.emotion,
+  });
 
   final String text;
   final CopySource source;
@@ -132,6 +137,7 @@ class CopyContext {
   final int streak;
   final int bestStreak;
   final int queue;
+
   /// 已完成单数
   final int doneIndex;
   final int planTotal;
@@ -286,7 +292,8 @@ class SystemCopyProvider {
       ctx,
       _settlePool(t),
       _settleEmotion(t),
-      extraFacts: '本单结算 EXP +${ctx.exp}、◈+${ctx.coin}${ctx.crit ? '（暴击！）' : ''}',
+      extraFacts:
+          '本单结算 EXP +${ctx.exp}、◈+${ctx.coin}${ctx.crit ? '（暴击！）' : ''}',
     );
   }
 
@@ -305,7 +312,8 @@ class SystemCopyProvider {
     ctx,
     SystemCopyTemplates.probe,
     'neutral',
-    extraFacts: '追问话题：${(topic ?? ctx.topic).isEmpty ? '目标与计划' : (topic ?? ctx.topic)}',
+    extraFacts:
+        '追问话题：${(topic ?? ctx.topic).isEmpty ? '目标与计划' : (topic ?? ctx.topic)}',
   );
 
   /// rank → 结算档位（F/E→low，D/C→mid，B/A→high，S→top；认不出的归 low）
@@ -340,10 +348,17 @@ class SystemCopyProvider {
     String fallbackEmotion, {
     String extraFacts = '',
   }) async {
-    final String template = _fill(pool[_pick(pool, '${ctx.seedToken}|$toneKey')], ctx);
+    final String template = _fill(
+      pool[_pick(pool, '${ctx.seedToken}|$toneKey')],
+      ctx,
+    );
     final CopyLlmGateway? gateway = llm;
     if (gateway == null || !gateway.configured) {
-      return CopyLine(text: template, source: CopySource.template, emotion: fallbackEmotion);
+      return CopyLine(
+        text: template,
+        source: CopySource.template,
+        emotion: fallbackEmotion,
+      );
     }
     try {
       // 相关记忆注入（docs/18 §2.5：上下文含等级/连击/相关记忆）
@@ -364,12 +379,20 @@ class SystemCopyProvider {
       );
       final String text = (raw ?? '').trim();
       if (text.isEmpty) {
-        return CopyLine(text: template, source: CopySource.template, emotion: fallbackEmotion);
+        return CopyLine(
+          text: template,
+          source: CopySource.template,
+          emotion: fallbackEmotion,
+        );
       }
       final TaggedReply tagged = Persona.splitTag(text);
       if (tagged.text.isEmpty) {
         // 只有标签没有正文——当 LLM 没说话处理
-        return CopyLine(text: template, source: CopySource.template, emotion: fallbackEmotion);
+        return CopyLine(
+          text: template,
+          source: CopySource.template,
+          emotion: fallbackEmotion,
+        );
       }
       return CopyLine(
         text: _clamp(tagged.text),
@@ -378,7 +401,11 @@ class SystemCopyProvider {
       );
     } catch (_) {
       // 兜底铁律：LLM 链路上任何异常都折回模板
-      return CopyLine(text: template, source: CopySource.template, emotion: fallbackEmotion);
+      return CopyLine(
+        text: template,
+        source: CopySource.template,
+        emotion: fallbackEmotion,
+      );
     }
   }
 
@@ -402,8 +429,8 @@ class SystemCopyProvider {
     final String minutes = ctx.questMinutes <= 0
         ? ''
         : ctx.questMinutes < 60
-            ? '${ctx.questMinutes} 分钟'
-            : '${ctx.questMinutes ~/ 60} 小时${ctx.questMinutes % 60 == 0 ? '' : ' ${ctx.questMinutes % 60} 分'}';
+        ? '${ctx.questMinutes} 分钟'
+        : '${ctx.questMinutes ~/ 60} 小时${ctx.questMinutes % 60 == 0 ? '' : ' ${ctx.questMinutes % 60} 分'}';
     final Map<String, String> v = <String, String>{
       'n': '${ctx.queue}',
       'lv': '${ctx.lv}',
@@ -419,7 +446,8 @@ class SystemCopyProvider {
       'coin': '${ctx.coin}',
       'photos': '${ctx.photos}',
       'done': '${ctx.doneIndex < 0 ? 0 : ctx.doneIndex}',
-      'left': '${(ctx.planTotal - ctx.doneIndex) < 0 ? 0 : ctx.planTotal - ctx.doneIndex}',
+      'left':
+          '${(ctx.planTotal - ctx.doneIndex) < 0 ? 0 : ctx.planTotal - ctx.doneIndex}',
       'total': '${ctx.planTotal}',
       'goal': ctx.goalShort.isEmpty ? '你的目标' : ctx.goalShort,
       'attr': ctx.weakestAttr,
@@ -443,5 +471,6 @@ class SystemCopyProvider {
   }
 
   /// docs/18 §2.5：LLM 文案 300 字符钳制
-  static String _clamp(String s) => s.length > maxChars ? s.substring(0, maxChars) : s;
+  static String _clamp(String s) =>
+      s.length > maxChars ? s.substring(0, maxChars) : s;
 }

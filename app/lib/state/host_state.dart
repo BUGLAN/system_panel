@@ -156,7 +156,10 @@ class HostState {
       streak: pick<int>('streak', fallback.streak),
       title: pick<String>('title', fallback.title),
       queue: pick<int>('queue', fallback.queue),
-      doneIndex: pick<int>('doneIndex', pick<int>('ringIndex', fallback.doneIndex)),
+      doneIndex: pick<int>(
+        'doneIndex',
+        pick<int>('ringIndex', fallback.doneIndex),
+      ),
       planTotal: pick<int>('planTotal', fallback.planTotal),
       attrs: attrsOf('attrs', fallback.attrs),
       doneCount: pick<int>('doneCount', fallback.doneCount),

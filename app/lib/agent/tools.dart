@@ -86,8 +86,9 @@ class AgentToolRegistry {
   int get length => _tools.length;
 
   /// 给 LLM 请求用的 tools 数组
-  List<Map<String, dynamic>> toOpenAiTools() =>
-      <Map<String, dynamic>>[for (final AgentTool t in _tools.values) t.toOpenAiTool()];
+  List<Map<String, dynamic>> toOpenAiTools() => <Map<String, dynamic>>[
+    for (final AgentTool t in _tools.values) t.toOpenAiTool(),
+  ];
 
   /// 执行一个工具。**永不抛**：未知工具、工具内部异常都折成 fail 回执——
   /// 工具链路绝不把 UI 带崩（提交卡死同款事故零容忍）。
@@ -198,7 +199,9 @@ class MockAgentContext implements AgentContext {
     }
     queue[0] = candidate;
     onChanged?.call('swap_quest');
-    final String why = (note == null || note.trim().isEmpty) ? '' : '（${note.trim()}）';
+    final String why = (note == null || note.trim().isEmpty)
+        ? ''
+        : '（${note.trim()}）';
     return ToolOutcome.ok(
       '换好了$why。现在是 ${candidate.serialText}「${candidate.name}」'
       '（${candidate.rank} 级 · ${candidate.minutes} 分钟）。',
@@ -288,12 +291,14 @@ const Map<String, dynamic> _emptySchema = <String, dynamic>{
   'properties': <String, dynamic>{},
 };
 
-Map<String, dynamic> _schema(Map<String, dynamic> properties, {List<String>? required}) =>
-    <String, dynamic>{
-      'type': 'object',
-      'properties': properties,
-      if (required != null && required.isNotEmpty) 'required': required,
-    };
+Map<String, dynamic> _schema(
+  Map<String, dynamic> properties, {
+  List<String>? required,
+}) => <String, dynamic>{
+  'type': 'object',
+  'properties': properties,
+  if (required != null && required.isNotEmpty) 'required': required,
+};
 
 /// 首发六工具：查状态 / 换任务 / 调整计划 / 记住 / 查记忆 / 总结近 7 天。
 ///
@@ -328,7 +333,10 @@ AgentToolRegistry defaultAgentTools({
       name: 'swap_quest',
       description: '换掉队首的日常/补救单（主线单不可换）。',
       parameters: _schema(<String, dynamic>{
-        'rank': <String, dynamic>{'type': 'string', 'description': '期望档位 F~S，可省略'},
+        'rank': <String, dynamic>{
+          'type': 'string',
+          'description': '期望档位 F~S，可省略',
+        },
         'note': <String, dynamic>{'type': 'string', 'description': '换单理由，可省略'},
       }),
       run: (Map<String, dynamic> args) async => context.swapQuest(
@@ -340,16 +348,23 @@ AgentToolRegistry defaultAgentTools({
       name: 'adjust_plan',
       description: '调整队首日常/补救单的计划：改时限（分钟）、改档位、顺延。主线单不可调。',
       parameters: _schema(<String, dynamic>{
-        'minutes': <String, dynamic>{'type': 'integer', 'description': '新时限（分钟 5~180）'},
+        'minutes': <String, dynamic>{
+          'type': 'integer',
+          'description': '新时限（分钟 5~180）',
+        },
         'rank': <String, dynamic>{'type': 'string', 'description': '目标档位 F~S'},
-        'postponeMinutes': <String, dynamic>{'type': 'integer', 'description': '顺延的分钟数'},
+        'postponeMinutes': <String, dynamic>{
+          'type': 'integer',
+          'description': '顺延的分钟数',
+        },
         'note': <String, dynamic>{'type': 'string', 'description': '调整理由，可省略'},
       }),
       run: (Map<String, dynamic> args) async {
         int? minutes;
         int? postpone;
         if (args['minutes'] is int) minutes = args['minutes'] as int;
-        if (args['postponeMinutes'] is int) postpone = args['postponeMinutes'] as int;
+        if (args['postponeMinutes'] is int)
+          postpone = args['postponeMinutes'] as int;
         return context.adjustQuestPlan(
           minutes: minutes,
           rank: args['rank'] is String ? args['rank'] as String : null,
@@ -361,26 +376,37 @@ AgentToolRegistry defaultAgentTools({
     AgentTool(
       name: 'remember',
       description: '把宿主说的话写进长期记忆（重启仍在）。',
-      parameters: _schema(<String, dynamic>{
-        'text': <String, dynamic>{'type': 'string', 'description': '要记住的内容'},
-      }, required: <String>['text']),
+      parameters: _schema(
+        <String, dynamic>{
+          'text': <String, dynamic>{'type': 'string', 'description': '要记住的内容'},
+        },
+        required: <String>['text'],
+      ),
       run: (Map<String, dynamic> args) async {
         final Object? raw = args['text'];
         if (raw is! String || raw.trim().isEmpty) {
           return ToolOutcome.fail('你到底要我记什么？说内容。');
         }
         await memory.add(raw, source: MemorySource.tool, weight: 3);
-        return ToolOutcome.ok('记住了：「${raw.trim()}」。', data: <String, dynamic>{'text': raw.trim()});
+        return ToolOutcome.ok(
+          '记住了：「${raw.trim()}」。',
+          data: <String, dynamic>{'text': raw.trim()},
+        );
       },
     ),
     AgentTool(
       name: 'recall',
       description: '查长期记忆：按关键词翻宿主说过的话。',
       parameters: _schema(<String, dynamic>{
-        'query': <String, dynamic>{'type': 'string', 'description': '关键词，可省略（省略=最近几条）'},
+        'query': <String, dynamic>{
+          'type': 'string',
+          'description': '关键词，可省略（省略=最近几条）',
+        },
       }),
       run: (Map<String, dynamic> args) async {
-        final String? q = args['query'] is String ? args['query'] as String : null;
+        final String? q = args['query'] is String
+            ? args['query'] as String
+            : null;
         final List<MemoryEntry> rel = await memory.relevant(q, limit: 5);
         if (rel.isEmpty) {
           return ToolOutcome.ok('记忆里还没有这一条。');
@@ -405,8 +431,12 @@ AgentToolRegistry defaultAgentTools({
         int done = 0, crit = 0, fail = 0, minutes = 0;
         final Map<String, int> byName = <String, int>{};
         for (final Map<String, dynamic> e in recent) {
-          final String result = e['result'] is String ? e['result'] as String : '';
-          final String name = e['name'] is String ? e['name'] as String : '（未记录）';
+          final String result = e['result'] is String
+              ? e['result'] as String
+              : '';
+          final String name = e['name'] is String
+              ? e['name'] as String
+              : '（未记录）';
           if (result == 'done' || result == 'crit') done++; // 暴击也是完成
           if (result == 'crit') crit++;
           if (result == 'fail') fail++;

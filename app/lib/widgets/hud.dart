@@ -80,8 +80,15 @@ const double kHudScrimH = 116;
     return (lv: fromLv, ratio: fromRatio, flash: 0, pop: 1);
   }
   if (t < kLvRiseMs) {
-    final double k = Curves.easeOutCubic.transform((t / kLvRiseMs).clamp(0.0, 1.0));
-    return (lv: fromLv, ratio: fromRatio + (1 - fromRatio) * k, flash: 0, pop: 1);
+    final double k = Curves.easeOutCubic.transform(
+      (t / kLvRiseMs).clamp(0.0, 1.0),
+    );
+    return (
+      lv: fromLv,
+      ratio: fromRatio + (1 - fromRatio) * k,
+      flash: 0,
+      pop: 1,
+    );
   }
   final double ft = ((t - kLvRiseMs) / kLvFlashMs).clamp(0.0, 1.0);
   final double flash = .16 * (1 - Curves.easeOut.transform(ft));
@@ -162,75 +169,75 @@ class _HudState extends State<Hud> with SingleTickerProviderStateMixin {
   @override
   Widget build(BuildContext context) {
     Widget body = IgnorePointer(
-        ignoring: !widget.visible,
-        child: AnimatedSlide(
-          offset: widget.visible ? Offset.zero : const Offset(0, -1.10),
-          duration: const Duration(milliseconds: 500),
-          curve: kOut,
-          child: AnimatedOpacity(
-            opacity: widget.visible ? 1 : 0,
-            duration: const Duration(milliseconds: 400),
-            child: Stack(
-              // H-01 的承托比 HUD 盒（74）高出一截，必须允许画到盒外
-              clipBehavior: Clip.none,
-              children: <Widget>[
-                // docs/39 H-01 · 顶部压暗：她之上、HUD 之下的一层承托。
-                // 没有它名字/称号直接压在浅灰蓝头发上（真机图 01/05）。
-                // 不压脸：116 只盖到她眉眼上方，脸（屏高 10%~30%）不受影响。
-                const Positioned(
-                  left: 0,
-                  right: 0,
-                  top: 0,
-                  height: kHudScrimH,
-                  child: IgnorePointer(child: _TopScrim()),
-                ),
-                Padding(
-                  // docs/39 H-02：左右边距统一 20（原 16/18），高 74 不变
-                  padding: const EdgeInsets.fromLTRB(20, 18, 20, 0),
-                  child: Row(
-                    children: <Widget>[
-                      AnimatedBuilder(
-                        animation: _c,
-                        builder: (BuildContext _, Widget? _) {
-                          if (!_c.isAnimating) {
-                            // 静态（含首挂）：与旧版逐字节一致
-                            return _LvRing(
-                              lv: widget.state.lv,
-                              ratio: widget.state.expRatio,
-                            );
-                          }
-                          final ({int lv, double ratio, double flash, double pop})
-                          s = hudLevelFx(
-                            t: _c.value * kLvTotalMs,
-                            fromLv: _fromLv,
-                            toLv: widget.state.lv,
-                            fromRatio: _fromRatio,
-                            toRatio: _toRatio,
-                          );
+      ignoring: !widget.visible,
+      child: AnimatedSlide(
+        offset: widget.visible ? Offset.zero : const Offset(0, -1.10),
+        duration: const Duration(milliseconds: 500),
+        curve: kOut,
+        child: AnimatedOpacity(
+          opacity: widget.visible ? 1 : 0,
+          duration: const Duration(milliseconds: 400),
+          child: Stack(
+            // H-01 的承托比 HUD 盒（74）高出一截，必须允许画到盒外
+            clipBehavior: Clip.none,
+            children: <Widget>[
+              // docs/39 H-01 · 顶部压暗：她之上、HUD 之下的一层承托。
+              // 没有它名字/称号直接压在浅灰蓝头发上（真机图 01/05）。
+              // 不压脸：116 只盖到她眉眼上方，脸（屏高 10%~30%）不受影响。
+              const Positioned(
+                left: 0,
+                right: 0,
+                top: 0,
+                height: kHudScrimH,
+                child: IgnorePointer(child: _TopScrim()),
+              ),
+              Padding(
+                // docs/39 H-02：左右边距统一 20（原 16/18），高 74 不变
+                padding: const EdgeInsets.fromLTRB(20, 18, 20, 0),
+                child: Row(
+                  children: <Widget>[
+                    AnimatedBuilder(
+                      animation: _c,
+                      builder: (BuildContext _, Widget? _) {
+                        if (!_c.isAnimating) {
+                          // 静态（含首挂）：与旧版逐字节一致
                           return _LvRing(
-                            lv: s.lv,
-                            ratio: s.ratio,
-                            flash: s.flash,
-                            pop: s.pop,
+                            lv: widget.state.lv,
+                            ratio: widget.state.expRatio,
                           );
-                        },
-                      ),
-                      const SizedBox(width: 10), // #hud gap
-                      Expanded(child: _Who(state: widget.state)),
-                      const SizedBox(width: 10),
-                      _Coin(coins: widget.state.coins),
-                      // docs/39 H-06：菜单的透明命中盒是 44（视觉仍 34、右对齐）——
-                      // 多出来的 10 全落在它左边，所以这里不再另给 10：
-                      // 胶囊右缘 326、汉堡条视觉左缘 336，观感间距仍是 10pt。
-                      _Menu(onTap: widget.onMenu),
-                    ],
-                  ),
+                        }
+                        final ({int lv, double ratio, double flash, double pop})
+                        s = hudLevelFx(
+                          t: _c.value * kLvTotalMs,
+                          fromLv: _fromLv,
+                          toLv: widget.state.lv,
+                          fromRatio: _fromRatio,
+                          toRatio: _toRatio,
+                        );
+                        return _LvRing(
+                          lv: s.lv,
+                          ratio: s.ratio,
+                          flash: s.flash,
+                          pop: s.pop,
+                        );
+                      },
+                    ),
+                    const SizedBox(width: 10), // #hud gap
+                    Expanded(child: _Who(state: widget.state)),
+                    const SizedBox(width: 10),
+                    _Coin(coins: widget.state.coins),
+                    // docs/39 H-06：菜单的透明命中盒是 44（视觉仍 34、右对齐）——
+                    // 多出来的 10 全落在它左边，所以这里不再另给 10：
+                    // 胶囊右缘 326、汉堡条视觉左缘 336，观感间距仍是 10pt。
+                    _Menu(onTap: widget.onMenu),
+                  ],
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
-      );
+      ),
+    );
     if (widget.fade != null) {
       final Animation<double> f = widget.fade!;
       body = AnimatedBuilder(
@@ -242,13 +249,7 @@ class _HudState extends State<Hud> with SingleTickerProviderStateMixin {
         child: body,
       );
     }
-    return Positioned(
-      left: 0,
-      right: 0,
-      top: 0,
-      height: 74,
-      child: body,
-    );
+    return Positioned(left: 0, right: 0, top: 0, height: 74, child: body);
   }
 }
 
@@ -277,7 +278,12 @@ class _TopScrim extends StatelessWidget {
 /// flash/pop 是跨级白闪那 780ms 里的临时参数（见 [hudLevelFx]）；
 /// 缺省（静态）时渲染与旧版逐字节一致。
 class _LvRing extends StatelessWidget {
-  const _LvRing({required this.lv, required this.ratio, this.flash = 0, this.pop = 1});
+  const _LvRing({
+    required this.lv,
+    required this.ratio,
+    this.flash = 0,
+    this.pop = 1,
+  });
 
   final int lv;
   final double ratio;
@@ -349,9 +355,7 @@ class _LvRing extends StatelessWidget {
         wght: 800,
         height: 1,
         color: C.ice,
-        shadows: <Shadow>[
-          Shadow(color: C.blue.withAlpha(153), blurRadius: 10),
-        ],
+        shadows: <Shadow>[Shadow(color: C.blue.withAlpha(153), blurRadius: 10)],
       ),
     );
   }
@@ -441,7 +445,8 @@ class _LvRingPainter extends CustomPainter {
         ..style = PaintingStyle.stroke
         ..strokeWidth = _sw * k
         ..strokeCap = StrokeCap.round
-        ..color = C.blue.withAlpha(hot ? 230 : 199) // .9 / .78
+        ..color = C.blue
+            .withAlpha(hot ? 230 : 199) // .9 / .78
         ..maskFilter = MaskFilter.blur(BlurStyle.normal, hot ? 3 : 2),
     );
     canvas.drawArc(rect, start, sweep, false, arc);

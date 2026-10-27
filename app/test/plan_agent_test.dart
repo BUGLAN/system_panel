@@ -84,6 +84,7 @@ void main() {
         taskCount: taskCount,
         days: 14,
         draft: draft,
+        validate: false,
       ),
     );
     return reg;
@@ -121,10 +122,15 @@ void main() {
       expect((props['proof'] as Map<String, dynamic>)['type'], 'string');
       expect((props['minutes'] as Map<String, dynamic>)['type'], 'integer');
       expect((props['rank'] as Map<String, dynamic>)['type'], 'string');
-      expect(
-        (props['rank'] as Map<String, dynamic>)['enum'],
-        <String>['F', 'E', 'D', 'C', 'B', 'A', 'S'],
-      );
+      expect((props['rank'] as Map<String, dynamic>)['enum'], <String>[
+        'F',
+        'E',
+        'D',
+        'C',
+        'B',
+        'A',
+        'S',
+      ]);
       expect(item['required'], <String>[
         'short',
         'title',
@@ -151,6 +157,7 @@ void main() {
         taskCount: 14,
         days: 14,
         draft: PlanDraft(),
+        validate: false,
       );
       expect(t.name, 'set_plan');
       expect(t.description, contains('两周内骑自行车10次'));
@@ -162,10 +169,8 @@ void main() {
   group('set_plan 形状校验 **fail fast**（不回填让她重来）', () {
     test('合法 8 张 → ok，草案写入，回执给首尾张', () async {
       final PlanDraft draft = PlanDraft();
-      final ToolOutcome oc = await planTools(draft).execute(
-        'set_plan',
-        goodPlan(),
-      );
+      final ToolOutcome oc = await planTools(draft)
+          .execute('set_plan', goodPlan());
       expect(oc.ok, isTrue);
       expect(draft.tasks, hasLength(8));
       expect(draft.tasks!.first.short, '任务1');
@@ -198,9 +203,7 @@ void main() {
       ]) {
         final PlanDraft draft = PlanDraft();
         await expectLater(
-          planTools(draft).execute('set_plan', <String, dynamic>{
-            'tasks': raw,
-          }),
+          planTools(draft).execute('set_plan', <String, dynamic>{'tasks': raw}),
           throwsA(isA<PlanShapeError>()),
           reason: 'tasks=$raw',
         );
@@ -287,7 +290,12 @@ void main() {
         <String, dynamic>{'id': '骑行', 'short': '骑车', 'days': 14, 'quota': 10},
         <String, dynamic>{'id': 'run', 'short': '  ', 'days': 14, 'quota': 10},
         <String, dynamic>{'id': 'run', 'short': '骑车', 'days': 0, 'quota': 10},
-        <String, dynamic>{'id': 'run', 'short': '骑车', 'days': 99999, 'quota': 10},
+        <String, dynamic>{
+          'id': 'run',
+          'short': '骑车',
+          'days': 99999,
+          'quota': 10,
+        },
         <String, dynamic>{'id': 'run', 'short': '骑车', 'quota': 10},
       ];
       for (final Map<String, dynamic> one in bad) {
@@ -340,7 +348,11 @@ void main() {
         throwsA(
           isA<ToolExecutionError>()
               .having((ToolExecutionError e) => e.tool, 'tool', 'boom')
-              .having((ToolExecutionError e) => '${e.cause}', 'cause', contains('炸了')),
+              .having(
+                (ToolExecutionError e) => '${e.cause}',
+                'cause',
+                contains('炸了'),
+              ),
         ),
       );
     });
@@ -355,8 +367,7 @@ void main() {
             'type': 'object',
             'properties': <String, dynamic>{},
           },
-          run: (Map<String, dynamic> args) async =>
-              ToolOutcome.fail('条件不满足'),
+          run: (Map<String, dynamic> args) async => ToolOutcome.fail('条件不满足'),
         ),
       );
       await expectLater(
@@ -383,6 +394,7 @@ void main() {
           taskCount: 8,
           days: 14,
           draft: draft,
+          validate: false,
         ),
       );
       final PlanAgent agent = PlanAgent(
@@ -582,7 +594,9 @@ void main() {
       reg.register(setGoalCategoryTool(goalText: '两周内骑自行车10次', draft: draft));
       final GoalMatchAgent agent = GoalMatchAgent(
         client: clientOf(
-          scripted(<String>[], <String>[toolCall('set_goal_category', goodMatch())]),
+          scripted(<String>[], <String>[
+            toolCall('set_goal_category', goodMatch()),
+          ]),
         ),
       );
       final GoalMatch m = await agent.match(
@@ -632,9 +646,7 @@ void main() {
         days: 14,
         taskCount: 14,
         cat: goalCats['sleep']!,
-        interview: const <String, String>{
-          'sleep.schedule': '1-2 点睡 9 点后起',
-        },
+        interview: const <String, String>{'sleep.schedule': '1-2 点睡 9 点后起'},
       );
       expect(b.userText, contains('两周内骑自行车10次'));
       expect(b.userText, contains('期限 14 天'));

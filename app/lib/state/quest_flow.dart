@@ -59,7 +59,9 @@ class ActiveQuest {
 
   /// 已校验份数（LLM 判真）；存疑与未校验一律按未校验计（exec_panel 同口径）
   int get verifiedCount => evidence
-      .where((vision.EvidenceShot s) => s.status == vision.EvidenceStatus.verified)
+      .where(
+        (vision.EvidenceShot s) => s.status == vision.EvidenceStatus.verified,
+      )
       .length;
 
   /// 未校验份数 = 总数 - 已校验
@@ -177,9 +179,7 @@ class QuestFlow {
     int? serial,
     math.Random? rnd,
     HistoryLog? historyLog,
-  }) : queue = List<Quest>.of(
-         queue ?? const <Quest>[],
-       ),
+  }) : queue = List<Quest>.of(queue ?? const <Quest>[]),
        _serial = serial ?? kFirstSerial,
        _rnd = rnd ?? math.Random(),
        historyLog = historyLog ?? HistoryLog();
@@ -312,12 +312,24 @@ class QuestFlow {
 
   /// E~S 经验表（F 是兼容档：仅老存档/补救残单结算用）
   static const Map<String, int> kExpByRank = <String, int>{
-    'F': 0, 'E': 1, 'D': 2, 'C': 4, 'B': 6, 'A': 8, 'S': 10,
+    'F': 0,
+    'E': 1,
+    'D': 2,
+    'C': 4,
+    'B': 6,
+    'A': 8,
+    'S': 10,
   };
 
   /// E~S 金币表
   static const Map<String, int> kCoinByRank = <String, int>{
-    'F': 3, 'E': 5, 'D': 5, 'C': 5, 'B': 7, 'A': 10, 'S': 20,
+    'F': 3,
+    'E': 5,
+    'D': 5,
+    'C': 5,
+    'B': 7,
+    'A': 10,
+    'S': 20,
   };
 
   static int expOf(String rank) => kExpByRank[rank] ?? 0;
@@ -344,8 +356,14 @@ class QuestFlow {
     DailyTpl('学一个新技巧，今天用三次', '截图', 15, <String, int>{'智': 1, '敏': 1}, 'F'),
     DailyTpl('做一顿饭', '饭菜照片', 40, <String, int>{'体': 1, '知': 1}, 'D'),
     // ── 批二扩充（TODO-03 模板半批）—— 通用池 14 → 30（与 goal_gen.kDailyCommon 同源同序）──
-    DailyTpl('早起后喝一杯水，再做 10 个开合跳', '计时截图', 5, <String, int>{'体': 1, '力': 1}, 'F'),
-    DailyTpl('把手机放到够不着的地方，专注 25 分钟', '计时截图', 30, <String, int>{'智': 1, '知': 1}, 'E'),
+    DailyTpl('早起后喝一杯水，再做 10 个开合跳', '计时截图', 5, <String, int>{
+      '体': 1,
+      '力': 1,
+    }, 'F'),
+    DailyTpl('把手机放到够不着的地方，专注 25 分钟', '计时截图', 30, <String, int>{
+      '智': 1,
+      '知': 1,
+    }, 'E'),
     DailyTpl('走楼梯不坐电梯，上下各两趟', '步数截图', 10, <String, int>{'体': 1, '敏': 1}, 'F'),
     DailyTpl('写三行今天想说的话，写完就合上', '文字截图', 10, <String, int>{'魅': 1, '知': 1}, 'F'),
     DailyTpl('洗一次碗，顺便把台面擦干净', '前后对比照片', 15, <String, int>{'知': 1, '体': 1}, 'F'),
@@ -356,10 +374,19 @@ class QuestFlow {
     DailyTpl('靠墙站直 10 分钟，别塌肩', '计时截图', 10, <String, int>{'魅': 1, '体': 1}, 'F'),
     DailyTpl('喝水 6 杯，拿杯子凑数不算', '杯子照片', 5, <String, int>{'体': 1}, 'F'),
     DailyTpl('把昨天没做完的那件事补完', '完成截图', 30, <String, int>{'知': 1, '智': 1}, 'D'),
-    DailyTpl('快走 20 分钟，不许边刷手机边走', '步数截图', 25, <String, int>{'体': 1, '敏': 1}, 'E'),
+    DailyTpl('快走 20 分钟，不许边刷手机边走', '步数截图', 25, <String, int>{
+      '体': 1,
+      '敏': 1,
+    }, 'E'),
     DailyTpl('手写一页字，慢一点，写整齐', '纸面照片', 15, <String, int>{'敏': 1, '知': 1}, 'F'),
-    DailyTpl('今天不喝含糖饮料，一杯都不', '晚上拍一张今天喝过的东西', 5, <String, int>{'知': 1, '体': 1}, 'F'),
-    DailyTpl('睡前 10 分钟回顾今天，想清楚一件做对的事', '笔记照片', 12, <String, int>{'知': 1, '魅': 1}, 'F'),
+    DailyTpl('今天不喝含糖饮料，一杯都不', '晚上拍一张今天喝过的东西', 5, <String, int>{
+      '知': 1,
+      '体': 1,
+    }, 'F'),
+    DailyTpl('睡前 10 分钟回顾今天，想清楚一件做对的事', '笔记照片', 12, <String, int>{
+      '知': 1,
+      '魅': 1,
+    }, 'F'),
   ];
 
   // ── 构造 ──────────────────────────────────────────────────
@@ -434,10 +461,11 @@ class QuestFlow {
     if (out.isNotEmpty) {
       // 主线单排到队首、且**按清单顺序**（`queue.add` 会把它们甩到日常后面，
       // 那 `head` 就成了日常 —— 派单板/「去执行」读的都是队首）。
-      final List<Quest> mains = queue
-          .where((Quest q) => q.kind == 'main' && q.goalId == goal.id)
-          .toList()
-        ..sort((Quest a, Quest b) => a.planIndex.compareTo(b.planIndex));
+      final List<Quest> mains =
+          queue
+              .where((Quest q) => q.kind == 'main' && q.goalId == goal.id)
+              .toList()
+            ..sort((Quest a, Quest b) => a.planIndex.compareTo(b.planIndex));
       queue.removeWhere((q) => q.kind == 'main' && q.goalId == goal.id);
       queue.insertAll(0, mains);
       _syncQueueCount();
@@ -830,7 +858,8 @@ class QuestFlow {
         );
         goal = goal.copyWith(plan: plan);
         planClear = task.planIndex;
-        finale = plan[task.planIndex].finalTask ||
+        finale =
+            plan[task.planIndex].finalTask ||
             plan.every((PlanTask x) => x.state == PlanState.done);
       }
     }
@@ -1372,23 +1401,21 @@ class HistoryLog {
   Future<void> _tail = Future<void>.value();
 
   Future<void> append(HistoryEntry e) {
-    final Future<void> next = _tail.then(
-      (_) async {
-        final List<HistoryEntry> all = await entries();
-        all.add(e);
-        if (all.length > maxEntries) {
-          all.removeRange(0, all.length - maxEntries);
-        }
-        try {
-          await _p.setString(
-            key,
-            jsonEncode(<Map<String, dynamic>>[
-              for (final HistoryEntry h in all) h.toJson(),
-            ]),
-          );
-        } catch (_) {}
-      },
-    );
+    final Future<void> next = _tail.then((_) async {
+      final List<HistoryEntry> all = await entries();
+      all.add(e);
+      if (all.length > maxEntries) {
+        all.removeRange(0, all.length - maxEntries);
+      }
+      try {
+        await _p.setString(
+          key,
+          jsonEncode(<Map<String, dynamic>>[
+            for (final HistoryEntry h in all) h.toJson(),
+          ]),
+        );
+      } catch (_) {}
+    });
     _tail = next.catchError((Object _) {});
     return next;
   }
@@ -1398,27 +1425,27 @@ class HistoryLog {
     final DateTime today = DateTime(now.year, now.month, now.day);
     final List<HistoryEntry> week = all
         .where(
-          (HistoryEntry e) => !DateTime(e.at.year, e.at.month, e.at.day)
-              .isBefore(today.subtract(const Duration(days: 6))),
+          (HistoryEntry e) => !DateTime(
+            e.at.year,
+            e.at.month,
+            e.at.day,
+          ).isBefore(today.subtract(const Duration(days: 6))),
         )
         .toList();
     final Map<String, int> dayAttrs = <String, int>{
       for (final String k in Attr.names.keys) k: 0,
     };
-    final List<Map<String, int>> dayAttrsByDay = List<Map<String, int>>.generate(
-      7,
-      (_) => <String, int>{},
-    );
+    final List<Map<String, int>> dayAttrsByDay =
+        List<Map<String, int>>.generate(7, (_) => <String, int>{});
     final List<int> dayDone = List<int>.filled(7, 0);
     int totalExp = 0, totalCoin = 0, bestStreak = 0;
     for (final HistoryEntry e in week) {
       totalExp += e.exp;
       totalCoin += e.coin;
       bestStreak = math.max(bestStreak, e.streak);
-      final int idx = 6 -
-          today
-              .difference(DateTime(e.at.year, e.at.month, e.at.day))
-              .inDays;
+      final int idx =
+          6 -
+          today.difference(DateTime(e.at.year, e.at.month, e.at.day)).inDays;
       if (idx >= 0 && idx < 7) {
         if (e.result == 'clear') dayDone[idx] += 1;
         for (final MapEntry<String, int> a in e.attrs.entries) {

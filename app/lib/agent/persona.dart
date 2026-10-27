@@ -29,8 +29,18 @@ class Persona {
 
   /// 回复可带的情绪标签（与舞台 12 情绪表一致，解析失败回 neutral）。
   static const List<String> emotions = <String>[
-    'neutral', 'smug', 'cold', 'annoyed', 'pleased', 'tsun',
-    'joy', 'proud', 'surprised', 'sad', 'focus', 'sleep',
+    'neutral',
+    'smug',
+    'cold',
+    'annoyed',
+    'pleased',
+    'tsun',
+    'joy',
+    'proud',
+    'surprised',
+    'sad',
+    'focus',
+    'sleep',
   ];
 
   /// 表达铁律（写进每次系统 prompt）
@@ -44,7 +54,11 @@ class Persona {
   ///
   /// [memoryDigest] 传 `MemoryStore.digest()` 的结果（最相关 ≤8 条）；
   /// 为空时写「（暂无）」，占位不能缺——她「记得」的机制就在这里。
-  String systemPrompt({String? scenario, String? statusLine, String? memoryDigest}) {
+  String systemPrompt({
+    String? scenario,
+    String? statusLine,
+    String? memoryDigest,
+  }) {
     final StringBuffer b = StringBuffer();
     b.writeln(backstory);
     b.writeln();
@@ -56,7 +70,9 @@ class Persona {
     b.writeln(rules);
     b.writeln();
     b.writeln('【宿主档案】${statusLine ?? '（未知）'}');
-    b.writeln('【长期记忆】${(memoryDigest == null || memoryDigest.isEmpty) ? '（暂无）' : memoryDigest}');
+    b.writeln(
+      '【长期记忆】${(memoryDigest == null || memoryDigest.isEmpty) ? '（暂无）' : memoryDigest}',
+    );
     if (scenario != null && scenario.isNotEmpty) {
       b.writeln('【当前场合】$scenario');
     }

@@ -249,7 +249,7 @@ class _TableOverlayState extends State<TableOverlay>
             children: <Widget>[
               // ── 只有一层**看不见的**点击层：点空白处收起 ──
               //
-              // ⚠️ 不做幕、不压暗、**不模糊**：宿主明确要求后面的 Live2D
+              // ⚠️ 不做幕、不压暗、**不模糊**：宿主明确要求后面的界面
               //    必须清清楚楚（后续要拿它做角色口型），
               //    所以这里连 `BackdropFilter` 都不挂。
               Positioned.fill(
@@ -326,5 +326,5 @@ class _TableOverlayState extends State<TableOverlay>
 }
 
 /// ⚠️ 这里**故意没有任何压在她身上的装饰线**（曾经有一条「从她胸口打下来的光束」
-/// + 一枚六边锚点）：宿主原话「这个背景的线给我删了，搞得 Live2D 都挡住了」。
+/// + 一枚六边锚点）：宿主原话「这个背景的线给我删了」。
 /// 牌局**只浮牌**，她身上一根线都不画。

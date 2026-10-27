@@ -34,7 +34,8 @@ class MemoryEntry {
     id: j['id'] is String ? j['id'] as String : '',
     text: j['text'] is String ? j['text'] as String : '',
     at: j['at'] is String
-        ? (DateTime.tryParse(j['at'] as String) ?? DateTime.fromMillisecondsSinceEpoch(0))
+        ? (DateTime.tryParse(j['at'] as String) ??
+              DateTime.fromMillisecondsSinceEpoch(0))
         : DateTime.fromMillisecondsSinceEpoch(0),
     source: _sourceOf(j['source'] is String ? j['source'] as String : null),
     weight: j['weight'] is int ? j['weight'] as int : 1,
@@ -84,7 +85,8 @@ class MemoryStore {
   /// 本实例使用的 key（测试可换）
   final String key;
 
-  SharedPreferencesAsync get _p => _prefs ??= _injected ?? SharedPreferencesAsync();
+  SharedPreferencesAsync get _p =>
+      _prefs ??= _injected ?? SharedPreferencesAsync();
 
   static int _seq = 0;
 
@@ -189,7 +191,10 @@ class MemoryStore {
 
   /// 最相关 ≤[limit] 条：关键词命中优先（命中内按新→旧），
   /// 不足 [limit] 用最近的条目补齐（最近 5 条兜底的推广版）。
-  Future<List<MemoryEntry>> relevant(String? query, {int limit = injectLimit}) async {
+  Future<List<MemoryEntry>> relevant(
+    String? query, {
+    int limit = injectLimit,
+  }) async {
     final List<MemoryEntry> all = await entries();
     final String q = (query ?? '').trim();
     if (q.isEmpty || all.isEmpty) {
@@ -197,7 +202,9 @@ class MemoryStore {
     }
     final Set<String> keys = _keywords(q);
     final List<MemoryEntry> hits = all
-        .where((MemoryEntry e) => _keywords(e.text).intersection(keys).isNotEmpty)
+        .where(
+          (MemoryEntry e) => _keywords(e.text).intersection(keys).isNotEmpty,
+        )
         .toList();
     final List<MemoryEntry> out = <MemoryEntry>[...hits.take(limit)];
     if (out.length < limit) {
@@ -220,7 +227,9 @@ class MemoryStore {
     try {
       await _p.setString(
         key,
-        jsonEncode(<Map<String, dynamic>>[for (final MemoryEntry e in all) e.toJson()]),
+        jsonEncode(<Map<String, dynamic>>[
+          for (final MemoryEntry e in all) e.toJson(),
+        ]),
       );
     } catch (_) {
       // 存不进去也不能崩：下次再试（与 SaveFile 纪律一致）

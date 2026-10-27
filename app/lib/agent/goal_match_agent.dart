@@ -52,7 +52,8 @@ class GoalMatchAgent {
     }
     final String digest = await memory?.digest(goalText) ?? '';
     final List<Map<String, dynamic>> msgs = persona.buildConversation(
-      userText: '宿主立了目标：「$goalText」。\n'
+      userText:
+          '宿主立了目标：「$goalText」。\n'
           '用 set_goal_category 告诉我：它属于哪一类、天幕短字写什么、期限多少天。',
       statusLine: statusLine,
       memoryDigest: digest,
@@ -76,6 +77,8 @@ class GoalMatchAgent {
         temperature: 0.3,
         maxTokens: maxTokens,
         reasoningEffort: planReasoningEffort(client.config.reasoningEffort),
+        // 目标匹配同样走工具循环，放宽到 60s
+        timeout: const Duration(seconds: 60),
       );
       if (!r.ok) {
         throw PlanGenerationError(
@@ -113,7 +116,8 @@ class GoalMatchAgent {
       });
       msgs.add(<String, dynamic>{
         'role': 'user',
-        'content': '〔系统回执〕\n${feed.toString().trim()}\n\n'
+        'content':
+            '〔系统回执〕\n${feed.toString().trim()}\n\n'
             '（还没交上来：调用 set_goal_category。）',
       });
     }

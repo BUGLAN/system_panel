@@ -9,10 +9,8 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  flutter_live2d: ^1.0.2
   flutter_svg: ^2.3.0
   shared_preferences: ^2.5.6
-  webview_flutter: ^4.14.1
   # ── Agent 层三件套（docs/18 §3.3，t4 集中一次加齐）──
   # http：LLM OpenAI 兼容调用（纯 Dart，无平台代码）
   http: ^1.2.0
@@ -39,49 +37,46 @@ flutter:
     # 参数照 prototype/opus-v2-dir/js/audio.js，可 `--seed` 重烤。
     # 「事件 → 文件」的查表在 lib/state/sfx.dart；改名要两边一起改。
     - assets/audio/
-    # 她的模型（标准 Live2D，本机转换）—— 见 assets/live2d/README
-    #
-    # ⚠️ 这个目录里除了 README 之外都不入库（版权红线，见 assets/live2d/.gitignore）。
-    #    新克隆要跑一次：`python tools/l2d/convert.py`。
-    #    目录本身留了 README 占位，所以即使没转，`flutter build` 也不会因为
-    #    "asset directory not found" 失败 —— 只会让舞台退回全息剪影。
-    #
-    # ⚠️ **Flutter 声明目录时不递归子目录** —— 只写 `assets/live2d/sakiko/`
-    #    的话，`motions/`、`expressions/`、`textures/` 里的文件**不会进包**，
-    #    模型加载时找不到贴图/动作。子目录必须逐个列出来。
-    - assets/live2d/sakiko/
-    - assets/live2d/sakiko/motions/
-    - assets/live2d/sakiko/expressions/
-    - assets/live2d/sakiko/textures/
-    # ⚠️ 对照组：标准模型 Hiyori（用来区分"我转换的模型有问题"还是
-    #    "插件/模拟器不渲染"）。这个也是版权素材，同样在 .gitignore 之下。
-    - assets/live2d/hiyori/
-    - assets/live2d/hiyori/motions/
-    - assets/live2d/hiyori/Hiyori.2048/
-    # ── 已停止打包：WebView 降级路线 2026-10-12 删除（宿主拍板）──
-    # 下面三个目录**仍然留在磁盘上**，但不再进包：
-    #   · assets/live2d/sakiko_orig/ —— `tools/l2d/convert.py` 的**输入**
-    #     （原始 prefab + moc3 + 两张贴图），删了就没法重新生成 sakiko/；
-    #   · assets/live2d/vendor/ + assets/stage/ —— 原型那份播放器（含 Cubism Core）
-    #     与舞台页，作为"原始渲染长什么样"的参照真源留着（Blend 枚举映射那条
-    #     结论就是从 vendor 里读出来的），需要做对照实验时还能用。
-    # 理由与验收见 app/STAGE-OPTIONS.md、main.dart 的舞台注释。
-
   # 字体四件套 —— 真源：prototype/opus-v2-dir/css/app.css 的 @font-face
   # 四个都是可变字体，字重/字宽必须在代码里用 fontVariations 指定：
   #   TextStyle(fontVariations: [FontVariation('wght', 700), FontVariation('wdth', 75)])
   # 光写 fontWeight 不生效（FangYuan 的默认实例是 wght 700）。
   # 原型的字体是 woff2，Flutter 不认，已用 .verify/woff2ttf.py 转成 ttf。
+  # 字体：唯一基准 = 宿主养成系统_重设计.html 的 :root（L16-18）
+  #   --fd Chakra Petch（标题/拉丁大字，静态 500/700 + 真斜体）
+  #   --fc Noto Sans SC（中文正文，可变）
+  #   --fm JetBrains Mono（等宽读数，可变）
+  # 参考稿 .grade/.rank/.lu-t/.tk-g b/.rec-r 都是 italic，
+  # 所以 Chakra Petch 必须带 BoldItalic 静态档，否则斜体是合成的。
   fonts:
-    - family: FangYuan # 正文 / 她的话（阿里妈妈方圆体，wght 200-700）
+    - family: ChakraPetch
+      fonts:
+        - asset: assets/fonts/ChakraPetch-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/ChakraPetch-Bold.ttf
+          weight: 700
+        - asset: assets/fonts/ChakraPetch-Italic.ttf
+          weight: 500
+          style: italic
+        - asset: assets/fonts/ChakraPetch-BoldItalic.ttf
+          weight: 700
+          style: italic
+    - family: NotoSansSC
+      fonts:
+        - asset: assets/fonts/NotoSansSC-VF.ttf
+    - family: JetBrainsMono
+      fonts:
+        - asset: assets/fonts/JetBrainsMono-VF.ttf
+    # 历史字体：保留声明，旧资产引用不报错；新代码一律走上面三套
+    - family: FangYuan
       fonts:
         - asset: assets/fonts/FangYuan-VF.ttf
-    - family: ShuHei # 标题（阿里妈妈数黑体）
+    - family: ShuHei
       fonts:
         - asset: assets/fonts/ShuHei-Bold.ttf
-    - family: Tektur # 数字 / 拉丁大字（wdth 75-100，wght 400-900）
+    - family: Tektur
       fonts:
         - asset: assets/fonts/Tektur-VF.ttf
-    - family: KodeMono # 系统读数 / 等宽（wght 400-700）
+    - family: KodeMono
       fonts:
         - asset: assets/fonts/KodeMono-VF.ttf

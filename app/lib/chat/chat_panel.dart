@@ -14,7 +14,7 @@ import 'chat_service.dart';
 ///  对话层（docs/18 §2.6 + docs/19 §A3 快捷工具行）
 ///
 ///  从底部滑入、占屏高 72%；背景半透明压暗，她在后面仍可见
-///  ——层序在 Live2D 之上、亮帧之下（main.dart 挂载点保证）。
+///  ——层序在亮帧之下（main.dart 挂载点保证）。
 ///  结构：名牌（小祥 · 系统娘 · 在线）→ 可滚动历史（时间分组头
 ///  今天/昨天/M月D日）→ 思考中… → 快捷工具 chip 行 → 输入栏。
 ///
@@ -161,9 +161,7 @@ class _ChatPanelState extends State<ChatPanel> {
                 bottom: 0,
                 height: h * .72,
                 child: AnimatedSlide(
-                  offset: widget.visible
-                      ? Offset.zero
-                      : const Offset(0, 1.04),
+                  offset: widget.visible ? Offset.zero : const Offset(0, 1.04),
                   duration: const Duration(milliseconds: 450),
                   curve: kOut,
                   child: DecoratedBox(
@@ -172,10 +170,7 @@ class _ChatPanelState extends State<ChatPanel> {
                       gradient: LinearGradient(
                         begin: Alignment.topCenter,
                         end: Alignment.bottomCenter,
-                        colors: <Color>[
-                          Color(0xF0061228),
-                          Color(0xFA030812),
-                        ],
+                        colors: <Color>[Color(0xF0061228), Color(0xFA030812)],
                         stops: <double>[0, .3],
                       ),
                     ),
@@ -233,7 +228,13 @@ class _ChatPanelState extends State<ChatPanel> {
           Text(
             '系统娘 · 在线',
             key: const Key('chat.status'),
-            style: fs(family: F.mono, size: 9.5, wght: 500, ls: 1.1, color: C.mist),
+            style: fs(
+              family: F.mono,
+              size: 9.5,
+              wght: 500,
+              ls: 1.1,
+              color: C.mist,
+            ),
           ),
           const Spacer(),
           GestureDetector(
@@ -250,7 +251,13 @@ class _ChatPanelState extends State<ChatPanel> {
               ),
               child: Text(
                 '×',
-                style: fs(family: F.cn, size: 22, wght: 400, height: 1, color: C.ice),
+                style: fs(
+                  family: F.cn,
+                  size: 22,
+                  wght: 400,
+                  height: 1,
+                  color: C.ice,
+                ),
               ),
             ),
           ),
@@ -275,7 +282,8 @@ class _ChatPanelState extends State<ChatPanel> {
     for (int i = 0; i < ms.length; i++) {
       final ChatMessage m = ms[i];
       final bool newDay =
-          i == 0 || ChatHistory.dayLabel(ms[i - 1].at) != ChatHistory.dayLabel(m.at);
+          i == 0 ||
+          ChatHistory.dayLabel(ms[i - 1].at) != ChatHistory.dayLabel(m.at);
       if (newDay) {
         children.add(
           Padding(
@@ -333,7 +341,13 @@ class _ChatPanelState extends State<ChatPanel> {
           child: Text(
             m.text,
             key: Key('chat.diagentry.$i'),
-            style: fs(family: F.mono, size: 11, wght: 500, height: 1.5, color: C.rS),
+            style: fs(
+              family: F.mono,
+              size: 11,
+              wght: 500,
+              height: 1.5,
+              color: C.rS,
+            ),
           ),
         ),
       );
@@ -355,7 +369,13 @@ class _ChatPanelState extends State<ChatPanel> {
           child: Text(
             m.text,
             key: Key('chat.fbentry.$i'),
-            style: fs(family: F.mono, size: 11, wght: 500, height: 1.5, color: C.rB),
+            style: fs(
+              family: F.mono,
+              size: 11,
+              wght: 500,
+              height: 1.5,
+              color: C.rB,
+            ),
           ),
         ),
       );
@@ -377,7 +397,13 @@ class _ChatPanelState extends State<ChatPanel> {
           child: Text(
             m.text,
             key: Key('chat.toolentry.$i'),
-            style: fs(family: F.mono, size: 11, wght: 500, height: 1.5, color: C.mist),
+            style: fs(
+              family: F.mono,
+              size: 11,
+              wght: 500,
+              height: 1.5,
+              color: C.mist,
+            ),
           ),
         ),
       );
@@ -392,7 +418,13 @@ class _ChatPanelState extends State<ChatPanel> {
             // 对白节奏三档（docs/22 §R4）：原来这里写死过一个与字幕真源
             // 不同的数（同一件事两个值）。现在统一走设置值；null → TypeText 默认 34。
             speed: widget.paceMs,
-            style: fs(family: F.cn, size: 13.5, wght: 400, height: 1.5, color: C.ice),
+            style: fs(
+              family: F.cn,
+              size: 13.5,
+              wght: 400,
+              height: 1.5,
+              color: C.ice,
+            ),
             // 打字机逐字音节（`ui.js:96`）：气泡用**该条消息自己的情绪**
             // （`ChatMessage.emotion`，由 persona 的 `[[emo]]` 标签给出；
             //  聊天不是旁白，`soft` 保持 false）。
@@ -404,7 +436,13 @@ class _ChatPanelState extends State<ChatPanel> {
           )
         : Text(
             m.text,
-            style: fs(family: F.cn, size: 13.5, wght: 400, height: 1.5, color: C.ice),
+            style: fs(
+              family: F.cn,
+              size: 13.5,
+              wght: 400,
+              height: 1.5,
+              color: C.ice,
+            ),
           );
     return Align(
       key: Key('chat.msg.$i'),
@@ -422,7 +460,9 @@ class _ChatPanelState extends State<ChatPanel> {
             borderRadius: BorderRadius.circular(14),
             border: host ? null : Border.all(color: C.line, width: 1),
             boxShadow: host
-                ? <BoxShadow>[BoxShadow(color: C.blue.withAlpha(89), blurRadius: 14)]
+                ? <BoxShadow>[
+                    BoxShadow(color: C.blue.withAlpha(89), blurRadius: 14),
+                  ]
                 : null,
           ),
           child: body,
@@ -474,7 +514,8 @@ class _ChatPanelState extends State<ChatPanel> {
   /// 样式=interview_deck 选项 chip 同款语言（42px 圆角盒 + PressBuilder
   /// 按下换底 `rgba(56,225,255,.2)`），thinking/未接线时置灰不可点。
   Widget _quickTools() {
-    final bool live = widget.enabled && !widget.thinking && widget.onQuickTool != null;
+    final bool live =
+        widget.enabled && !widget.thinking && widget.onQuickTool != null;
     return Container(
       key: const Key('chat.tools'),
       height: 54,
@@ -556,12 +597,16 @@ class _ThinkingDotState extends State<_ThinkingDot>
   /// 呼吸窗（ms）= ChatService 的思考等待上限
   static const double _windowMs = 12000;
 
-  late final AnimationController _c = AnimationController(
-    vsync: this,
-    duration: Duration(milliseconds: _windowMs.round()),
-  )
-    ..value = widget.phase * _cycleMs / _windowMs // 循环内的起始相位
-    ..forward();
+  late final AnimationController _c =
+      AnimationController(
+          vsync: this,
+          duration: Duration(milliseconds: _windowMs.round()),
+        )
+        ..value =
+            widget.phase *
+            _cycleMs /
+            _windowMs // 循环内的起始相位
+        ..forward();
 
   @override
   void dispose() {

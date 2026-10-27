@@ -100,8 +100,7 @@ void main() {
     takenAt: DateTime(2026, 1, 1, 10),
   );
 
-  int attrSum(Quest q) =>
-      q.attrs.values.fold<int>(0, (int s, int v) => s + v);
+  int attrSum(Quest q) => q.attrs.values.fold<int>(0, (int s, int v) => s + v);
 
   /// 干净宿主（lv1 exp0、三件执行道具各 1），时间钉死，随机源钉死
   QuestFlow freshFlow({
@@ -124,7 +123,6 @@ void main() {
     );
     return f;
   }
-
 
   /// 测试用的**假计划**（不是产品兜底）：直接按条数铸 N 张，
   /// 供只关心队列手术/finale 语义的用例使用。
@@ -194,8 +192,9 @@ void main() {
     });
 
     test('批二新题确实进了 QuestFlow 的池子（抽查）', () {
-      final List<String> titles =
-          QuestFlow.kDailyPool.map((DailyTpl d) => d.t).toList();
+      final List<String> titles = QuestFlow.kDailyPool
+          .map((DailyTpl d) => d.t)
+          .toList();
       expect(titles, contains('靠墙静蹲 3 组，每组 45 秒'));
       expect(titles, contains('睡前 10 分钟回顾今天，想清楚一件做对的事'));
       expect(titles.toSet().length, titles.length, reason: '池子里有重题');
@@ -319,10 +318,14 @@ void main() {
 
     test('⚠️ 回归 t16/B1 连锁：wipe 的 fallback 队列同样可种子化（frozen 语义不变）', () async {
       final SaveFile f = SaveFile();
-      await f.wipe(fallback: SaveData(host: HostState.demo, goal: Goal.demo()));
+      await f.wipe(
+        fallback: SaveData(host: HostState.demo, goal: Goal.demo()),
+      );
       // wipe 后 frozen=true —— 存盘被静默跳过是**既有语义**，本测试不回退它；
       // 这里只锁「wipe 返回的 fallback 队列能安全喂给 QuestFlow」。
-      final SaveData d = await f.wipe(fallback: SaveData(host: HostState.demo, goal: Goal.demo()));
+      final SaveData d = await f.wipe(
+        fallback: SaveData(host: HostState.demo, goal: Goal.demo()),
+      );
       final QuestFlow flow = QuestFlow.fromSave(
         host: d.host,
         goal: d.goal,
@@ -923,8 +926,9 @@ void main() {
   group('换目标 newGoal（TODO-01：旧主线单移除、新主线进在手窗口）', () {
     test('落库语义：main 全撤、新主线进在手窗口、日常保留、档案换成新目标', () {
       final QuestFlow f = QuestFlow.demo(); // 队列 = 主线首环 + 3 日常
-      final int dailyBefore =
-          f.queue.where((Quest q) => q.kind == 'daily').length;
+      final int dailyBefore = f.queue
+          .where((Quest q) => q.kind == 'daily')
+          .length;
       expect(f.queue.where((Quest q) => q.kind == 'main').length, 1);
 
       final Goal next = fakeGoal('半年减重 10 斤', days: 180);
@@ -937,16 +941,14 @@ void main() {
       //    这里用测试假计划，只验队列手术语义 —— 所以 cat/days 跟着假数据走。
       expect(f.goal.plan.length, 180);
       // 新主线的在手窗口铺满 3 张，序号从 0 起；返回的就是第一张
-      final List<Quest> mains =
-          f.queue.where((Quest q) => q.kind == 'main').toList();
+      final List<Quest> mains = f.queue
+          .where((Quest q) => q.kind == 'main')
+          .toList();
       expect(mains.length, QuestFlow.kPlanPublishWindow);
       expect(mains.map((Quest q) => q.planIndex).toList(), <int>[0, 1, 2]);
       expect(mains.first.serial, inserted.serial);
       expect(mains.first.planTotal, 180);
-      expect(
-        f.queue.where((Quest q) => q.kind == 'daily').length,
-        dailyBefore,
-      );
+      expect(f.queue.where((Quest q) => q.kind == 'daily').length, dailyBefore);
       expect(f.host.queue, f.queue.length);
       // 旧主线的单真的撤了（不是留在队尾）
       expect(f.queue.any((Quest q) => q.name == '跑完 5 公里'), isFalse);
@@ -990,8 +992,9 @@ void main() {
           expect(f.lastFinale?.goal, isNotNull);
           expect(f.goal, same(f.lastFinale!.goal));
           // 新主线的在手窗口同样铺满（序号从 0 起）
-          final List<Quest> fresh =
-              f.queue.where((Quest q) => q.kind == 'main').toList();
+          final List<Quest> fresh = f.queue
+              .where((Quest q) => q.kind == 'main')
+              .toList();
           expect(fresh.length, QuestFlow.kPlanPublishWindow);
           expect(fresh.map((Quest q) => q.planIndex).toList(), <int>[0, 1, 2]);
           expect(f.queueEmpty, isFalse);
@@ -1071,7 +1074,10 @@ void main() {
       final QuestFlow f = QuestFlow.demo();
       f.accept(f.head!);
       final SaveData d = SaveData(host: f.host, goal: f.goal, queue: f.queue);
-      final SaveData back = SaveData.fromJson(d.toJson(), fallback: SaveData.fresh());
+      final SaveData back = SaveData.fromJson(
+        d.toJson(),
+        fallback: SaveData.fresh(),
+      );
       expect(back.queue.length, f.queue.length);
       expect(back.queue.first.serial, f.queue.first.serial);
       expect(back.queue.first.kind, f.queue.first.kind);
@@ -1102,14 +1108,11 @@ void main() {
     });
 
     test('单据字段缺失/类型不对 → 走默认值，不抛（老档兼容口径）', () {
-      final SaveData d = SaveData.fromJson(
-        <String, dynamic>{
-          'host': HostState.demo.toJson(),
-          'goal': Goal.demo().toJson(),
-          'queue': <dynamic>[<String, dynamic>{}],
-        },
-        fallback: SaveData.fresh(),
-      );
+      final SaveData d = SaveData.fromJson(<String, dynamic>{
+        'host': HostState.demo.toJson(),
+        'goal': Goal.demo().toJson(),
+        'queue': <dynamic>[<String, dynamic>{}],
+      }, fallback: SaveData.fresh());
       final Quest back = d.queue.single;
       expect(back.serial, 0);
       expect(back.kind, 'daily');
@@ -1120,7 +1123,8 @@ void main() {
 
     test('老档 json 没有 queue → 空表走默认（不崩、不清档）', () {
       final SaveData back = SaveData.fromJson(
-        jsonDecode('{"host":{"name":"老档"},"goal":null}') as Map<String, dynamic>,
+        jsonDecode('{"host":{"name":"老档"},"goal":null}')
+            as Map<String, dynamic>,
         fallback: SaveData(host: HostState.demo, goal: Goal.demo()),
       );
       expect(back.queue, isEmpty);
@@ -1202,11 +1206,7 @@ void main() {
       expect(o!.task.rank, 'D', reason: '旧档位留在 outcome.task');
       expect(o.replacement, isNotNull);
       expect(o.replacement!.rank, 'E', reason: 'rankShift(-1)：D → E');
-      expect(
-        o.replacement!.serial,
-        dQuest.serial,
-        reason: '同一张单重刻，不是换新单',
-      );
+      expect(o.replacement!.serial, dQuest.serial, reason: '同一张单重刻，不是换新单');
       expect(o.replacement!.name, dQuest.name);
       expect(o.replacement!.minutes, dQuest.minutes);
       expect(
@@ -1396,7 +1396,10 @@ void main() {
         queue: f.queue,
         activeJson: f.activeToSaveJson(),
       );
-      final SaveData back = SaveData.fromJson(d.toJson(), fallback: SaveData.fresh());
+      final SaveData back = SaveData.fromJson(
+        d.toJson(),
+        fallback: SaveData.fresh(),
+      );
       expect(back.activeJson, isNotNull);
       final QuestFlow g = freshFlow();
       g.restoreActiveFromJson(back.activeJson);
@@ -1460,7 +1463,10 @@ void main() {
       expect(f.critChance(), closeTo(.52, 1e-9));
       expect(
         f.critChance(),
-        closeTo(f.critBase() + evidenceCritBonus(verified: 3, unverified: 0), 1e-9),
+        closeTo(
+          f.critBase() + evidenceCritBonus(verified: 3, unverified: 0),
+          1e-9,
+        ),
       );
     });
   });
@@ -1473,7 +1479,8 @@ void main() {
 
     // settle/fail 的 append 是 fire-and-forget（不阻塞结算演出）——
     // 测试里给它一拍把 microtask/写盘跑完再读
-    Future<void> flush() => Future<void>.delayed(const Duration(milliseconds: 20));
+    Future<void> flush() =>
+        Future<void>.delayed(const Duration(milliseconds: 20));
 
     test('settle 追加一条 clear：出账/档位/连击/六维入档', () async {
       final HistoryLog log = HistoryLog();

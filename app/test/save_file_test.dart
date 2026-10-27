@@ -266,7 +266,13 @@ void main() {
           streak: 2,
           attrs: const <String, int>{}, // 认输不出账也不出属性
         ),
-        entry(now, exp: 4, coin: 5, streak: 3, attrs: const <String, int>{'知': 1}),
+        entry(
+          now,
+          exp: 4,
+          coin: 5,
+          streak: 3,
+          attrs: const <String, int>{'知': 1},
+        ),
       ];
       final WeekSummary s = HistoryLog.summarize(all, now);
       expect(s.doneCount, 2); // quit 不算完成

@@ -82,7 +82,9 @@ class FlashBloom extends StatelessWidget {
     if (alpha <= 0) return const SizedBox.shrink();
     return IgnorePointer(
       child: CustomPaint(
-        painter: FlashBloomPainter(color: color.withAlpha((alpha * 255).round())),
+        painter: FlashBloomPainter(
+          color: color.withAlpha((alpha * 255).round()),
+        ),
       ),
     );
   }
@@ -101,11 +103,7 @@ class FlashBloomPainter extends CustomPainter {
       c,
       r,
       Paint()
-        ..shader = ui.Gradient.radial(
-          c,
-          r,
-          <Color>[color, color.withAlpha(0)],
-        ),
+        ..shader = ui.Gradient.radial(c, r, <Color>[color, color.withAlpha(0)]),
     );
   }
 
@@ -150,7 +148,7 @@ class _ShakeLayerState extends State<ShakeLayer>
   ///
   /// **不钉的代价就是「提交任务卡死」的真正元凶**：结算砸印必抖
   /// （`onImpact` 最小 shakePx=4）→ 抖动切换 `Transform` 分支 → 整个
-  /// Stack 连 Plate / 结算面板 / Live2D WebView 一起重挂 → 结算演出从头
+  /// Stack 连结算面板一起重挂 → 结算演出从头
   /// 重播 → 820ms 后又砸印又抖 → **死循环**，演出永远走不到结算卡。
   /// 实测症状：结算页卡在稀有度大字 + 粒子越积越多、WebView 反复重载、
   /// 派单板的骰子也永远在滚（`onRankFx` 的 A/S 抖同理）。
@@ -210,10 +208,10 @@ class _ShakeLayerState extends State<ShakeLayer>
   Widget build(BuildContext context) {
     // ⚠️ **不抖的时候绝不套 `Transform`。**
     //
-    // 这层包住了整个 App（含 Live2D 平台视图）。平台视图**无法应用任意变换** ——
+    // 这层包住了整个 App，**任意变换会连带重挂整棵子树** ——
     // 只要祖先链上有一个 `Transform`，Flutter 的合成器就干脆**不合成它**，
     // 于是"模型加载成功、渲染循环在跑、视图也在层级里，但屏幕上什么都没有"。
-    // 这个坑很贵：我为它排查了两轮（换标准模型 Hiyori 做对照才排除掉模型数据的问题）。
+    // 这个坑很贵：排查了两轮才定位。
     //
     // 代价：真抖的那 240ms 里她不会跟着抖（平台视图跟不上）。
     // 目前接受 —— 先把"她出得来"这件事做对，抖不抖是后面的事。

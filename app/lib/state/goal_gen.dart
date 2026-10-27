@@ -957,9 +957,27 @@ const List<DailyTemplate> kDailyCommon = <DailyTemplate>[
     attrs: <String, int>{'知': 1},
     rank: 'F',
   ),
-  DailyTemplate(title: '出门走 3000 步', proof: '步数截图', minutes: 30, attrs: <String, int>{'体': 1, '敏': 1}, rank: 'E'),
-  DailyTemplate(title: '读 20 页书', proof: '页码照片', minutes: 30, attrs: <String, int>{'智': 1, '知': 1}, rank: 'E'),
-  DailyTemplate(title: '发呆 10 分钟，不碰手机', proof: '计时截图', minutes: 12, attrs: <String, int>{'知': 2}, rank: 'F'),
+  DailyTemplate(
+    title: '出门走 3000 步',
+    proof: '步数截图',
+    minutes: 30,
+    attrs: <String, int>{'体': 1, '敏': 1},
+    rank: 'E',
+  ),
+  DailyTemplate(
+    title: '读 20 页书',
+    proof: '页码照片',
+    minutes: 30,
+    attrs: <String, int>{'智': 1, '知': 1},
+    rank: 'E',
+  ),
+  DailyTemplate(
+    title: '发呆 10 分钟，不碰手机',
+    proof: '计时截图',
+    minutes: 12,
+    attrs: <String, int>{'知': 2},
+    rank: 'F',
+  ),
   DailyTemplate(
     title: '给一个很久没联系的人发条消息',
     proof: '对话截图（可打码）',
@@ -967,7 +985,13 @@ const List<DailyTemplate> kDailyCommon = <DailyTemplate>[
     attrs: <String, int>{'魅': 2},
     rank: 'E',
   ),
-  DailyTemplate(title: '20 个深蹲', proof: '自拍或计数截图', minutes: 6, attrs: <String, int>{'力': 1, '体': 1}, rank: 'F'),
+  DailyTemplate(
+    title: '20 个深蹲',
+    proof: '自拍或计数截图',
+    minutes: 6,
+    attrs: <String, int>{'力': 1, '体': 1},
+    rank: 'F',
+  ),
   DailyTemplate(
     title: '把一件拖了一周的小事做完',
     proof: '完成截图',
@@ -975,7 +999,13 @@ const List<DailyTemplate> kDailyCommon = <DailyTemplate>[
     attrs: <String, int>{'知': 1, '智': 1},
     rank: 'D',
   ),
-  DailyTemplate(title: '拉伸 10 分钟', proof: '拉伸照片', minutes: 12, attrs: <String, int>{'敏': 2}, rank: 'F'),
+  DailyTemplate(
+    title: '拉伸 10 分钟',
+    proof: '拉伸照片',
+    minutes: 12,
+    attrs: <String, int>{'敏': 2},
+    rank: 'F',
+  ),
   DailyTemplate(
     title: '平板支撑累计 3 分钟',
     proof: '计时截图',
@@ -983,7 +1013,13 @@ const List<DailyTemplate> kDailyCommon = <DailyTemplate>[
     attrs: <String, int>{'力': 1, '体': 1},
     rank: 'E',
   ),
-  DailyTemplate(title: '写 300 字，写什么都行', proof: '文字截图', minutes: 25, attrs: <String, int>{'智': 1, '魅': 1}, rank: 'E'),
+  DailyTemplate(
+    title: '写 300 字，写什么都行',
+    proof: '文字截图',
+    minutes: 25,
+    attrs: <String, int>{'智': 1, '魅': 1},
+    rank: 'E',
+  ),
   DailyTemplate(
     title: '收拾房间的一个角落',
     proof: '前后对比照片',
@@ -991,7 +1027,13 @@ const List<DailyTemplate> kDailyCommon = <DailyTemplate>[
     attrs: <String, int>{'知': 1, '体': 1},
     rank: 'F',
   ),
-  DailyTemplate(title: '跳绳 500 下', proof: '计数截图', minutes: 12, attrs: <String, int>{'敏': 1, '体': 1}, rank: 'E'),
+  DailyTemplate(
+    title: '跳绳 500 下',
+    proof: '计数截图',
+    minutes: 12,
+    attrs: <String, int>{'敏': 1, '体': 1},
+    rank: 'E',
+  ),
   DailyTemplate(
     title: '学一个新技巧，今天用三次',
     proof: '截图',
@@ -999,7 +1041,13 @@ const List<DailyTemplate> kDailyCommon = <DailyTemplate>[
     attrs: <String, int>{'智': 1, '敏': 1},
     rank: 'F',
   ),
-  DailyTemplate(title: '做一顿饭', proof: '饭菜照片', minutes: 40, attrs: <String, int>{'体': 1, '知': 1}, rank: 'D'),
+  DailyTemplate(
+    title: '做一顿饭',
+    proof: '饭菜照片',
+    minutes: 40,
+    attrs: <String, int>{'体': 1, '知': 1},
+    rank: 'D',
+  ),
   // ── 批二扩充（TODO-03 模板半批）—— 通用池 14 → 30，把重样期往后推 ──
   DailyTemplate(
     title: '早起后喝一杯水，再做 10 个开合跳',
@@ -1198,7 +1246,9 @@ void validatePlan({
     if (t.title.trim().isEmpty) throw PlanRuleError('第 $n 张的 title 是空的');
     if (t.proof.trim().isEmpty) throw PlanRuleError('第 $n 张的 proof 是空的');
     if (!Rarity.ranks.contains(t.rank)) {
-      throw PlanRuleError('第 $n 张的 rank「${t.rank}」不在 ${Rarity.ranks.join('/')} 里');
+      throw PlanRuleError(
+        '第 $n 张的 rank「${t.rank}」不在 ${Rarity.ranks.join('/')} 里',
+      );
     }
     final int cap = rankCapMinutes(t.rank);
     if (t.minutes < 5 || t.minutes > cap) {
@@ -1272,6 +1322,7 @@ Goal buildGoalFromPlan({
   required String short,
   required GoalCategory cat,
   required int days,
+
   /// 目标自带的次数配额（0 = 没有；有就按它定条数，见 [planTaskCountFor]）
   int quota = 0,
   required List<TaskSpec> tasks,
@@ -1442,12 +1493,13 @@ List<DailyTemplate> pickDailies({
     return true;
   }
 
-  final List<bool Function(DailyTemplate)> plan = <bool Function(DailyTemplate)>[
-    (DailyTemplate d) => (d.attrs[weak.key] ?? 0) > 0, // 一单专治短板
-    (DailyTemplate d) =>
-        tilt.keys.any((String k) => (d.attrs[k] ?? 0) > 0), // 一单贴主线
-    for (int i = 0; i < kDailyCap; i++) (DailyTemplate _) => true, // 其余随缘
-  ];
+  final List<bool Function(DailyTemplate)> plan =
+      <bool Function(DailyTemplate)>[
+        (DailyTemplate d) => (d.attrs[weak.key] ?? 0) > 0, // 一单专治短板
+        (DailyTemplate d) =>
+            tilt.keys.any((String k) => (d.attrs[k] ?? 0) > 0), // 一单贴主线
+        for (int i = 0; i < kDailyCap; i++) (DailyTemplate _) => true, // 其余随缘
+      ];
   for (int i = 0; i < n; i++) {
     if (!(take(plan[i]) || take((DailyTemplate _) => true))) break;
   }

@@ -3,7 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 
-import '../stage/spring.dart';
+import '../design/spring.dart';
 
 /// ═══════════════════════════════════════════════════════════
 ///  rail_base —— 「轨」的薄底座（docs/28 §7.1）

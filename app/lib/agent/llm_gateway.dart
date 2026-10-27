@@ -40,7 +40,10 @@ class LlmGateway implements CopyLlmGateway {
   }) async {
     if (!configured) {
       // 短路也要记账：无 Key 是最常见的一类「她哑了」，不能从遥测里消失
-      final LlmReply r = const LlmReply.failure(LlmFailure.noKey, '未配置 API Key');
+      final LlmReply r = const LlmReply.failure(
+        LlmFailure.noKey,
+        '未配置 API Key',
+      );
       lastReply = r;
       LlmTelemetry.record(r);
       return null;
@@ -55,8 +58,7 @@ class LlmGateway implements CopyLlmGateway {
         reasoningEffort: reasoningEffort,
       );
       // 客户端内部有自己的 12s 超时；调用方（copy 用 8s）给得更短就听调用方的
-      final LlmReply r =
-          await (timeout == null ? call : call.timeout(timeout));
+      final LlmReply r = await (timeout == null ? call : call.timeout(timeout));
       lastReply = r;
       if (!r.ok) {
         // 失败日志由 [LlmClient.chat] 统一打（它是所有路径的唯一咽喉）——
@@ -67,9 +69,11 @@ class LlmGateway implements CopyLlmGateway {
       if (text.isEmpty) {
         // HTTP 200 但正文为空：推论模型把 max_tokens 花在思考上的典型症状。
         // 客户端那行只显示 `chars=0 tools=0`，这一行给出**为什么**。
-        debugPrint('[llm] 空正文（HTTP 200）model=${_client.config.normalizedModel} '
-            'maxTokens=$maxTokens reasoning_effort=${_client.config.reasoningEffort} '
-            '— 多半是 max_tokens 被思考用尽');
+        debugPrint(
+          '[llm] 空正文（HTTP 200）model=${_client.config.normalizedModel} '
+          'maxTokens=$maxTokens reasoning_effort=${_client.config.reasoningEffort} '
+          '— 多半是 max_tokens 被思考用尽',
+        );
         return null;
       }
       return text;

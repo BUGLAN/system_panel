@@ -15,7 +15,7 @@ import 'package:system_panel/widgets/fx_layer.dart';
 ///
 /// 为什么敢整壳挂 `SysApp()`：这条接线只存在于真实装配里（`_AppShellState`
 /// 的 build），任何"抽出来单独挂"的写法都测不到它。壳里的异步读档/设置/聊天
-/// 都自带兜底（存储不可用 → 默认值），Live2D 的 `whenAttached` 在没有原生
+/// 都自带兜底（存储不可用 → 默认值），平台视图相关代码在没有原生
 /// 视图时永远不完成 —— 不产生 pending timer，也不阻塞这一条断言。
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();

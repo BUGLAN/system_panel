@@ -56,17 +56,32 @@ void main() {
 
   group('结算乘区（store.js:281-283）', () {
     test('普通单 = 表值：E → EXP 1 / 金币 5', () {
-      expect(Rewards.payout(rank: 'E', crit: false, dbl: false), const Payout(baseExp: 1, exp: 1, coin: 5));
+      expect(
+        Rewards.payout(rank: 'E', crit: false, dbl: false),
+        const Payout(baseExp: 1, exp: 1, coin: 5),
+      );
     });
 
     test('暴击 ×2：经验与金币都翻倍', () {
-      expect(Rewards.payout(rank: 'E', crit: true, dbl: false), const Payout(baseExp: 1, exp: 2, coin: 10));
-      expect(Rewards.payout(rank: 'S', crit: true, dbl: false), const Payout(baseExp: 10, exp: 20, coin: 40));
+      expect(
+        Rewards.payout(rank: 'E', crit: true, dbl: false),
+        const Payout(baseExp: 1, exp: 2, coin: 10),
+      );
+      expect(
+        Rewards.payout(rank: 'S', crit: true, dbl: false),
+        const Payout(baseExp: 10, exp: 20, coin: 40),
+      );
     });
 
     test('双倍卡 ×2 只吃经验；与暴击可叠 ×4', () {
-      expect(Rewards.payout(rank: 'E', crit: false, dbl: true), const Payout(baseExp: 1, exp: 2, coin: 5));
-      expect(Rewards.payout(rank: 'E', crit: true, dbl: true), const Payout(baseExp: 1, exp: 4, coin: 10));
+      expect(
+        Rewards.payout(rank: 'E', crit: false, dbl: true),
+        const Payout(baseExp: 1, exp: 2, coin: 5),
+      );
+      expect(
+        Rewards.payout(rank: 'E', crit: true, dbl: true),
+        const Payout(baseExp: 1, exp: 4, coin: 10),
+      );
     });
 
     test('补救单 ×0.5（D：EXP 2→1、金币 5→2.5→3），暴击在其上再翻', () {
@@ -81,7 +96,10 @@ void main() {
     });
 
     test('F 兼容档：经验 0（金币照给 3）—— 仅老存档/补救残单结算用', () {
-      expect(Rewards.payout(rank: 'F', crit: false, dbl: false), const Payout(baseExp: 0, exp: 0, coin: 3));
+      expect(
+        Rewards.payout(rank: 'F', crit: false, dbl: false),
+        const Payout(baseExp: 0, exp: 0, coin: 3),
+      );
     });
   });
 
@@ -126,11 +144,20 @@ void main() {
     test('候选池 4~6 个、互不重复；gen 类（专属池空）落通用池照样够', () {
       final math.Random rnd = math.Random(7);
       for (final String cat in <String>['run', 'sleep', 'gen']) {
-        final List<DailyTemplate> cands = genDailyCandidates(catId: cat, rnd: rnd);
-        expect(cands.length, inInclusiveRange(kDailyCandidateMin, kDailyCandidateMax),
-            reason: cat);
-        expect(cands.map((DailyTemplate d) => d.title).toSet().length, cands.length,
-            reason: '$cat 去重');
+        final List<DailyTemplate> cands = genDailyCandidates(
+          catId: cat,
+          rnd: rnd,
+        );
+        expect(
+          cands.length,
+          inInclusiveRange(kDailyCandidateMin, kDailyCandidateMax),
+          reason: cat,
+        );
+        expect(
+          cands.map((DailyTemplate d) => d.title).toSet().length,
+          cands.length,
+          reason: '$cat 去重',
+        );
       }
     });
 
@@ -168,7 +195,14 @@ void main() {
       final List<DailyTemplate> picks = pickDailies(
         candidates: candidates,
         // 最弱维 = 敏（2）
-        attrs: const <String, int>{'力': 9, '敏': 2, '体': 17, '智': 6, '知': 8, '魅': 4},
+        attrs: const <String, int>{
+          '力': 9,
+          '敏': 2,
+          '体': 17,
+          '智': 6,
+          '知': 8,
+          '魅': 4,
+        },
         goalCatId: 'run', // tilt = 体2/敏1/力1
         n: 2,
         rnd: math.Random(11),
@@ -176,7 +210,9 @@ void main() {
       expect(picks.length, 2);
       expect(picks[0].attrs['敏'] ?? 0, greaterThan(0), reason: '一单专治最弱维');
       expect(
-        picks[1].attrs.keys.any((String k) => const <String>['体', '敏', '力'].contains(k)),
+        picks[1].attrs.keys.any(
+          (String k) => const <String>['体', '敏', '力'].contains(k),
+        ),
         isTrue,
         reason: '一单贴主线（run 的倾向维）',
       );
@@ -195,7 +231,14 @@ void main() {
             rank: 'E',
           ),
         ],
-        attrs: const <String, int>{'力': 9, '敏': 2, '体': 17, '智': 6, '知': 8, '魅': 4},
+        attrs: const <String, int>{
+          '力': 9,
+          '敏': 2,
+          '体': 17,
+          '智': 6,
+          '知': 8,
+          '魅': 4,
+        },
         goalCatId: 'fit', // tilt 力/体 —— 候选里一个都没有
         n: 1,
         rnd: rnd,
@@ -218,9 +261,17 @@ void main() {
       for (int seed = 0; seed < 40; seed++) {
         final math.Random rnd = math.Random(seed);
         final String r4 = dailyRankFor('F', level: 4, rnd: rnd);
-        expect(Rarity.of(r4).i, inInclusiveRange(1, 2), reason: 'lv4 seed=$seed');
+        expect(
+          Rarity.of(r4).i,
+          inInclusiveRange(1, 2),
+          reason: 'lv4 seed=$seed',
+        );
         final String r8 = dailyRankFor('F', level: 8, rnd: rnd);
-        expect(Rarity.of(r8).i, inInclusiveRange(1, 3), reason: 'lv8 seed=$seed');
+        expect(
+          Rarity.of(r8).i,
+          inInclusiveRange(1, 3),
+          reason: 'lv8 seed=$seed',
+        );
       }
     });
 
@@ -326,10 +377,16 @@ void main() {
       expect(out.map((Quest q) => q.kind), <String>['main', 'daily', 'daily']);
       expect(out.first.serial, 42, reason: '重钉的新主线单在队首');
       expect(out.first.rank, 'C', reason: '昨天退缩降的档，新的一天还原');
-      expect(out.any((Quest q) => q.serial == overnightDaily.serial), isFalse,
-          reason: '隔夜日常作废');
-      expect(out.any((Quest q) => q.serial == overnightMain.serial), isFalse,
-          reason: '旧主线单不作废保留');
+      expect(
+        out.any((Quest q) => q.serial == overnightDaily.serial),
+        isFalse,
+        reason: '隔夜日常作废',
+      );
+      expect(
+        out.any((Quest q) => q.serial == overnightMain.serial),
+        isFalse,
+        reason: '旧主线单不作废保留',
+      );
     });
 
     test('补救单只留未过期的；主线没有脚下环（goal 空）时不重钉', () {
@@ -381,7 +438,10 @@ void main() {
   group('绑定见面礼（原型 bind() 的 dbl+=1）', () {
     test('applyBindGift：双倍卡 +1，原表不动', () {
       final Map<String, int> before = <String, int>{
-        'dbl': 0, 'crit': 1, 'shield': 0, 'swap': 2,
+        'dbl': 0,
+        'crit': 1,
+        'shield': 0,
+        'swap': 2,
       };
       final Map<String, int> after = applyBindGift(before);
       expect(after['dbl'], 1);

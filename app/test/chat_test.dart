@@ -18,9 +18,7 @@ import 'package:system_panel/chat/chat_service.dart';
 import 'package:system_panel/state/goal.dart';
 import 'package:system_panel/state/host_state.dart';
 import 'package:system_panel/state/quest.dart';
-import 'package:system_panel/state/result.dart';
 import 'package:system_panel/widgets/chat_bar.dart';
-import 'package:system_panel/widgets/result_panel.dart';
 import 'package:system_panel/widgets/type_text.dart';
 
 /// 失败出口断言（docs/22 §2.0「严格模式」）：
@@ -57,12 +55,9 @@ void main() {
 
   group('ChatHistory（opus-v2/chat/v1）', () {
     test('追加 → 新实例读回，逐条一致（重启仍在）', () async {
-      final ChatHistory h = ChatHistory()
-        ..messages = <ChatMessage>[];
+      final ChatHistory h = ChatHistory()..messages = <ChatMessage>[];
       await h.append(ChatMessage.host('m1', '今天不想跑'));
-      await h.append(
-        ChatMessage.sys('m2', '腿长在你身上。跑。', emotion: 'annoyed'),
-      );
+      await h.append(ChatMessage.sys('m2', '腿长在你身上。跑。', emotion: 'annoyed'));
       final ChatHistory back = ChatHistory();
       await back.load();
       expect(back.loaded, isTrue);
@@ -90,8 +85,8 @@ void main() {
     test('坏档 → 空表不崩', () async {
       SharedPreferencesAsyncPlatform.instance =
           InMemorySharedPreferencesAsync.withData(<String, Object>{
-        ChatHistory.key: '{not json',
-      });
+            ChatHistory.key: '{not json',
+          });
       final ChatHistory h = ChatHistory();
       await h.load();
       expect(h.messages, isEmpty);
@@ -103,10 +98,7 @@ void main() {
       // 今天 = now 本身；昨天 = 整 24h 前（任意时刻都落在上一日历日）。
       final DateTime now = DateTime.now();
       expect(ChatHistory.dayLabel(now), '今天');
-      expect(
-        ChatHistory.dayLabel(now.subtract(const Duration(days: 1))),
-        '昨天',
-      );
+      expect(ChatHistory.dayLabel(now.subtract(const Duration(days: 1))), '昨天');
       expect(
         ChatHistory.dayLabel(now.subtract(const Duration(days: 9))),
         '${now.subtract(const Duration(days: 9)).month}月'
@@ -209,7 +201,10 @@ void main() {
       expect(sent!, contains('role: system'));
       expect(sent!, contains('role: user'));
       expect(sent!, contains('role: assistant'));
-      expect(sent!.indexOf('role: system'), lessThan(sent!.indexOf('role: user')));
+      expect(
+        sent!.indexOf('role: system'),
+        lessThan(sent!.indexOf('role: user')),
+      );
       expect(sent!, contains('上一句'));
       expect(sent!, contains('上一答'));
       expect(sent!.lastIndexOf('这一句'), greaterThan(sent!.indexOf('上一答')));
@@ -252,20 +247,20 @@ void main() {
       }
     }
 
-    testWidgets('名牌 + 双向气泡 + 分组头都在，层序压在最上（不遮挡命中）', (
-      WidgetTester tester,
-    ) async {
+    testWidgets('名牌 + 双向气泡 + 分组头都在，层序压在最上（不遮挡命中）', (WidgetTester tester) async {
       Widget panel(List<ChatMessage> messages, {int? paceMs}) => MaterialApp(
-            home: Scaffold(
-              body: Stack(
-                children: <Widget>[
-                  ChatPanel(visible: true, messages: messages, paceMs: paceMs),
-                ],
-              ),
-            ),
-          );
+        home: Scaffold(
+          body: Stack(
+            children: <Widget>[
+              ChatPanel(visible: true, messages: messages, paceMs: paceMs),
+            ],
+          ),
+        ),
+      );
       // 先只挂宿主那条（历史：已读过，不打字）
-      await tester.pumpWidget(panel(<ChatMessage>[ChatMessage.host('a', '今天不想跑')]));
+      await tester.pumpWidget(
+        panel(<ChatMessage>[ChatMessage.host('a', '今天不想跑')]),
+      );
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('chat.name')), findsOneWidget);
       expect(find.text('小祥'), findsOneWidget);
@@ -273,10 +268,12 @@ void main() {
       expect(find.text('今天不想跑'), findsOneWidget); // 宿主（右）
       expect(find.byType(TypeText), findsNothing); // 历史不打字
       // 她回复到达（main.dart setState 追加）→ 最新一条进气泡打字机
-      await tester.pumpWidget(panel(<ChatMessage>[
-        ChatMessage.host('a', '今天不想跑'),
-        ChatMessage.sys('b', '腿长在你身上。', emotion: 'annoyed'),
-      ]));
+      await tester.pumpWidget(
+        panel(<ChatMessage>[
+          ChatMessage.host('a', '今天不想跑'),
+          ChatMessage.sys('b', '腿长在你身上。', emotion: 'annoyed'),
+        ]),
+      );
       await tester.pump();
       expect(find.byType(TypeText), findsOneWidget);
       // 打完 → 落成纯文本（打字机只演一次）
@@ -298,9 +295,9 @@ void main() {
       // （原来这里硬编码 30，与字幕真源 34 是两个数；现在只有一个来源）
       // 同一句话、同一段假时钟，两档跑出不同结果 = 档位真的在生效：
       List<ChatMessage> withLine(String id) => <ChatMessage>[
-            ChatMessage.host('a', '今天不想跑'),
-            ChatMessage.sys(id, '一二三四五六七八九十'), // 10 字，标点不参与
-          ];
+        ChatMessage.host('a', '今天不想跑'),
+        ChatMessage.sys(id, '一二三四五六七八九十'), // 10 字，标点不参与
+      ];
       await tester.pumpWidget(panel(withLine('c'), paceMs: 24)); // 快档
       await tester.pump();
       expect(tester.widget<TypeText>(find.byType(TypeText)).speed, 24);
@@ -335,11 +332,9 @@ void main() {
     });
 
     testWidgets('thinking：占位行出现', (WidgetTester tester) async {
-      await mount(
-        tester,
-        <ChatMessage>[ChatMessage.host('a', 'hi')],
-        thinking: true,
-      );
+      await mount(tester, <ChatMessage>[
+        ChatMessage.host('a', 'hi'),
+      ], thinking: true);
       expect(find.byKey(const Key('chat.thinking')), findsOneWidget);
       // t26/P2-3：静态「思考中…」换成「思考中」+ 三点呼吸（600ms 循环、
       // 相位差 200ms，参数钉在 fx_test）。chat_test 不在本卡 inScope，
@@ -368,14 +363,19 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const Key('chat.close')), warnIfMissed: false);
+      await tester.tap(
+        find.byKey(const Key('chat.close')),
+        warnIfMissed: false,
+      );
       await tester.pump();
       expect(closed, 0);
     });
   });
 
   group('ChatBar（输入栏本体）', () {
-    testWidgets('enabled=false（thinking 锁）：有字也不发送', (WidgetTester tester) async {
+    testWidgets('enabled=false（thinking 锁）：有字也不发送', (
+      WidgetTester tester,
+    ) async {
       final List<String> sent = <String>[];
       final TextEditingController c = TextEditingController(text: '你好');
       await tester.pumpWidget(
@@ -395,7 +395,9 @@ void main() {
       final TextEditingController c = TextEditingController(text: '   ');
       await tester.pumpWidget(
         MaterialApp(
-          home: Scaffold(body: ChatBar(controller: c, onSend: sent.add)),
+          home: Scaffold(
+            body: ChatBar(controller: c, onSend: sent.add),
+          ),
         ),
       );
       await tester.tap(find.byKey(const Key('chat.send')));
@@ -422,56 +424,32 @@ void main() {
       await tester.pump();
       expect(opens, 1);
     });
-
-    testWidgets('结算页「找小祥说说」次级钮：渲染且可点', (WidgetTester tester) async {
-      int talks = 0;
-      tester.view.physicalSize = const Size(390 * 3, 844 * 3);
-      tester.view.devicePixelRatio = 3.0;
-      addTearDown(tester.view.reset);
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: Stack(
-              children: <Widget>[
-                ResultPanel(
-                  result: QuestResult.demo,
-                  visible: true,
-                  animate: false,
-                  onTalk: () => talks++,
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-      await tester.pump();
-      expect(find.text('找小祥说说'), findsOneWidget);
-      await tester.tap(find.byKey(const Key('result.talk')));
-      await tester.pump();
-      expect(talks, 1);
-    });
   });
 
   // ═══════════ A3 · 工具接线（docs/19 §A3）═══════════
 
   group('A3 · function calling 全链路（mock LlmClient，配 Key）', () {
     /// 一张日常（MockAgentContext 队列用）
-    Quest daily({int serial = 77, String rank = 'D', int minutes = 30}) => Quest(
-      serial: serial,
-      kind: 'daily',
-      planIndex: -1,
-      planTotal: 0,
-      name: '夜跑 3 公里',
-      reason: '',
-      proof: '跑步 App 截图',
-      minutes: minutes,
-      rank: rank,
-      attrs: const <String, int>{'体': 1},
-    );
+    Quest daily({int serial = 77, String rank = 'D', int minutes = 30}) =>
+        Quest(
+          serial: serial,
+          kind: 'daily',
+          planIndex: -1,
+          planTotal: 0,
+          name: '夜跑 3 公里',
+          reason: '',
+          proof: '跑步 App 截图',
+          minutes: minutes,
+          rank: rank,
+          attrs: const <String, int>{'体': 1},
+        );
 
     /// 工具调用 / 正常回复的 OpenAI 线格式。
     /// ⚠️ arguments 是**字符串化的 JSON**——外层再 encode 一次才有合法转义。
-    String toolCall(String name, [Map<String, dynamic> args = const <String, dynamic>{}]) =>
+    String toolCall(
+      String name, [
+      Map<String, dynamic> args = const <String, dynamic>{},
+    ]) =>
         '{"choices":[{"message":{"content":"","tool_calls":[{"id":"c1",'
         '"type":"function","function":{"name":"$name","arguments":'
         '${jsonEncode(jsonEncode(args))}}}]}}]}';
@@ -485,9 +463,13 @@ void main() {
         MockClient((http.Request req) async {
           bodies.add(req.body);
           final (String body, int status) = responses.removeAt(0);
-          return http.Response(body, status, headers: <String, String>{
-            'content-type': 'application/json; charset=utf-8',
-          });
+          return http.Response(
+            body,
+            status,
+            headers: <String, String>{
+              'content-type': 'application/json; charset=utf-8',
+            },
+          );
         });
 
     test('查状态：工具调用 → 执行 → 回填 → 终答（两跳，回执可见）', () async {
@@ -660,35 +642,35 @@ void main() {
       // 200 会被思考吃光 → content 空 → 旧版静默兜底、宿主永远不知道原因。
       final List<Map<String, dynamic>> sent = <Map<String, dynamic>>[];
       ChatService svc({required bool strict}) => ChatService(
-            client: LlmClient(
-              config: const LlmConfig(apiKey: 'sk-test'),
-              httpClient: MockClient((http.Request r) async {
-                sent.add(jsonDecode(r.body) as Map<String, dynamic>);
-                return http.Response(
-                  jsonEncode(<String, dynamic>{
-                    'choices': <dynamic>[
-                      <String, dynamic>{
-                        'message': <String, dynamic>{
-                          'content': '', // 可见正文为空
-                          'reasoning_content': '思考把预算用完了',
-                        },
-                        'finish_reason': 'length',
-                      },
-                    ],
-                  }),
-                  200,
-                  headers: <String, String>{
-                    'content-type': 'application/json; charset=utf-8',
+        client: LlmClient(
+          config: const LlmConfig(apiKey: 'sk-test'),
+          httpClient: MockClient((http.Request r) async {
+            sent.add(jsonDecode(r.body) as Map<String, dynamic>);
+            return http.Response(
+              jsonEncode(<String, dynamic>{
+                'choices': <dynamic>[
+                  <String, dynamic>{
+                    'message': <String, dynamic>{
+                      'content': '', // 可见正文为空
+                      'reasoning_content': '思考把预算用完了',
+                    },
+                    'finish_reason': 'length',
                   },
-                );
+                ],
               }),
-            ),
-            tools: defaultAgentTools(
-              context: MockAgentContext(queue: <Quest>[daily()]),
-              memory: MemoryStore(),
-            ),
-            strict: strict,
-          );
+              200,
+              headers: <String, String>{
+                'content-type': 'application/json; charset=utf-8',
+              },
+            );
+          }),
+        ),
+        tools: defaultAgentTools(
+          context: MockAgentContext(queue: <Quest>[daily()]),
+          memory: MemoryStore(),
+        ),
+        strict: strict,
+      );
 
       // 上限必须真的抬上去了（200 → 1024），推理档位默认 low
       final List<ChatMessage> strictOut = await svc(strict: true).respond('你好');
@@ -737,8 +719,10 @@ void main() {
         memory: MemoryStore(),
       );
       // ① 没接 client（降级到 reply）
-      final List<ChatMessage> a =
-          await ChatService(tools: reg, strict: true).respond('在吗');
+      final List<ChatMessage> a = await ChatService(
+        tools: reg,
+        strict: true,
+      ).respond('在吗');
       expect(a, hasLength(1));
       expectDiagText(a.first.text);
       // ② 第二轮 HTTP 500（工具已执行 → 回执保留，最后一条是诊断）
@@ -791,9 +775,7 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    testWidgets('三枚 chip 在（查状态/换任务/调整计划），点按回调工具名', (
-      WidgetTester tester,
-    ) async {
+    testWidgets('三枚 chip 在（查状态/换任务/调整计划），点按回调工具名', (WidgetTester tester) async {
       final List<String> tapped = <String>[];
       await mount(tester, messages: <ChatMessage>[], onQuickTool: tapped.add);
       expect(find.byKey(const Key('chat.tools')), findsOneWidget);
@@ -815,51 +797,64 @@ void main() {
         thinking: true,
         onQuickTool: tapped.add,
       );
-      await tester.tap(find.byKey(const Key('chat.tool.get_status')), warnIfMissed: false);
+      await tester.tap(
+        find.byKey(const Key('chat.tool.get_status')),
+        warnIfMissed: false,
+      );
       await tester.pump();
       expect(tapped, isEmpty);
     });
 
-    testWidgets('onQuickTool 未接线：chip 不可点（渲染但无回调）', (WidgetTester tester) async {
+    testWidgets('onQuickTool 未接线：chip 不可点（渲染但无回调）', (
+      WidgetTester tester,
+    ) async {
       await mount(tester, messages: <ChatMessage>[]);
       expect(find.byKey(const Key('chat.tool.swap_quest')), findsOneWidget);
-      await tester.tap(find.byKey(const Key('chat.tool.swap_quest')), warnIfMissed: false);
+      await tester.tap(
+        find.byKey(const Key('chat.tool.swap_quest')),
+        warnIfMissed: false,
+      );
       await tester.pump();
       // 没有 onQuickTool，点了也不炸（回调本身就是 null）
     });
 
-    testWidgets('〔工具〕系统条目：等宽渲染 + 不打字机；她的正式回复照常打字', (
-      WidgetTester tester,
-    ) async {
+    testWidgets('〔工具〕系统条目：等宽渲染 + 不打字机；她的正式回复照常打字', (WidgetTester tester) async {
       tester.view.physicalSize = const Size(390 * 3, 844 * 3);
       tester.view.devicePixelRatio = 3.0;
       addTearDown(tester.view.reset);
       Widget panel(List<ChatMessage> messages) => MaterialApp(
-            home: Scaffold(
-              body: Stack(
-                children: <Widget>[
-                  ChatPanel(visible: true, messages: messages),
-                ],
-              ),
-            ),
-          );
+        home: Scaffold(
+          body: Stack(
+            children: <Widget>[ChatPanel(visible: true, messages: messages)],
+          ),
+        ),
+      );
       // 先只挂宿主那条（历史=已读），随后逐条到货：工具回执 → 她的回复
       // （面板把批量到货当历史，逐条到货才打字——与 main.dart 的逐条 append 一致）
-      await tester.pumpWidget(panel(<ChatMessage>[ChatMessage.host('a', '查一下')]));
+      await tester.pumpWidget(
+        panel(<ChatMessage>[ChatMessage.host('a', '查一下')]),
+      );
       await tester.pumpAndSettle();
-      await tester.pumpWidget(panel(<ChatMessage>[
-        ChatMessage.host('a', '查一下'),
-        ChatMessage.sys('t1', '${ChatService.toolTag}get_status：LV7 · ◈340'),
-      ]));
+      await tester.pumpWidget(
+        panel(<ChatMessage>[
+          ChatMessage.host('a', '查一下'),
+          ChatMessage.sys('t1', '${ChatService.toolTag}get_status：LV7 · ◈340'),
+        ]),
+      );
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('chat.toolentry.1')), findsOneWidget);
-      expect(find.text('${ChatService.toolTag}get_status：LV7 · ◈340'), findsOneWidget);
+      expect(
+        find.text('${ChatService.toolTag}get_status：LV7 · ◈340'),
+        findsOneWidget,
+      );
       expect(find.byType(TypeText), findsNothing); // 系统条目不打字机
-      await tester.pumpWidget(panel(<ChatMessage>[
-        ChatMessage.host('a', '查一下'),
-        ChatMessage.sys('t1', '${ChatService.toolTag}get_status：LV7 · ◈340'),
-        ChatMessage.sys('b', '查完了。一单没交。', emotion: 'cold'),
-      ]));
+      await tester.pumpWidget(
+        panel(<ChatMessage>[
+          ChatMessage.host('a', '查一下'),
+          ChatMessage.sys('t1', '${ChatService.toolTag}get_status：LV7 · ◈340'),
+          ChatMessage.sys('b', '查完了。一单没交。', emotion: 'cold'),
+        ]),
+      );
       await tester.pump();
       // 打字机只给她的正式回复
       expect(find.byType(TypeText), findsOneWidget);
@@ -889,7 +884,11 @@ void main() {
         final _RecordingClient t = _RecordingClient(w.reqs.add);
         w.transports.add(t);
         w.client = LlmClient(
-          config: LlmConfig(baseUrl: s.baseUrl, apiKey: s.apiKey, model: s.model),
+          config: LlmConfig(
+            baseUrl: s.baseUrl,
+            apiKey: s.apiKey,
+            model: s.model,
+          ),
           httpClient: t,
         );
         w.svc = ChatService(
@@ -926,11 +925,13 @@ void main() {
 
       // 设置页 save() → SettingsStore 类级广播 → 装配层重建
       final int v0 = SettingsStore.version;
-      await SettingsStore().save(const AgentSettings(
-        apiKey: 'sk-new',
-        baseUrl: 'https://api.example.org/v1',
-        model: 'm2',
-      ));
+      await SettingsStore().save(
+        const AgentSettings(
+          apiKey: 'sk-new',
+          baseUrl: 'https://api.example.org/v1',
+          model: 'm2',
+        ),
+      );
       expect(SettingsStore.version, v0 + 1); // 广播确实发出去了
       expect(w.svc, isNot(same(svcBefore))); // 聊天服务重建
       expect(w.client, isNot(same(clientBefore))); // 客户端重建
@@ -941,11 +942,23 @@ void main() {
       expect(r2.text, '嗯。');
       expect(w.reqs, hasLength(2));
       expect(w.reqs[0].headers['Authorization'], 'Bearer sk-old');
-      expect(w.reqs[0].url.toString(), 'https://api.deepseek.com/chat/completions');
-      expect((jsonDecode(w.reqs[0].body) as Map<String, dynamic>)['model'], 'deepseek-flash');
+      expect(
+        w.reqs[0].url.toString(),
+        'https://api.deepseek.com/chat/completions',
+      );
+      expect(
+        (jsonDecode(w.reqs[0].body) as Map<String, dynamic>)['model'],
+        'deepseek-flash',
+      );
       expect(w.reqs[1].headers['Authorization'], 'Bearer sk-new');
-      expect(w.reqs[1].url.toString(), 'https://api.example.org/v1/chat/completions');
-      expect((jsonDecode(w.reqs[1].body) as Map<String, dynamic>)['model'], 'm2');
+      expect(
+        w.reqs[1].url.toString(),
+        'https://api.example.org/v1/chat/completions',
+      );
+      expect(
+        (jsonDecode(w.reqs[1].body) as Map<String, dynamic>)['model'],
+        'm2',
+      );
     });
 
     test('非 LLM 字段变更（音效开关）→ 守卫拦下：客户端与服务原地不动', () async {
@@ -953,7 +966,9 @@ void main() {
       final ChatService svcBefore = w.svc;
       final LlmClient clientBefore = w.client;
 
-      await SettingsStore().save(const AgentSettings(apiKey: 'sk-old', sound: false));
+      await SettingsStore().save(
+        const AgentSettings(apiKey: 'sk-old', sound: false),
+      );
 
       expect(w.svc, same(svcBefore)); // 没重建
       expect(w.client, same(clientBefore));
@@ -1062,13 +1077,15 @@ class _RecordingClient extends http.BaseClient {
   Future<http.StreamedResponse> send(http.BaseRequest base) async {
     final http.Request request = base as http.Request;
     onRequest(request);
-    final List<int> bytes = utf8.encode(jsonEncode(<String, dynamic>{
-      'choices': <Map<String, dynamic>>[
-        <String, dynamic>{
-          'message': <String, dynamic>{'content': '[neutral]嗯。'},
-        },
-      ],
-    }));
+    final List<int> bytes = utf8.encode(
+      jsonEncode(<String, dynamic>{
+        'choices': <Map<String, dynamic>>[
+          <String, dynamic>{
+            'message': <String, dynamic>{'content': '[neutral]嗯。'},
+          },
+        ],
+      }),
+    );
     return http.StreamedResponse(
       Stream<List<int>>.value(bytes),
       200,

@@ -68,9 +68,7 @@ void main() {
     expect(r.top, greaterThan(0));
   });
 
-  testWidgets('没有键盘时：输入框贴底 34（原型 #ask 的位置不变）', (
-    WidgetTester tester,
-  ) async {
+  testWidgets('没有键盘时：输入框贴底 34（原型 #ask 的位置不变）', (WidgetTester tester) async {
     tester.view.physicalSize = const Size(390 * 3, 844 * 3);
     tester.view.devicePixelRatio = 3;
     addTearDown(tester.view.reset);
@@ -79,9 +77,7 @@ void main() {
       const MaterialApp(
         home: Scaffold(
           body: Stack(
-            children: <Widget>[
-              AskField(prompt: '目标 ›', visible: true),
-            ],
+            children: <Widget>[AskField(prompt: '目标 ›', visible: true)],
           ),
         ),
       ),
@@ -108,9 +104,7 @@ void main() {
         const MaterialApp(
           home: Scaffold(
             body: Stack(
-              children: <Widget>[
-                AskField(prompt: '目标 ›', visible: true),
-              ],
+              children: <Widget>[AskField(prompt: '目标 ›', visible: true)],
             ),
           ),
         ),
@@ -150,9 +144,7 @@ void main() {
   // 连布局都不占，取消彻底消失。现在取消 = 输入幕左上那颗常驻 44 圆（挂 main.dart），
   // 牌列只负责预设 / 入口牌 —— 绑定仪式本来就该没有取消。
   group('M-24 换目标：牌列不再出取消牌', () {
-    testWidgets('预设 + 入口牌就是全部；没有「算了，不换」那一张', (
-      WidgetTester tester,
-    ) async {
+    testWidgets('预设 + 入口牌就是全部；没有「算了，不换」那一张', (WidgetTester tester) async {
       int cancels = 0;
       int entries = 0;
       tester.view.physicalSize = const Size(390 * 3, 844 * 3);

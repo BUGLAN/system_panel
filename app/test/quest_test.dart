@@ -136,10 +136,7 @@ void main() {
 
     test('六维后缀跟在金币后面（板面那一行的完整形状）', () {
       expect(
-        Quest.lootTextOf(
-          rank: 'C',
-          attrs: const <String, int>{'体': 1, '力': 1},
-        ),
+        Quest.lootTextOf(rank: 'C', attrs: const <String, int>{'体': 1, '力': 1}),
         'EXP 4 · ◈ 5体+1 力+1',
       );
       expect(Quest.lootTextOf(rank: 'C'), 'EXP 4 · ◈ 5');

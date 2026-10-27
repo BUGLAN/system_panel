@@ -123,20 +123,22 @@ class LineLayer extends StatefulWidget {
   final double bottomFloor;
 
   /// `MOOD_LABEL` 的逆映射：中文标签 → 情绪（`content.js` L421-424）
-  static String _emotionOfMood(String mood) => const <String, String>{
-    '待机': 'neutral',
-    '嫌弃': 'smug',
-    '冷淡': 'cold',
-    '不爽': 'annoyed',
-    '尚可': 'pleased',
-    '别扭': 'tsun',
-    '……开心': 'joy',
-    '意外': 'surprised',
-    '失望': 'sad',
-    '监视': 'focus',
-    '休眠': 'sleep',
-    '认可': 'proud',
-  }[mood] ?? 'neutral';
+  static String _emotionOfMood(String mood) =>
+      const <String, String>{
+        '待机': 'neutral',
+        '嫌弃': 'smug',
+        '冷淡': 'cold',
+        '不爽': 'annoyed',
+        '尚可': 'pleased',
+        '别扭': 'tsun',
+        '……开心': 'joy',
+        '意外': 'surprised',
+        '失望': 'sad',
+        '监视': 'focus',
+        '休眠': 'sleep',
+        '认可': 'proud',
+      }[mood] ??
+      'neutral';
 
   /// `[[…]]` 是语法标记、不上屏 —— 计长度与行数时剔掉
   static String _plain(String s) => s.replaceAll('[[', '').replaceAll(']]', '');
@@ -233,10 +235,7 @@ class _LineLayerState extends State<LineLayer>
             ignoring: k < .999,
             child: Opacity(
               opacity: k,
-              child: Transform.translate(
-                offset: Offset(0, dy),
-                child: child,
-              ),
+              child: Transform.translate(offset: Offset(0, dy), child: child),
             ),
           ),
         );
@@ -327,9 +326,7 @@ class _LineLayerState extends State<LineLayer>
               _who(whoColor, bar),
               const SizedBox(height: 6),
               ConstrainedBox(
-                constraints: const BoxConstraints(
-                  minHeight: 26.86,
-                ), // 1.58em
+                constraints: const BoxConstraints(minHeight: 26.86), // 1.58em
                 child: DefaultTextStyle(
                   // ⚠️ 打字机（type_text.dart）自己不给 `Text.rich` 传 maxLines，
                   //    Text.build 的规则是 `maxLines ?? defaultTextStyle.maxLines`、

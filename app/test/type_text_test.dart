@@ -204,10 +204,10 @@ void main() {
       // 修了 = 停在已显形的那些字）。上面那条只覆盖 mount-skip，这条覆盖 mid-flight。
       final List<String> seen = <String>[];
       Widget build(int skip) => MaterialApp(
-            home: Scaffold(
-              body: TypeText(text: '一二三四五六七八', skipToken: skip, onChar: seen.add),
-            ),
-          );
+        home: Scaffold(
+          body: TypeText(text: '一二三四五六七八', skipToken: skip, onChar: seen.add),
+        ),
+      );
       await tester.pumpWidget(build(0));
       await tester.pump();
       for (int i = 0; i < 5; i++) {
@@ -220,11 +220,7 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 200));
 
-      expect(
-        seen.length,
-        before,
-        reason: '跳过后不该再喂任何字（更不该把剩余 8 个一次喂光）',
-      );
+      expect(seen.length, before, reason: '跳过后不该再喂任何字（更不该把剩余 8 个一次喂光）');
       expect(_alphas(tester).every((double a) => a == 1), isTrue);
     });
 

@@ -223,6 +223,7 @@ class _CardTableState extends State<CardTable> with TickerProviderStateMixin {
     _lastDealSounded = true;
     Sfx.play('deal', variant: 4);
   }
+
   double _enterP(int i, double ms) {
     final double start = _stagger * i;
     if (ms <= start) return 0;
@@ -402,7 +403,8 @@ class _CardTableState extends State<CardTable> with TickerProviderStateMixin {
     // 地台光连成同一套光源语言。单个渐变，不做 blur。
     final int leadI = _rail.lead.clamp(0, _n - 1);
     final Color pool = widget.cards[leadI].accent ?? C.blue;
-    final double poolOp = (_enter.value).clamp(0.0, 1.0) * (1 - frac.abs() * .6);
+    final double poolOp =
+        (_enter.value).clamp(0.0, 1.0) * (1 - frac.abs() * .6);
     final Widget body = Transform.rotate(
       angle: tilt,
       child: Stack(
@@ -492,7 +494,9 @@ class _CardTableState extends State<CardTable> with TickerProviderStateMixin {
     final double stampScale = st <= 0
         ? 1.0
         : (st < .3
-              ? 1 + .02 * (st / .3) // 压入
+              ? 1 +
+                    .02 *
+                        (st / .3) // 压入
               : 1.02 - .02 * ((st - .3) / .7)); // 回落
     final double flash = st <= 0
         ? 0
@@ -551,7 +555,9 @@ class _CardTableState extends State<CardTable> with TickerProviderStateMixin {
                 // docs/39 M-06：换领位时外辉 200ms 淡入。`sweep` 就是那 520ms 的
                 // 一次性进度，它的前 200/520 ≈ .38 正好当外辉的淡入段用 ——
                 // 不额外开一个 controller（牌桌已经有三个）。
-                leadT: isLead ? (reduce ? 1.0 : (sweep / .38).clamp(0.0, 1.0)) : 1,
+                leadT: isLead
+                    ? (reduce ? 1.0 : (sweep / .38).clamp(0.0, 1.0))
+                    : 1,
                 // docs/39 M-09：只有 duty 的执行中会画光包（其余皮肤不看这个字段）
                 run: widget.run,
                 foilLevel: Fidelity.rich(context) ? 1 : 0,
@@ -577,7 +583,7 @@ const double kPressDim = .86;
 ///     现在按下态是这一张牌的私有 state，`setState` 的作用域只到它自己。
 ///  2. **重绘隔离**。牌面是 ClipPath + GlassPainter + 两层大半径 boxShadow，
 ///     旧版没有任何 RepaintBoundary，于是整屏任何一次重绘
-///     （环场、粒子、Live2D 平台视图都在动）都会把这 8 张牌重新光栅化一遍。
+///     （粒子与光效都在动）都会把这 8 张牌重新光栅化一遍。
 ///     加边界后这一层被缓存，只有它自己的内容变了才重绘。
 ///
 /// ⚠️ 缩放仍走 `Transform`（不改布局、不重排），与旧版一致；
@@ -819,14 +825,22 @@ class _PoolPainter extends CustomPainter {
     );
     canvas.restore();
     // 台面反光线
-    final Rect line = Rect.fromCenter(center: c, width: s.width * .62, height: 1.2);
+    final Rect line = Rect.fromCenter(
+      center: c,
+      width: s.width * .62,
+      height: 1.2,
+    );
     canvas.drawRect(
       line,
       Paint()
         ..shader = LinearGradient(
           colors: <Color>[
             color.withAlpha(0),
-            Color.lerp(color, Colors.white, .5)!.withAlpha((150 * opacity).round()),
+            Color.lerp(
+              color,
+              Colors.white,
+              .5,
+            )!.withAlpha((150 * opacity).round()),
             color.withAlpha(0),
           ],
         ).createShader(line),

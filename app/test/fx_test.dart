@@ -153,12 +153,12 @@ void main() {
       expect(s900.flash, 0);
     });
 
-    testWidgets('HUD 装配：升级那拍白闪出现、级数切换、闪完归静', (
-      WidgetTester tester,
-    ) async {
+    testWidgets('HUD 装配：升级那拍白闪出现、级数切换、闪完归静', (WidgetTester tester) async {
       HostState state = HostState.empty.copyWith(lv: 1, exp: 12); // 12/18
       Widget host() => MaterialApp(
-        home: Scaffold(body: Stack(children: <Widget>[Hud(state: state)])),
+        home: Scaffold(
+          body: Stack(children: <Widget>[Hud(state: state)]),
+        ),
       );
       await tester.pumpWidget(host());
       await tester.pump();
@@ -185,7 +185,9 @@ void main() {
       bool vis = true;
       Widget host() => MaterialApp(
         home: Scaffold(
-          body: Stack(children: <Widget>[Hud(state: state, visible: vis)]),
+          body: Stack(
+            children: <Widget>[Hud(state: state, visible: vis)],
+          ),
         ),
       );
       await tester.pumpWidget(host());
@@ -206,9 +208,8 @@ void main() {
   //
   // 三个点各 600ms 循环 opacity .35→1、相位差 200ms（MOTION-ANALYSIS §3）。
   group('LLM 思考态呼吸（t26/P2-3）', () {
-    double opOf(WidgetTester tester, int i) => tester
-        .widget<Opacity>(find.byKey(Key('chat.thinking.dot.$i')))
-        .opacity;
+    double opOf(WidgetTester tester, int i) =>
+        tester.widget<Opacity>(find.byKey(Key('chat.thinking.dot.$i'))).opacity;
 
     Future<void> mount(WidgetTester tester) async {
       await tester.pumpWidget(
@@ -224,9 +225,7 @@ void main() {
       );
     }
 
-    testWidgets('三颗点循环呼吸：谷底 .35、峰值 1、相位差 1/3 循环', (
-      WidgetTester tester,
-    ) async {
+    testWidgets('三颗点循环呼吸：谷底 .35、峰值 1、相位差 1/3 循环', (WidgetTester tester) async {
       await mount(tester);
       await tester.pump(); // 相位 0（不推时钟）
       expect(opOf(tester, 0), closeTo(.35, .01)); // 谷底
@@ -272,7 +271,7 @@ FlashPainter? _flashPaint(WidgetTester tester) {
 /// 取出震屏偏移。
 ///
 /// ⚠️ **不抖的时候 `ShakeLayer` 根本不套 `Transform`** —— 这不是省事，是必须：
-/// 这层包住整个 App（含 Live2D 平台视图），而平台视图**无法应用任意变换**，
+/// 这层包住整个 App，**任意变换会连带重挂整棵子树**，
 /// 祖先链上只要有一个 `Transform`，合成器就干脆不合成它
 /// （症状：模型加载成功、渲染循环在跑、视图也在层级里，屏幕上却什么都没有）。
 /// 所以"没有 Transform"就等于偏移 0。
