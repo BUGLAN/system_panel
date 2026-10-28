@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
@@ -75,8 +76,9 @@ class RefTCardData {
   }
 
   String? get km {
-    final RegExpMatch? m = RegExp(r'(\d+(?:\.\d+)?)\s*(?:公里|km|KM|千米)')
-        .firstMatch(title);
+    final RegExpMatch? m = RegExp(
+      r'(\d+(?:\.\d+)?)\s*(?:公里|km|KM|千米)',
+    ).firstMatch(title);
     return m?.group(1);
   }
 }
@@ -166,10 +168,9 @@ class _RefTCardState extends State<RefTCard> with TickerProviderStateMixin {
   /// 卡面常驻动效的时钟（秒）—— 只有焦点卡在走，其余定格（参考稿
   /// `animation-play-state: paused`），十张卡不会一起重画。
   final ValueNotifier<double> _t = ValueNotifier<double>(0);
-  late final Ticker _ticker = createTicker((Duration e) {
-    _t.value = _t0 + e.inMicroseconds / 1e6;
-  });
+  Timer? _tTimer;
   double _t0 = 0;
+  double _tAccum = 0;
 
   bool get _showBack => widget.sealed || widget.flipped;
 
@@ -200,17 +201,22 @@ class _RefTCardState extends State<RefTCard> with TickerProviderStateMixin {
         .accessibilityFeatures
         .disableAnimations;
     final bool want = widget.focus && !reduce;
-    if (want && !_ticker.isActive) {
+    if (want && _tTimer == null) {
       _t0 = _t.value;
-      _ticker.start();
-    } else if (!want && _ticker.isActive) {
-      _ticker.stop();
+      _tAccum = 0;
+      _tTimer = Timer.periodic(const Duration(milliseconds: 50), (_) {
+        _tAccum += .05;
+        _t.value = _t0 + _tAccum;
+      });
+    } else if (!want && _tTimer != null) {
+      _tTimer?.cancel();
+      _tTimer = null;
     }
   }
 
   @override
   void dispose() {
-    _ticker.dispose();
+    _tTimer?.cancel();
     _flip.dispose();
     _t.dispose();
     super.dispose();
@@ -2235,8 +2241,9 @@ class _SealBgPainter extends CustomPainter {
       c,
       rr,
       Paint()
-        ..shader = RadialGradient(colors: <Color>[Ref.a(gc, .24), Ref.a(gc, 0)])
-            .createShader(Rect.fromCircle(center: c, radius: rr)),
+        ..shader = RadialGradient(
+          colors: <Color>[Ref.a(gc, .24), Ref.a(gc, 0)],
+        ).createShader(Rect.fromCircle(center: c, radius: rr)),
     );
   }
 
@@ -2557,12 +2564,12 @@ class RefPedestal extends StatefulWidget {
   State<RefPedestal> createState() => _RefPedestalState();
 }
 
-class _RefPedestalState extends State<RefPedestal>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _c = AnimationController(
-    vsync: this,
-    duration: const Duration(seconds: 208), // 16 与 26 的公倍数
-  );
+class _RefPedestalState extends State<RefPedestal> {
+  /// 208s 的光台旋转是极慢环境动画。用 Timer 10fps 推进，而不是
+  /// 60fps Ticker：后者即使画面不变也会每帧调度渲染，白白点亮 GPU。
+  Timer? _timer;
+  double _phase = 0;
+  final ValueNotifier<int> _rev = ValueNotifier<int>(0);
 
   @override
   void initState() {
@@ -2572,13 +2579,17 @@ class _RefPedestalState extends State<RefPedestal>
         .platformDispatcher
         .accessibilityFeatures
         .disableAnimations) {
-      _c.repeat();
+      _timer = Timer.periodic(const Duration(milliseconds: 100), (_) {
+        _phase = (_phase + .1) % 208;
+        _rev.value++;
+      });
     }
   }
 
   @override
   void dispose() {
-    _c.dispose();
+    _timer?.cancel();
+    _rev.dispose();
     super.dispose();
   }
 
@@ -2589,7 +2600,11 @@ class _RefPedestalState extends State<RefPedestal>
       duration: const Duration(milliseconds: 450),
       builder: (BuildContext _, Color? pc, Widget? _) => RepaintBoundary(
         child: CustomPaint(
-          painter: _PedPainter(color: pc ?? widget.color, t: _c),
+          painter: _PedPainter(
+            color: pc ?? widget.color,
+            phase: () => _phase,
+            repaint: _rev,
+          ),
         ),
       ),
     );
@@ -2597,9 +2612,10 @@ class _RefPedestalState extends State<RefPedestal>
 }
 
 class _PedPainter extends CustomPainter {
-  _PedPainter({required this.color, required this.t}) : super(repaint: t);
+  _PedPainter({required this.color, required this.phase, Listenable? repaint})
+    : super(repaint: repaint);
   final Color color;
-  final Animation<double> t;
+  final double Function() phase;
 
   @override
   void paint(Canvas canvas, Size s) {
@@ -2667,7 +2683,7 @@ class _PedPainter extends CustomPainter {
     );
     canvas.restore();
     // 两圈 rotateX(78°)：竖向压到 cos78 ≈ .208
-    final double sec = t.value * 208;
+    final double sec = phase();
     final Offset c = ped.center;
     void ring(double d, double speed, bool dashed, double op, double dir) {
       final double rx = d / 2;

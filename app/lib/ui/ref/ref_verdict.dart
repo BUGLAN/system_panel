@@ -5,6 +5,7 @@ import 'dart:ui' show ImageFilter;
 import 'package:flutter/material.dart';
 
 import '../../design/ref.dart';
+import '../../widgets/frame_throttle.dart';
 import 'ref_kit.dart';
 
 /// ═══════════════════════════════════════════════════════════
@@ -1108,7 +1109,18 @@ class _VerifierCoreState extends State<_VerifierCore>
     duration: const Duration(milliseconds: 3200),
   );
 
+  /// 7s 自转 + 3.2s 呼吸，30fps 足够；结算页已经有大量一次性动画，
+  /// 别让这枚小核心再贡献 60fps 的 CustomPaint 重绘。
+  late final FrameThrottle _paintTick = FrameThrottle(33);
+
   bool _set = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _spin.addListener(_paintTick.pulse);
+    _breath.addListener(_paintTick.pulse);
+  }
 
   @override
   void didChangeDependencies() {
@@ -1127,6 +1139,9 @@ class _VerifierCoreState extends State<_VerifierCore>
 
   @override
   void dispose() {
+    _spin.removeListener(_paintTick.pulse);
+    _breath.removeListener(_paintTick.pulse);
+    _paintTick.dispose();
     _spin.dispose();
     _breath.dispose();
     super.dispose();
@@ -1137,13 +1152,15 @@ class _VerifierCoreState extends State<_VerifierCore>
     return SizedBox(
       width: widget.size,
       height: widget.size,
-      child: AnimatedBuilder(
-        animation: _breath,
-        builder: (BuildContext context, Widget? child) {
-          return CustomPaint(
-            painter: _CorePainter(spin: _spin.value, breath: _breath.value),
-          );
-        },
+      child: RepaintBoundary(
+        child: AnimatedBuilder(
+          animation: _paintTick,
+          builder: (BuildContext context, Widget? child) {
+            return CustomPaint(
+              painter: _CorePainter(spin: _spin.value, breath: _breath.value),
+            );
+          },
+        ),
       ),
     );
   }

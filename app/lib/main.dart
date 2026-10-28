@@ -1398,26 +1398,31 @@ class _AppShellState extends State<AppShell>
                     ),
                     // 换目标 · 问新目标（TODO-01）：主线页「换目标」→ 这一层
                     // （旧主线单先不动；确定才走 `flow.newGoal` 落库）
-                    AskField(
-                      prompt: '新目标 ›',
-                      placeholder: '比如：半年减重 10 斤',
-                      presets: const <String>[
-                        '半年减重 10 斤',
-                        '三个月跑完半马',
-                        '一个月早睡早起',
-                        '考研上岸',
-                      ],
-                      controller: _goalAsk,
-                      focusNode: _goalAskFocus,
-                      visible: _goalChangeOn,
-                      bottomInset: MediaQuery.viewInsetsOf(context).bottom,
-                      onPreset: (String v) => _goalAsk.text = v,
-                      onSubmit: _onGoalChangeSubmitted,
-                      // docs/39 M-24：取消**不再走牌列**（原来在牌列最右、被屏宽裁掉一半，
-                      // 键盘一弹整条牌列退场就彻底没有退路）。现在取消 = 输入幕左上那颗
-                      // 常驻 44 圆（见下面 `ask.cancel` 的挂载），_cancelGoalChange 由它调。
-                      // 「先问小祥」仍是**入口牌**：开对话、不填输入框（§4.B.2）
-                      onEntry: _enterAskXiang,
+                    // ⚠️ 用 Builder 把 viewInsets 依赖锁在这一小块：
+                    // 直接在主壳 build 里读 MediaQuery.viewInsetsOf 会让键盘每
+                    // 动画一帧都重建整个 AppShell（含天幕/主页/所有覆盖层）。
+                    Builder(
+                      builder: (BuildContext askCtx) => AskField(
+                        prompt: '新目标 ›',
+                        placeholder: '比如：半年减重 10 斤',
+                        presets: const <String>[
+                          '半年减重 10 斤',
+                          '三个月跑完半马',
+                          '一个月早睡早起',
+                          '考研上岸',
+                        ],
+                        controller: _goalAsk,
+                        focusNode: _goalAskFocus,
+                        visible: _goalChangeOn,
+                        bottomInset: MediaQuery.viewInsetsOf(askCtx).bottom,
+                        onPreset: (String v) => _goalAsk.text = v,
+                        onSubmit: _onGoalChangeSubmitted,
+                        // docs/39 M-24：取消**不再走牌列**（原来在牌列最右、被屏宽裁掉一半，
+                        // 键盘一弹整条牌列退场就彻底没有退路）。现在取消 = 输入幕左上那颗
+                        // 常驻 44 圆（见下面 `ask.cancel` 的挂载），_cancelGoalChange 由它调。
+                        // 「先问小祥」仍是**入口牌**：开对话、不填输入框（§4.B.2）
+                        onEntry: _enterAskXiang,
+                      ),
                     ),
                     // v3 LLM 设置（参考稿未覆盖，按「补全缺失组件」要求新增）：
                     // Base URL / ApiKey / 模型 / 温度 / 上下文 / 流式 / 测试 / 保存。
@@ -1671,7 +1676,8 @@ class _AppShellState extends State<AppShell>
                           child: Center(
                             child: RefModal(
                               title: '重置存档？',
-                              body: '一切从「开机成功」重新开始。等级、晶核、名牒、主线、她记住的你 —— 全部清空。这项操作不可撤销。',
+                              body:
+                                  '一切从「开机成功」重新开始。等级、晶核、名牒、主线、她记住的你 —— 全部清空。这项操作不可撤销。',
                               yes: '确定重置',
                               no: '再想想',
                               onPick: (bool yes) {

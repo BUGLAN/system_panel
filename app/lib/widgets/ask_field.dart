@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -131,9 +132,15 @@ class _AskFieldState extends State<AskField> {
   /// 空输入点确定时的**内联**提示（§4.B.4：不许弹窗）
   String? _error;
 
+  /// 收起动画期间仍保留牌列；动画结束后整块卸掉，避免大厅常驻
+  /// 一桌看不见的 CardTable（每张都是 ClipPath + GlassPainter + 大阴影）。
+  bool _present = false;
+  Timer? _hideTimer;
+
   @override
   void initState() {
     super.initState();
+    _present = widget.visible;
     _bind();
   }
 
@@ -165,14 +172,23 @@ class _AskFieldState extends State<AskField> {
     }
     // 整块收起来（换目标关了 / 绑定仪式走了）：选中值与报错都归零，
     // 下次打开是一张干净的脸。
-    if (old.visible && !widget.visible) {
-      _picked = null;
-      _error = null;
+    if (old.visible != widget.visible) {
+      _hideTimer?.cancel();
+      if (widget.visible) {
+        if (!_present) setState(() => _present = true);
+      } else {
+        _picked = null;
+        _error = null;
+        _hideTimer = Timer(const Duration(milliseconds: 520), () {
+          if (mounted && !widget.visible) setState(() => _present = false);
+        });
+      }
     }
   }
 
   @override
   void dispose() {
+    _hideTimer?.cancel();
     _unbind();
     super.dispose();
   }
@@ -278,7 +294,7 @@ class _AskFieldState extends State<AskField> {
     final List<TableCard> cards = _cards();
     // 键盘一弹，整块被 bottomInset 顶上去；牌列再跟着上就是压她的脸 ——
     // 所以键盘态**连布局都不占**（§4.B.5 / §1.3 硬约束 4）。
-    final bool railOn = cards.isNotEmpty && !_keyboardUp;
+    final bool railOn = _present && cards.isNotEmpty && !_keyboardUp;
 
     return Positioned(
       left: 20,

@@ -24,13 +24,18 @@ class RefDeviceFrame extends StatelessWidget {
         final double w = math.min(c.maxWidth, Ref.deviceMaxW);
         final double h = math.min(c.maxHeight, Ref.deviceMaxH);
         final bool framed = c.maxWidth >= 600 || c.maxHeight >= 960;
+        final Widget content = ColoredBox(color: Ref.bg, child: child);
         final Widget screen = SizedBox(
           width: w,
           height: h,
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(framed ? 44 : 0),
-            child: ColoredBox(color: Ref.bg, child: child),
-          ),
+          // 手机全屏时没有圆角，别为 0 圆角再套一层 ClipRRect：
+          // ClipRRect 会在每帧多一个 clip/saveLayer 图层。
+          child: framed
+              ? ClipRRect(
+                  borderRadius: BorderRadius.circular(44),
+                  child: content,
+                )
+              : content,
         );
         if (!framed) return screen;
         // L39：外框 1px 白 9% + 11px 深色 + 12px 白 7% + 两个大范围辉光

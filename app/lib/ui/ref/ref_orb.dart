@@ -2,7 +2,9 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../../design/fidelity.dart';
 import '../../design/ref.dart';
+import '../../widgets/frame_throttle.dart';
 
 /// .task-orb（L174-186）—— 大厅右下那颗会呼吸的酸绿委托球。
 ///
@@ -40,13 +42,35 @@ class _RefTaskOrbState extends State<RefTaskOrb> with TickerProviderStateMixin {
     vsync: this,
     duration: const Duration(seconds: 2),
   );
+
+  /// 18s 环 + 2s 扩散环，30fps 提交看不出差异；60fps 会让委托球
+  /// 每帧重建两层 AnimatedBuilder（含大半径 boxShadow）。
+  late final FrameThrottle _paintTick = FrameThrottle(33);
+
   bool _down = false;
+  bool _reduce = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _spin.addListener(_paintTick.pulse);
+    _pulse.addListener(_paintTick.pulse);
+    Fidelity.lowPower.addListener(_onFidelityChanged);
+  }
+
+  void _onFidelityChanged() {
+    if (mounted) _syncMotion();
+  }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final bool reduce = MediaQuery.maybeDisableAnimationsOf(context) ?? false;
-    if (reduce) {
+    _reduce = MediaQuery.maybeDisableAnimationsOf(context) ?? false;
+    _syncMotion();
+  }
+
+  void _syncMotion() {
+    if (_reduce || Fidelity.lowPower.value) {
       _spin.stop();
       _pulse.stop();
       return;
@@ -57,6 +81,10 @@ class _RefTaskOrbState extends State<RefTaskOrb> with TickerProviderStateMixin {
 
   @override
   void dispose() {
+    Fidelity.lowPower.removeListener(_onFidelityChanged);
+    _spin.removeListener(_paintTick.pulse);
+    _pulse.removeListener(_paintTick.pulse);
+    _paintTick.dispose();
     _spin.dispose();
     _pulse.dispose();
     super.dispose();
@@ -80,131 +108,135 @@ class _RefTaskOrbState extends State<RefTaskOrb> with TickerProviderStateMixin {
           child: SizedBox(
             width: s,
             height: s,
-            child: Stack(
-              alignment: Alignment.center,
-              children: <Widget>[
-                AnimatedBuilder(
-                  animation: _spin,
-                  builder: (BuildContext _, Widget? _) => Transform.rotate(
-                    angle: _spin.value * 2 * math.pi,
-                    child: CustomPaint(
-                      size: Size.square(s),
-                      painter: const _OrbRingsPainter(),
+            child: RepaintBoundary(
+              child: Stack(
+                alignment: Alignment.center,
+                children: <Widget>[
+                  AnimatedBuilder(
+                    animation: _paintTick,
+                    builder: (BuildContext _, Widget? _) => Transform.rotate(
+                      angle: _spin.value * 2 * math.pi,
+                      child: CustomPaint(
+                        size: Size.square(s),
+                        painter: const _OrbRingsPainter(),
+                      ),
                     ),
                   ),
-                ),
-                AnimatedBuilder(
-                  animation: _pulse,
-                  builder: (BuildContext _, Widget? _) {
-                    final double k = _pulse.value;
-                    return Opacity(
-                      opacity: (1 - k).clamp(0.0, 1.0) * .8,
-                      child: Transform.scale(
-                        scale: 1 + .5 * k,
-                        child: Container(
-                          width: s - 24,
-                          height: s - 24,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            border: Border.all(color: Ref.acid, width: 2),
-                          ),
-                        ),
-                      ),
-                    );
-                  },
-                ),
-                Container(
-                  width: s - 24,
-                  height: s - 24,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: const RadialGradient(
-                      center: Alignment(-.3, -.44),
-                      radius: .78,
-                      colors: <Color>[
-                        Color(0xFFFBFFD8),
-                        Ref.acid,
-                        Color(0xFF7FAE00),
-                      ],
-                      stops: <double>[0, .35, 1],
-                    ),
-                    boxShadow: <BoxShadow>[
-                      BoxShadow(
-                        color: Ref.a(Ref.acid, _down ? .8 : .55),
-                        blurRadius: _down ? 70 : 40,
-                      ),
-                    ],
-                  ),
-                  child: Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: <Widget>[
-                        Text(
-                          widget.label,
-                          style: refText(
-                            family: Ref.fc,
-                            size: 30,
-                            wght: 900,
-                            ls: 2,
-                            height: 1,
-                            color: Ref.onAccent,
-                          ),
-                        ),
-                        if (widget.small.isNotEmpty) ...<Widget>[
-                          const SizedBox(height: 4),
-                          Text(
-                            widget.small,
-                            style: refText(
-                              family: Ref.fm,
-                              size: 10,
-                              wght: 700,
-                              ls: 4,
-                              height: 1,
-                              color: Ref.onAccent.withAlpha(191),
+                  AnimatedBuilder(
+                    animation: _paintTick,
+                    builder: (BuildContext _, Widget? _) {
+                      final double k = _pulse.value;
+                      return Opacity(
+                        opacity: (1 - k).clamp(0.0, 1.0) * .8,
+                        child: Transform.scale(
+                          scale: 1 + .5 * k,
+                          child: Container(
+                            width: s - 24,
+                            height: s - 24,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              border: Border.all(color: Ref.acid, width: 2),
                             ),
                           ),
-                        ],
-                      ],
-                    ),
+                        ),
+                      );
+                    },
                   ),
-                ),
-                if (hasBadge)
-                  Positioned(
-                    top: 6,
-                    right: 6,
+                  RepaintBoundary(
                     child: Container(
-                      width: 34,
-                      height: 34,
+                      width: s - 24,
+                      height: s - 24,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        color: Colors.white,
+                        gradient: const RadialGradient(
+                          center: Alignment(-.3, -.44),
+                          radius: .78,
+                          colors: <Color>[
+                            Color(0xFFFBFFD8),
+                            Ref.acid,
+                            Color(0xFF7FAE00),
+                          ],
+                          stops: <double>[0, .35, 1],
+                        ),
                         boxShadow: <BoxShadow>[
                           BoxShadow(
-                            color: Ref.bg,
-                            spreadRadius: 4,
-                            blurRadius: 0,
-                          ),
-                          BoxShadow(
-                            color: Colors.white.withAlpha(128),
-                            blurRadius: 16,
+                            color: Ref.a(Ref.acid, _down ? .8 : .55),
+                            blurRadius: _down ? 70 : 40,
                           ),
                         ],
                       ),
                       child: Center(
-                        child: Text(
-                          '${widget.badge}',
-                          style: refText(
-                            family: Ref.fd,
-                            size: 17,
-                            wght: 700,
-                            height: 1,
-                            color: Ref.onAccent,
-                          ),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: <Widget>[
+                            Text(
+                              widget.label,
+                              style: refText(
+                                family: Ref.fc,
+                                size: 30,
+                                wght: 900,
+                                ls: 2,
+                                height: 1,
+                                color: Ref.onAccent,
+                              ),
+                            ),
+                            if (widget.small.isNotEmpty) ...<Widget>[
+                              const SizedBox(height: 4),
+                              Text(
+                                widget.small,
+                                style: refText(
+                                  family: Ref.fm,
+                                  size: 10,
+                                  wght: 700,
+                                  ls: 4,
+                                  height: 1,
+                                  color: Ref.onAccent.withAlpha(191),
+                                ),
+                              ),
+                            ],
+                          ],
                         ),
                       ),
                     ),
                   ),
-              ],
+                  if (hasBadge)
+                    Positioned(
+                      top: 6,
+                      right: 6,
+                      child: Container(
+                        width: 34,
+                        height: 34,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: Colors.white,
+                          boxShadow: <BoxShadow>[
+                            BoxShadow(
+                              color: Ref.bg,
+                              spreadRadius: 4,
+                              blurRadius: 0,
+                            ),
+                            BoxShadow(
+                              color: Colors.white.withAlpha(128),
+                              blurRadius: 16,
+                            ),
+                          ],
+                        ),
+                        child: Center(
+                          child: Text(
+                            '${widget.badge}',
+                            style: refText(
+                              family: Ref.fd,
+                              size: 17,
+                              wght: 700,
+                              height: 1,
+                              color: Ref.onAccent,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
             ),
           ),
         ),

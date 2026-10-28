@@ -3,7 +3,9 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
+import '../../design/fidelity.dart';
 import '../../design/ref.dart';
+import '../../widgets/slow_ticker.dart';
 
 /// ═══════════════════════════════════════════════════════════
 ///  天幕 —— 参考稿 .bg（CSS L41-53，DOM L681）
@@ -50,44 +52,34 @@ class RefBackground extends StatefulWidget {
   State<RefBackground> createState() => _RefBackgroundState();
 }
 
-class _RefBackgroundState extends State<RefBackground>
-    with TickerProviderStateMixin {
-  /// L42 animation:neb 16s ease-in-out infinite alternate
-  late final AnimationController _neb = AnimationController(
-    vsync: this,
-    duration: const Duration(seconds: 16),
-  );
-
-  /// L47 animation:floor 2.4s linear infinite
-  late final AnimationController _floor = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 2400),
-  );
-
-  /// L52 animation:grain .9s steps(4) infinite
-  late final AnimationController _grain = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 900),
-  );
-
-  late final CurvedAnimation _nebCurve = CurvedAnimation(
-    parent: _neb,
-    curve: Curves.easeInOut,
-  );
+class _RefBackgroundState extends State<RefBackground> {
+  /// 16s / 2.4s / 0.9s 的慢变化，10fps / 10fps / 4.4fps 足够。
+  /// 用 Timer 而不是 Ticker：Ticker 每个 vsync 都会排帧，即使画布没脏，
+  /// 也会让引擎空转；这三层是全屏绘制，空转成本很高。
+  late final SlowTicker _neb = SlowTicker(const Duration(milliseconds: 100));
+  late final SlowTicker _floor = SlowTicker(const Duration(milliseconds: 100));
+  late final SlowTicker _grain = SlowTicker(const Duration(milliseconds: 225));
 
   /// 预烘焙噪点（L52 的 160x160 feTurbulence）：只画一次，之后每帧只是位移
   ui.Image? _noise;
   bool _motion = false;
+  bool _reduce = false;
 
   @override
   void initState() {
     super.initState();
     _noise = _bakeNoise();
+    Fidelity.lowPower.addListener(_onFidelityChanged);
+  }
+
+  void _onFidelityChanged() {
+    if (mounted) _syncMotion();
   }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    _reduce = MediaQuery.maybeDisableAnimationsOf(context) ?? false;
     _syncMotion();
   }
 
@@ -97,36 +89,32 @@ class _RefBackgroundState extends State<RefBackground>
     _syncMotion();
   }
 
-  /// 循环的唯一开关：关掉 / 系统要求减少动效 → 一律落终态，不跑循环
+  /// 循环的唯一开关：关掉 / 减少动效 / 省电档 → 一律落终态，不跑循环
   void _syncMotion() {
-    final bool reduce = MediaQuery.maybeDisableAnimationsOf(context) ?? false;
-    final bool on = widget.animate && !reduce;
-    if (on == _motion) {
-      if (!on &&
-          (_neb.isAnimating || _floor.isAnimating || _grain.isAnimating)) {
-        _stopAll();
-      }
-      return;
-    }
+    final bool on = widget.animate && !_reduce && !Fidelity.lowPower.value;
+    if (on == _motion) return;
     _motion = on;
     if (on) {
-      _neb.repeat(reverse: true);
-      _floor.repeat();
-      _grain.repeat();
+      _neb.start();
+      _floor.start();
+      _grain.start();
     } else {
       _stopAll();
     }
   }
 
   void _stopAll() {
-    _neb.value = 0;
-    _floor.value = 0;
-    _grain.value = 0;
+    _neb.stop();
+    _floor.stop();
+    _grain.stop();
+    _neb.reset();
+    _floor.reset();
+    _grain.reset();
   }
 
   @override
   void dispose() {
-    _nebCurve.dispose();
+    Fidelity.lowPower.removeListener(_onFidelityChanged);
     _neb.dispose();
     _floor.dispose();
     _grain.dispose();
@@ -157,112 +145,125 @@ class _RefBackgroundState extends State<RefBackground>
 
   @override
   Widget build(BuildContext context) {
-    return ClipRect(
-      // L41 overflow:hidden
-      child: ColoredBox(
-        color: Ref.bg, // #app{background:var(--bg)} L38
-        child: LayoutBuilder(
-          builder: (BuildContext context, BoxConstraints box) {
-            final double w = box.maxWidth;
-            final double h = box.maxHeight;
-            return Stack(
-              fit: StackFit.expand,
-              children: <Widget>[
-                // ── .neb（L42）────────────────────────────────────
-                AnimatedBuilder(
-                  animation: _nebCurve,
-                  builder: (BuildContext context, Widget? child) {
-                    final double t = _nebCurve.value;
-                    // @keyframes neb{to{translate3d(5%,-4%,0) scale(1.1) rotate(5deg)}}
-                    // 百分比是 .neb 自身尺寸（= 容器 1.5 倍，因为 inset:-25%）
-                    final double dx = w * 1.5 * .05 * t;
-                    final double dy = -h * 1.5 * .04 * t;
-                    final double s = 1 + .1 * t;
-                    final double a = 5 * math.pi / 180 * t;
-                    return Transform(
-                      alignment: Alignment.center,
-                      transform: Matrix4.identity()
-                        ..translateByDouble(dx, dy, 0, 1)
-                        ..rotateZ(a)
-                        ..scaleByDouble(s, s, 1, 1),
-                      child: CustomPaint(
-                        painter: _NebPainter(accent: widget.accent),
-                      ),
-                    );
-                  },
-                ),
-                // ── .ghost（L49）──────────────────────────────────
-                IgnorePointer(
-                  child: CustomPaint(
-                    painter: _GhostPainter(text: widget.ghost),
-                  ),
-                ),
-                // ── .horizon（L48）────────────────────────────────
-                IgnorePointer(
-                  child: CustomPaint(
-                    painter: _HorizonPainter(accent: widget.accent),
-                  ),
-                ),
-                // ── .floor（L44-47）───────────────────────────────
-                Positioned(
-                  left: -w * .6,
-                  width: w * 2.2,
-                  bottom: -h * .06,
-                  height: h * .52,
-                  child: IgnorePointer(
-                    child: Transform(
-                      // transform-origin:50% 100%（rotateX 绕底边翻）
-                      alignment: Alignment.bottomCenter,
-                      transform: Matrix4.identity()
-                        ..setEntry(3, 2, -1 / 380) // perspective(380px)
-                        ..rotateX(64 * math.pi / 180),
-                      child: AnimatedBuilder(
-                        animation: _floor,
-                        builder: (BuildContext context, Widget? child) {
-                          // mask-image:linear-gradient(to top,#000 5%,transparent 80%)
-                          // —— 直接做进描线的着色器里（线是纯色，乘渐变 = 遮罩）。
-                          // ⚠️ 别用 ShaderMask：它在 3D 透视下的 saveLayer 会被
-                          //    Impeller 画成一整块不透明的亮板（底部那道硬边暗带）。
-                          return CustomPaint(
-                            painter: _FloorPainter(
-                              accent: widget.accent,
-                              // @keyframes floor{to{background-position:0 46px}}
-                              scroll: _floor.value * 46,
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                  ),
-                ),
-                // ── .scan（L50）──────────────────────────────────
-                IgnorePointer(
-                  child: CustomPaint(painter: const _ScanPainter()),
-                ),
-                // ── .noise（L52）─────────────────────────────────
-                IgnorePointer(
-                  child: AnimatedBuilder(
-                    animation: _grain,
+    return RepaintBoundary(
+      child: ClipRect(
+        // L41 overflow:hidden
+        child: ColoredBox(
+          color: Ref.bg, // #app{background:var(--bg)} L38
+          child: LayoutBuilder(
+            builder: (BuildContext context, BoxConstraints box) {
+              final double w = box.maxWidth;
+              final double h = box.maxHeight;
+              return Stack(
+                fit: StackFit.expand,
+                children: <Widget>[
+                  // ── .neb（L42）────────────────────────────────────
+                  AnimatedBuilder(
+                    animation: _neb,
                     builder: (BuildContext context, Widget? child) {
-                      final Offset o = _grainStep(_grain.value);
-                      return CustomPaint(
-                        painter: _NoisePainter(
-                          image: _noise,
-                          // inset:-50% ⇒ 元素是容器 2 倍，百分比按它算
-                          dx: o.dx * 2 * w,
-                          dy: o.dy * 2 * h,
+                      final double raw = (_neb.value / 16) % 2;
+                      final double t = Curves.easeInOut.transform(
+                        raw <= 1 ? raw : 2 - raw,
+                      );
+                      // @keyframes neb{to{translate3d(5%,-4%,0) scale(1.1) rotate(5deg)}}
+                      // 百分比是 .neb 自身尺寸（= 容器 1.5 倍，因为 inset:-25%）
+                      final double dx = w * 1.5 * .05 * t;
+                      final double dy = -h * 1.5 * .04 * t;
+                      final double s = 1 + .1 * t;
+                      final double a = 5 * math.pi / 180 * t;
+                      return Transform(
+                        alignment: Alignment.center,
+                        transform: Matrix4.identity()
+                          ..translateByDouble(dx, dy, 0, 1)
+                          ..rotateZ(a)
+                          ..scaleByDouble(s, s, 1, 1),
+                        child: CustomPaint(
+                          painter: _NebPainter(accent: widget.accent),
                         ),
                       );
                     },
                   ),
-                ),
-                // ── .vig（L51）───────────────────────────────────
-                IgnorePointer(
-                  child: CustomPaint(painter: const _VignettePainter()),
-                ),
-              ],
-            );
-          },
+                  // ── .ghost（L49）──────────────────────────────────
+                  IgnorePointer(
+                    child: RepaintBoundary(
+                      child: CustomPaint(
+                        painter: _GhostPainter(text: widget.ghost),
+                      ),
+                    ),
+                  ),
+                  // ── .horizon（L48）────────────────────────────────
+                  IgnorePointer(
+                    child: RepaintBoundary(
+                      child: CustomPaint(
+                        painter: _HorizonPainter(accent: widget.accent),
+                      ),
+                    ),
+                  ),
+                  // ── .floor（L44-47）───────────────────────────────
+                  Positioned(
+                    left: -w * .6,
+                    width: w * 2.2,
+                    bottom: -h * .06,
+                    height: h * .52,
+                    child: IgnorePointer(
+                      child: Transform(
+                        // transform-origin:50% 100%（rotateX 绕底边翻）
+                        alignment: Alignment.bottomCenter,
+                        transform: Matrix4.identity()
+                          ..setEntry(3, 2, -1 / 380) // perspective(380px)
+                          ..rotateX(64 * math.pi / 180),
+                        child: AnimatedBuilder(
+                          animation: _floor,
+                          builder: (BuildContext context, Widget? child) {
+                            // mask-image:linear-gradient(to top,#000 5%,transparent 80%)
+                            // —— 直接做进描线的着色器里（线是纯色，乘渐变 = 遮罩）。
+                            // ⚠️ 别用 ShaderMask：它在 3D 透视下的 saveLayer 会被
+                            //    Impeller 画成一整块不透明的亮板（底部那道硬边暗带）。
+                            return CustomPaint(
+                              painter: _FloorPainter(
+                                accent: widget.accent,
+                                // @keyframes floor{to{background-position:0 46px}}
+                                scroll: (_floor.value / 2.4 % 1) * 46,
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                    ),
+                  ),
+                  // ── .scan（L50）──────────────────────────────────
+                  IgnorePointer(
+                    child: RepaintBoundary(
+                      child: CustomPaint(painter: const _ScanPainter()),
+                    ),
+                  ),
+                  // ── .noise（L52）─────────────────────────────────
+                  IgnorePointer(
+                    child: AnimatedBuilder(
+                      animation: _grain,
+                      builder: (BuildContext context, Widget? child) {
+                        final Offset o = _grainStep(_grain.value / .9 % 1);
+                        return CustomPaint(
+                          painter: _NoisePainter(
+                            image: _noise,
+                            // inset:-50% ⇒ 元素是容器 2 倍，百分比按它算
+                            dx: o.dx * 2 * w,
+                            dy: o.dy * 2 * h,
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                  // ── .vig（L51）───────────────────────────────────
+                  IgnorePointer(
+                    child: RepaintBoundary(
+                      child: CustomPaint(painter: const _VignettePainter()),
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
         ),
       ),
     );

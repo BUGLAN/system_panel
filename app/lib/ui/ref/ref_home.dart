@@ -89,31 +89,30 @@ class _RefHomeState extends State<RefHome> with TickerProviderStateMixin {
     duration: const Duration(milliseconds: 440),
   );
 
-  static final Animatable<double> _pressTween = TweenSequence<double>(
-    <TweenSequenceItem<double>>[
-      TweenSequenceItem<double>(
-        tween: Tween<double>(
-          begin: 1,
-          end: .86,
-        ).chain(CurveTween(curve: Curves.easeIn)),
-        weight: 30,
-      ),
-      TweenSequenceItem<double>(
-        tween: Tween<double>(
-          begin: .86,
-          end: 1.08,
-        ).chain(CurveTween(curve: Curves.easeOut)),
-        weight: 40,
-      ),
-      TweenSequenceItem<double>(
-        tween: Tween<double>(
-          begin: 1.08,
-          end: 1,
-        ).chain(CurveTween(curve: Curves.easeInOut)),
-        weight: 30,
-      ),
-    ],
-  );
+  static final Animatable<double> _pressTween =
+      TweenSequence<double>(<TweenSequenceItem<double>>[
+        TweenSequenceItem<double>(
+          tween: Tween<double>(
+            begin: 1,
+            end: .86,
+          ).chain(CurveTween(curve: Curves.easeIn)),
+          weight: 30,
+        ),
+        TweenSequenceItem<double>(
+          tween: Tween<double>(
+            begin: .86,
+            end: 1.08,
+          ).chain(CurveTween(curve: Curves.easeOut)),
+          weight: 40,
+        ),
+        TweenSequenceItem<double>(
+          tween: Tween<double>(
+            begin: 1.08,
+            end: 1,
+          ).chain(CurveTween(curve: Curves.easeInOut)),
+          weight: 30,
+        ),
+      ]);
 
   @override
   void didUpdateWidget(RefHome old) {
@@ -774,6 +773,12 @@ class _BreathDotState extends State<_BreathDot>
     duration: const Duration(milliseconds: 1400),
   );
 
+  /// 呼吸只改透明度：用 FadeTransition 直接驱动合成层，
+  /// 不再每帧重建 Container + BoxShadow（旧写法 60fps rebuild 一次）。
+  late final Animation<double> _fade = _c.drive(
+    Tween<double>(begin: 1, end: .25).chain(CurveTween(curve: Ref.ease)),
+  );
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
@@ -794,20 +799,17 @@ class _BreathDotState extends State<_BreathDot>
   @override
   Widget build(BuildContext context) {
     final double s = widget.size;
-    return AnimatedBuilder(
-      animation: _c,
-      builder: (BuildContext context, Widget? _) => Opacity(
-        opacity: 1 - .75 * Ref.ease.transform(_c.value),
-        child: Container(
-          width: s,
-          height: s,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: widget.color,
-            boxShadow: <BoxShadow>[
-              BoxShadow(color: widget.color, blurRadius: 10),
-            ],
-          ),
+    return FadeTransition(
+      opacity: _fade,
+      child: Container(
+        width: s,
+        height: s,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: widget.color,
+          boxShadow: <BoxShadow>[
+            BoxShadow(color: widget.color, blurRadius: 10),
+          ],
         ),
       ),
     );

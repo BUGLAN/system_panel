@@ -3,7 +3,9 @@ import 'dart:math' as math;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
+import '../../design/fidelity.dart';
 import '../../design/ref.dart';
+import '../../widgets/frame_throttle.dart';
 
 /// ═══════════════════════════════════════════════════════════
 ///  系统核心（她的替身）—— 参考稿 L1093-1105 的 coreSVG()
@@ -62,13 +64,34 @@ class _RefCoreState extends State<RefCore> with TickerProviderStateMixin {
     duration: const Duration(milliseconds: 3200),
   );
 
+  /// 34s 自转 + 3.2s 呼吸都慢，30fps 提交足够；60fps 会让这枚核心
+  /// 每帧重建 Transform + 重画 4 层虚线环，是常驻 UI 线程大户。
+  late final FrameThrottle _paintTick = FrameThrottle(33);
+
   Offset _iris = Offset.zero;
+  bool _reduce = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _spin.addListener(_paintTick.pulse);
+    _breath.addListener(_paintTick.pulse);
+    Fidelity.lowPower.addListener(_onFidelityChanged);
+  }
+
+  void _onFidelityChanged() {
+    if (mounted) _syncMotion();
+  }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final bool reduce = MediaQuery.maybeDisableAnimationsOf(context) ?? false;
-    if (reduce || !widget.animate) {
+    _reduce = MediaQuery.maybeDisableAnimationsOf(context) ?? false;
+    _syncMotion();
+  }
+
+  void _syncMotion() {
+    if (_reduce || !widget.animate || Fidelity.lowPower.value) {
       _spin.stop();
       _breath.stop();
     } else {
@@ -79,6 +102,10 @@ class _RefCoreState extends State<RefCore> with TickerProviderStateMixin {
 
   @override
   void dispose() {
+    Fidelity.lowPower.removeListener(_onFidelityChanged);
+    _spin.removeListener(_paintTick.pulse);
+    _breath.removeListener(_paintTick.pulse);
+    _paintTick.dispose();
     _spin.dispose();
     _breath.dispose();
     super.dispose();
@@ -110,27 +137,28 @@ class _RefCoreState extends State<RefCore> with TickerProviderStateMixin {
         child: SizedBox(
           width: widget.size,
           height: widget.size,
-          child: AnimatedBuilder(
-            animation: Listenable.merge(<Listenable>[_spin, _breath]),
-            builder: (BuildContext context, Widget? _) {
-              final bool reduce =
-                  MediaQuery.maybeDisableAnimationsOf(context) ?? false;
-              final double breath = reduce
-                  ? 1
-                  : 1 + .04 * Ref.ease.transform(_breath.value);
-              return Transform.scale(
-                scale: breath,
-                child: CustomPaint(
-                  painter: _CorePainter(
-                    mood: widget.mood,
-                    cc: cc,
-                    cc2: cc2,
-                    t: reduce ? 0 : _spin.value,
-                    iris: _iris,
+          child: RepaintBoundary(
+            child: AnimatedBuilder(
+              animation: _paintTick,
+              builder: (BuildContext context, Widget? _) {
+                final bool reduce = _reduce;
+                final double breath = reduce
+                    ? 1
+                    : 1 + .04 * Ref.ease.transform(_breath.value);
+                return Transform.scale(
+                  scale: breath,
+                  child: CustomPaint(
+                    painter: _CorePainter(
+                      mood: widget.mood,
+                      cc: cc,
+                      cc2: cc2,
+                      t: reduce ? 0 : _spin.value,
+                      iris: _iris,
+                    ),
                   ),
-                ),
-              );
-            },
+                );
+              },
+            ),
           ),
         ),
       ),

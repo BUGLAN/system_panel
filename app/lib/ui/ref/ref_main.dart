@@ -8,6 +8,7 @@ import '../../data/rewards.dart';
 import '../../design/ref.dart';
 import '../../state/goal.dart';
 import '../../state/sfx.dart';
+import '../../widgets/frame_throttle.dart';
 import '../../widgets/fx_particles.dart';
 import 'ref_carousel.dart';
 import 'ref_core.dart';
@@ -843,8 +844,19 @@ class _PulseRingState extends State<_PulseRing>
     duration: const Duration(milliseconds: 1400),
   )..repeat();
 
+  /// 1.4s 呼吸环，30fps 足够；60fps 会让主线页多一层逐帧 Opacity+Transform。
+  late final FrameThrottle _paintTick = FrameThrottle(33);
+
+  @override
+  void initState() {
+    super.initState();
+    _c.addListener(_paintTick.pulse);
+  }
+
   @override
   void dispose() {
+    _c.removeListener(_paintTick.pulse);
+    _paintTick.dispose();
     _c.dispose();
     super.dispose();
   }
@@ -852,7 +864,7 @@ class _PulseRingState extends State<_PulseRing>
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
-      animation: _c,
+      animation: _paintTick,
       builder: (BuildContext _, Widget? _) {
         final double e = Curves.easeInOut.transform(
           math.sin(_c.value * math.pi),

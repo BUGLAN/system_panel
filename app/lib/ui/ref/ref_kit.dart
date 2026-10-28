@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../../design/ref.dart';
+import '../../widgets/frame_throttle.dart';
 
 /// ═══════════════════════════════════════════════════════════
 ///  参考稿组件基座 —— 逐条对齐「宿主养成系统_重设计.html」
@@ -97,6 +98,15 @@ class _RefButtonState extends State<RefButton> with TickerProviderStateMixin {
     duration: const Duration(milliseconds: 3600),
   );
 
+  /// 3.6s 扫光，30fps 足够；60fps 会让每颗主按钮每帧重画渐变边框。
+  late final FrameThrottle _paintTick = FrameThrottle(33);
+
+  @override
+  void initState() {
+    super.initState();
+    _sheen.addListener(_paintTick.pulse);
+  }
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
@@ -112,6 +122,8 @@ class _RefButtonState extends State<RefButton> with TickerProviderStateMixin {
 
   @override
   void dispose() {
+    _sheen.removeListener(_paintTick.pulse);
+    _paintTick.dispose();
     _sheen.dispose();
     super.dispose();
   }
@@ -184,7 +196,7 @@ class _RefButtonState extends State<RefButton> with TickerProviderStateMixin {
           // ⚠️ padding 不能挂在这层：它在 CustomPaint 外面，按钮底色就只画
           //    到文字那么宽（两侧各少 22px，「换目标」被压成一坨）。
           child: AnimatedBuilder(
-            animation: _sheen,
+            animation: _paintTick,
             builder: (BuildContext context, Widget? child) => CustomPaint(
               painter: _BtnPainter(
                 accent: accent,
