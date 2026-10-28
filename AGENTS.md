@@ -71,6 +71,8 @@
 - **本机 Flutter 工具链**：Flutter `3.47.6` stable（Dart 3.13.5）装在 `D:\flutter`（已入 PATH），JDK 用 Android Studio 自带 JBR，Android SDK 在 `%LOCALAPPDATA%\Android\Sdk`，`flutter doctor` 全绿
 - **全程国内源、不走代理（硬要求）**：`PUB_HOSTED_URL=https://pub.flutter-io.cn`、`FLUTTER_STORAGE_BASE_URL=https://storage.flutter-io.cn`（已写入用户环境变量）；Gradle 走腾讯云镜像（`app/android/gradle/wrapper/gradle-wrapper.properties`），AGP/Kotlin 走阿里云镜像（`app/android/settings.gradle.kts`、`app/android/build.gradle.kts`）；字体取自 jsDelivr 的 `google/fonts`
 - **iOS 测试路线**：本机跑 Android 模拟器；iOS 模拟器在 Mac Air（配置脚本 `tools/setup-macos-ios.sh`）。真机 UDID `00008130-001169D830A1401C`
+- **iOS 模拟器要用 iOS 27 运行时（2026-10-28 实测）**：本机 Xcode 27 的触摸/按键注入**不支持 iOS 17.5 运行时**——旧的「iPhone 15 Pro Max（iOS 17.5）」上点击、HOME 键都会被静默丢弃（工具还报成功）。用 `iPhone 15 Pro Max (iOS 27)`（UDID `93FBEE17-17E2-4515-B66D-4DA3AD365C19`，与真机同为 430×932pt）；刚开机要等 ~10s 输入通道才就绪
+- **iOS 帧率上限 60Hz（2026-10-28 定案，docs/49 E1）**：`ios/Runner/Info.plist` 的 `CADisableMinimumFrameDurationOnPhone` 为 `false`。常驻循环动画多，开 120Hz 时任何一个 Ticker 都会让引擎每秒合成 120 帧整屏 —— 15 Pro Max 上的卡顿与发热主因之一。别改回 `true`
 - **Live2D 舞台几何**：平台视图的**布局尺寸按「族」固定**（`Live2DStage.kViewFamilies = [1.55, 1.70]`；2026-10-24 小族由 1.05 提到 1.55 = **超采样**（大厅 1.68×，已在 ~1.7× 饱和：再大只是 LOD 撞 mip0 烧显存），见 [`docs/46`](docs/46-Live2D清晰度-DPR与mipmap.md) §3.9/§3.10 —— 别再改回 1.05，那是「软」的根因），缩放/平移交给 `Transform.scale(cam.s / 族尺寸)` —— 逐帧改布局尺寸会让插件 iOS 侧 `layoutSubviews()` 每帧重建 FBO。换景走 `CamSpring.glideTo(..., ms: 1400)` 的 easeInOutCubic 慢推。**`Opacity` 禁套平台视图**（saveLayer），`Transform` 可以。细节：`app/STAGE-OPTIONS.md` 坑 4、`docs/18` §1.5.3
 - **原生 Live2D shader 打包（2026-10-12 定案，勿删）**：产品路线是**原生**（WebView 降级路线已删除）。`app/android/app/build.gradle.kts` 里的 `syncLive2dShaders` 任务把 `flutter_live2d` 自带的 `Shaders/StandardES/*` 同步进 APK 的 `assets/FrameworkShaders/` —— **插件自己不打包这些文件，漏了就不上屏，且每帧刷 `GL error 0x501`**。排查全文 `docs/35-MuMu原生Live2D排查.md`
 - **输入态（`#ask` / 换目标）布局纪律**：主 Scaffold 必须 `resizeToAvoidBottomInset: false`，输入框自己用 `AskField.bottomInset: MediaQuery.viewInsetsOf(context).bottom` 抬到键盘之上；「换目标」时主线全景整层退场、字幕让到屏幕中段，输入框/预设词不许和 CTA 或字幕重叠
@@ -119,6 +121,7 @@
 | `46-Live2D清晰度-DPR与mipmap.md` | **清晰度四维量测法**；MuMu 面板 1170×2532@480（DPR3，中频 +110%）；**iOS 定案 = 超采样 1.68×**（族 1.55）+ 贴图预锐化（中频 +64~69%、无锯齿，§3.10）；`关 mipmap`（锯齿）与 shader LOD bias（模型不渲染）都已实测证否 |
 | `47-Live2D清晰度修复全过程.md` | **同类问题的过程复盘**：五个阶段（MuMu 提 DPR → 关 mipmap 被证否 → 贴图密度量死 → 查开源定超采样 → 拉满+预锐化）、量测五条纪律、踩过的坑与死路、下一步清单。遇到「糊/锯齿」先看这篇 |
 | `48-UI重设计-舞台与卡片v2.md` | **UI v2**：Live2D 舞台光（StageAura）、设计 token v2（Pal/Space/Radii/Elev/Ease/SpringSpec/SoundRule）、卡片材质 v2 + 3D 牌扇、GameButton、画质档（rich/lite/still）与音效规则表 |
+| `49-全面优化-音效动效加载与性能.md` | **2026-10-28 全面优化**：基础组件统一按下声、卡轮播滑动声；LLM 设置/系统抽屉/重置补转场；「换目标」重写为 v3 场景 `RefGoalSwap`；拆解加载卡 `RefPlanLoading`；iOS 帧率上限 60Hz、卡轮播缓存、证据图降采样等性能项 |
 
 ---
 
@@ -133,6 +136,8 @@
 - 结算总时长 ≤1.6s；升级 ≤2s（同日重复只播简版）；发布 ≤800ms
 - 失败：更短更暗更安静（成功亮度 1/3）；打字机节奏 **标准 34ms/字**（唯一真源 `AgentSettings.kPaceStandardMs`）
 - 8-bit 音效走**离线烘焙音效包**（`tools/audio/` → `app/assets/audio/`，84 件）：播放总线在 `app/lib/state/sfx.dart`（池化、永不抛、开关真正生效）
+- **按下声由基础组件负责**（docs/49）：`RefButton` / `RefXButton` / `RefSwitch` / tabs / `RefLink` 自带按下声，走 `refPressSound(cue)` → `Sfx.cue`（`SoundRule.cues` 规则表：音量分档 + 防连发）；业务回调只出**结果声**（成功/失败/购买），不要再在调用点补一声 tap
+- **等 LLM 的地方必须有加载态**：用 `RefPlanLoading`（分步进度跟着 `_planStageTo` 走），主壳的 `_planJob` 同时是防连点闸门
 - **动效令牌**：`app/lib/design/tokens.dart` 的 `Motion` 类（Touch 0/120 · Respond 140 · Scene 320/520 · Payoff 600/280/780 · heartMs 2400 · 弹簧 120/ζ.9 与 70/ζ.95 · 过冲 ≤1.08 · 退场 60%）—— 组件里不许再写裸时长
 
 ---
