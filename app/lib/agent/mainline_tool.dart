@@ -105,15 +105,24 @@ AgentTool setPlanTool({
   /// 错在哪，整份计划直接作废 —— 本地实测「首目标给了 S 档」连续两轮都
   /// 撞在这上面。测试可以传 false，只验形状。
   bool validate = true,
+
+  /// 非空 = 只交整份清单里的一段（docs/49 F3）：[taskCount] 必须等于段长，
+  /// 校验换成 [validatePlanSegment]（档位区间 / 段内不倒退 / 末段收 S）
+  PlanSegment? segment,
 }) {
   return AgentTool(
     name: 'set_plan',
-    description:
-        '把宿主的目标「$goalText」（期限 $days 天）拆成 $taskCount 张任务、交上来当计划。'
-        '调用前先用 get_status 看他的现状（等级/连败/最弱维），'
-        '必要时用 recall 翻一下他以前说过什么。必须正好 $taskCount 张。'
-        '${firstGoal ? '这是**首目标**：档位只能是 E/D/C。' : '档位不许倒退，最后一张必须是 S 级兑现单。'}'
-        '每张 minutes 必须在该档位上限内。',
+    description: segment == null
+        ? '把宿主的目标「$goalText」（期限 $days 天）拆成 $taskCount 张任务、交上来当计划。'
+              '他的现状（等级/连败/最弱维）与记忆已在系统提示的宿主档案里，'
+              '直接据此拆，不必再查。必须正好 $taskCount 张。'
+              '${firstGoal ? '这是**首目标**：档位只能是 E/D/C。' : '档位不许倒退，最后一张必须是 S 级兑现单。'}'
+              '每张 minutes 必须在该档位上限内。'
+        : '交宿主目标「$goalText」（期限 $days 天、共 ${segment.total} 张）的'
+              '第 ${segment.index + 1}/${segment.count} 段：第 ${segment.from}~${segment.to} 张，'
+              '必须正好 $taskCount 张。档位只能 ${segment.lo}~${segment.hi}、段内不许倒退；'
+              '${segment.last ? '最后一张是 S 级兑现单。' : '本段没有兑现单。'}'
+              '宿主现状与记忆已在系统提示里，直接据此拆。每张 minutes 必须在该档位上限内。',
     parameters: setPlanSchema(taskCount),
     run: (Map<String, dynamic> args) async {
       draft.attempts++;
@@ -185,7 +194,9 @@ AgentTool setPlanTool({
       //    校验留在外面，模型永远不知道第 3 张给了 S、C 档写了 120 分钟，
       //    整份计划直接作废 —— 本地实测连续两轮都撞在这上面。
       try {
-        if (validate) {
+        if (validate && segment != null) {
+          validatePlanSegment(segment, out);
+        } else if (validate) {
           validatePlan(
             days: days,
             tasks: out,

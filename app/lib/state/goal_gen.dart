@@ -1211,6 +1211,153 @@ int planTaskCountFor(int days, {int quota = 0}) {
   return n.clamp(kPlanMinTasks, kPlanMaxTasks).toInt();
 }
 
+// ═══════════════════════════════════════════════════════════
+//  分段并行拆解（docs/49 F3，2026-10-28 真机：换目标 2 分钟拆不完还报错）
+// ═══════════════════════════════════════════════════════════
+//
+//  根因：条数 = 期限天数。「三个月跑完半马」是 90 张、「半年减重」是 180 张，
+//  一次 set_plan 要模型吐出几千~上万 token 的 JSON —— 单轮 90s 超时、
+//  或被 max_tokens 截断成残缺数组，然后报错重试，越重试越慢。
+//
+//  解法：长清单按 [kPlanSegmentSize] 切段、**并行**拆（每段一次独立的 set_plan），
+//  按顺序拼回后照旧过 [validatePlan]。档位阶梯由切段时**预先分配**：
+//  每段一个档位区间 [lo, hi]，相邻两段首尾相接（前段 hi = 后段 lo），
+//  段内不倒退 ⇒ 全链不倒退；末段收尾必须是 S 级兑现单。
+//  仍然全部走 LLM，没有模板、没有兜底 —— 只是把一份大活拆成几份小活同时干。
+
+/// 一段最多几张（12 张 ≈ 1k 出参 token，推理模型一轮 15~30s）
+const int kPlanSegmentSize = 12;
+
+/// 同时最多拆几段（再多端点容易限流）
+const int kPlanSegmentConcurrency = 6;
+
+/// 段间档位阶梯（末段上限另给 S）
+const List<String> _kSegmentLadder = <String>['E', 'D', 'C', 'B', 'A'];
+
+/// 长清单里的一段。
+class PlanSegment {
+  const PlanSegment({
+    required this.index,
+    required this.count,
+    required this.from,
+    required this.size,
+    required this.total,
+    required this.lo,
+    required this.hi,
+  });
+
+  /// 第几段（0 基）/ 一共几段
+  final int index;
+  final int count;
+
+  /// 本段第一张在整份清单里的序号（1 基）与张数
+  final int from;
+  final int size;
+
+  /// 整份清单张数
+  final int total;
+
+  /// 本段档位区间（含两端）
+  final String lo;
+  final String hi;
+
+  int get to => from + size - 1;
+
+  /// 末段：收尾那一张就是整条主线的兑现单
+  bool get last => index == count - 1;
+
+  /// 阶段提示（让各段的强度曲线接得上）
+  String get phase {
+    if (last) return '冲刺与兑现：强度拉满，最后一张是兑现单';
+    final double k = index / count;
+    if (k < .25) return '起步期：低强度、先把习惯立住';
+    if (k < .6) return '加量期：在前一段的基础上逐步加码';
+    return '强化期：逼近目标强度';
+  }
+}
+
+/// 清单 → 段。首目标或不超过一段的清单：只有一段（区间 F~S，交给 [validatePlan] 全量校验）。
+List<PlanSegment> planSegmentsFor(int total, {bool firstGoal = false}) {
+  if (firstGoal || total <= kPlanSegmentSize) {
+    return <PlanSegment>[
+      PlanSegment(
+        index: 0,
+        count: 1,
+        from: 1,
+        size: total,
+        total: total,
+        lo: 'F',
+        hi: 'S',
+      ),
+    ];
+  }
+  final int k = (total / kPlanSegmentSize).ceil();
+  final int base = total ~/ k;
+  final int extra = total % k; // 前 extra 段各多一张
+  String bound(int i) =>
+      _kSegmentLadder[math.min(
+        _kSegmentLadder.length - 1,
+        (i * _kSegmentLadder.length) ~/ k,
+      )];
+  final List<PlanSegment> out = <PlanSegment>[];
+  int from = 1;
+  for (int i = 0; i < k; i++) {
+    final int size = base + (i < extra ? 1 : 0);
+    out.add(
+      PlanSegment(
+        index: i,
+        count: k,
+        from: from,
+        size: size,
+        total: total,
+        lo: bound(i),
+        hi: i == k - 1 ? 'S' : bound(i + 1),
+      ),
+    );
+    from += size;
+  }
+  return out;
+}
+
+/// 一段的规则校验（与 [validatePlan] 同口径，只看本段）：
+/// 张数、字段非空、档位落在本段区间、时限不越档位上限、段内不倒退；
+/// 末段最后一张必须是 S 级兑现单。不合规就抛 [PlanRuleError]。
+void validatePlanSegment(PlanSegment seg, List<TaskSpec> tasks) {
+  if (tasks.length != seg.size) {
+    throw PlanRuleError(
+      '第 ${seg.index + 1} 段要正好 ${seg.size} 张（第 ${seg.from}~${seg.to} 张），'
+      '模型给了 ${tasks.length} 张',
+    );
+  }
+  final int lo = Rarity.ranks.indexOf(seg.lo);
+  final int hi = Rarity.ranks.indexOf(seg.hi);
+  for (int i = 0; i < tasks.length; i++) {
+    final TaskSpec t = tasks[i];
+    final int n = seg.from + i;
+    if (t.short.trim().isEmpty) throw PlanRuleError('第 $n 张的 short 是空的');
+    if (t.title.trim().isEmpty) throw PlanRuleError('第 $n 张的 title 是空的');
+    if (t.proof.trim().isEmpty) throw PlanRuleError('第 $n 张的 proof 是空的');
+    final int r = Rarity.ranks.indexOf(t.rank);
+    if (r < lo || r > hi) {
+      throw PlanRuleError('第 $n 张档位 ${t.rank} 不在本段区间 ${seg.lo}~${seg.hi} 里');
+    }
+    final int cap = rankCapMinutes(t.rank);
+    if (t.minutes < 5 || t.minutes > cap) {
+      throw PlanRuleError(
+        '第 $n 张「${t.short}」的时限 ${t.minutes} 分钟越界（${t.rank} 档允许 5~$cap）',
+      );
+    }
+    if (i > 0 && r < Rarity.ranks.indexOf(tasks[i - 1].rank)) {
+      throw PlanRuleError(
+        '第 $n 张档位倒退了：${tasks[i - 1].rank} → ${t.rank}（段内必须低开高走）',
+      );
+    }
+  }
+  if (seg.last && tasks.last.rank != 'S') {
+    throw PlanRuleError('第 ${seg.to} 张是兑现单，必须 S 级，模型给了 ${tasks.last.rank}');
+  }
+}
+
 /// 计划规则校验 —— **fail fast**：任何一条不合规都抛 [PlanRuleError]。
 ///
 /// 校验项（docs/34 §3）：

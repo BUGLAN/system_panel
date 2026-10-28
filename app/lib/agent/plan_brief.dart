@@ -15,7 +15,20 @@ class PlanBrief {
     this.interview = const <String, String>{},
     this.statusLine,
     this.firstGoal = false,
+    this.segment,
   });
+
+  /// 同一份简报换成「只拆其中一段」（docs/49 F3：长清单分段并行拆）
+  PlanBrief forSegment(PlanSegment? seg) => PlanBrief(
+    goalText: goalText,
+    days: days,
+    taskCount: taskCount,
+    cat: cat,
+    interview: interview,
+    statusLine: statusLine,
+    firstGoal: firstGoal,
+    segment: seg,
+  );
 
   /// 宿主那句话（原样，不裁剪）
   final String goalText;
@@ -39,16 +52,32 @@ class PlanBrief {
   /// 首目标（3 天 3 张 E/D/C，docs/05）
   final bool firstGoal;
 
+  /// 非空 = 这一轮只拆整份清单里的一段（段数 > 1 时才会给）
+  final PlanSegment? segment;
+
   /// 交给模型的「这一单要拆什么」正文（**期限与条数必须写进来**，
   /// 旧实现漏了它们，模型只能按「有进阶关系」的通用口径瞎编）。
   String get userText {
+    final PlanSegment? seg = segment;
     final StringBuffer b = StringBuffer()
       ..writeln('宿主立了目标：「$goalText」。')
       ..writeln(
         '期限 $days 天，清单要正好 $taskCount 张（= 期限天数），'
         '第 $taskCount 张是兑现单。',
-      )
-      ..writeln('目标类型：${cat.label}（${cat.id}）。');
+      );
+    if (seg != null) {
+      b
+        ..writeln(
+          '清单太长，分 ${seg.count} 段同时拆。**你只负责第 ${seg.index + 1} 段：'
+          '第 ${seg.from}~${seg.to} 张，共 ${seg.size} 张**。',
+        )
+        ..writeln('本段阶段：${seg.phase}。')
+        ..writeln(
+          '本段档位只能在 ${seg.lo}~${seg.hi} 之间，段内逐张不许倒退。'
+          '${seg.last ? '本段最后一张（第 ${seg.to} 张）就是整条主线的兑现单，必须 S 级。' : '本段不含兑现单。'}',
+        );
+    }
+    b.writeln('目标类型：${cat.label}（${cat.id}）。');
     if (interview.isNotEmpty) {
       b.writeln('访谈答案（他亲口说的，必须用进拆解）：');
       for (final MapEntry<String, String> e in interview.entries) {
@@ -69,10 +98,16 @@ class PlanBrief {
             '$r ≤ ${rankCapMinutes(r)} 分钟',
         ].join(' · '),
       )
-      ..writeln('兑现单（最后一张）时限必须 ≥ $kPlanFinalMinutes 分钟。');
+      ..writeln(
+        seg == null || seg.last ? '兑现单（最后一张）时限必须 ≥ $kPlanFinalMinutes 分钟。' : '',
+      );
     b
       ..writeln()
-      ..writeln('用 set_plan 把这 $taskCount 张交上来。');
+      ..writeln(
+        seg == null
+            ? '用 set_plan 把这 $taskCount 张交上来。'
+            : '用 set_plan 只把本段这 ${seg.size} 张交上来（第 ${seg.from}~${seg.to} 张，不要交别的段）。',
+      );
     return b.toString().trim();
   }
 
@@ -91,6 +126,8 @@ class PlanBrief {
   /// 她这一轮的场合（system prompt 的【当前场合】位）
   String get scenario =>
       '拆计划：把宿主刚说的目标「$goalText」拆成 $taskCount 张单次可执行的任务，'
-      '期限 $days 天。先看清他现在的状态（get_status），必要时 recall 翻记忆，'
-      '再用 set_plan 交上来。';
+      '期限 $days 天'
+      '${segment == null ? '' : '（这一轮只拆第 ${segment!.from}~${segment!.to} 张）'}。'
+      '他现在的状态（等级/连败/最弱维）与相关记忆已经写在上面的'
+      '宿主档案里，直接据此拆，用 set_plan 一次交上来。';
 }

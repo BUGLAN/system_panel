@@ -20,6 +20,8 @@
 ///   ⑤ 她输出一句话解释为什么这么排（剥 [情绪] 标签）
 library;
 
+import 'dart:math' as math;
+
 import '../state/goal_gen.dart';
 import '../state/plan_failure.dart';
 import 'llm_client.dart';
@@ -211,6 +213,71 @@ class PlanAgent {
       PlanFailureCode.noPlan,
       '工具循环 $maxRounds 轮用尽仍没拿到 set_plan 的任务池（回执：${receipts.join(' | ')}）',
     );
+  }
+
+  /// 拆一整份清单（docs/49 F3）—— 生产路径的唯一入口。
+  ///
+  /// · 不超过一段（[kPlanSegmentSize]）或首目标：一轮 [generate]，全量校验
+  /// · 更长的：按 [planSegmentsFor] 切段，**并行**拆（同时最多 [concurrency] 段），
+  ///   每段一套独立的 `set_plan`（按段校验），按顺序拼回
+  ///
+  /// 任何一段失败都整体抛（不拼半份计划、不补模板）。拼回的整份仍由调用方
+  /// 走 `buildGoalFromPlan` → [validatePlan] 全量复核。
+  /// [onProgress]：(已完成段数, 总段数)，加载卡读它显示「2/8 段」。
+  Future<List<TaskSpec>> generateTasks({
+    required PlanBrief brief,
+    int quota = 0,
+    int concurrency = kPlanSegmentConcurrency,
+    void Function(int done, int total)? onProgress,
+  }) async {
+    final List<PlanSegment> segs = planSegmentsFor(
+      brief.taskCount,
+      firstGoal: brief.firstGoal,
+    );
+    final bool whole = segs.length == 1;
+    final List<List<TaskSpec>?> parts = List<List<TaskSpec>?>.filled(
+      segs.length,
+      null,
+    );
+    int done = 0;
+    onProgress?.call(0, segs.length);
+
+    Future<void> runOne(int i) async {
+      final PlanSegment? seg = whole ? null : segs[i];
+      final PlanDraft draft = PlanDraft();
+      final StrictAgentToolRegistry tools = StrictAgentToolRegistry()
+        ..register(
+          setPlanTool(
+            goalText: brief.goalText,
+            taskCount: seg?.size ?? brief.taskCount,
+            days: brief.days,
+            draft: draft,
+            firstGoal: brief.firstGoal,
+            quota: quota,
+            segment: seg,
+          ),
+        );
+      final PlanResult r = await generate(
+        brief: brief.forSegment(seg),
+        tools: tools,
+        draft: draft,
+      );
+      parts[i] = r.tasks;
+      onProgress?.call(++done, segs.length);
+    }
+
+    // 定长并发池：worker 依次领下一段，直到领完
+    int next = 0;
+    Future<void> worker() async {
+      while (next < segs.length) {
+        await runOne(next++);
+      }
+    }
+
+    await Future.wait(<Future<void>>[
+      for (int w = 0; w < math.min(concurrency, segs.length); w++) worker(),
+    ], eagerError: true);
+    return <TaskSpec>[for (final List<TaskSpec>? p in parts) ...p!];
   }
 
   /// [LlmFailure] → [PlanFailureCode]（失败类别原样往上抛，不折叠）
