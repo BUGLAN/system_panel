@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+
+import '../design/ref.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../design/tokens.dart';
@@ -12,7 +14,7 @@ import 'sys_icons.dart';
 ///  · [ChatEntryButton]：对话入口。原先钉在大厅左上（HUD 下方）的 34×34 小圆钮；
 ///    宿主 2026-10-11 指定搬到**右下、委托板正上方**，并放大到 56（贴右手拇指）。
 ///  · [ChatBar]：对话层底部的输入栏——【文本输入+发送】【🎤语音】双入口。
-///    **语音是明确的预留态**：置灰 + 「即将支持」角标，点了弹插话不假装可用。
+///    语音入口已撤：没有实现的功能不放占位按钮（交付标准：不许半成品）。
 /// ═══════════════════════════════════════════════════════════
 
 /// 大厅的对话入口（原型无此物，样式对齐 `#sheet ×`/`.dk` 的玻璃圆钮）
@@ -42,7 +44,7 @@ class ChatEntryButton extends StatelessWidget {
                 onTap!();
               },
         pressedGlow: const <BoxShadow>[
-          BoxShadow(color: Color(0x5938E1FF), blurRadius: 16),
+          BoxShadow(color: Color(0x59D6FF3D), blurRadius: 16),
         ],
         child: Container(
           key: const Key('chat.entry'),
@@ -50,8 +52,8 @@ class ChatEntryButton extends StatelessWidget {
           height: size,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: const Color(0x9E040E20), // H-13：rgba(4,14,32,.62)
-            border: Border.all(color: const Color(0x2938E1FF), width: 1), // .16
+            color: const Color(0x0DFFFFFF), // H-13：rgba(4,14,32,.62)
+            border: Border.all(color: const Color(0x1FFFFFFF), width: 1), // .16
           ),
           child: Center(
             child: SvgPicture.string(
@@ -118,7 +120,7 @@ class _ChatBarState extends State<ChatBar> {
       key: const Key('chat.bar'),
       padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
       decoration: const BoxDecoration(
-        border: Border(top: BorderSide(color: C.line2, width: 1)),
+        border: Border(top: BorderSide(color: Color(0x1FFFFFFF), width: 1)),
       ),
       child: Row(
         children: <Widget>[
@@ -129,27 +131,27 @@ class _ChatBarState extends State<ChatBar> {
               height: 38,
               padding: const EdgeInsets.symmetric(horizontal: 13),
               decoration: BoxDecoration(
-                color: C.blue.withAlpha(13), // rgba(56,225,255,.05)
+                color: const Color(0x0DFFFFFF), // rgba(56,225,255,.05)
                 borderRadius: BorderRadius.circular(19),
-                border: Border.all(color: C.line2, width: 1),
+                border: Border.all(color: Color(0x1FFFFFFF), width: 1),
               ),
               alignment: Alignment.center,
               child: TextField(
                 key: const Key('chat.input'),
                 controller: _c,
                 enabled: canSend,
-                style: fs(family: F.cn, size: 13.5, wght: 400, color: C.ice),
-                cursorColor: C.blue,
+                style: fs(family: Ref.fc, size: 13.5, wght: 400, color: Ref.txt),
+                cursorColor: Ref.acid,
                 textAlignVertical: TextAlignVertical.center,
                 decoration: InputDecoration(
                   isCollapsed: true,
                   border: InputBorder.none,
                   hintText: widget.hint,
                   hintStyle: fs(
-                    family: F.cn,
+                    family: Ref.fc,
                     size: 13,
                     wght: 400,
-                    color: C.dim,
+                    color: Ref.dim,
                   ),
                 ),
                 onSubmitted: (String _) => _fire(),
@@ -167,79 +169,17 @@ class _ChatBarState extends State<ChatBar> {
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: canSend ? C.blue : C.blue.withAlpha(26),
+                color: canSend ? Ref.acid : const Color(0x1AFFFFFF),
               ),
               child: Text(
                 '↑',
                 style: fs(
-                  family: F.num,
+                  family: Ref.fd,
                   size: 18,
                   wght: 800,
                   height: 1,
-                  color: canSend ? C.deep : C.dim,
+                  color: canSend ? Ref.onAccent : Ref.dim,
                 ),
-              ),
-            ),
-          ),
-          const SizedBox(width: 8),
-          // 🎤 语音 —— 预留态：置灰 + 「即将支持」角标（验收口径）
-          PressScale(
-            onTap: widget.onVoiceTap,
-            child: SizedBox(
-              key: const Key('chat.voice'),
-              width: 44,
-              height: 38,
-              child: Stack(
-                clipBehavior: Clip.none,
-                children: <Widget>[
-                  Container(
-                    width: 38,
-                    height: 38,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: C.blue.withAlpha(13),
-                      border: Border.all(color: C.line2, width: 1),
-                    ),
-                    child: Text(
-                      '🎤',
-                      style: fs(
-                        family: F.cn,
-                        size: 14,
-                        wght: 400,
-                        height: 1,
-                        color: C.dim,
-                      ),
-                    ),
-                  ),
-                  // 「即将支持」角标
-                  Positioned(
-                    right: -4,
-                    top: -4,
-                    child: Container(
-                      key: const Key('chat.voice.badge'),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 4,
-                        vertical: 1,
-                      ),
-                      decoration: BoxDecoration(
-                        color: const Color(0xEE04122A),
-                        borderRadius: BorderRadius.circular(4),
-                        border: Border.all(color: C.line2, width: 1),
-                      ),
-                      child: Text(
-                        '即将支持',
-                        style: fs(
-                          family: F.cn,
-                          size: 7.5,
-                          wght: 400,
-                          height: 1.2,
-                          color: C.mist,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
               ),
             ),
           ),

@@ -193,8 +193,14 @@ class _RefBootState extends State<RefBoot> with SingleTickerProviderStateMixin {
               const Positioned.fill(
                 child: ColoredBox(color: Color(0x14FFFFFF)),
               ),
-              FractionallySizedBox(
+              // ⚠️ heightFactor 必须给 1：Stack 给的是松约束（0..3），
+              //    不给就塌成 0 高 —— 进度条整条看不见。
+              // .boot-bar i{transition:width .3s}
+              AnimatedFractionallySizedBox(
+                duration: const Duration(milliseconds: 300),
+                alignment: Alignment.centerLeft,
                 widthFactor: widget.progress.clamp(0.0, 1.0),
+                heightFactor: 1,
                 child: const DecoratedBox(
                   decoration: BoxDecoration(
                     gradient: LinearGradient(

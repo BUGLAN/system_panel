@@ -286,6 +286,9 @@ class _FxFieldState extends State<FxField> with SingleTickerProviderStateMixin {
   void initState() {
     super.initState();
     widget.controller.addListener(_wake);
+    // ⚠️ 这一层可能被重建（场景切换时它前面的兄弟节点增减）：控制器里
+    //    还有没跑完的粒子时必须接着跑，否则它们会被一直画在原地（定格）。
+    _wake();
   }
 
   @override
@@ -339,9 +342,12 @@ class _FxPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     if (!c.busy) return;
-    canvas.saveLayer(Offset.zero & size, Paint()..blendMode = BlendMode.plus);
-    final Paint stroke = Paint()..style = PaintingStyle.stroke;
-    final Paint fill = Paint();
+    // ⚠️ 不开整屏 saveLayer(plus)：Impeller（模拟器实测）上这层会卡住不再
+    //    刷新，粒子定格在屏上。改成每笔自带加色混合，观感相同、少一次离屏。
+    final Paint stroke = Paint()
+      ..style = PaintingStyle.stroke
+      ..blendMode = BlendMode.plus;
+    final Paint fill = Paint()..blendMode = BlendMode.plus;
 
     for (final FxParticle p in c.parts) {
       final double a = 1 - p.life / p.max;
@@ -411,7 +417,6 @@ class _FxPainter extends CustomPainter {
       canvas.drawCircle(head, s.w * 1.4, fill);
     }
 
-    canvas.restore();
   }
 
   @override

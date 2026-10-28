@@ -85,7 +85,8 @@ class HostState {
   static const HostState demo = HostState(
     name: '林深',
     lv: 7,
-    exp: 214,
+    // need(7) = 12 + 7×6 = 54：余额必须小于它，否则第一单就连升三级
+    exp: 38,
     coins: 340,
     streak: 6,
     title: 'done15',
@@ -106,7 +107,7 @@ class HostState {
       'streak3',
       'done15',
     ],
-    items: <String, int>{'dbl': 1, 'crit': 1, 'shield': 1, 'swap': 2},
+    items: <String, int>{'dbl': 1, 'crit': 1, 'shield': 1, 'patch': 1},
   );
 
   static const HostState empty = HostState(
@@ -125,7 +126,7 @@ class HostState {
     failCount: 0,
     bestStreak: 0,
     ownedTitles: <String>['bind'],
-    items: <String, int>{'dbl': 0, 'crit': 0, 'shield': 0, 'swap': 0},
+    items: <String, int>{'dbl': 0, 'crit': 0, 'shield': 0, 'patch': 0},
   );
 
   // ── 存档（store.js L34-52）────────────────────────────────

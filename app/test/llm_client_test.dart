@@ -164,10 +164,10 @@ void main() {
       );
     });
 
-    test('默认值：官方 base + 宿主钦定的默认模型名', () {
+    test('默认值：联调网关 base + 联调模型名（可 dart-define 覆盖）', () {
       const LlmConfig c = LlmConfig();
-      expect(c.baseUrl, 'https://api.deepseek.com');
-      expect(c.model, 'deepseek-v4.1flash');
+      expect(c.baseUrl, 'http://127.0.0.1:3425/v1');
+      expect(c.model, 'group/4.1fzzz');
     });
 
     test('按调用覆盖思考档位：覆盖 > 配置（台词关思考，拆解留思考）', () async {
@@ -227,7 +227,7 @@ void main() {
       );
       expect(
         const LlmConfig(baseUrl: '').endpoint,
-        'https://api.deepseek.com/chat/completions',
+        'http://127.0.0.1:3425/v1/chat/completions',
       );
     });
   });
@@ -269,7 +269,7 @@ void main() {
       expect(r.ok, isTrue);
       expect(r.text, 'pong');
       expect(r.model, 'deepseek-flash'); // 归一化后的名字回填
-      expect(url.toString(), 'https://api.deepseek.com/chat/completions');
+      expect(url.toString(), 'http://127.0.0.1:3425/v1/chat/completions');
       expect(headers!['Authorization'], 'Bearer sk-test');
       expect(body!['model'], 'deepseek-flash');
       expect((body!['messages'] as List<dynamic>).length, 2);

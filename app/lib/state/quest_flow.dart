@@ -1252,10 +1252,23 @@ class QuestFlow {
   bool buy(String id) {
     final Item? it = Item.byId(id);
     if (it == null) return false;
+    if (it.lv > 0 && host.lv < it.lv) return false;
     if (host.coins < it.price) return false;
     host = host.copyWith(
       coins: host.coins - it.price,
       items: <String, int>{...host.items, id: (host.items[id] ?? 0) + 1},
+    );
+    _notify();
+    return true;
+  }
+
+  /// 补签券（参考稿 useBtn L1633）：持有 −1、连胜 +1。没有 → false。
+  bool usePatch() {
+    final int n = host.items['patch'] ?? 0;
+    if (n <= 0) return false;
+    host = host.copyWith(
+      items: <String, int>{...host.items, 'patch': n - 1},
+      streak: host.streak + 1,
     );
     _notify();
     return true;

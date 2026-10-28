@@ -60,6 +60,8 @@ class RefButton extends StatefulWidget {
     this.leading,
     this.enabled = true,
     this.animateSheen = true,
+    this.ink,
+    this.trailing,
   });
 
   final String label;
@@ -77,6 +79,12 @@ class RefButton extends StatefulWidget {
 
   /// 关闭后不跑流光（列表里多颗按钮时用来省电）
   final bool animateSheen;
+
+  /// 文字色覆盖（参考稿 updBuy：买不起时 color:#8c88aa）
+  final Color? ink;
+
+  /// 文字后的附件（道具键的 .eqn 计数徽标）
+  final Widget? trailing;
 
   @override
   State<RefButton> createState() => _RefButtonState();
@@ -115,7 +123,7 @@ class _RefButtonState extends State<RefButton> with TickerProviderStateMixin {
     final Color accent = widget.accent ?? Ref.acid;
     final double fs = widget.small ? 16 : 18;
     final bool pri = widget.primary;
-    final Color ink = pri ? Ref.onAccent : Ref.txt;
+    final Color ink = widget.ink ?? (pri ? Ref.onAccent : Ref.txt);
 
     final Widget title = Row(
       mainAxisSize: MainAxisSize.min,
@@ -140,6 +148,10 @@ class _RefButtonState extends State<RefButton> with TickerProviderStateMixin {
             ),
           ),
         ),
+        if (widget.trailing != null) ...<Widget>[
+          const SizedBox(width: 10),
+          widget.trailing!,
+        ],
         if (widget.trailingTriangle) ...<Widget>[
           const SizedBox(width: 10),
           CustomPaint(
@@ -169,7 +181,8 @@ class _RefButtonState extends State<RefButton> with TickerProviderStateMixin {
                   ..scaleByDouble(.965, .965, 1, 1))
               : Matrix4.identity(),
           clipBehavior: Clip.none,
-          padding: EdgeInsets.symmetric(horizontal: widget.small ? 18 : 22),
+          // ⚠️ padding 不能挂在这层：它在 CustomPaint 外面，按钮底色就只画
+          //    到文字那么宽（两侧各少 22px，「换目标」被压成一坨）。
           child: AnimatedBuilder(
             animation: _sheen,
             builder: (BuildContext context, Widget? child) => CustomPaint(
@@ -182,7 +195,10 @@ class _RefButtonState extends State<RefButton> with TickerProviderStateMixin {
               ),
               child: child,
             ),
-            child: Center(child: title),
+            child: Padding(
+              padding: EdgeInsets.symmetric(horizontal: widget.small ? 18 : 22),
+              child: Center(widthFactor: 1, child: title),
+            ),
           ),
         ),
       ),

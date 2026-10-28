@@ -43,7 +43,7 @@ class AgentSettings {
   const AgentSettings({
     this.visionEnabled = true,
     this.baseUrl = LlmConfig.kDefaultBase,
-    this.apiKey = '',
+    this.apiKey = LlmConfig.kDefaultKey,
     this.model = LlmConfig.kDefaultModel,
     this.sound = true,
     this.haptic = true,
@@ -116,13 +116,14 @@ class AgentSettings {
   /// 视觉校验开关（关 = 纯信任模式，证据全按「未校验」计）
   final bool visionEnabled;
 
-  /// OpenAI 兼容端点 base（默认 https://api.deepseek.com）
+  /// OpenAI 兼容端点 base（默认 [LlmConfig.kDefaultBase]：本地联调网关，
+  /// 可用 `--dart-define=LLM_BASE=…` 覆盖）
   final String baseUrl;
 
   /// API Key（掩码显示，只存本机）
   final String apiKey;
 
-  /// 模型名（默认 deepseek-v4.1flash，请求前由 LlmClient 归一化）
+  /// 模型名（默认 [LlmConfig.kDefaultModel]，请求前由 LlmClient 归一化）
   final String model;
 
   // ── D8：系统页四个开关（与 AppSettings 同名同义） ──
@@ -170,11 +171,18 @@ class AgentSettings {
   }) {
     if (json == null) return fallback;
     T pick<T>(String k, T def) => json[k] is T ? json[k] as T : def;
+    // 老档从没填过 key（= 旧默认 deepseek 空 key，根本连不上）→ 端点三件套
+    // 整体落回当前联调默认；填过 key 的宿主配置原样保留。
+    final bool neverKeyed = pick<String>('apiKey', '').trim().isEmpty;
     return AgentSettings(
       visionEnabled: pick<bool>('visionEnabled', fallback.visionEnabled),
-      baseUrl: pick<String>('baseUrl', fallback.baseUrl),
-      apiKey: pick<String>('apiKey', fallback.apiKey),
-      model: pick<String>('model', fallback.model),
+      baseUrl: neverKeyed
+          ? fallback.baseUrl
+          : pick<String>('baseUrl', fallback.baseUrl),
+      apiKey: neverKeyed ? fallback.apiKey : pick<String>('apiKey', ''),
+      model: neverKeyed
+          ? fallback.model
+          : pick<String>('model', fallback.model),
       sound: pick<bool>('sound', fallback.sound),
       haptic: pick<bool>('haptic', fallback.haptic),
       holo: pick<bool>('holo', fallback.holo),

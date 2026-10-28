@@ -134,6 +134,7 @@ class _LlmSettingsPaneState extends State<LlmSettingsPane> {
       _testing = true;
       _testOk = null;
       _testMsg = '正在按当前输入发一条与聊天同形状的请求…';
+      _revealResult();
     });
     final LlmConfig config = LlmConfig(
       baseUrl: s.baseUrl,
@@ -162,6 +163,23 @@ class _LlmSettingsPaneState extends State<LlmSettingsPane> {
       } else {
         _testMsg = '失败 · ${_failureText(r.failure, r.detail)}';
       }
+    });
+    _revealResult();
+  }
+
+  final GlobalKey _resultKey = GlobalKey();
+
+  /// 结果框在滚动区下方：出结果就把它滚进视口，否则点了像没反应
+  void _revealResult() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final BuildContext? c = _resultKey.currentContext;
+      if (c == null || !mounted) return;
+      Scrollable.ensureVisible(
+        c,
+        duration: const Duration(milliseconds: 420),
+        curve: Ref.ease,
+        alignment: .9,
+      );
     });
   }
 
@@ -454,41 +472,44 @@ class _LlmSettingsPaneState extends State<LlmSettingsPane> {
     final String? msg = _testMsg;
     if (msg == null) return const SizedBox.shrink();
     final Color c = _testOk == null ? Ref.dim : (_testOk! ? Ref.acid : Ref.hot);
-    return Container(
-      key: const Key('ref.llm.testResult'),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Ref.a(c, .08),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Ref.a(c, .4)),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Container(
-            width: 8,
-            height: 8,
-            margin: const EdgeInsets.only(top: 5),
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: c,
-              boxShadow: <BoxShadow>[BoxShadow(color: c, blurRadius: 10)],
-            ),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              msg,
-              style: refText(
-                family: Ref.fc,
-                size: 12.5,
-                wght: 500,
-                height: 1.5,
-                color: Ref.txt,
+    return KeyedSubtree(
+      key: _resultKey,
+      child: Container(
+        key: const Key('ref.llm.testResult'),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Ref.a(c, .08),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Ref.a(c, .4)),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Container(
+              width: 8,
+              height: 8,
+              margin: const EdgeInsets.only(top: 5),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: c,
+                boxShadow: <BoxShadow>[BoxShadow(color: c, blurRadius: 10)],
               ),
             ),
-          ),
-        ],
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                msg,
+                style: refText(
+                  family: Ref.fc,
+                  size: 12.5,
+                  wght: 500,
+                  height: 1.5,
+                  color: Ref.txt,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -3,10 +3,14 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../../data/attrs.dart';
+import '../../data/rewards.dart';
 import '../../design/ref.dart';
 import '../../state/quest.dart';
+import '../../state/sfx.dart';
 import 'ref_inputs.dart';
 import 'ref_kit.dart';
+import 'ref_motion.dart';
 
 /// ═══════════════════════════════════════════════════════════
 ///  委托板 —— 参考稿 .board（CSS L237-264，DOM L733-741）
@@ -102,6 +106,7 @@ class RefBoard extends StatelessWidget {
                           quest: quests[i],
                           running: active?.serial == quests[i].serial,
                           index: i,
+                          stampOnTap: active == null,
                           onTap: () => onTap(quests[i]),
                         ),
                       ),
@@ -279,7 +284,11 @@ class RefTicketCard extends StatefulWidget {
     this.onTap,
     this.running = false,
     this.index = 0,
+    this.stampOnTap = true,
   });
+
+  /// 点了先盖「已接单」再回调（手上有单时调用方会拦，传 false）
+  final bool stampOnTap;
 
   final Quest quest;
   final VoidCallback? onTap;
@@ -293,7 +302,7 @@ class RefTicketCard extends StatefulWidget {
 }
 
 class _RefTicketCardState extends State<RefTicketCard>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin, RefTimers<RefTicketCard> {
   late final AnimationController _in = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 420),
@@ -331,6 +340,7 @@ class _RefTicketCardState extends State<RefTicketCard>
   void dispose() {
     _delay?.cancel();
     _in.dispose();
+    _stamp.dispose();
     super.dispose();
   }
 
@@ -359,7 +369,7 @@ class _RefTicketCardState extends State<RefTicketCard>
           onTapDown: (_) => setState(() => _down = true),
           onTapUp: (_) => setState(() => _down = false),
           onTapCancel: () => setState(() => _down = false),
-          onTap: widget.onTap,
+          onTap: _tap,
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 250),
             curve: Ref.ease,
@@ -385,20 +395,76 @@ class _RefTicketCardState extends State<RefTicketCard>
             // ⚠️ ListView 里高度是无界的：Row 的 stretch 会强制子项「无限高」
             // （实测直接抛 "BoxConstraints forces an infinite height"）。
             // IntrinsicHeight 先把这一行收成内容高度，stretch 才有意义。
-            child: IntrinsicHeight(
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: <Widget>[
-                  _grade(q, gc),
-                  Expanded(child: _body(q, gc, main)),
-                  _go(gc),
-                ],
-              ),
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: <Widget>[
+                IntrinsicHeight(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: <Widget>[
+                      _grade(q, gc),
+                      Expanded(child: _body(q, gc, main)),
+                      _go(gc),
+                    ],
+                  ),
+                ),
+                if (_stamped)
+                  Positioned.fill(
+                    child: IgnorePointer(
+                      child: Center(
+                        child: AnimatedBuilder(
+                          animation: _stamp,
+                          builder: (BuildContext _, Widget? c) {
+                            final double k = Ref.slam.transform(_stamp.value);
+                            return Opacity(
+                              opacity: k.clamp(0.0, 1.0),
+                              child: Transform.rotate(
+                                angle: (-2 - 10 * k) * math.pi / 180,
+                                child: Transform.scale(
+                                  scale: 2.8 - 1.8 * k,
+                                  child: c,
+                                ),
+                              ),
+                            );
+                          },
+                          child: const _BigStamp(),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
             ),
           ),
         ),
       ),
     );
+  }
+
+  /// 参考稿 startTask(fromEl)：「已接单」压印 260ms 砸下 → 250ms 出声 →
+  /// 再停 560ms 才进执行。正在执行的那张直接回去，不盖章。
+  bool _stamped = false;
+  late final AnimationController _stamp = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 260),
+  );
+
+  Future<void> _tap() async {
+    if (_stamped) return;
+    final bool reduce = MediaQuery.maybeDisableAnimationsOf(context) ?? false;
+    if (widget.running || reduce || !widget.stampOnTap) {
+      widget.onTap?.call();
+      return;
+    }
+    setState(() => _stamped = true);
+    _stamp.forward(from: 0);
+    await pause(const Duration(milliseconds: 250));
+    unawaited(Sfx.play('stamp'));
+    await pause(const Duration(milliseconds: 560));
+    if (!mounted) return;
+    widget.onTap?.call();
+    later(const Duration(milliseconds: 1200), () {
+      if (mounted) setState(() => _stamped = false);
+    });
   }
 
   /// .tk-g：宽 76、右侧 2px 虚线、上下各一枚 18 撕口
@@ -524,7 +590,11 @@ class _RefTicketCardState extends State<RefTicketCard>
           ),
           const SizedBox(height: 4),
           Text(
-            '${q.minutesText} · ${q.proof}',
+            <String>[
+              if (q.attrs.isNotEmpty) Attr.nameOf(q.attrs.keys.first),
+              q.minutesText,
+              q.proof,
+            ].join(' · '),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: RefType.ticketMeta,
@@ -562,20 +632,22 @@ class _RefTicketCardState extends State<RefTicketCard>
     );
   }
 
-  /// 「显示 = 结算」的唯一口径是 [Quest.lootText]，**不要改它的字面量**
-  /// （agent 工具回执、聊天台词都读同一份）。字形问题只在渲染层修：
-  /// Chakra / JetBrains / NotoSansSC 都没有 `◈`，直接画会是豆腐块，
-  /// 这里换成同义的中文标签。
-  static String _glyph(String s) => s.replaceAll('◈', '晶核');
-
+  /// .tk-r 三枚（L1379）：`EXP +n` · `◆ n` · `体质 +n`。
+  /// 数值走结算真源 [Rewards.payout]（与 [Quest.lootText] 同表），
+  /// 只是按参考稿拆成独立的标签，不再挤成「晶核 7体+3」一坨。
   static List<String> _loot(Quest q) {
-    // .tk-r 的三个标签（L257-258）：数值走项目真实收益表（lootText 是
-    // 「显示 = 结算」的唯一口径），这里只按 · 拆开
-    final List<String> out = <String>[];
-    for (final String part in _glyph(q.lootText).split(' · ')) {
-      if (part.trim().isNotEmpty) out.add(part.trim());
-    }
-    return out;
+    final Payout p = Rewards.payout(
+      rank: q.rank,
+      crit: false,
+      dbl: false,
+      remedy: q.kind == 'remedy',
+    );
+    return <String>[
+      'EXP +${p.exp}',
+      '◆ ${p.coin}',
+      for (final MapEntry<String, int> e in q.attrs.entries)
+        '${Attr.nameOf(e.key)} +${e.value}',
+    ];
   }
 
   /// .tk-go：宽 52、竖排、900 16px、背景 gc、右侧圆角
@@ -612,6 +684,53 @@ class _RefTicketCardState extends State<RefTicketCard>
                 ),
               ),
             ),
+        ],
+      ),
+    );
+  }
+}
+
+/// .bigstamp（L263-264）：4px acid 框「已接单 / ACCEPTED」
+class _BigStamp extends StatelessWidget {
+  const _BigStamp();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+      decoration: BoxDecoration(
+        color: const Color(0xD906050C),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Ref.acid, width: 4),
+        boxShadow: const <BoxShadow>[
+          BoxShadow(color: Color(0x80D6FF3D), blurRadius: 30),
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Text(
+            '已接单',
+            style: refText(
+              size: 26,
+              wght: 900,
+              ls: 6,
+              height: 1.2,
+              color: Ref.acid,
+              shadows: const <Shadow>[Shadow(color: Ref.acid, blurRadius: 14)],
+            ),
+          ),
+          Text(
+            'ACCEPTED',
+            style: refText(
+              family: Ref.fm,
+              size: 10,
+              wght: 700,
+              ls: 6,
+              height: 1.2,
+              color: Ref.acid,
+            ),
+          ),
         ],
       ),
     );

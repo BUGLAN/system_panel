@@ -25,6 +25,7 @@ class RefHud extends StatefulWidget {
     required this.state,
     this.visible = true,
     this.coinBump = 0,
+    this.coinKey,
     this.streakBump = 0,
     this.onMenu,
     this.onLevelTap,
@@ -40,6 +41,9 @@ class RefHud extends StatefulWidget {
 
   /// 每 +1 播一次 bump（晶核 / 连胜）
   final int coinBump;
+
+  /// 晶核 chip 的定位键（coinFly 的落点）
+  final Key? coinKey;
   final int streakBump;
 
   final VoidCallback? onMenu;
@@ -84,9 +88,15 @@ class _RefHudState extends State<RefHud> with SingleTickerProviderStateMixin {
     }
   }
 
+  /// 数值一变就 bump 一次（参考稿 bump($('#hudCoin')) / bump($('#hudStreak'))）
+  int _coinTick = 0;
+  int _streakTick = 0;
+
   @override
   void didUpdateWidget(RefHud old) {
     super.didUpdateWidget(old);
+    if (old.state.coins != widget.state.coins) _coinTick++;
+    if (old.state.streak != widget.state.streak) _streakTick++;
     if (old.visible == widget.visible) return;
     final bool reduce = MediaQuery.maybeDisableAnimationsOf(context) ?? false;
     if (reduce) {
@@ -168,7 +178,7 @@ class _RefHudState extends State<RefHud> with SingleTickerProviderStateMixin {
             label: '连胜 ${s.streak} 天',
             child: RefChip(
               value: '${s.streak}',
-              bump: widget.streakBump,
+              bump: widget.streakBump + _streakTick,
               valueColor: const Color(0xFFFFB35C),
               icon: const CustomPaint(
                 size: Size(17, 17), // L102 .chip svg{width:17px}
@@ -183,12 +193,20 @@ class _RefHudState extends State<RefHud> with SingleTickerProviderStateMixin {
           const SizedBox(width: 10),
           // .chip.coin（L103）：17px 青色描边六边 + 数字 16 Chakra
           _Tap(
+            key: widget.coinKey,
             onTap: widget.onCoinTap,
             label: '晶核 ${s.coins}',
-            child: RefChip(
-              value: '${s.coins}',
-              bump: widget.coinBump,
-              icon: const CustomPaint(
+            // roll(coinN, from, to, 900)：1 − (1−k)³ 滚数
+            child: TweenAnimationBuilder<double>(
+              tween: Tween<double>(end: s.coins.toDouble()),
+              duration: const Duration(milliseconds: 900),
+              curve: Curves.easeOutCubic,
+              builder: (BuildContext _, double v, Widget? icon) => RefChip(
+                value: '${v.round()}',
+                bump: widget.coinBump + _coinTick,
+                icon: icon!,
+              ),
+              child: const CustomPaint(
                 size: Size(17, 17),
                 painter: _HexIcon(color: Ref.cyan, stroke: 2.2),
               ),
@@ -239,7 +257,7 @@ class _RefHudState extends State<RefHud> with SingleTickerProviderStateMixin {
 
 /// 让 .chip 可点（参考稿三枚 chip 都挂了 info 提示）
 class _Tap extends StatelessWidget {
-  const _Tap({required this.child, this.onTap, this.label});
+  const _Tap({super.key, required this.child, this.onTap, this.label});
   final Widget child;
   final VoidCallback? onTap;
   final String? label;

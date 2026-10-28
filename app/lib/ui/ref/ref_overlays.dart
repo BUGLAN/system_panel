@@ -237,7 +237,7 @@ class _RefLevelUpState extends State<RefLevelUp> with TickerProviderStateMixin {
                           mainAxisSize: MainAxisSize.min,
                           children: <Widget>[
                             Text(
-                              '$widget.from',
+                              '${widget.from}',
                               style: refText(
                                 family: Ref.fd,
                                 size: 60, // .lu-n .o{font-size:60px}（L455）
@@ -262,7 +262,7 @@ class _RefLevelUpState extends State<RefLevelUp> with TickerProviderStateMixin {
                               child: Transform.scale(
                                 scale: nScale,
                                 child: Text(
-                                  '$widget.to',
+                                  '${widget.to}',
                                   style: refText(
                                     family: Ref.fd,
                                     size: 96, // .lu-n{font:700 96px/1}（L454）
@@ -901,7 +901,7 @@ class _RefModalState extends State<RefModal>
           children: <Widget>[
             Text(
               widget.title,
-              textAlign: TextAlign.center,
+              // .modal 无 text-align：左对齐
               style: refText(
                 size: 21, // .modal h3{font:900 21px}（L477）
                 wght: 900,
@@ -912,7 +912,6 @@ class _RefModalState extends State<RefModal>
             const SizedBox(height: 10), // margin-top:10（L478）
             Text(
               widget.body,
-              textAlign: TextAlign.center,
               style: refText(
                 size: 14, // .modal p{font:400 14px/1.7;color:dim}（L478）
                 wght: 400,

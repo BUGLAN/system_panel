@@ -755,7 +755,7 @@ class _RefVerdictState extends State<RefVerdict> with TickerProviderStateMixin {
           ),
           child: Row(
             children: <Widget>[
-              Flexible(
+              Expanded(
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: <Widget>[
@@ -799,6 +799,7 @@ class _RefVerdictState extends State<RefVerdict> with TickerProviderStateMixin {
                   ],
                 ),
               ),
+              // .rw .r{justify-content:space-between}：标签吃满左侧，数值贴右
               const SizedBox(width: 10),
               Transform.scale(
                 scale: pop,

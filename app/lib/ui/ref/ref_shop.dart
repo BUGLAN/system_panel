@@ -1,21 +1,29 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
 import '../../data/items.dart';
 import '../../design/ref.dart';
+import '../../state/sfx.dart';
+import '../../widgets/fx_particles.dart';
+import 'ref_carousel.dart';
 import 'ref_inputs.dart';
 import 'ref_kit.dart';
+import 'ref_motion.dart';
+import 'ref_svg.dart';
+import 'ref_tcard.dart' show RefDashedRRectPainter, refCssLinear;
 
 /// ═══════════════════════════════════════════════════════════
-///  补给 —— 参考稿 #sc-shop（CSS L385-404，DOM L789-799）
+///  补给站 —— 参考稿 #sc-shop（CSS L385-404，DOM L789-799，JS L1610-1636）
 ///
-///  .sh（eyebrow + h1 补给 + xbtn）→ .shop-q 她的话 → .car 商品卡轮播
-///  → .ruler 刻度 → .shop-foot（[使用] ghost + [购买] pri）
+///  .sh（SUPPLY · 补给站 / 补给 / 返回）→ .shop-q 她的话
+///  → #shopCar（3D 轮播，复用 .gcard 材质）→ .ruler → .shop-foot
+///  （[使用]（只有补签券且持有时出现）+ [购买 · ◆价]）
 ///
-///  商品卡复用 .gcard（L190-216）的材质，专属区是
-///  .it-top（竖条 + 编号）→ .it-ic 96 双层旋转环 → .it-n 24 名
-///  → .it-d 说明 → .it-f（持有 ×N + .ptag 六边价签）
+///  购买（JS buy）：锁级 → 卡抖 + 报错；钱不够 → 按钮抖 + 嘴；
+///  成功 → 扣钱 + 卡面 pop（亮 1.9 / 饱和 1.4）+ 爆点 + 环。
+///  点焦点卡 = 购买（JS onTap: () => buy()）。
 /// ═══════════════════════════════════════════════════════════
 class RefShop extends StatefulWidget {
   const RefShop({
@@ -23,11 +31,13 @@ class RefShop extends StatefulWidget {
     required this.items,
     required this.owned,
     required this.coins,
+    this.lv = 1,
     this.lead = 0,
+    this.fx,
     this.onBack,
-    this.onPick,
     this.onBuy,
     this.onUse,
+    this.onToast,
   });
 
   final List<Item> items;
@@ -35,439 +45,703 @@ class RefShop extends StatefulWidget {
   /// item id → 持有数
   final Map<String, int> owned;
   final int coins;
-
+  final int lv;
   final int lead;
+  final FxController? fx;
   final VoidCallback? onBack;
-  final ValueChanged<int>? onPick;
-  final ValueChanged<Item>? onBuy;
-  final ValueChanged<Item>? onUse;
+
+  /// 真正扣钱入库；返回是否成功
+  final bool Function(Item it)? onBuy;
+
+  /// 使用（补签券）；返回是否成功
+  final bool Function(Item it)? onUse;
+
+  final void Function(String msg, {bool bad})? onToast;
 
   @override
   State<RefShop> createState() => _RefShopState();
 }
 
-class _RefShopState extends State<RefShop> {
-  late int _lead = widget.lead.clamp(0, math.max(0, widget.items.length - 1));
+class _RefShopState extends State<RefShop> with RefTimers<RefShop> {
+  final RefCarouselController _car = RefCarouselController();
+  final GlobalKey _carKey = GlobalKey();
+  final math.Random _rnd = math.Random();
+  late int _i = widget.lead.clamp(0, math.max(0, widget.items.length - 1));
+  int _popTok = 0;
+  int _popIdx = -1;
+  int _shakeCard = 0;
+  int _shakeBtn = 0;
 
   @override
-  void didUpdateWidget(RefShop old) {
-    super.didUpdateWidget(old);
-    if (widget.lead != old.lead) {
-      _lead = widget.lead.clamp(0, math.max(0, widget.items.length - 1));
-    }
+  void dispose() {
+    _car.dispose();
+    super.dispose();
   }
 
-  Item? get _cur => widget.items.isEmpty
-      ? null
-      : widget.items[_lead.clamp(0, widget.items.length - 1)];
+  Item get _it => widget.items[_i.clamp(0, widget.items.length - 1)];
+  bool _locked(Item it) => it.lv > 0 && widget.lv < it.lv;
+  int _own(Item it) => widget.owned[it.id] ?? 0;
+
+  Offset? _cardCenter() {
+    final RenderBox? me = context.findRenderObject() as RenderBox?;
+    final RenderBox? car =
+        _carKey.currentContext?.findRenderObject() as RenderBox?;
+    if (me == null || car == null || !car.hasSize) return null;
+    return me.globalToLocal(car.localToGlobal(car.size.center(Offset.zero)));
+  }
+
+  void _toast(String m, {bool bad = false}) =>
+      widget.onToast?.call(m, bad: bad);
+
+  void _buy() {
+    final Item it = _it;
+    if (_locked(it)) {
+      unawaited(Sfx.play('error'));
+      setState(() => _shakeCard++);
+      _toast('LV${it.lv} 才能买。先去升级，宿主。', bad: true);
+      return;
+    }
+    if (widget.coins < it.price) {
+      unawaited(Sfx.play('error'));
+      setState(() => _shakeBtn++);
+      const List<String> lines = <String>[
+        '钱包比你的决心还薄。',
+        '晶核不够。汗还没流够。',
+        '她看了看你的余额，沉默了。',
+      ];
+      _toast(lines[_rnd.nextInt(lines.length)], bad: true);
+      return;
+    }
+    final bool ok = widget.onBuy?.call(it) ?? false;
+    if (!ok) return;
+    unawaited(Sfx.play('buy'));
+    later(const Duration(milliseconds: 520), () {
+      if (!mounted) return;
+      setState(() {
+        _popIdx = _i;
+        _popTok++;
+      });
+      final Offset? c = _cardCenter();
+      final Color gc = Color(it.color);
+      if (c != null) {
+        widget.fx?.burst(
+          c.dx,
+          c.dy,
+          n: 38,
+          cols: <Color>[gc, Colors.white],
+          min: 180,
+          max: 720,
+          life: .6,
+        );
+        widget.fx?.ripple(c.dx, c.dy, r1: 160, color: gc, w: 4, ms: 500);
+      }
+      final List<String> lines = <String>[
+        '成交。她把${it.name}塞给你，假装很不情愿。',
+        '${it.name} ×1 入库。别浪费。',
+      ];
+      _toast(lines[_rnd.nextInt(lines.length)]);
+    });
+  }
+
+  void _use() {
+    final Item it = _it;
+    if (_own(it) <= 0) return;
+    final bool ok = widget.onUse?.call(it) ?? false;
+    if (!ok) return;
+    unawaited(Sfx.play('success'));
+    _toast('补签成功，连胜 +1。这叫补救，不叫作弊。');
+  }
 
   @override
   Widget build(BuildContext context) {
     final EdgeInsets safe = MediaQuery.paddingOf(context);
-    // ⚠️ 参考稿里档案/补给是**整页场景**（不是浮层）：正文从场景顶边开始。
-    //    保留「屏高 46%」那种舞台让位的话，整页只剩半屏（真机截图）。
-    final double top = safe.top + Ref.sceneTop;
-    final Item? it = _cur;
-    final int have = it == null ? 0 : (widget.owned[it.id] ?? 0);
-    final bool afford = it != null && widget.coins >= it.price;
+    final Item it = _it;
+    final bool lk = _locked(it);
+    final int short = it.price - widget.coins;
+    final bool bad = lk || short > 0;
+    final String buyTxt = lk
+        ? 'LV${it.lv} 解锁'
+        : (short > 0 ? '还差 ◆$short' : '购买 · ◆${it.price}');
     return Padding(
       padding: EdgeInsets.fromLTRB(
         Ref.gutter,
-        top,
+        safe.top + Ref.sceneTop,
         Ref.gutter,
         safe.bottom + Ref.sceneBottom,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
-          _head(),
-          Padding(
-            padding: const EdgeInsets.only(top: 10),
-            child: Text(
-              '「晶核是你流的汗变的。花吧，别犹豫。」',
-              style: refText(
-                family: Ref.fc,
-                size: 14,
-                wght: 500,
-                height: 1.5,
-                color: Ref.dim,
+          RefReveal(
+            index: 0,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      const RefEyebrow(text: 'SUPPLY · 补给站', accent: Ref.mint),
+                      const SizedBox(height: 8),
+                      Text('补给', style: RefType.h1),
+                    ],
+                  ),
+                ),
+                RefXButton(onTap: widget.onBack, accent: Ref.mint, back: true),
+              ],
+            ),
+          ),
+          RefReveal(
+            index: 1,
+            child: Padding(
+              padding: const EdgeInsets.only(top: 10),
+              child: Text(
+                '“晶核是你流的汗变的。花吧，别犹豫。”',
+                style: refText(
+                  size: 14,
+                  wght: 500,
+                  height: 1.5,
+                  color: Ref.dim,
+                ),
               ),
             ),
           ),
           Expanded(
-            child: it == null ? const SizedBox() : _card(it, have, afford),
-          ),
-          _ruler(),
-          const SizedBox(height: 12),
-          _foot(it, have, afford),
-        ],
-      ),
-    );
-  }
-
-  /// .sh（L63）
-  Widget _head() {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: <Widget>[
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              const RefEyebrow(text: 'SUPPLY · 补给站', accent: Ref.mint),
-              const SizedBox(height: 8),
-              Text('补给', style: RefType.h1),
-            ],
-          ),
-        ),
-        RefXButton(onTap: widget.onBack, back: true, accent: Ref.mint),
-      ],
-    );
-  }
-
-  /// 商品卡（.gcard 材质 + .it-* 专属区）
-  Widget _card(Item it, int have, bool afford) {
-    final Color gc = Ref.mint;
-    return Center(
-      child: GestureDetector(
-        onTap: widget.onPick == null ? null : () => widget.onPick!(_lead),
-        child: LayoutBuilder(
-          builder: (BuildContext context, BoxConstraints box) {
-            final double h = math.min(360.0, box.maxHeight);
-            final double w = math.min(250.0, h * .7);
-            return Container(
-              width: w,
-              height: h,
-              padding: const EdgeInsets.all(18),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(22),
-                gradient: const LinearGradient(
-                  begin: Alignment(-.8, -.9),
-                  end: Alignment(.8, .9),
-                  colors: <Color>[
-                    Color(0xFF1E2C33),
-                    Color(0xFF121A1E),
-                    Color(0xFF0A1114),
-                  ],
-                  stops: <double>[0, .52, 1],
-                ),
-                border: Border.all(color: Ref.a(gc, .35), width: 1.5),
-                boxShadow: <BoxShadow>[
-                  const BoxShadow(
-                    color: Color(0xC0000000),
-                    offset: Offset(0, 30),
-                    blurRadius: 50,
-                    spreadRadius: -12,
-                  ),
-                  BoxShadow(
-                    color: Ref.a(gc, .3),
-                    blurRadius: 46,
-                    spreadRadius: -8,
-                  ),
-                ],
+            child: Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: LayoutBuilder(
+                builder: (BuildContext context, BoxConstraints box) =>
+                    OverflowBox(
+                      minWidth: box.maxWidth + Ref.gutter * 2,
+                      maxWidth: box.maxWidth + Ref.gutter * 2,
+                      minHeight: math.max(250, box.maxHeight),
+                      maxHeight: math.max(250, box.maxHeight),
+                      child: RefCarousel(
+                        key: _carKey,
+                        controller: _car,
+                        count: widget.items.length,
+                        start: _i,
+                        onFocus: (int i) {
+                          if (mounted) setState(() => _i = i);
+                        },
+                        onTap: (_) => _buy(),
+                        itemBuilder:
+                            (BuildContext _, int i, RefCarouselSlot slot) {
+                              final Item x = widget.items[i];
+                              Widget card = _ShopCard(
+                                item: x,
+                                own: _own(x),
+                                locked: _locked(x),
+                                slot: slot,
+                                popToken: _popIdx == i ? _popTok : 0,
+                              );
+                              if (i == _i) {
+                                card = RefShakeX(
+                                  token: _shakeCard,
+                                  child: card,
+                                );
+                              }
+                              return card;
+                            },
+                      ),
+                    ),
               ),
-              // ⚠️ 卡内容定高（顶栏 + 96 图标 + 24 名 + 3 行说明 + 底部持有/价签），
-              //    矮屏（320×640）的卡高被压到 346 时溢出 14px。内容整体可滚，
-              //    底部「持有 / 价签」那行固定贴底。
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+            ),
+          ),
+          RefReveal(index: 2, child: _ruler()),
+          RefReveal(
+            index: 3,
+            child: Padding(
+              padding: const EdgeInsets.only(top: 12),
+              child: Row(
                 children: <Widget>[
-                  _itTop(it),
+                  if (it.use == 'shop' && _own(it) > 0) ...<Widget>[
+                    RefButton(
+                      key: const Key('ref.shop.use'),
+                      label: '使用',
+                      primary: false,
+                      small: true,
+                      animateSheen: false,
+                      onTap: _use,
+                    ),
+                    const SizedBox(width: 12),
+                  ],
                   Expanded(
-                    child: SingleChildScrollView(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: <Widget>[
-                          SizedBox(
-                            height: 100,
-                            child: Center(
-                              child: SizedBox(
-                                width: 96,
-                                height: 96,
-                                child: _ItemIconPainter(
-                                  glyph: it.glyph,
-                                  color: gc,
-                                ),
-                              ),
-                            ),
-                          ),
-                          Text(
-                            it.name,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: refText(
-                              family: Ref.fc,
-                              size: 24,
-                              wght: 900,
-                              height: 1.2,
-                              color: Ref.txt,
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          Text(
-                            it.desc,
-                            maxLines: 3,
-                            overflow: TextOverflow.ellipsis,
-                            style: refText(
-                              family: Ref.fc,
-                              size: 13,
-                              wght: 400,
-                              height: 1.55,
-                              color: Ref.dim,
-                            ),
-                          ),
-                        ],
+                    child: RefShakeX(
+                      token: _shakeBtn,
+                      child: RefButton(
+                        key: const Key('ref.shop.buy'),
+                        label: buyTxt,
+                        accent: bad ? const Color(0xFF2C2944) : Ref.acid,
+                        ink: bad ? Ref.dim : null,
+                        onTap: _buy,
                       ),
                     ),
                   ),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: <Widget>[
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: <Widget>[
-                          Text(
-                            '持有',
-                            style: refText(
-                              family: Ref.fc,
-                              size: 12,
-                              wght: 500,
-                              height: 1,
-                              color: Ref.dim,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            '×$have',
-                            style: refText(
-                              family: Ref.fd,
-                              size: 15,
-                              wght: 700,
-                              height: 1,
-                              color: Ref.txt,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const Spacer(),
-                      RefHexTag(
-                        label: '晶核 ${it.price}',
-                        color: afford ? gc : Ref.dim2,
-                      ),
-                    ],
-                  ),
                 ],
               ),
-            );
-          },
-        ),
+            ),
+          ),
+        ],
       ),
     );
   }
 
-  /// .it-top（L387-389）：3×14 竖条 + 编号
-  Widget _itTop(Item it) {
-    return Row(
-      children: <Widget>[
-        Container(
-          width: 3,
-          height: 14,
-          decoration: BoxDecoration(
-            color: Ref.mint,
-            boxShadow: <BoxShadow>[BoxShadow(color: Ref.mint, blurRadius: 8)],
-          ),
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Text(
-            'SUPPLY · ${it.id.toUpperCase()}',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: refText(
-              family: Ref.fm,
-              size: 11,
-              wght: 700,
-              ls: 3,
-              height: 1,
-              color: Ref.mint,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  /// .ruler（L225-228）
+  /// .ruler（L225-228）：14×4 胶囊，焦点 30 宽 acid
   Widget _ruler() {
-    if (widget.items.length <= 1) return const SizedBox.shrink();
-    return Wrap(
-      alignment: WrapAlignment.center,
-      spacing: 7,
-      runSpacing: 6,
-      children: <Widget>[
-        for (int i = 0; i < widget.items.length; i++)
-          GestureDetector(
-            onTap: () => setState(() => _lead = i),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 300),
-              curve: Ref.ease,
-              width: i == _lead ? 30 : 14,
-              height: 4,
-              decoration: BoxDecoration(
-                color: i == _lead ? Ref.acid : const Color(0x1FFFFFFF),
-                borderRadius: BorderRadius.circular(2),
-                boxShadow: i == _lead
-                    ? <BoxShadow>[BoxShadow(color: Ref.acid, blurRadius: 10)]
-                    : null,
+    return Padding(
+      padding: const EdgeInsets.only(top: 10, bottom: 2),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: <Widget>[
+          for (int i = 0; i < widget.items.length; i++) ...<Widget>[
+            if (i > 0) const SizedBox(width: 7),
+            GestureDetector(
+              onTap: () => _car.go(i),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 300),
+                curve: Ref.ease,
+                width: i == _i ? 30 : 14,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: i == _i ? Ref.acid : const Color(0x1FFFFFFF),
+                  borderRadius: BorderRadius.circular(2),
+                  boxShadow: i == _i
+                      ? const <BoxShadow>[
+                          BoxShadow(color: Ref.acid, blurRadius: 10),
+                        ]
+                      : null,
+                ),
               ),
             ),
-          ),
-      ],
-    );
-  }
-
-  /// .shop-foot（L403-404）：[使用] ghost sm + [购买] pri flex 1
-  Widget _foot(Item? it, int have, bool afford) {
-    return Row(
-      children: <Widget>[
-        // 参考稿 JS L1621：只有**补签券**有「使用」这种即时消耗；
-        // 双倍卡/暴击芯片是执行页装载的，补给页不该出现「使用」。
-        if (it != null && it.id == 'patch' && have > 0) ...<Widget>[
-          RefButton(
-            key: const Key('ref.shop.use'),
-            label: '使用',
-            primary: false,
-            small: true,
-            animateSheen: false,
-            onTap: () => widget.onUse!(it),
-          ),
-          const SizedBox(width: 12),
+          ],
         ],
-        Expanded(
-          child: RefButton(
-            key: const Key('ref.shop.buy'),
-            label: it == null ? '购买' : '购买 · 晶核 ${it.price}',
-            enabled: afford,
-            onTap: it == null || widget.onBuy == null || !afford
-                ? null
-                : () => widget.onBuy!(it),
-          ),
-        ),
-      ],
+      ),
     );
   }
 }
 
-/// .it-ic（L390-393）：96 内 2px 虚线环 12s 转 + inset 12 的实线环 24 辉光 + 图标
-class _ItemIconPainter extends StatefulWidget {
-  const _ItemIconPainter({required this.glyph, required this.color});
-
-  final String glyph;
-  final Color color;
+/// .gcard（L190-216）+ 商品专属区（L386-400）
+class _ShopCard extends StatefulWidget {
+  const _ShopCard({
+    required this.item,
+    required this.own,
+    required this.locked,
+    required this.slot,
+    required this.popToken,
+  });
+  final Item item;
+  final int own;
+  final bool locked;
+  final RefCarouselSlot slot;
+  final int popToken;
 
   @override
-  State<_ItemIconPainter> createState() => _ItemIconPainterState();
+  State<_ShopCard> createState() => _ShopCardState();
 }
 
-class _ItemIconPainterState extends State<_ItemIconPainter>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _c = AnimationController(
+class _ShopCardState extends State<_ShopCard> with TickerProviderStateMixin {
+  /// .it-ic::before 12s 旋转
+  late final AnimationController _spin = AnimationController(
     vsync: this,
     duration: const Duration(seconds: 12),
   );
 
+  /// .gcard.pop：.5s，30% 处亮 1.9 / 饱和 1.4
+  late final AnimationController _pop = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 500),
+  );
+
   @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    final bool reduce = MediaQuery.maybeDisableAnimationsOf(context) ?? false;
-    if (reduce) {
-      _c.stop();
-    } else if (!_c.isAnimating) {
-      _c.repeat();
+  void initState() {
+    super.initState();
+    _syncSpin();
+  }
+
+  @override
+  void didUpdateWidget(_ShopCard old) {
+    super.didUpdateWidget(old);
+    if (widget.popToken != old.popToken && widget.popToken != 0) {
+      _pop.forward(from: 0);
+    }
+    _syncSpin();
+  }
+
+  void _syncSpin() {
+    final bool reduce = WidgetsBinding
+        .instance
+        .platformDispatcher
+        .accessibilityFeatures
+        .disableAnimations;
+    if (widget.slot.focus && !reduce) {
+      if (!_spin.isAnimating) _spin.repeat();
+    } else {
+      _spin.stop();
     }
   }
 
   @override
   void dispose() {
-    _c.dispose();
+    _spin.dispose();
+    _pop.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
-      alignment: Alignment.center,
+    final Item it = widget.item;
+    final Color gc = Color(it.color);
+    final bool focus = widget.slot.focus;
+    final BorderRadius r = BorderRadius.circular(22);
+    final Widget face = DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: r,
+        boxShadow: <BoxShadow>[
+          BoxShadow(
+            color: Color(focus ? 0xD9000000 : 0xBF000000),
+            offset: const Offset(0, 30),
+            blurRadius: focus ? 60 : 50,
+            spreadRadius: focus ? -10 : -12,
+          ),
+          if (focus)
+            BoxShadow(color: Ref.a(gc, .6), blurRadius: 46, spreadRadius: -8),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: r,
+        child: Stack(
+          fit: StackFit.expand,
+          children: <Widget>[
+            DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: refCssLinear(
+                  155,
+                  const <Color>[
+                    Color(0xFF231E40),
+                    Color(0xFF131124),
+                    Color(0xFF0B0A15),
+                  ],
+                  const <double>[0, .52, 1],
+                ),
+              ),
+            ),
+            const Positioned(
+              left: 0,
+              right: 0,
+              top: 0,
+              height: 1,
+              child: ColoredBox(color: Color(0x1FFFFFFF)),
+            ),
+            // .deco：右下 170px 描边首字母
+            Positioned(
+              right: -30,
+              bottom: -40,
+              child: Text(
+                it.code.substring(0, 1),
+                style: TextStyle(
+                  fontFamily: Ref.fd,
+                  fontSize: 170,
+                  height: 1,
+                  fontWeight: FontWeight.w700,
+                  fontStyle: FontStyle.italic,
+                  foreground: Paint()
+                    ..style = PaintingStyle.stroke
+                    ..strokeWidth = 1.5
+                    ..color = Ref.a(gc, .2),
+                ),
+              ),
+            ),
+            Padding(padding: const EdgeInsets.all(18), child: _body(it, gc)),
+            // ::after 高光（mx 30% / my 0%）
+            const IgnorePointer(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: RadialGradient(
+                    center: Alignment(-.4, -1),
+                    radius: .9,
+                    colors: <Color>[Color(0x2BFFFFFF), Color(0x00FFFFFF)],
+                    stops: <double>[0, .48],
+                  ),
+                ),
+              ),
+            ),
+            // ::before 1.5px 渐变描边（非焦点 .35）
+            IgnorePointer(
+              child: CustomPaint(
+                painter: _GBorderPainter(gc: gc, opacity: focus ? 1 : .35),
+              ),
+            ),
+            if (widget.slot.shade > .001)
+              IgnorePointer(
+                child: ColoredBox(
+                  color: Colors.black.withValues(alpha: widget.slot.shade),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+    return AnimatedBuilder(
+      animation: _pop,
+      child: face,
+      builder: (BuildContext _, Widget? c) {
+        if (!_pop.isAnimating) return c!;
+        final double v = _pop.value;
+        final double k = v < .3 ? v / .3 : (1 - v) / .7;
+        // brightness(1 + .9k) 用白色加色近似
+        return Stack(
+          fit: StackFit.expand,
+          children: <Widget>[
+            c!,
+            IgnorePointer(
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(22),
+                child: ColoredBox(
+                  color: Color.lerp(
+                    Colors.white,
+                    gc,
+                    .4,
+                  )!.withValues(alpha: .35 * k),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _body(Item it, Color gc) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
-        AnimatedBuilder(
-          animation: _c,
-          builder: (BuildContext context, Widget? child) => Transform.rotate(
-            angle: _c.value * 2 * math.pi,
-            child: CustomPaint(
-              size: const Size(96, 96),
-              painter: _DashedRingPainter(color: widget.color),
+        // .it-top
+        Row(
+          children: <Widget>[
+            Container(
+              width: 3,
+              height: 14,
+              decoration: BoxDecoration(
+                color: gc,
+                boxShadow: <BoxShadow>[BoxShadow(color: gc, blurRadius: 8)],
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              'ITEM · ${it.code}',
+              style: refText(
+                family: Ref.fm,
+                size: 11,
+                wght: 700,
+                ls: 3,
+                height: 1.2,
+                color: gc,
+              ),
+            ),
+            const Spacer(),
+            Text(
+              '持有 ×${widget.own}',
+              style: refText(
+                family: Ref.fm,
+                size: 11,
+                wght: 700,
+                ls: 1,
+                height: 1.2,
+                color: Ref.dim,
+              ),
+            ),
+          ],
+        ),
+        // .it-ic 96：虚线旋转环 + 实环辉光 + 34 图标
+        Padding(
+          padding: const EdgeInsets.only(top: 22, bottom: 16),
+          child: Center(
+            child: SizedBox(
+              width: 96,
+              height: 96,
+              child: Stack(
+                alignment: Alignment.center,
+                children: <Widget>[
+                  RotationTransition(
+                    turns: _spin,
+                    child: CustomPaint(
+                      size: const Size.square(96),
+                      painter: RefDashedRRectPainter(
+                        color: Ref.a(gc, .6),
+                        radius: 48,
+                        width: 2,
+                        dash: 6,
+                        gap: 5,
+                      ),
+                    ),
+                  ),
+                  Container(
+                    width: 72,
+                    height: 72,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(color: gc, width: 2),
+                      gradient: RadialGradient(
+                        colors: <Color>[Ref.a(gc, 0), Ref.a(gc, .4)],
+                        stops: const <double>[.55, 1],
+                      ),
+                      boxShadow: <BoxShadow>[
+                        BoxShadow(color: gc, blurRadius: 24),
+                      ],
+                    ),
+                  ),
+                  Container(
+                    width: 68,
+                    height: 68,
+                    decoration: const BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Color(0xFF151227),
+                    ),
+                  ),
+                  RefSvgIcon(
+                    paths: RefIcons.of(it.id),
+                    color: gc,
+                    size: 34,
+                    glow: 8,
+                  ),
+                ],
+              ),
             ),
           ),
         ),
-        Container(
-          width: 72,
-          height: 72,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            border: Border.all(color: widget.color, width: 2),
-            boxShadow: <BoxShadow>[
-              BoxShadow(color: widget.color, blurRadius: 24),
-              BoxShadow(
-                color: widget.color.withAlpha(102),
-                blurRadius: 18,
-                spreadRadius: -6,
-              ),
-            ],
-          ),
-          child: Center(
-            child: Text(
-              widget.glyph,
-              style: refText(
-                family: Ref.fc,
-                size: 28,
-                wght: 900,
-                height: 1,
-                color: widget.color,
+        Text(
+          it.name,
+          style: refText(size: 24, wght: 900, height: 1.3, color: Ref.txt),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          it.desc,
+          maxLines: 4,
+          overflow: TextOverflow.ellipsis,
+          style: refText(size: 13, wght: 400, height: 1.55, color: Ref.dim),
+        ),
+        const Spacer(),
+        // .it-f
+        Row(
+          children: <Widget>[
+            Text.rich(
+              TextSpan(
+                text: '持有 ',
+                style: refText(size: 12, wght: 500, color: Ref.dim),
+                children: <InlineSpan>[
+                  TextSpan(
+                    text: '×${widget.own}',
+                    style: refText(
+                      family: Ref.fd,
+                      size: 15,
+                      wght: 700,
+                      color: Ref.txt,
+                    ),
+                  ),
+                ],
               ),
             ),
-          ),
+            const Spacer(),
+            _PriceTag(
+              text: widget.locked ? '🔒 LV${it.lv}' : '◆ ${it.price}',
+              color: widget.locked ? Ref.dim : gc,
+              border: widget.locked ? Ref.dim2 : gc,
+            ),
+          ],
         ),
       ],
     );
   }
 }
 
-/// .it-ic::before：2px 虚线环（参考稿用 border-style:dashed 的圆环）
-class _DashedRingPainter extends CustomPainter {
-  const _DashedRingPainter({required this.color});
+/// .ptag（L399-400）：两端尖角价签
+class _PriceTag extends StatelessWidget {
+  const _PriceTag({
+    required this.text,
+    required this.color,
+    required this.border,
+  });
+  final String text;
   final Color color;
+  final Color border;
 
   @override
+  Widget build(BuildContext context) {
+    return CustomPaint(
+      painter: _TagPainter(border),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+        child: Text(
+          text,
+          style: refText(
+            family: Ref.fd,
+            size: 16,
+            wght: 700,
+            height: 1.2,
+            color: color,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _TagPainter extends CustomPainter {
+  const _TagPainter(this.c);
+  final Color c;
+  @override
   void paint(Canvas canvas, Size s) {
-    final Offset c = s.center(Offset.zero);
-    final double r = s.width / 2 - 1;
-    final Paint p = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2
-      ..color = color.withAlpha(153);
-    const double dash = 9;
-    const double gap = 7;
-    final double step = (dash + gap) / r;
-    for (double a = 0; a < 2 * math.pi; a += step) {
-      canvas.drawArc(
-        Rect.fromCircle(center: c, radius: r),
-        a,
-        dash / r,
-        false,
-        p,
-      );
-    }
+    Path tag(Rect r) => Path()
+      ..moveTo(r.left + 10, r.top)
+      ..lineTo(r.right - 10, r.top)
+      ..lineTo(r.right, r.center.dy)
+      ..lineTo(r.right - 10, r.bottom)
+      ..lineTo(r.left + 10, r.bottom)
+      ..lineTo(r.left, r.center.dy)
+      ..close();
+    final Rect r = Offset.zero & s;
+    canvas.drawPath(tag(r), Paint()..color = Ref.a(c, .12));
+    canvas.drawPath(
+      tag(r.deflate(.75)),
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.5
+        ..color = c,
+    );
   }
 
   @override
-  bool shouldRepaint(_DashedRingPainter o) => o.color != color;
+  bool shouldRepaint(_TagPainter o) => o.c != c;
+}
+
+/// .gcard::before：1.5px、160° gc → 白 8%（35%）→ 透明（60%）→ gc
+class _GBorderPainter extends CustomPainter {
+  const _GBorderPainter({required this.gc, required this.opacity});
+  final Color gc;
+  final double opacity;
+
+  @override
+  void paint(Canvas canvas, Size s) {
+    final Rect r = Offset.zero & s;
+    final RRect o = RRect.fromRectAndRadius(r, const Radius.circular(22));
+    canvas.drawDRRect(
+      o,
+      o.deflate(1.5),
+      Paint()
+        ..shader = refCssLinear(
+          160,
+          <Color>[
+            Ref.a(gc, opacity),
+            Color.fromRGBO(255, 255, 255, .08 * opacity),
+            const Color(0x00000000),
+            Ref.a(gc, opacity),
+          ],
+          const <double>[0, .35, .6, 1],
+        ).createShader(r),
+    );
+  }
+
+  @override
+  bool shouldRepaint(_GBorderPainter o) => o.gc != gc || o.opacity != opacity;
 }

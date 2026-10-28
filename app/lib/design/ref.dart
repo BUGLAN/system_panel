@@ -182,9 +182,18 @@ TextStyle refText({
     color: foreground == null ? color : null,
     foreground: foreground,
     shadows: shadows,
+    // Chakra Petch 是静态字重（500/700 各一份文件）：Flutter 按 fontWeight
+    // 选文件，只给 fontVariations 会一律落到 Medium —— 粗体全丢。
+    // 可变字体（NotoSansSC / JetBrainsMono）由 fontVariations 精确控制。
+    fontWeight: _weightOf(wght),
     fontStyle: italic ? FontStyle.italic : FontStyle.normal,
     fontVariations: <FontVariation>[FontVariation('wght', wght)],
   );
+}
+
+FontWeight _weightOf(double w) {
+  final int i = ((w / 100).round() - 1).clamp(0, 8);
+  return FontWeight.values[i];
 }
 
 /// 参考稿的高频文字组合（避免每处重复写 6 个参数）。

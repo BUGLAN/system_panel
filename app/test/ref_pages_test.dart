@@ -49,7 +49,7 @@ void main() {
         ownedCount: 2,
         totalTitles: HostTitle.all.length,
         onBack: () {},
-        onEquip: (_) {},
+        onEquip: (_) => true,
       ),
     );
     expect(tester.takeException(), isNull);
@@ -84,7 +84,7 @@ void main() {
         owned: const <String, int>{},
         coins: 0,
         onBack: () {},
-        onBuy: (_) {},
+        onBuy: (_) => true,
       ),
     );
     expect(tester.takeException(), isNull);
@@ -101,8 +101,8 @@ void main() {
         owned: <String, int>{'patch': 2},
         coins: 9999,
         onBack: () {},
-        onBuy: (_) {},
-        onUse: (_) {},
+        onBuy: (_) => true,
+        onUse: (_) => true,
       ),
     );
     expect(tester.takeException(), isNull);
@@ -140,7 +140,7 @@ void main() {
           items: Item.all,
           owned: <String, int>{Item.all.first.id: 1},
           open: true,
-          eqId: Item.all.first.id,
+          equipped: <String>{Item.all.first.id},
           onPick: (_) {},
         ),
       ),
@@ -148,7 +148,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 600));
     expect(tester.takeException(), isNull);
     expect(find.text('LOADOUT · 选择装载道具'), findsOneWidget);
-    expect(find.text('已装载'), findsOneWidget);
+    expect(find.text('✓ 已装载'), findsOneWidget);
   });
 
   testWidgets('RefBoot 字标 / 副标题 / 日志 / 唤醒键都在', (WidgetTester tester) async {

@@ -93,13 +93,19 @@ class RefWipe extends StatefulWidget {
 }
 
 class RefWipeState extends State<RefWipe> with TickerProviderStateMixin {
+  // JS go()：三道各 360ms 推入（错峰 65）= 490 → 换页 → 停 140 →
+  // 三道各 420ms 推走（反向错峰 65）= 550。整段 1180ms。
+  static const double _total = 1180;
   late final AnimationController _c = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 900),
+    duration: const Duration(milliseconds: 1180),
   );
 
   bool _running = false;
   bool _firedCovered = false;
+
+  /// 1 = 前进（从右推入、向左推走）；−1 = 返回（反向）
+  double _dir = 1;
 
   @override
   void dispose() {
@@ -107,23 +113,25 @@ class RefWipeState extends State<RefWipe> with TickerProviderStateMixin {
     super.dispose();
   }
 
-  /// 0~40% 推入（360ms），40~46% 停，46%~93% 推走（420ms）
-  Future<void> play() async {
+  Future<void> play({bool back = false}) async {
     if (_running) return;
     _running = true;
     _firedCovered = false;
+    _dir = back ? -1 : 1;
     await _c.forward(from: 0);
     _running = false;
     widget.onDone?.call();
   }
 
   ({double enter, double exit}) get _phase {
-    final double v = _c.value;
+    final double ms = _c.value * _total;
     return (
-      enter: (v / .40).clamp(0.0, 1.0),
-      exit: ((v - .46) / .47).clamp(0.0, 1.0),
+      enter: (ms / 490).clamp(0.0, 1.0),
+      exit: ((ms - 630) / 550).clamp(0.0, 1.0),
     );
   }
+
+  double get _ms => _c.value * _total;
 
   @override
   Widget build(BuildContext context) {
@@ -145,17 +153,15 @@ class RefWipeState extends State<RefWipe> with TickerProviderStateMixin {
         if (_c.value == 0) return const SizedBox.shrink();
 
         Widget bar(int i, Color? color, {Widget? content}) {
-          final double lagIn = i * .055;
-          final double kIn = ((p.enter - lagIn) / (1 - lagIn)).clamp(0.0, 1.0);
-          final double lagOut = (2 - i) * .055;
-          final double kOut = ((p.exit - lagOut) / (1 - lagOut)).clamp(
+          final double kIn = ((_ms - i * 65) / 360).clamp(0.0, 1.0);
+          final double kOut = ((_ms - 630 - (2 - i) * 65) / 420).clamp(
             0.0,
             1.0,
           );
           final double din = Ref.wipe.transform(kIn);
           final double dout = Ref.wipe.transform(kOut);
-          // 进：-130% → 0；出：0 → +130%
-          final double tx = -130 + din * 130 + dout * 130;
+          // 进：dir·130% → 0；出：0 → −dir·130%
+          final double tx = _dir * 130 * (1 - din) - _dir * 130 * dout;
           return Positioned.fill(
             child: IgnorePointer(
               child: FractionalTranslation(
@@ -180,11 +186,11 @@ class RefWipeState extends State<RefWipe> with TickerProviderStateMixin {
             bar(
               2,
               null,
-              content: Opacity(
-                opacity: (Ref.wipe.transform(p.enter) * (1 - p.exit)).clamp(
-                  0.0,
-                  1.0,
-                ),
+              // .wl 随第三道斜带一起滑；换页那一拍放大到 1.08（260ms，不保持）
+              content: Transform.scale(
+                scale: _ms >= 490 && _ms < 750
+                    ? 1 + .08 * ((_ms - 490) / 260)
+                    : 1,
                 child: Center(
                   child: Transform(
                     alignment: Alignment.center,

@@ -7,51 +7,72 @@ class Item {
     required this.price,
     required this.desc,
     required this.use,
+    required this.code,
+    required this.color,
+    this.lv = 0,
   });
 
   final String id;
   final String name;
 
-  /// 那个字符字形（原型直接写在界面上的）
   final String glyph;
   final int price;
   final String desc;
 
-  /// 在哪一步用：exec / dispatch
+  /// exec = 执行中装载；shop = 补给站里直接使用
   final String use;
 
+  /// 牌面编号（参考稿 `ITEMS[].code`）
+  final String code;
+
+  /// 档位色（参考稿 `ITEMS[].gc`）
+  final int color;
+
+  /// 购买所需等级（0 = 不限；参考稿护盾 lv:2）
+  final int lv;
+
+  /// 参考稿 `ITEMS`（JS L1040-1045）：顺序、名字、文案、价格、颜色一字不改。
   static const List<Item> all = <Item>[
-    Item(
-      id: 'dbl',
-      name: '双倍卡',
-      glyph: '×2',
-      price: 60,
-      desc: '本单经验翻倍。和暴击叠，就是四倍。',
-      use: 'exec',
-    ),
     Item(
       id: 'crit',
       name: '暴击芯片',
       glyph: '✦',
       price: 45,
-      desc: '本单暴击率 +25%。',
+      desc: '本单暴击率 +25%。暴击时奖励 ×1.5，属性额外 +1。',
       use: 'exec',
+      code: 'CRIT',
+      color: 0xFFFF3B7A,
+    ),
+    Item(
+      id: 'dbl',
+      name: '双倍卡',
+      glyph: '×2',
+      price: 60,
+      desc: '本单 EXP 与晶核 ×2。贪心是第一生产力。',
+      use: 'exec',
+      code: 'DBL',
+      color: 0xFFFFCC4D,
     ),
     Item(
       id: 'shield',
-      name: '免死金牌',
+      name: '护盾',
       glyph: '◆',
       price: 90,
-      desc: '本单失败不计连败。嘴，她照骂。',
+      desc: '认输时连胜不中断。失败，也要失败得体面。',
       use: 'exec',
+      code: 'SHIELD',
+      color: 0xFF3BE8FF,
+      lv: 2,
     ),
     Item(
-      id: 'swap',
-      name: '换单券',
-      glyph: '⇄',
+      id: 'patch',
+      name: '补签券',
+      glyph: '✓',
       price: 30,
-      desc: '派单时换一张同级的，不算退缩。',
-      use: 'dispatch',
+      desc: '补回一天断签，连胜 +1。这叫补救，不叫作弊。',
+      use: 'shop',
+      code: 'PATCH',
+      color: 0xFF3DFFA8,
     ),
   ];
 

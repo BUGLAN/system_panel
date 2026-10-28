@@ -219,25 +219,15 @@ class _RefBackgroundState extends State<RefBackground>
                       child: AnimatedBuilder(
                         animation: _floor,
                         builder: (BuildContext context, Widget? child) {
-                          return ShaderMask(
-                            // mask-image:linear-gradient(to top,#000 5%,transparent 80%)
-                            blendMode: BlendMode.dstIn,
-                            shaderCallback: (Rect r) => const LinearGradient(
-                              begin: Alignment.bottomCenter,
-                              end: Alignment.topCenter,
-                              colors: <Color>[
-                                Colors.black,
-                                Colors.black,
-                                Colors.transparent,
-                              ],
-                              stops: <double>[0, .05, .8],
-                            ).createShader(r),
-                            child: CustomPaint(
-                              painter: _FloorPainter(
-                                accent: widget.accent,
-                                // @keyframes floor{to{background-position:0 46px}}
-                                scroll: _floor.value * 46,
-                              ),
+                          // mask-image:linear-gradient(to top,#000 5%,transparent 80%)
+                          // —— 直接做进描线的着色器里（线是纯色，乘渐变 = 遮罩）。
+                          // ⚠️ 别用 ShaderMask：它在 3D 透视下的 saveLayer 会被
+                          //    Impeller 画成一整块不透明的亮板（底部那道硬边暗带）。
+                          return CustomPaint(
+                            painter: _FloorPainter(
+                              accent: widget.accent,
+                              // @keyframes floor{to{background-position:0 46px}}
+                              scroll: _floor.value * 46,
                             ),
                           );
                         },
@@ -305,8 +295,12 @@ void _ellipse(
   canvas.save();
   canvas.translate(center.dx, center.dy);
   canvas.scale(1, ry / rx);
+  // ⚠️ CSS 的 radial-gradient 在椭圆外继续铺最后一档颜色（clamp 到整盒）。
+  //    只画椭圆外接框的话，暗角 .78 的黑在框外就丢了 —— 屏幕下方 18%
+  //    会多出一道没压暗的亮带（真机截图那道硬边）。这里铺满一个足够大的方。
+  final double big = rx * 4 + center.distance * 4 + 4000;
   canvas.drawRect(
-    Rect.fromCircle(center: Offset.zero, radius: rx),
+    Rect.fromCircle(center: Offset.zero, radius: big),
     Paint()
       ..shader = ui.Gradient.radial(
         Offset.zero,
@@ -442,9 +436,19 @@ class _FloorPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size s) {
     const double cell = 46; // background-size:46px 46px
+    final Rect r = Offset.zero & s;
     final Paint p = Paint()
-      ..color =
-          Ref.a(accent, .26) // color-mix(--accent 26%, transparent)
+      // color-mix(--accent 26%, transparent) × 自下而上的遮罩
+      ..shader = LinearGradient(
+        begin: Alignment.bottomCenter,
+        end: Alignment.topCenter,
+        colors: <Color>[
+          Ref.a(accent, .26),
+          Ref.a(accent, .26),
+          Ref.a(accent, 0),
+        ],
+        stops: const <double>[0, .05, .8],
+      ).createShader(r)
       ..strokeWidth = 1;
     for (double x = 0; x <= s.width; x += cell) {
       canvas.drawLine(Offset(x, 0), Offset(x, s.height), p);

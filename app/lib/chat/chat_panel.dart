@@ -2,6 +2,8 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../design/ref.dart';
+
 import '../design/tokens.dart';
 import '../state/sfx.dart';
 import '../widgets/chat_bar.dart';
@@ -137,6 +139,11 @@ class _ChatPanelState extends State<ChatPanel> {
   @override
   Widget build(BuildContext context) {
     final double h = MediaQuery.sizeOf(context).height;
+    // ⚠️ 根 Scaffold 不随键盘缩（resizeToAvoidBottomInset:false），面板得
+    //    自己抬到键盘上面，否则输入框和发送键被键盘整个盖住。
+    final double kb = MediaQuery.viewInsetsOf(context).bottom;
+    final double top = MediaQuery.paddingOf(context).top + 20;
+    final double panelH = (h * .72).clamp(0.0, h - kb - top).toDouble();
     return Positioned.fill(
       // 收起来时同时断掉命中，别替下面的东西挨点
       child: IgnorePointer(
@@ -151,26 +158,33 @@ class _ChatPanelState extends State<ChatPanel> {
                 child: GestureDetector(
                   behavior: HitTestBehavior.opaque,
                   onTap: widget.onClose,
-                  child: const ColoredBox(color: Color(0x7302060E)),
+                  child: const ColoredBox(color: Color(0x9904030A)),
                 ),
               ),
               // 面板本体：占屏高 72%，从底部滑入
               Positioned(
                 left: 0,
                 right: 0,
-                bottom: 0,
-                height: h * .72,
+                bottom: kb,
+                height: panelH,
                 child: AnimatedSlide(
                   offset: widget.visible ? Offset.zero : const Offset(0, 1.04),
                   duration: const Duration(milliseconds: 450),
                   curve: kOut,
                   child: DecoratedBox(
                     key: const Key('chat.panel'),
+                    // 与 .sheet 同材质：顶部 28 圆角 + 1px 白 12% 顶线
                     decoration: const BoxDecoration(
+                      borderRadius: BorderRadius.vertical(
+                        top: Radius.circular(28),
+                      ),
+                      border: Border(
+                        top: BorderSide(color: Color(0x1FFFFFFF)),
+                      ),
                       gradient: LinearGradient(
                         begin: Alignment.topCenter,
                         end: Alignment.bottomCenter,
-                        colors: <Color>[Color(0xF0061228), Color(0xFA030812)],
+                        colors: <Color>[Color(0xFF1A1630), Color(0xFF0D0B17)],
                         stops: <double>[0, .3],
                       ),
                     ),
@@ -178,7 +192,7 @@ class _ChatPanelState extends State<ChatPanel> {
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: <Widget>[
                         _head(),
-                        Container(height: 1, color: C.line2),
+                        Container(height: 1, color: Color(0x1FFFFFFF)),
                         Expanded(child: _history()),
                         if (widget.thinking) _thinking(),
                         _quickTools(),
@@ -214,26 +228,26 @@ class _ChatPanelState extends State<ChatPanel> {
             height: 8,
             decoration: const BoxDecoration(
               shape: BoxShape.circle,
-              color: C.blue,
-              boxShadow: <BoxShadow>[BoxShadow(color: C.blue, blurRadius: 8)],
+              color: Ref.acid,
+              boxShadow: <BoxShadow>[BoxShadow(color: Ref.acid, blurRadius: 8)],
             ),
           ),
           const SizedBox(width: 10),
           Text(
             widget.name,
             key: const Key('chat.name'),
-            style: fs(family: F.hd, size: 17, wght: 400, ls: .68, color: C.ice),
+            style: fs(family: Ref.fc, size: 17, wght: 400, ls: .68, color: Ref.txt),
           ),
           const SizedBox(width: 10),
           Text(
             '系统娘 · 在线',
             key: const Key('chat.status'),
             style: fs(
-              family: F.mono,
+              family: Ref.fm,
               size: 9.5,
               wght: 500,
               ls: 1.1,
-              color: C.mist,
+              color: Ref.dim,
             ),
           ),
           const Spacer(),
@@ -247,16 +261,16 @@ class _ChatPanelState extends State<ChatPanel> {
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                border: Border.all(color: C.line, width: 1),
+                border: Border.all(color: Ref.line, width: 1),
               ),
               child: Text(
                 '×',
                 style: fs(
-                  family: F.cn,
+                  family: Ref.fc,
                   size: 22,
                   wght: 400,
                   height: 1,
-                  color: C.ice,
+                  color: Ref.txt,
                 ),
               ),
             ),
@@ -274,7 +288,7 @@ class _ChatPanelState extends State<ChatPanel> {
         child: Text(
           '有事说事。我听着。',
           key: const Key('chat.empty'),
-          style: fs(family: F.cn, size: 12.5, wght: 400, color: C.dim),
+          style: fs(family: Ref.fc, size: 12.5, wght: 400, color: Ref.dim),
         ),
       );
     }
@@ -291,21 +305,21 @@ class _ChatPanelState extends State<ChatPanel> {
             padding: const EdgeInsets.fromLTRB(0, 12, 0, 8),
             child: Row(
               children: <Widget>[
-                Expanded(child: Container(height: 1, color: C.line2)),
+                Expanded(child: Container(height: 1, color: Color(0x1FFFFFFF))),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 10),
                   child: Text(
                     ChatHistory.dayLabel(m.at),
                     style: fs(
-                      family: F.mono,
+                      family: Ref.fm,
                       size: 9,
                       wght: 500,
                       ls: 1.2,
-                      color: C.dim,
+                      color: Ref.dim,
                     ),
                   ),
                 ),
-                Expanded(child: Container(height: 1, color: C.line2)),
+                Expanded(child: Container(height: 1, color: Color(0x1FFFFFFF))),
               ],
             ),
           ),
@@ -334,19 +348,19 @@ class _ChatPanelState extends State<ChatPanel> {
           padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
           constraints: const BoxConstraints(maxWidth: 320),
           decoration: BoxDecoration(
-            color: C.rS.withAlpha(38),
+            color: Ref.hot.withAlpha(38),
             borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: C.rS, width: 1),
+            border: Border.all(color: Ref.hot, width: 1),
           ),
           child: Text(
             m.text,
             key: Key('chat.diagentry.$i'),
             style: fs(
-              family: F.mono,
+              family: Ref.fm,
               size: 11,
               wght: 500,
               height: 1.5,
-              color: C.rS,
+              color: Ref.hot,
             ),
           ),
         ),
@@ -362,19 +376,19 @@ class _ChatPanelState extends State<ChatPanel> {
           padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
           constraints: const BoxConstraints(maxWidth: 320),
           decoration: BoxDecoration(
-            color: C.rB.withAlpha(26),
+            color: Ref.gold.withAlpha(26),
             borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: C.rB.withAlpha(140), width: 1),
+            border: Border.all(color: Ref.gold.withAlpha(140), width: 1),
           ),
           child: Text(
             m.text,
             key: Key('chat.fbentry.$i'),
             style: fs(
-              family: F.mono,
+              family: Ref.fm,
               size: 11,
               wght: 500,
               height: 1.5,
-              color: C.rB,
+              color: Ref.gold,
             ),
           ),
         ),
@@ -390,19 +404,19 @@ class _ChatPanelState extends State<ChatPanel> {
           padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
           constraints: const BoxConstraints(maxWidth: 320),
           decoration: BoxDecoration(
-            color: const Color(0x8C050E20),
+            color: const Color(0x0DFFFFFF),
             borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: C.line2, width: 1),
+            border: Border.all(color: Color(0x1FFFFFFF), width: 1),
           ),
           child: Text(
             m.text,
             key: Key('chat.toolentry.$i'),
             style: fs(
-              family: F.mono,
+              family: Ref.fm,
               size: 11,
               wght: 500,
               height: 1.5,
-              color: C.mist,
+              color: Ref.dim,
             ),
           ),
         ),
@@ -419,11 +433,11 @@ class _ChatPanelState extends State<ChatPanel> {
             // 不同的数（同一件事两个值）。现在统一走设置值；null → TypeText 默认 34。
             speed: widget.paceMs,
             style: fs(
-              family: F.cn,
+              family: Ref.fc,
               size: 13.5,
               wght: 400,
               height: 1.5,
-              color: C.ice,
+              color: Ref.txt,
             ),
             // 打字机逐字音节（`ui.js:96`）：气泡用**该条消息自己的情绪**
             // （`ChatMessage.emotion`，由 persona 的 `[[emo]]` 标签给出；
@@ -437,11 +451,12 @@ class _ChatPanelState extends State<ChatPanel> {
         : Text(
             m.text,
             style: fs(
-              family: F.cn,
+              family: Ref.fc,
               size: 13.5,
-              wght: 400,
+              wght: host ? 700 : 400,
               height: 1.5,
-              color: C.ice,
+              // 宿主气泡是 acid 底：深字（同 .btn.pri 的 #0a0910）
+              color: host ? Ref.onAccent : Ref.txt,
             ),
           );
     return Align(
@@ -456,12 +471,12 @@ class _ChatPanelState extends State<ChatPanel> {
           constraints: const BoxConstraints(maxWidth: 286),
           decoration: BoxDecoration(
             // 她 = 左 + 青框深底；宿主 = 右 + 青底深字（docs/18 §2.6）
-            color: host ? C.blue : const Color(0xBD050E20),
+            color: host ? Ref.acid : const Color(0x0FFFFFFF),
             borderRadius: BorderRadius.circular(14),
-            border: host ? null : Border.all(color: C.line, width: 1),
+            border: host ? null : Border.all(color: Ref.line, width: 1),
             boxShadow: host
                 ? <BoxShadow>[
-                    BoxShadow(color: C.blue.withAlpha(89), blurRadius: 14),
+                    BoxShadow(color: Ref.a(Ref.acid, .35), blurRadius: 14),
                   ]
                 : null,
           ),
@@ -483,9 +498,9 @@ class _ChatPanelState extends State<ChatPanel> {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 8),
           decoration: BoxDecoration(
-            color: const Color(0xBD050E20),
+            color: const Color(0x0FFFFFFF),
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: C.line2, width: 1),
+            border: Border.all(color: Color(0x1FFFFFFF), width: 1),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
@@ -493,11 +508,11 @@ class _ChatPanelState extends State<ChatPanel> {
               Text(
                 '思考中',
                 style: fs(
-                  family: F.cn,
+                  family: Ref.fc,
                   size: 12.5,
                   wght: 400,
                   height: 1.4,
-                  color: C.mist,
+                  color: Ref.dim,
                 ),
               ),
               const SizedBox(width: 5),
@@ -520,7 +535,7 @@ class _ChatPanelState extends State<ChatPanel> {
       key: const Key('chat.tools'),
       height: 54,
       decoration: const BoxDecoration(
-        border: Border(top: BorderSide(color: C.line2, width: 1)),
+        border: Border(top: BorderSide(color: Color(0x1FFFFFFF), width: 1)),
       ),
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
@@ -549,19 +564,19 @@ class _ChatPanelState extends State<ChatPanel> {
           alignment: Alignment.center,
           decoration: BoxDecoration(
             color: live
-                ? (down ? const Color(0x3338E1FF) : const Color(0xD1040C1C))
+                ? (down ? const Color(0x33D6FF3D) : const Color(0x0AFFFFFF))
                 : Colors.transparent,
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: C.line2),
+            border: Border.all(color: Color(0x1FFFFFFF)),
           ),
           child: Text(
             chip.label,
             key: Key('chat.tool.label.${chip.tool}'),
             style: fs(
-              family: F.cn,
+              family: Ref.fc,
               size: 12.5,
               wght: 700,
-              color: live ? C.ice : C.dim,
+              color: live ? Ref.txt : Ref.dim,
             ),
           ),
         ),
@@ -631,7 +646,7 @@ class _ThinkingDotState extends State<_ThinkingDot>
             margin: const EdgeInsets.symmetric(horizontal: 1.5),
             decoration: const BoxDecoration(
               shape: BoxShape.circle,
-              color: C.blue,
+              color: Ref.acid,
             ),
           ),
         );

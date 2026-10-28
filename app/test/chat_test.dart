@@ -282,9 +282,9 @@ void main() {
       expect(find.text('腿长在你身上。'), findsOneWidget);
       // 时间分组头
       expect(find.byKey(const Key('chat.day.0')), findsOneWidget);
-      // 语音入口：按钮 + 「即将支持」角标同屏
-      expect(find.byKey(const Key('chat.voice')), findsOneWidget);
-      expect(find.text('即将支持'), findsOneWidget);
+      // 语音入口已撤：不放「即将支持」占位（交付标准：不许半成品）
+      expect(find.byKey(const Key('chat.voice')), findsNothing);
+      expect(find.text('即将支持'), findsNothing);
       // 文本入口：输入框 + 发送同屏
       expect(find.byKey(const Key('chat.input')), findsOneWidget);
       expect(find.byKey(const Key('chat.send')), findsOneWidget);
@@ -321,14 +321,6 @@ void main() {
       await tester.tap(find.byKey(const Key('chat.send')));
       await tester.pump();
       expect(sent, <String>['打卡了']);
-    });
-
-    testWidgets('语音钮点击回调（上层弹插话），不假装可用', (WidgetTester tester) async {
-      int taps = 0;
-      await mount(tester, <ChatMessage>[], onVoiceTap: () => taps++);
-      await tester.tap(find.byKey(const Key('chat.voice')));
-      await tester.pump();
-      expect(taps, 1);
     });
 
     testWidgets('thinking：占位行出现', (WidgetTester tester) async {
@@ -944,11 +936,11 @@ void main() {
       expect(w.reqs[0].headers['Authorization'], 'Bearer sk-old');
       expect(
         w.reqs[0].url.toString(),
-        'https://api.deepseek.com/chat/completions',
+        'http://127.0.0.1:3425/v1/chat/completions',
       );
       expect(
         (jsonDecode(w.reqs[0].body) as Map<String, dynamic>)['model'],
-        'deepseek-flash',
+        'group/4.1fzzz',
       );
       expect(w.reqs[1].headers['Authorization'], 'Bearer sk-new');
       expect(

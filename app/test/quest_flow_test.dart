@@ -1340,9 +1340,9 @@ void main() {
 
     test('金币原样不够就false：边界正好等于价格 → 买得起', () {
       final QuestFlow f = freshFlow(host: HostState.empty.copyWith(coins: 30));
-      expect(f.buy('swap'), isTrue, reason: '换单券 30 = 30');
+      expect(f.buy('patch'), isTrue, reason: '补签券 30 = 30');
       expect(f.host.coins, 0);
-      expect(f.host.items['swap'], 1);
+      expect(f.host.items['patch'], 1);
     });
   });
 

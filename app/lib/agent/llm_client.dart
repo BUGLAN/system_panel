@@ -84,10 +84,24 @@ class LlmConfig {
   }) : baseUrl = baseUrl ?? kDefaultBase,
        model = model ?? kDefaultModel;
 
-  static const String kDefaultBase = 'https://api.deepseek.com';
+  /// 联调端点（宿主指定）：本机 OpenAI 兼容网关。可用
+  /// `--dart-define=LLM_BASE=… / LLM_KEY=… / LLM_MODEL=…` 覆盖。
+  static const String kDefaultBase = String.fromEnvironment(
+    'LLM_BASE',
+    defaultValue: 'http://127.0.0.1:3425/v1',
+  );
 
-  /// 宿主钦定的首发模型名（设置页默认值；请求前经 [normalizedModel] 归一）
-  static const String kDefaultModel = 'deepseek-v4.1flash';
+  /// 联调网关的 key（设置页默认值）
+  static const String kDefaultKey = String.fromEnvironment(
+    'LLM_KEY',
+    defaultValue: 'magpie',
+  );
+
+  /// 联调模型名（设置页默认值；请求前经 [normalizedModel] 归一）
+  static const String kDefaultModel = String.fromEnvironment(
+    'LLM_MODEL',
+    defaultValue: 'group/4.1fzzz',
+  );
 
   /// 推理档位（端点 `/models` 自报支持 low/high/max）。
   /// **默认 low**：端点是推理模型，`max_tokens` 同时算思考与正文——

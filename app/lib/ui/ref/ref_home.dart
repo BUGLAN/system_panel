@@ -572,11 +572,8 @@ class _RefHomeState extends State<RefHome> with TickerProviderStateMixin {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
-        if (widget.active && widget.activeElapsed != null)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 12),
-            child: Center(child: _activePill()),
-          ),
+        // ⚠️ 药丸只挂一处（上面 Positioned 的 bottom:safe+172），
+        //    这里再放一颗就是两层叠影。
         LayoutBuilder(
           builder: (BuildContext context, BoxConstraints box) {
             // .dock 的最小宽度 = 3×66 + 2×10 + 10 + 128 = 366；窄屏按比例收，
@@ -645,6 +642,7 @@ class _RefHomeState extends State<RefHome> with TickerProviderStateMixin {
               height: 70,
               child: Stack(
                 alignment: Alignment.center,
+                clipBehavior: Clip.none,
                 children: <Widget>[
                   if (arc != null)
                     CustomPaint(
@@ -674,9 +672,11 @@ class _RefHomeState extends State<RefHome> with TickerProviderStateMixin {
                     ),
                   ),
                   if (sup != null)
+                    // .navb sup{top:-8px;right:-4px}（相对 66 宽的按钮；
+                    // 这层 Stack 是 70×70、比环大 5，换算成 −3 / −6）
                     Positioned(
-                      right: -4,
-                      top: -10,
+                      right: -6,
+                      top: -3,
                       child: Text(
                         sup,
                         style: refText(

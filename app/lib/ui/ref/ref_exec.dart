@@ -30,6 +30,8 @@ class RefExec extends StatelessWidget {
     this.onCollapse,
     this.onItems,
     this.itemCount = 0,
+    this.equipped = 0,
+    this.tray,
     this.watchText = '正在看着你',
     this.watchAlert = false,
     this.speed = 1,
@@ -52,6 +54,12 @@ class RefExec extends StatelessWidget {
   final VoidCallback? onCollapse;
   final VoidCallback? onItems;
   final int itemCount;
+
+  /// 本单已装载的道具件数（.eqn 徽标）
+  final int equipped;
+
+  /// 道具托盘（[RefItemTray]，嵌在正文与动作区之间）
+  final Widget? tray;
 
   /// watch 那一句（她实时换）
   final String watchText;
@@ -88,38 +96,48 @@ class RefExec extends StatelessWidget {
           // 「抬头 + 标题 + 计时 + 条 + watch + 证据」不一定装得下 ——
           // 让它们滚，动作区永远钉在底部（提交键不许被挤出屏幕）。
           Expanded(
-            child: SingleChildScrollView(
-              physics: const ClampingScrollPhysics(),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: <Widget>[
-                  _head(gc),
-                  const SizedBox(height: 10),
-                  Text(
-                    quest.name,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: refText(
-                      family: Ref.fc,
-                      size: 26,
-                      wght: 900,
-                      ls: .5,
-                      height: 1.2,
-                      color: Ref.txt,
+            // .tray 挂在这一层（z6），动作区是后一个兄弟（z7）—— 暗幕盖住
+            // 正文但不盖按钮，与参考稿的层级一致。
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: <Widget>[
+                Positioned.fill(
+                  child: SingleChildScrollView(
+                    physics: const ClampingScrollPhysics(),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: <Widget>[
+                        _head(gc),
+                        const SizedBox(height: 10),
+                        Text(
+                          quest.name,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: refText(
+                            family: Ref.fc,
+                            size: 26,
+                            wght: 900,
+                            ls: .5,
+                            height: 1.2,
+                            color: Ref.txt,
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        _timer(context, progress),
+                        const SizedBox(height: 10),
+                        RefProgressBar(value: progress, ticks: 5),
+                        const SizedBox(height: 10),
+                        _tmeta(progress, limit),
+                        const SizedBox(height: 16),
+                        _watch(),
+                        const SizedBox(height: 16),
+                        _evi(),
+                      ],
                     ),
                   ),
-                  const SizedBox(height: 10),
-                  _timer(context, progress),
-                  const SizedBox(height: 10),
-                  RefProgressBar(value: progress, ticks: 5),
-                  const SizedBox(height: 10),
-                  _tmeta(progress, limit),
-                  const SizedBox(height: 16),
-                  _watch(),
-                  const SizedBox(height: 16),
-                  _evi(),
-                ],
-              ),
+                ),
+                if (tray != null) tray!,
+              ],
             ),
           ),
           const SizedBox(height: 12),
@@ -451,7 +469,30 @@ class RefExec extends StatelessWidget {
           children: <Widget>[
             RefButton(
               key: const Key('ref.exec.items'),
-              label: itemCount > 0 ? '道具 ×$itemCount' : '道具',
+              label: '道具',
+              // .eqn：本单已装载件数（hot 胶囊，0 时隐藏）
+              trailing: equipped > 0
+                  ? Container(
+                      constraints: const BoxConstraints(minWidth: 20),
+                      height: 20,
+                      padding: const EdgeInsets.symmetric(horizontal: 5),
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: Ref.hot,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Text(
+                        '$equipped',
+                        style: refText(
+                          family: Ref.fd,
+                          size: 12,
+                          wght: 700,
+                          height: 1,
+                          color: Colors.white,
+                        ),
+                      ),
+                    )
+                  : null,
               primary: false,
               small: true,
               animateSheen: false,
@@ -462,7 +503,6 @@ class RefExec extends StatelessWidget {
               child: RefButton(
                 key: const Key('ref.exec.submit'),
                 label: '提交 · 让她验收',
-                trailingTriangle: true,
                 onTap: onSubmit,
               ),
             ),
@@ -473,7 +513,7 @@ class RefExec extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: <Widget>[
             _HoldToQuit(onProgress: onQuitProgress, onComplete: onQuit),
-            RefLink(label: '收起', onTap: onCollapse),
+            RefLink(label: '收起 ▾', onTap: onCollapse),
           ],
         ),
       ],
@@ -481,7 +521,8 @@ class RefExec extends StatelessWidget {
   }
 
   static String _mmss(Duration d) {
-    final int m = d.inMinutes;
+    // JS fmt()：mm:ss 两位补零（00:03）
+    final String m = d.inMinutes.toString().padLeft(2, '0');
     final String s = (d.inSeconds % 60).toString().padLeft(2, '0');
     return '$m:$s';
   }
@@ -628,7 +669,8 @@ class _DigitClock extends StatefulWidget {
 
 class _DigitClockState extends State<_DigitClock> {
   static String _fmt(Duration d) {
-    final int m = d.inMinutes;
+    // JS fmt()：mm:ss 两位补零（00:03）
+    final String m = d.inMinutes.toString().padLeft(2, '0');
     final String s = (d.inSeconds % 60).toString().padLeft(2, '0');
     return '$m:$s';
   }

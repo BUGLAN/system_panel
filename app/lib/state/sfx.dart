@@ -247,12 +247,34 @@ class Sfx {
     return files.length == 1 ? files.first : files[_rnd.nextInt(files.length)];
   }
 
-  /// 按事件名播一下；未知事件静默
+  /// 参考稿 SFX 名（JS L904-929）→ 烘焙音效包里最接近的那一件。
+  /// 参考稿的音是 WebAudio 现合成的；这里用同语义的烘焙件顶上，
+  /// 保证每个参考稿里出声的时刻在 App 里也出声。
+  static const Map<String, String> designAlias = <String, String>{
+    'click': 'tap',
+    'soft': 'choose',
+    'hover': 'detent',
+    'swipe': 'detent',
+    'whoosh': 'deal',
+    'type': 'detent',
+    'tick': 'detent',
+    'beat': 'impact',
+    'success': 'rank',
+    'error': 'impact',
+    'coin': 'count',
+    'buy': 'publish',
+    'unlock': 'ignite',
+    'boop': 'poke',
+    'scan': 'rung',
+  };
+
+  /// 按事件名播一下；未知事件静默。
   ///
-  /// [variant] 用于**按档位变调**的事件（目前只有 `rank`：稀有度 F~S = 0~6）。
-  /// 传别的 key 无副作用（越界会被 clamp 到列表内）。
+  /// 参考稿事件名先经 [designAlias] 映射；[variant] 用于**按档位变调**的事件
+  /// （目前只有 `rank`：稀有度 F~S = 0~6），传别的 key 无副作用（越界会被 clamp 到列表内）。
   static Future<void> play(String key, {int? variant, double gain = 1}) async {
     if (!enabled) return;
+    if (!table.containsKey(key)) key = designAlias[key] ?? key;
     final String? f = _pick(key, variant);
     if (f == null) return;
     await _playFile(f, key, gain: gain);

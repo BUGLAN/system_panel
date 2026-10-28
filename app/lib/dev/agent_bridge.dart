@@ -1,7 +1,10 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:developer' as developer;
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/scheduler.dart';
@@ -129,6 +132,101 @@ class AgentBridge {
     if (_semanticsHandle != null) return;
     _semanticsHandle = WidgetsBinding.instance.ensureSemantics();
     debugPrint('[AgentBridge] semantics enabled');
+    _registerInput();
+  }
+
+  static bool _inputOn = false;
+
+  /// 输入注入通道（VM service 扩展）：模拟器的 HID 注入在部分 runtime 上
+  /// 进不了 Flutter，Agent 走 `ext.agent.tap / ext.agent.drag` 直接喂
+  /// PointerEvent。坐标是逻辑像素。仅 debug / AGENT_BRIDGE 构建存在。
+  static void _registerInput() {
+    if (_inputOn) return;
+    _inputOn = true;
+    int pointer = 9000;
+    Future<void> send(List<Offset> path, int stepMs) async {
+      final int id = pointer++;
+      final GestureBinding g = GestureBinding.instance;
+      Duration ts = Duration(
+        microseconds: DateTime.now().microsecondsSinceEpoch,
+      );
+      g.handlePointerEvent(
+        PointerAddedEvent(pointer: id, position: path.first, timeStamp: ts),
+      );
+      g.handlePointerEvent(
+        PointerDownEvent(pointer: id, position: path.first, timeStamp: ts),
+      );
+      for (int i = 1; i < path.length; i++) {
+        await Future<void>.delayed(Duration(milliseconds: stepMs));
+        ts += Duration(milliseconds: stepMs);
+        g.handlePointerEvent(
+          PointerMoveEvent(
+            pointer: id,
+            position: path[i],
+            delta: path[i] - path[i - 1],
+            timeStamp: ts,
+          ),
+        );
+      }
+      await Future<void>.delayed(Duration(milliseconds: stepMs));
+      ts += Duration(milliseconds: stepMs);
+      g.handlePointerEvent(
+        PointerUpEvent(pointer: id, position: path.last, timeStamp: ts),
+      );
+      g.handlePointerEvent(
+        PointerRemovedEvent(pointer: id, position: path.last, timeStamp: ts),
+      );
+    }
+
+    double num(Map<String, String> p, String k, [double d = 0]) =>
+        double.tryParse(p[k] ?? '') ?? d;
+
+    developer.registerExtension('ext.agent.tap', (
+      String _,
+      Map<String, String> p,
+    ) async {
+      final Offset at = Offset(num(p, 'x'), num(p, 'y'));
+      final int hold = num(p, 'ms', 60).round();
+      await send(<Offset>[at, at], hold);
+      return developer.ServiceExtensionResponse.result(
+        jsonEncode(<String, Object>{'ok': true}),
+      );
+    });
+    // 往当前聚焦的输入框里写字（模拟器键盘注入同样进不来）
+    developer.registerExtension('ext.agent.text', (
+      String _,
+      Map<String, String> p,
+    ) async {
+      final BuildContext? ctx = FocusManager.instance.primaryFocus?.context;
+      final EditableTextState? st = ctx
+          ?.findAncestorStateOfType<EditableTextState>();
+      final String t = p['text'] ?? '';
+      st?.userUpdateTextEditingValue(
+        TextEditingValue(
+          text: t,
+          selection: TextSelection.collapsed(offset: t.length),
+        ),
+        SelectionChangedCause.keyboard,
+      );
+      return developer.ServiceExtensionResponse.result(
+        jsonEncode(<String, Object>{'ok': st != null}),
+      );
+    });
+    developer.registerExtension('ext.agent.drag', (
+      String _,
+      Map<String, String> p,
+    ) async {
+      final Offset a = Offset(num(p, 'x'), num(p, 'y'));
+      final Offset b = Offset(num(p, 'x2'), num(p, 'y2'));
+      final int steps = num(p, 'steps', 12).round().clamp(2, 120);
+      final int ms = num(p, 'ms', 300).round();
+      await send(<Offset>[
+        for (int i = 0; i <= steps; i++) Offset.lerp(a, b, i / steps)!,
+      ], (ms / steps).round().clamp(1, 1000));
+      return developer.ServiceExtensionResponse.result(
+        jsonEncode(<String, Object>{'ok': true}),
+      );
+    });
   }
 
   /// 关闭语义树（热重载 / 测试收尾用）。

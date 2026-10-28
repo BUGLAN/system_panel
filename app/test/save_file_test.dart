@@ -145,7 +145,8 @@ void main() {
     test('升到下一级要的经验 = Rewards 曲线（旧 60+lv*40 已废，t24）', () {
       expect(HostState.need(1), 18);
       expect(HostState.need(7), 54);
-      expect(HostState.demo.expRatio, 1.0); // 214 / 54 → clamp 满环
+      // 演示档余额 38 < need(7)=54（旧值 214 会让第一单连升三级）
+      expect(HostState.demo.expRatio, closeTo(38 / 54, 1e-9));
     });
 
     test('最弱的一维是最小的那个', () {

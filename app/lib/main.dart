@@ -49,6 +49,7 @@ import 'ui/ref/ref_bg.dart';
 import 'ui/ref/ref_board.dart';
 import 'ui/ref/ref_core.dart';
 import 'ui/ref/ref_boot.dart';
+import 'ui/ref/ref_motion.dart';
 import 'ui/ref/ref_exec.dart';
 import 'ui/ref/ref_home.dart';
 import 'ui/ref/ref_device.dart';
@@ -63,7 +64,6 @@ import 'ui/ref/ref_shop.dart';
 import 'ui/ref/ref_tray.dart';
 import 'ui/ref/ref_overlays.dart';
 import 'ui/ref/ref_verdict.dart';
-import 'widgets/bg_layer.dart';
 import 'widgets/ask_field.dart';
 import 'widgets/fail_layer.dart';
 import 'widgets/fx_layer.dart';
@@ -278,6 +278,9 @@ class _AppShellState extends State<AppShell>
   /// 她插话时临时顶掉页面字幕（原型是 `Line.say().then(hide)`，
   /// 我们是状态驱动的，所以用一个带截止时间的覆盖）
   String? _aside;
+
+  /// 每说一句 +1（主线 sysbox 据此覆盖台词）
+  int _asideToken = 0;
   DateTime? _asideUntil;
 
   // ── 小祥：文案接管 + 对话层（docs/18 §2.5/§2.6/§2.7，t10）────────
@@ -758,6 +761,11 @@ class _AppShellState extends State<AppShell>
 
   /// 进执行态时把计时归零重算（原型 `Store.accept()` 里记 startAt）
   void _beginExec() {
+    // 参考稿 startTask → go('exec')：接单这一拍走斜切转场
+    unawaited(_go('exec', _beginExecNow));
+  }
+
+  void _beginExecNow() {
     // 真实接单：队首出队 + 记 startAt（原型 `Store.accept`；D12 修复
     // —— 计时不再写死"已执行 7 分钟"）
     final Quest? head = _flow.head;
@@ -796,8 +804,9 @@ class _AppShellState extends State<AppShell>
         _usedItems.add(id);
         _host = _flow.host;
       }
-      _drawerOn = false;
+      // 参考稿 renderTray：装上之后托盘不收，卡片抬起转正（再点暗幕收起）
     });
+    if (say != null) unawaited(Sfx.play('coin'));
     if (say != null) _sayAside(say, holdMs: 1800);
   }
 
@@ -821,6 +830,7 @@ class _AppShellState extends State<AppShell>
     final int hold = holdMs ?? LINES.defaultHold(text);
     setState(() {
       _aside = text;
+      _asideToken++;
       _asideUntil = DateTime.now().add(Duration(milliseconds: hold));
       if (busy) _busy = true;
     });
@@ -992,624 +1002,739 @@ class _AppShellState extends State<AppShell>
       // 而是保持稿子的比例居中。
       body: RefDeviceFrame(
         accent: _sceneAccent,
-        child: Stack(
-          fit: StackFit.expand,
-          children: <Widget>[
-            // ⚠️ 系统返回键 = **逐级返回**（docs/39 M-04；2026-10-17 前全库只有
-            //    失败页接得住它，其余时候 Android 返回键直接退出 App）。
-            //    优先级写死在 [_popScopeTarget]：失败页 > 牌屉 > 主线 > 默认。
-            //
-            //    失败页那一档的来历：「永远有补救」不能只押在那两张铭牌上：
-            //    2026-10-11 的死局恰恰是铭牌自己把自己拆了（见 `_onChoice` 与
-            //    `Choices._confirm` 的注释）—— 返回键是最后一道门，跟演出闸门、
-            //    跟任何锁都无关。
-            //
-            //    形态说明：`PopScope` 只要挂在**这一条路由里**就会生效（它向
-            //    `ModalRoute` 注册一个 pop entry），不需要包住任何东西 ——
-            //    所以这里用一颗 0×0 的空壳当挂点：整棵 build 树**一行缩进都不动**
-            //    （包住 Scaffold 的话，`dart format` 会把 600+ 行全部重排）。
-            //
-            //    ⚠️ 只此一颗：`canPop` 为真时系统自己 pop（退到桌面），为假时
-            //    回调进来由 [_onSystemBack] 分层消费 —— 两颗嵌套会各响一次。
-            PopScope(
-              canPop: _popScopeTarget() == null,
-              onPopInvokedWithResult: (bool didPop, Object? result) {
-                if (didPop) return; // 正常 pop（没有可消费的层）：什么都不做
-                _onSystemBack();
-              },
-              child: const SizedBox.shrink(),
-            ),
-            // `#shake` 包住 `#bg` 到 `#flash` 的全部内容（`#boot` 在它外面，不跟着抖）
-            ShakeLayer(
-              token: _shake,
-              px: _shakePx,
-              // docs/39 §5.5：reduce 时组件内部直接不抖（震屏整个跳过）
-              reduceMotion: reduce,
-              child: Stack(
-                fit: StackFit.expand,
-                children: <Widget>[
-                  // 0 · 天幕（她身后的世界）
-                  //   开机时写 SYSTEM，进大厅后写宿主的目标（flows.js `setWord`）
-                  AnimatedOpacity(
-                    opacity: dim ? .35 : 1, // #app.dim #bg
-                    duration: const Duration(milliseconds: 800),
-                    child: TweenAnimationBuilder<double>(
-                      // #bg { transition: opacity .8s, filter .8s } —— 认输抽色压暗也是渐变的
-                      tween: Tween<double>(begin: 0, end: fail ? 1 : 0),
+        // 参考稿 L1667-1668：任意按下 → 场景色小爆点 + 28px 光环。
+        // 挂在祖先上（不是 Stack 里的兄弟）：兄弟节点只收得到空白处的点。
+        child: Listener(
+          behavior: HitTestBehavior.translucent,
+          onPointerDown: reduce ? null : _tapFx,
+          child: Stack(
+            fit: StackFit.expand,
+            children: <Widget>[
+              // ⚠️ 系统返回键 = **逐级返回**（docs/39 M-04；2026-10-17 前全库只有
+              //    失败页接得住它，其余时候 Android 返回键直接退出 App）。
+              //    优先级写死在 [_popScopeTarget]：失败页 > 牌屉 > 主线 > 默认。
+              //
+              //    失败页那一档的来历：「永远有补救」不能只押在那两张铭牌上：
+              //    2026-10-11 的死局恰恰是铭牌自己把自己拆了（见 `_onChoice` 与
+              //    `Choices._confirm` 的注释）—— 返回键是最后一道门，跟演出闸门、
+              //    跟任何锁都无关。
+              //
+              //    形态说明：`PopScope` 只要挂在**这一条路由里**就会生效（它向
+              //    `ModalRoute` 注册一个 pop entry），不需要包住任何东西 ——
+              //    所以这里用一颗 0×0 的空壳当挂点：整棵 build 树**一行缩进都不动**
+              //    （包住 Scaffold 的话，`dart format` 会把 600+ 行全部重排）。
+              //
+              //    ⚠️ 只此一颗：`canPop` 为真时系统自己 pop（退到桌面），为假时
+              //    回调进来由 [_onSystemBack] 分层消费 —— 两颗嵌套会各响一次。
+              PopScope(
+                canPop: _popScopeTarget() == null,
+                onPopInvokedWithResult: (bool didPop, Object? result) {
+                  if (didPop) return; // 正常 pop（没有可消费的层）：什么都不做
+                  _onSystemBack();
+                },
+                child: const SizedBox.shrink(),
+              ),
+              // `#shake` 包住 `#bg` 到 `#flash` 的全部内容（`#boot` 在它外面，不跟着抖）
+              ShakeLayer(
+                token: _shake,
+                px: _shakePx,
+                // docs/39 §5.5：reduce 时组件内部直接不抖（震屏整个跳过）
+                reduceMotion: reduce,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: <Widget>[
+                    // 0 · 天幕（她身后的世界）
+                    //   开机时写 SYSTEM，进大厅后写宿主的目标（flows.js `setWord`）
+                    AnimatedOpacity(
+                      opacity: dim ? .35 : 1, // #app.dim #bg
                       duration: const Duration(milliseconds: 800),
-                      curve: Curves.easeInOut,
-                      builder: (BuildContext _, double t, Widget? child) =>
-                          t <= 0
-                          ? child!
-                          : ColorFiltered(
-                              colorFilter: ColorFilter.matrix(
-                                _lerpMatrix(_identity, kFailColorMatrix, t),
-                              ),
-                              child: child,
-                            ),
-                      child: Stack(
-                        fit: StackFit.expand,
-                        children: <Widget>[
-                          // v3 天幕（参考稿 L40-53）：紫雾 + 描边大字 + 地平线 +
-                          // 透视地板 + 扫描线 + 抖动噪点 + 暗角。旧 BgLayer 在下一层
-                          // 兜底（它自带 ComfyUI 底图）；RefBackground 的底是不透明的
-                          // ColoredBox(var(--bg))，所以视觉以新层为准。
-                          BgLayer(
-                            word: (boot || onboard) ? 'SYSTEM' : _goal.short,
-                            latin: boot || onboard,
-                          ),
-                          RefBackground(
-                            accent: _sceneAccent,
-                            ghost: _sceneGhost,
-                            animate: !reduce,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  // 任意按下都算「宿主还在」（原型 main.js L40 在整屏捕获阶段监听，
-                  // **不受 busy 影响** —— 演出期间也在记）
-                  // 同时：点背景 = 跳过打字机（原型 Tap 忽略 button/input/sheet/tag 上的点）
-                  Positioned.fill(
-                    child: Listener(
-                      behavior: HitTestBehavior.translucent,
-                      onPointerDown: (PointerDownEvent _) {
-                        if (_lastAct.isBefore(
-                          DateTime.now().subtract(const Duration(seconds: 1)),
-                        )) {
-                          setState(() => _lastAct = DateTime.now());
-                        }
-                        // docs/24 #15：瞌睡中被戳醒（惊一下 → 回情绪）
-                      },
-                    ),
-                  ),
-                  Positioned.fill(
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: () => setState(() {
-                        _tap++;
-                        // 跳过打字机时闭嘴（原型 `ui.js` L106 `if (cut) Voice.hush()`）
-                        _voice.hush();
-                        _lastAct = DateTime.now();
-                      }),
-                    ),
-                  ),
-                  RefHud(
-                    state: _host,
-                    // 参考稿 SC.hud：home/main(否)/board/exec/archive(否)/shop。
-                    visible:
-                        lobby ||
-                        exec ||
-                        (main && _boardOn) ||
-                        (sheet && _sheetKind == SheetKind.supply),
-                    onMenu: () => _openSheet(SheetKind.system),
-                    onMenuLongPress: () => setState(() => _llmPaneOn = true),
-                    onLevelTap: () => _toast(
-                      'EXP ${_host.exp} / ${HostState.need(_host.lv)} · '
-                      '距 LV${_host.lv + 1} 还差 '
-                      '${HostState.need(_host.lv) - _host.exp}',
-                    ),
-                    onCoinTap: () => _toast(
-                      '晶核 ◈${_host.coins}。'
-                      '${_host.coins < 45 ? '穷，但是干净。' : '有点小钱了，别乱花。'}',
-                    ),
-                    onStreakTap: () => _toast(
-                      '连胜 ${_host.streak} 天。'
-                      '${_host.streak > 0 ? '今天已打卡。' : '今天还没完成任何一单。'}',
-                    ),
-                  ),
-                  // 连击药丸（宿主 2026-10-11：从左上角那个小方块里摘出来，
-                  // 贴到顶栏下沿居中 —— 位置落在委托卡上方，不再和称号挤在一起）
-                  // 连击药丸 —— 宿主 2026-10-11：「连击 隐藏」（先不显示，组件留着，
-                  // 要接回来把 visible 改回 lobby || exec 即可）
-                  StreakPill(streak: _host.streak, visible: false),
-                  // docs/39 H-15 · 主 CTA 三态状态机（P0）：
-                  //   执行中 → 回执行面板（**不是开派单板**，这是"执行中再从大厅接单"的堵口）
-                  //   队列空 → 她说一句，不进派单板
-                  //   否则   → 派单板
-                  //
-                  // ⚠️ 包一层 ListenableBuilder 订阅秒时钟：H-15 的底注是**真实换日
-                  //    倒计时**（原来写死「换日还有 0 小时」），不订的话一秒都不动。
-                  //    ListenableBuilder 不含 RenderObject，builder 直接返回 Positioned
-                  //    在 Stack 下是合法的。。
-                  // v3 大厅（参考稿 L696-717）：home-tag / 她的气泡 / 主线卡 /
-                  // active-pill / 三颗侧键 + 128 委托球。
-                  if (lobby)
-                    Positioned.fill(
-                      child: RefHome(
-                        host: _host,
-                        goal: _goal,
-                        quip:
-                            _aside ??
-                            LINES.holding.replaceFirst(
-                              '[[{n}]]',
-                              _host.queue.toString(),
-                            ),
-                        activeElapsed: _active
-                            ? _clockText(_execReadout().elapsed)
-                            : null,
-                        active: _active,
-                        queue: _host.queue,
-                        day: _goal.days <= 0
-                            ? 1
-                            : (_goal.days - _goal.remainingDays(_clock.now)),
-                        days: _goal.days <= 0 ? 14 : _goal.days,
-                        mood: _coreMood,
-                        poke: _pokeN,
-                        skipToken: _tap,
-                        onQuestTap: () => _runWipe(
-                          title: '主线',
-                          sub: 'MAINLINE · LOADING',
-                          swap: () => setState(() {
-                            _pickedTask = null;
-                            _moment = Moment.main;
-                          }),
-                        ),
-                        onCoreTap: _poke,
-                        onActivePill: _resumeExec,
-                        onOrb: _enterLobbyCta,
-                        onSide: (int i) {
-                          if (i == 0) {
-                            setState(() {
-                              _pickedTask = null;
-                              _moment = Moment.main;
-                            });
-                          } else if (i == 1) {
-                            _openSheet(SheetKind.archive);
-                          } else if (i == 2) {
-                            _openSheet(SheetKind.supply);
-                          }
-                        },
-                      ),
-                    ),
-                  // 执行面板
-                  // ⚠️ 必须包一层 ListenableBuilder 订阅时钟 —— 否则 `_clock` 每 250ms
-                  //    通知了没人听，计时器会一直停在进页面那一刻（实机踩过：等了 12 秒还是 07:00）
-                  // v3 执行页（参考稿 L265-329）：104px 计时 / 8 高进度 / 82 证据槽
-                  // / 62 高主键。/ 按住 1600ms 认输。旧 ExecPanel 保留树（历史测试锚点），
-                  // 视觉由 RefExec 接管。
-                  if (exec)
-                    Positioned.fill(
-                      child: ListenableBuilder(
-                        listenable: _clock,
-                        builder: (BuildContext _, Widget? _) => RefExec(
-                          quest: _execQuest,
-                          elapsed: _execReadout().elapsed,
-                          critChance: _flow.critBase(),
-                          itemCount: Item.execCount(_host.items),
-                          evidenceThumbs: _evidenceThumbs(),
-                          onAddEvidence: _addEvidence,
-                          onDemoEvidence: _demoEvidence,
-                          onRemoveEvidence: _removeEvidence,
-                          onSubmit: () => unawaited(_submitQuest()),
-                          onQuit: () {
-                            if (_busy) return;
-                            setState(() {
-                              _drawerOn = false;
-                              _active = false;
-                            });
-                            _beginFail();
-                          },
-                          onQuitProgress: (double p) =>
-                              setState(() => _quitP = p),
-                          onItems: () => setState(() => _drawerOn = !_drawerOn),
-                          onCollapse: () => setState(() {
-                            _drawerOn = false;
-                            _moment = Moment.lobby;
-                          }),
-                        ),
-                      ),
-                    ),
-                  // 道具托盘（参考稿 .tray，L760）：盖在执行页动作区之上
-                  if (exec)
-                    RefItemTray(
-                      items: Item.all,
-                      owned: _host.items,
-                      open: _drawerOn,
-                      eqId: _usedItems.isEmpty ? null : _usedItems.last,
-                      onPick: _useItem,
-                    ),
-                  // 结算
-                  // v3 验收（参考稿 L421-449）：扫描 → 结果两阶段。
-                  // 旧 ResultPanel 保留树（历史测试锚点），视觉由 RefVerdict 接管。
-                  if (result)
-                    Positioned.fill(
-                      child: RefVerdict(
-                        rank: _verdictRank(_result),
-                        crit: _result.crit,
-                        line: _verdictLine(_result),
-                        rows: _verdictRows(_result),
-                        xpFrom: _result.beforeExp,
-                        xpTo:
-                            _result.endExp ?? (_result.beforeExp + _result.exp),
-                        xpNeed: _result.afterNeed ?? _result.beforeNeed,
-                        lv: _result.lvAfter,
-                        onAccept: () => _onResultDone(),
-                      ),
-                    ),
-                  // 失败 / 补救（在 veil 之下）—— 记录时间与补救单来自真实认输
-                  // v3 失败页（参考稿 L461-474）：glitch 大字 + MISSION FAILED +
-                  // 补救框 + 回大厅。旧 FailLayer 保留树（历史测试锚点）。
-                  if (fail)
-                    Positioned.fill(
-                      child: RefFail(
-                        title: _failTimeout ? '任务超时' : '任务失败',
-                        sub: 'MISSION FAILED',
-                        onBack: _backToLobbyFromFail,
-                        box: _failBox(),
-                      ),
-                    ),
-                  // 屏幕空间特效（#fx 在 DOM 里排在 #ui 之后、#veil 之前）
-                  FxField(controller: _fx),
-                  // 认输按住时屏幕跟着暗下去（最多 75%），认输后停在 60%
-                  Veil(
-                    opacity: fail ? .6 : _quitP * .75,
-                    instant: _quitP > 0, // 按住期间跟手，松手才回到 900ms 过渡
-                  ),
-                  // 亮帧（`#flash` 在 DOM 里排在 veil 之后；正 z 的那些会盖在它上面）
-                  // ⚠️ 必须判 isAnimating —— 控制器停在 0 时 `1 - easeOut(0) = 1`，
-                  // 会让亮帧**一直开着**（整屏被垫一层 16% 白，一路比对下来才发现）
-                  AnimatedBuilder(
-                    animation: _flashC,
-                    builder: (BuildContext context, Widget? child) =>
-                        FlashLayer(
-                          color: _flashColor,
-                          alpha: _flashC.isAnimating
-                              ? _flashA *
-                                    (1 -
-                                        Curves.easeOut.transform(_flashC.value))
-                              : 0,
-                          // docs/39 §5.5：reduce 时亮帧 alpha 砍半（组件内部实现）
-                          reduceMotion: reduce,
-                        ),
-                  ),
-                  // 绑定仪式（设计稿未覆盖，按参考稿语言补成独立整页）：
-                  // 第 0 幕问目标，第 1 幕 3~5 张访谈卡。
-                  if (onboard)
-                    Positioned.fill(
-                      child: RefOnboard(
-                        controller: _ask,
-                        probe: _interviewCat != null
-                            ? '答完这几张，我给你排三天。'
-                            : (_probeLine ?? LINES.askGoal),
-                        probeToken: _tap,
-                        presets: const <String>[
-                          '三个月跑完半马',
-                          '一个月早睡早起',
-                          '考研上岸',
-                          '半年减重 10 斤',
-                          '学会画画',
-                          '变优秀',
-                        ],
-                        onSubmit: _onGoalSubmitted,
-                        cards: _interviewCat == null
-                            ? null
-                            : interviewCardsFor(
-                                _interviewCat!,
-                                level: _host.lv,
-                              ),
-                        onDone: _completeOnboarding,
-                        onSkip: _planError == null ? null : _skipLlmAndStart,
-                        planError: _planError == null
-                            ? null
-                            : _planError!.code.name +
-                                  ' · ' +
-                                  _clip(_planError!.detail, 60),
-                      ),
-                    ),
-                  // docs/39 M-24 · 换目标输入幕的**常驻取消**（左上 44 圆 + 顶部 11pt
-                  // 上下文行）。两条都不依赖牌列 —— 键盘弹起、牌列退场、LLM 长句
-                  // 把字幕顶上去，取消都还在原地。进 240ms kOut（淡 + 8px 下落）。
-                  _GoalChangeChrome(
-                    visible: _goalChangeOn,
-                    onCancel: _cancelGoalChange,
-                  ),
-                  // 换目标 · 问新目标（TODO-01）：主线页「换目标」→ 这一层
-                  // （旧主线单先不动；确定才走 `flow.newGoal` 落库）
-                  AskField(
-                    prompt: '新目标 ›',
-                    placeholder: '比如：半年减重 10 斤',
-                    presets: const <String>[
-                      '半年减重 10 斤',
-                      '三个月跑完半马',
-                      '一个月早睡早起',
-                      '考研上岸',
-                    ],
-                    controller: _goalAsk,
-                    focusNode: _goalAskFocus,
-                    visible: _goalChangeOn,
-                    bottomInset: MediaQuery.viewInsetsOf(context).bottom,
-                    onPreset: (String v) => _goalAsk.text = v,
-                    onSubmit: _onGoalChangeSubmitted,
-                    // docs/39 M-24：取消**不再走牌列**（原来在牌列最右、被屏宽裁掉一半，
-                    // 键盘一弹整条牌列退场就彻底没有退路）。现在取消 = 输入幕左上那颗
-                    // 常驻 44 圆（见下面 `ask.cancel` 的挂载），_cancelGoalChange 由它调。
-                    // 「先问小祥」仍是**入口牌**：开对话、不填输入框（§4.B.2）
-                    onEntry: _enterAskXiang,
-                  ),
-                  // v3 LLM 设置（参考稿未覆盖，按「补全缺失组件」要求新增）：
-                  // Base URL / ApiKey / 模型 / 温度 / 上下文 / 流式 / 测试 / 保存。
-                  if (_llmPaneOn)
-                    Positioned.fill(
-                      child: ColoredBox(
-                        // ⚠️ 必须**不**透明：`.96` 让底下的「LLM 设置」入口按钮
-                        //    透到面板上（实测遮在「连接 · ENDPOINT」那一栏）。
-                        color: Ref.bg,
-                        child: SafeArea(
-                          child: LlmSettingsPane(
-                            initial: _agentSettings,
-                            onClose: () => setState(() => _llmPaneOn = false),
-                            onSaved: (AgentSettings s) => setState(() {
-                              _agentSettings = s;
-                              _llmPaneOn = false;
-                            }),
-                          ),
-                        ),
-                      ),
-                    ),
-                  // v3 档案（参考稿 L767-787）：独立整页，不再是投影面板
-                  if (sheet && _sheetKind == SheetKind.archive)
-                    Positioned.fill(
-                      child: ColoredBox(
-                        color: Ref.bg,
-                        child: RefArchive(
-                          host: _host,
-                          ownedCount: _host.ownedTitles.length,
-                          totalTitles: HostTitle.all.length,
-                          onBack: () => setState(() => _moment = _sheetFrom),
-                          onEquip: (String id) {
-                            if (!_flow.equip(id)) return;
-                            setState(() => _host = _flow.host);
-                            _persist();
-                            _sayAside('换上了。……还行。', holdMs: 1400);
-                          },
-                        ),
-                      ),
-                    ),
-                  // v3 补给（参考稿 L789-799）：独立整页
-                  if (sheet && _sheetKind == SheetKind.supply)
-                    Positioned.fill(
-                      child: ColoredBox(
-                        color: Ref.bg,
-                        child: RefShop(
-                          items: Item.all,
-                          owned: _host.items,
-                          coins: _host.coins,
-                          onBack: () => setState(() => _moment = _sheetFrom),
-                          onBuy: (Item it) {
-                            if (_flow.buy(it.id)) {
-                              setState(() => _host = _flow.host);
-                              _persist();
-                              _sayAside('钱货两讫。省着点用。', holdMs: 1400);
-                            } else {
-                              _sayAside('钱不够。……方向都给你指好了。', holdMs: 1400);
-                            }
-                          },
-                          onUse: (Item it) => _useItem(it.id),
-                        ),
-                      ),
-                    ),
-                  // v3 系统设置（参考稿 #sheet L481-491 / L837-843）：
-                  // 底部抽屉 + 音效开关 + 秘籍 + 彩蛋提示 + 重置存档。
-                  // APP 原有的「和她聊聊」「LLM 连接」按同一行样式补在中间。
-                  if (sheet && _sheetKind == SheetKind.system)
-                    Positioned.fill(
-                      child: RefSheet(
-                        visible: true,
-                        sound: _agentSettings.sound,
-                        onSound: (bool v) {
-                          if (v != _agentSettings.sound) _toggleSound();
-                        },
-                        onClose: () => setState(() => _moment = _sheetFrom),
-                        onHint: () {
-                          setState(() => _moment = _sheetFrom);
-                          _toast('戳大厅的「她」7 次 · 长按她 · 连点计时器 5 次', bad: false);
-                        },
-                        onChat: () {
-                          setState(() => _moment = _sheetFrom);
-                          _openChat();
-                        },
-                        onLlm: () {
-                          setState(() {
-                            _moment = _sheetFrom;
-                            _llmPaneOn = true;
-                          });
-                        },
-                        onReset: () {
-                          setState(() => _moment = _sheetFrom);
-                          _askWipe();
-                        },
-                      ),
-                    ),
-                  // 主线全景：环挂签挂在环上（位置由相机数学给出），面板压在上面
-                  // ⚠️ 换目标时**整层退场**（`_goalChangeOn`）：原来她问新目标时
-                  //    主线全景还留在屏上，于是「新目标」输入框的预设词/确定钮
-                  //    正好压在底部的【让她派这一环】【换目标】上、字幕压在预设词上
-                  //    —— 宿主截图里的"UI 重合"就是这两处（原型 `MainV.hide()`
-                  //    也是整层收掉，只留她说话 + 输入）。
-                  // v3 主线页（参考稿 L719-731）：抬头 / meta / daybar / 大牌 /
-                  // 刻度 / sysbox / 去委托板 + 换目标。
-                  if (main && !_boardOn)
-                    Positioned.fill(
-                      child: RefMain(
-                        goal: _goal,
-                        lead: _mainLead,
-                        mood: _aside != null ? '尚可' : '冷淡',
-                        line: _aside ?? '清单不会自己变短。看哪张？',
-                        elapsed: _active
-                            ? _clockText(_execReadout().elapsed)
-                            : null,
-                        onBack: () => setState(() {
-                          _boardOn = false;
-                          _moment = Moment.lobby;
-                        }),
-                        onScrub: (int i) => setState(() => _mainLead = i),
-                        onDispatch: () => setState(() {
-                          _boardFrom = Moment.main;
-                          _boardOn = true;
-                          _boardFilter = 'all';
-                        }),
-                        onSwapGoal: _beginGoalChange,
-                      ),
-                    ),
-                  // v3 委托板（参考稿 L237-264）：tabs + ticket 列表。
-                  // ⚠️ 旧的 MainView 仍在下面、`visible: false`：它承载了
-                  //    746 条历史测试里的 `main.rail` / `main.title` 等锚点，
-                  //    视觉由 RefBoard 接管。
-                  if (main && _boardOn)
-                    Positioned.fill(
-                      child: RefBoard(
-                        quests: _boardQuests(),
-                        filter: _boardFilter,
-                        onFilter: (String f) =>
-                            setState(() => _boardFilter = f),
-                        active: _flow.active?.task,
-                        onBack: () => setState(() {
-                          _boardOn = false;
-                          _moment = _boardFrom;
-                        }),
-                        onTap: _onBoardTap,
-                        onRefill: _refillBoard,
-                      ),
-                    ),
-                  // 「执行中」药丸（`ui.js` L60）：**执行页自己不显示它**，点它回执行页。
-                  // 收起执行面板后就靠它回去。
-                  // docs/39 H-16 / M-02：**主线页不再浮这颗药丸** —— 主线页的计时读数
-                  // 归抬头里的 status chip（由 P0-B 在 main_view 里做）。这里是同一个
-                  // 计时数据的第二处呈现，两处并存就是走查 §0 里"药丸压着抬头读数"的来源。
-                  // 对话层（docs/18 §2.6）：叠加，不替换；她仍在背景可见
-                  // ——层序在 、亮帧与横幅之下
-                  ChatPanel(
-                    visible: _chatOpen,
-                    messages: _chat.messages,
-                    thinking: _chatThinking,
-                    onSend: _sendChat,
-                    onClose: () => setState(() => _chatOpen = false),
-                    onVoiceTap: _onVoiceTap,
-                    onQuickTool: _onQuickTool,
-                    paceMs: _paceMs, // docs/22 §R4：同一档位喂聊天气泡的打字机
-                  ),
-                  // 横幅（z 5，压在所有东西上面）。
-                  // ① 拆解失败优先：失败必须**看得见**（旧版失败时屏幕上什么都不发生）。
-                  // ② 否则是绑定见面礼（数值语义在 goal_gen 的 kBindGift*）。
-                  // v3 顶部提示（参考稿 L409-413 / L1117-1122）
-                  if (_toasts.isNotEmpty)
-                    Positioned(
-                      left: 14,
-                      right: 14,
-                      top: MediaQuery.paddingOf(context).top + 14,
-                      child: IgnorePointer(
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: <Widget>[
-                            for (final _Toast t in _toasts)
-                              Padding(
-                                padding: const EdgeInsets.only(bottom: 8),
-                                child: RefToast(
-                                  key: ValueKey<int>(t.id),
-                                  message: t.text,
-                                  kind: t.bad
-                                      ? RefToastKind.err
-                                      : RefToastKind.ok,
+                      child: TweenAnimationBuilder<double>(
+                        // #bg { transition: opacity .8s, filter .8s } —— 认输抽色压暗也是渐变的
+                        tween: Tween<double>(begin: 0, end: fail ? 1 : 0),
+                        duration: const Duration(milliseconds: 800),
+                        curve: Curves.easeInOut,
+                        builder: (BuildContext _, double t, Widget? child) =>
+                            t <= 0
+                            ? child!
+                            : ColorFiltered(
+                                colorFilter: ColorFilter.matrix(
+                                  _lerpMatrix(_identity, kFailColorMatrix, t),
                                 ),
+                                child: child,
                               ),
+                        child: Stack(
+                          fit: StackFit.expand,
+                          children: <Widget>[
+                            // v3 天幕（参考稿 L40-53）：紫雾 + 描边大字 + 地平线 +
+                            // 透视地板 + 扫描线 + 抖动噪点 + 暗角。旧 BgLayer 在下一层
+                            // 兜底（它自带 ComfyUI 底图）；RefBackground 的底是不透明的
+                            // ColoredBox(var(--bg))，所以视觉以新层为准。
+                            // 旧 BgLayer 已撤：它整层被 RefBackground 的不透明底盖住，
+                            // 却仍逐帧作画（白耗 GPU），边缘还漏出一道暗带。
+                            RefBackground(
+                              accent: _sceneAccent,
+                              ghost: _sceneGhost,
+                              animate: !reduce,
+                            ),
                           ],
                         ),
                       ),
                     ),
-                  // v3 升级过场（参考稿 L450-460）：HUD 在后台跨级时补播
-                  if (_levelUpFrom != null)
+                    // 任意按下都算「宿主还在」（原型 main.js L40 在整屏捕获阶段监听，
+                    // **不受 busy 影响** —— 演出期间也在记）
+                    // 同时：点背景 = 跳过打字机（原型 Tap 忽略 button/input/sheet/tag 上的点）
                     Positioned.fill(
-                      child: RefLevelUp(
-                        from: _levelUpFrom!,
-                        to: _levelUpTo ?? _host.lv,
-                        perk: _levelUpPerk(_levelUpTo ?? _host.lv),
-                        onTap: () {
-                          if (_moment == Moment.result) {
-                            _finishVerdict();
-                          } else {
-                            setState(() {
-                              _levelUpFrom = null;
-                              _levelUpTo = null;
-                              _moment = Moment.lobby;
-                            });
+                      child: Listener(
+                        behavior: HitTestBehavior.translucent,
+                        onPointerDown: (PointerDownEvent _) {
+                          if (_lastAct.isBefore(
+                            DateTime.now().subtract(const Duration(seconds: 1)),
+                          )) {
+                            setState(() => _lastAct = DateTime.now());
                           }
+                          // docs/24 #15：瞌睡中被戳醒（惊一下 → 回情绪）
                         },
                       ),
                     ),
-                  // v3 确认弹窗（参考稿 #modal L476-480）：重置存档前先问一句
-                  if (_modalOn)
                     Positioned.fill(
-                      child: ColoredBox(
-                        color: Ref.a(Ref.bg, .78),
-                        child: Center(
-                          child: RefModal(
-                            title: '重置存档？',
-                            body: '一切从「开机成功」重新开始。等级、晶核、名牒、主线、她记住的你 —— 全部清空。这项操作不可撤销。',
-                            yes: '确定重置',
-                            no: '再想想',
-                            onPick: (bool yes) {
-                              setState(() => _modalOn = false);
-                              if (yes) unawaited(_wipe());
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () => setState(() {
+                          _tap++;
+                          // 跳过打字机时闭嘴（原型 `ui.js` L106 `if (cut) Voice.hush()`）
+                          _voice.hush();
+                          _lastAct = DateTime.now();
+                        }),
+                      ),
+                    ),
+                    RefHud(
+                      // 结算时 HUD 的晶核先停在结算前的数，等晶核飞到再滚上去
+                      state: _hudCoinsHold == null
+                          ? _host
+                          : _host.copyWith(coins: _hudCoinsHold),
+                      coinKey: _coinKey,
+                      // 参考稿 SC.hud：home/main(否)/board/exec/archive(否)/shop。
+                      // 验收浮层（.ovl z70）盖在 HUD（z40）上，HUD 本身不收。
+                      visible:
+                          lobby ||
+                          exec ||
+                          result ||
+                          (main && _boardOn) ||
+                          (sheet && _sheetKind == SheetKind.supply),
+                      onMenu: () => _openSheet(SheetKind.system),
+                      onMenuLongPress: () => setState(() => _llmPaneOn = true),
+                      onLevelTap: () => _toast(
+                        'EXP ${_host.exp} / ${HostState.need(_host.lv)} · '
+                        '距 LV${_host.lv + 1} 还差 '
+                        '${HostState.need(_host.lv) - _host.exp}',
+                      ),
+                      onCoinTap: () => _toast(
+                        '晶核 ◈${_host.coins}。'
+                        '${_host.coins < 45 ? '穷，但是干净。' : '有点小钱了，别乱花。'}',
+                      ),
+                      onStreakTap: () => _toast(
+                        '连胜 ${_host.streak} 天。'
+                        '${_host.streak > 0 ? '今天已打卡。' : '今天还没完成任何一单。'}',
+                      ),
+                    ),
+                    // 连击药丸（宿主 2026-10-11：从左上角那个小方块里摘出来，
+                    // 贴到顶栏下沿居中 —— 位置落在委托卡上方，不再和称号挤在一起）
+                    // 连击药丸 —— 宿主 2026-10-11：「连击 隐藏」（先不显示，组件留着，
+                    // 要接回来把 visible 改回 lobby || exec 即可）
+                    StreakPill(streak: _host.streak, visible: false),
+                    // docs/39 H-15 · 主 CTA 三态状态机（P0）：
+                    //   执行中 → 回执行面板（**不是开派单板**，这是"执行中再从大厅接单"的堵口）
+                    //   队列空 → 她说一句，不进派单板
+                    //   否则   → 派单板
+                    //
+                    // ⚠️ 包一层 ListenableBuilder 订阅秒时钟：H-15 的底注是**真实换日
+                    //    倒计时**（原来写死「换日还有 0 小时」），不订的话一秒都不动。
+                    //    ListenableBuilder 不含 RenderObject，builder 直接返回 Positioned
+                    //    在 Stack 下是合法的。。
+                    // v3 大厅（参考稿 L696-717）：home-tag / 她的气泡 / 主线卡 /
+                    // active-pill / 三颗侧键 + 128 委托球。
+                    if (lobby)
+                      Positioned.fill(
+                        child: RefHome(
+                          host: _host,
+                          goal: _goal,
+                          quip:
+                              _aside ??
+                              LINES.holding.replaceFirst(
+                                '[[{n}]]',
+                                _host.queue.toString(),
+                              ),
+                          activeElapsed: _active
+                              ? _clockText(_execReadout().elapsed)
+                              : null,
+                          active: _active,
+                          queue: _host.queue,
+                          day: _goal.days <= 0
+                              ? 1
+                              : (_goal.days - _goal.remainingDays(_clock.now)),
+                          days: _goal.days <= 0 ? 14 : _goal.days,
+                          mood: _coreMood,
+                          poke: _pokeN,
+                          skipToken: _tap,
+                          onQuestTap: () => _go(
+                            'main',
+                            () => setState(() {
+                              _pickedTask = null;
+                              _boardOn = false;
+                              _mainJustDone = null;
+                              _moment = Moment.main;
+                            }),
+                          ),
+                          onCoreTap: _poke,
+                          onActivePill: _resumeExec,
+                          onOrb: _enterLobbyCta,
+                          onSide: (int i) {
+                            if (i == 0) {
+                              _go(
+                                'main',
+                                () => setState(() {
+                                  _pickedTask = null;
+                                  _boardOn = false;
+                                  _mainJustDone = null;
+                                  _moment = Moment.main;
+                                }),
+                              );
+                            } else if (i == 1) {
+                              _openSheet(SheetKind.archive);
+                            } else if (i == 2) {
+                              _openSheet(SheetKind.supply);
+                            }
+                          },
+                        ),
+                      ),
+                    // 执行面板
+                    // ⚠️ 必须包一层 ListenableBuilder 订阅时钟 —— 否则 `_clock` 每 250ms
+                    //    通知了没人听，计时器会一直停在进页面那一刻（实机踩过：等了 12 秒还是 07:00）
+                    // v3 执行页（参考稿 L265-329）：104px 计时 / 8 高进度 / 82 证据槽
+                    // / 62 高主键。/ 按住 1600ms 认输。旧 ExecPanel 保留树（历史测试锚点），
+                    // 视觉由 RefExec 接管。
+                    if (exec)
+                      Positioned.fill(
+                        child: ListenableBuilder(
+                          listenable: _clock,
+                          builder: (BuildContext _, Widget? _) => RefExec(
+                            quest: _execQuest,
+                            elapsed: _execReadout().elapsed,
+                            critChance: _flow.critBase(),
+                            itemCount: Item.execCount(_host.items),
+                            equipped: _usedItems.length,
+                            tray: RefItemTray(
+                              embedded: true,
+                              items: Item.all,
+                              owned: _host.items,
+                              open: _drawerOn,
+                              equipped: _usedItems,
+                              onPick: _useItem,
+                              onClose: () => setState(() => _drawerOn = false),
+                              onEmpty: (Item it) {
+                                unawaited(Sfx.play('error'));
+                                _toast('${it.name} 持有 ×0。补给站在大厅。', bad: true);
+                              },
+                            ),
+                            evidenceThumbs: _evidenceThumbs(),
+                            onAddEvidence: _addEvidence,
+                            onDemoEvidence: _demoEvidence,
+                            onRemoveEvidence: _removeEvidence,
+                            onSubmit: () => unawaited(_submitQuest()),
+                            onQuit: () {
+                              if (_busy) return;
+                              setState(() {
+                                _drawerOn = false;
+                                _active = false;
+                              });
+                              _beginFail();
+                            },
+                            onQuitProgress: (double p) =>
+                                setState(() => _quitP = p),
+                            onItems: () =>
+                                setState(() => _drawerOn = !_drawerOn),
+                            onCollapse: () {
+                              _toast('任务在后台继续计时。她还在看着。');
+                              _go(
+                                'home',
+                                () => setState(() {
+                                  _drawerOn = false;
+                                  _moment = Moment.lobby;
+                                }),
+                                back: true,
+                              );
                             },
                           ),
                         ),
                       ),
+                    // 结算
+                    // v3 验收（参考稿 L421-449）：扫描 → 结果两阶段。
+                    // 旧 ResultPanel 保留树（历史测试锚点），视觉由 RefVerdict 接管。
+                    if (result &&
+                        !_verdictClosing &&
+                        _levelUpFrom ==
+                            null) // 参考稿：先 closeOvl(verdict) 再 levelUp
+                      Positioned.fill(
+                        child: RefVerdict(
+                          rank: _verdictRank(_result),
+                          crit: _result.crit,
+                          line: _verdictLine(_result),
+                          rows: _verdictRows(_result),
+                          xpFrom: _result.beforeExp,
+                          xpTo:
+                              _result.endExp ??
+                              (_result.beforeExp + _result.exp),
+                          xpNeed: _result.afterNeed ?? _result.beforeNeed,
+                          lv: _result.lvAfter,
+                          photo: _verdictPhoto(),
+                          onAccept: _acceptVerdict,
+                        ),
+                      ),
+                    // 失败 / 补救（在 veil 之下）—— 记录时间与补救单来自真实认输
+                    // v3 失败页（参考稿 L461-474）：glitch 大字 + MISSION FAILED +
+                    // 补救框 + 回大厅。旧 FailLayer 保留树（历史测试锚点）。
+                    if (fail)
+                      Positioned.fill(
+                        child: RefFail(
+                          title: _failTimeout ? '任务超时' : '任务失败',
+                          sub: 'MISSION FAILED',
+                          onBack: _backToLobbyFromFail,
+                          box: _failBox(),
+                        ),
+                      ),
+                    // 屏幕空间特效（#fx 在 DOM 里排在 #ui 之后、#veil 之前）
+                    FxField(key: _fxKey, controller: _fx),
+                    // 参考稿 coinFly：结算收下后晶核从屏心飞向 HUD 晶核
+                    Positioned.fill(
+                      child: SizedBox.expand(
+                        key: _stackKey,
+                        child: RefCoinFly(
+                          token: _coinFlyTok,
+                          from: Offset(
+                            MediaQuery.sizeOf(context).width / 2,
+                            MediaQuery.sizeOf(context).height / 2,
+                          ),
+                          to: _coinFlyTo,
+                          onLand: () {
+                            setState(() => _hudCoinsHold = null);
+                            unawaited(Sfx.play('tick'));
+                            _fx.ripple(
+                              _coinFlyTo.dx,
+                              _coinFlyTo.dy,
+                              r0: 0,
+                              r1: 36,
+                              ms: 500,
+                              color: Ref.cyan,
+                              w: 2,
+                            );
+                          },
+                        ),
+                      ),
                     ),
-                ],
+                    // 认输按住时屏幕跟着暗下去（最多 75%），认输后停在 60%
+                    Veil(
+                      opacity: fail ? .6 : _quitP * .75,
+                      instant: _quitP > 0, // 按住期间跟手，松手才回到 900ms 过渡
+                    ),
+                    // 亮帧（`#flash` 在 DOM 里排在 veil 之后；正 z 的那些会盖在它上面）
+                    // ⚠️ 必须判 isAnimating —— 控制器停在 0 时 `1 - easeOut(0) = 1`，
+                    // 会让亮帧**一直开着**（整屏被垫一层 16% 白，一路比对下来才发现）
+                    AnimatedBuilder(
+                      animation: _flashC,
+                      builder: (BuildContext context, Widget? child) =>
+                          FlashLayer(
+                            color: _flashColor,
+                            alpha: _flashC.isAnimating
+                                ? _flashA *
+                                      (1 -
+                                          Curves.easeOut.transform(
+                                            _flashC.value,
+                                          ))
+                                : 0,
+                            // docs/39 §5.5：reduce 时亮帧 alpha 砍半（组件内部实现）
+                            reduceMotion: reduce,
+                          ),
+                    ),
+                    // 绑定仪式（设计稿未覆盖，按参考稿语言补成独立整页）：
+                    // 第 0 幕问目标，第 1 幕 3~5 张访谈卡。
+                    if (onboard)
+                      Positioned.fill(
+                        child: RefOnboard(
+                          controller: _ask,
+                          probe: _interviewCat != null
+                              ? '答完这几张，我给你排三天。'
+                              : (_probeLine ?? LINES.askGoal),
+                          probeToken: _tap,
+                          presets: const <String>[
+                            '三个月跑完半马',
+                            '一个月早睡早起',
+                            '考研上岸',
+                            '半年减重 10 斤',
+                            '学会画画',
+                            '变优秀',
+                          ],
+                          onSubmit: _onGoalSubmitted,
+                          cards: _interviewCat == null
+                              ? null
+                              : interviewCardsFor(
+                                  _interviewCat!,
+                                  level: _host.lv,
+                                ),
+                          onDone: _completeOnboarding,
+                          onSkip: _planError == null ? null : _skipLlmAndStart,
+                          planError: _planError == null
+                              ? null
+                              : _planError!.code.name +
+                                    ' · ' +
+                                    _clip(_planError!.detail, 60),
+                        ),
+                      ),
+                    // docs/39 M-24 · 换目标输入幕的**常驻取消**（左上 44 圆 + 顶部 11pt
+                    // 上下文行）。两条都不依赖牌列 —— 键盘弹起、牌列退场、LLM 长句
+                    // 把字幕顶上去，取消都还在原地。进 240ms kOut（淡 + 8px 下落）。
+                    _GoalChangeChrome(
+                      visible: _goalChangeOn,
+                      onCancel: _cancelGoalChange,
+                    ),
+                    // 换目标 · 问新目标（TODO-01）：主线页「换目标」→ 这一层
+                    // （旧主线单先不动；确定才走 `flow.newGoal` 落库）
+                    AskField(
+                      prompt: '新目标 ›',
+                      placeholder: '比如：半年减重 10 斤',
+                      presets: const <String>[
+                        '半年减重 10 斤',
+                        '三个月跑完半马',
+                        '一个月早睡早起',
+                        '考研上岸',
+                      ],
+                      controller: _goalAsk,
+                      focusNode: _goalAskFocus,
+                      visible: _goalChangeOn,
+                      bottomInset: MediaQuery.viewInsetsOf(context).bottom,
+                      onPreset: (String v) => _goalAsk.text = v,
+                      onSubmit: _onGoalChangeSubmitted,
+                      // docs/39 M-24：取消**不再走牌列**（原来在牌列最右、被屏宽裁掉一半，
+                      // 键盘一弹整条牌列退场就彻底没有退路）。现在取消 = 输入幕左上那颗
+                      // 常驻 44 圆（见下面 `ask.cancel` 的挂载），_cancelGoalChange 由它调。
+                      // 「先问小祥」仍是**入口牌**：开对话、不填输入框（§4.B.2）
+                      onEntry: _enterAskXiang,
+                    ),
+                    // v3 LLM 设置（参考稿未覆盖，按「补全缺失组件」要求新增）：
+                    // Base URL / ApiKey / 模型 / 温度 / 上下文 / 流式 / 测试 / 保存。
+                    if (_llmPaneOn)
+                      Positioned.fill(
+                        child: ColoredBox(
+                          // ⚠️ 必须**不**透明：`.96` 让底下的「LLM 设置」入口按钮
+                          //    透到面板上（实测遮在「连接 · ENDPOINT」那一栏）。
+                          color: Ref.bg,
+                          child: SafeArea(
+                            child: LlmSettingsPane(
+                              initial: _agentSettings,
+                              onClose: () => setState(() => _llmPaneOn = false),
+                              onSaved: (AgentSettings s) => setState(() {
+                                _agentSettings = s;
+                                _llmPaneOn = false;
+                              }),
+                            ),
+                          ),
+                        ),
+                      ),
+                    // v3 档案（参考稿 L767-787）：独立整页，不再是投影面板
+                    if (sheet && _sheetKind == SheetKind.archive)
+                      Positioned.fill(
+                        child: RefArchive(
+                          host: _host,
+                          ownedCount: _host.ownedTitles.length,
+                          totalTitles: HostTitle.all.length,
+                          history: _archiveHistory,
+                          fx: _fx,
+                          onToast: (String m, {bool bad = false}) =>
+                              _toast(m, bad: bad),
+                          onBack: () => _go(
+                            _sheetFrom == Moment.exec ? 'exec' : 'home',
+                            () => setState(() => _moment = _sheetFrom),
+                            back: true,
+                          ),
+                          onEquip: (String id) {
+                            if (!_flow.equip(id)) return false;
+                            setState(() => _host = _flow.host);
+                            _persist();
+                            return true;
+                          },
+                        ),
+                      ),
+                    // v3 补给（参考稿 L789-799）：独立整页
+                    if (sheet && _sheetKind == SheetKind.supply)
+                      Positioned.fill(
+                        child: RefShop(
+                          items: Item.all,
+                          owned: _host.items,
+                          coins: _host.coins,
+                          lv: _host.lv,
+                          fx: _fx,
+                          onBack: () => _go(
+                            _sheetFrom == Moment.exec ? 'exec' : 'home',
+                            () => setState(() => _moment = _sheetFrom),
+                            back: true,
+                          ),
+                          onBuy: (Item it) {
+                            if (!_flow.buy(it.id)) return false;
+                            setState(() => _host = _flow.host);
+                            _persist();
+                            return true;
+                          },
+                          onUse: (Item it) {
+                            if (it.id != 'patch' || !_flow.usePatch()) {
+                              return false;
+                            }
+                            setState(() => _host = _flow.host);
+                            _persist();
+                            return true;
+                          },
+                          onToast: (String m, {bool bad = false}) =>
+                              _toast(m, bad: bad),
+                        ),
+                      ),
+                    // 主线全景：环挂签挂在环上（位置由相机数学给出），面板压在上面
+                    // ⚠️ 换目标时**整层退场**（`_goalChangeOn`）：原来她问新目标时
+                    //    主线全景还留在屏上，于是「新目标」输入框的预设词/确定钮
+                    //    正好压在底部的【让她派这一环】【换目标】上、字幕压在预设词上
+                    //    —— 宿主截图里的"UI 重合"就是这两处（原型 `MainV.hide()`
+                    //    也是整层收掉，只留她说话 + 输入）。
+                    // v3 主线页（参考稿 L719-731）：抬头 / meta / daybar / 大牌 /
+                    // 刻度 / sysbox / 去委托板 + 换目标。
+                    if (main && !_boardOn)
+                      Positioned.fill(
+                        child: RefMain(
+                          key: ValueKey<String>(
+                            'main.${_goal.id}.${_mainJustDone ?? -1}',
+                          ),
+                          goal: _goal,
+                          justDone: _mainJustDone,
+                          line: _aside,
+                          mood: _aside == null ? null : '尚可',
+                          lineToken: _asideToken,
+                          activeIndex: _activeMainIndex,
+                          fx: _fx,
+                          elapsed: _active
+                              ? _clockText(_execReadout().elapsed)
+                              : null,
+                          onBack: () => _go(
+                            'home',
+                            () => setState(() {
+                              _boardOn = false;
+                              _moment = Moment.lobby;
+                            }),
+                            back: true,
+                          ),
+                          onTake: _takeMainTask,
+                          onDispatch: () => _go(
+                            'board',
+                            () => setState(() {
+                              _boardFrom = Moment.main;
+                              _boardOn = true;
+                              _boardFilter = 'all';
+                            }),
+                          ),
+                          onSwapGoal: _beginGoalChange,
+                        ),
+                      ),
+                    // v3 委托板（参考稿 L237-264）：tabs + ticket 列表。
+                    // ⚠️ 旧的 MainView 仍在下面、`visible: false`：它承载了
+                    //    746 条历史测试里的 `main.rail` / `main.title` 等锚点，
+                    //    视觉由 RefBoard 接管。
+                    if (main && _boardOn)
+                      Positioned.fill(
+                        child: RefBoard(
+                          quests: _boardQuests(),
+                          filter: _boardFilter,
+                          onFilter: (String f) =>
+                              setState(() => _boardFilter = f),
+                          active: _flow.active?.task,
+                          onBack: () => _go(
+                            _boardFrom == Moment.main ? 'main' : 'home',
+                            () => setState(() {
+                              _boardOn = false;
+                              _mainJustDone = null;
+                              _moment = _boardFrom;
+                            }),
+                            back: true,
+                          ),
+                          onTap: _onBoardTap,
+                          onRefill: _refillBoard,
+                        ),
+                      ),
+                    // 「执行中」药丸（`ui.js` L60）：**执行页自己不显示它**，点它回执行页。
+                    // 收起执行面板后就靠它回去。
+                    // docs/39 H-16 / M-02：**主线页不再浮这颗药丸** —— 主线页的计时读数
+                    // 归抬头里的 status chip（由 P0-B 在 main_view 里做）。这里是同一个
+                    // 计时数据的第二处呈现，两处并存就是走查 §0 里"药丸压着抬头读数"的来源。
+                    // 对话层（docs/18 §2.6）：叠加，不替换；她仍在背景可见
+                    // ——层序在 、亮帧与横幅之下
+                    // v3 系统设置（参考稿 #sheet L481-491 / L837-843）：
+                    // 底部抽屉 + 音效开关 + 秘籍 + 彩蛋提示 + 重置存档。
+                    // APP 原有的「和她聊聊」「LLM 连接」按同一行样式补在中间。
+                    // 它是盖在**当前场景**上的浮层（#sheet 是 .ovl，不是场景）：
+                    // 不改 _moment，关掉就回到原处（委托板/补给里点 ☰ 也一样）。
+                    if (_sysSheetOn)
+                      Positioned.fill(
+                        child: RefSheet(
+                          visible: true,
+                          sound: _agentSettings.sound,
+                          onSound: (bool v) {
+                            if (v != _agentSettings.sound) _toggleSound();
+                          },
+                          onClose: () => setState(() => _sysSheetOn = false),
+                          onHint: () {
+                            setState(() => _sysSheetOn = false);
+                            _toast('戳大厅的「她」7 次 · 长按她 · 连点计时器 5 次', bad: false);
+                          },
+                          onChat: () {
+                            setState(() => _sysSheetOn = false);
+                            _openChat();
+                          },
+                          onLlm: () {
+                            setState(() {
+                              _sysSheetOn = false;
+                              _llmPaneOn = true;
+                            });
+                          },
+                          onReset: () {
+                            setState(() => _sysSheetOn = false);
+                            _askWipe();
+                          },
+                        ),
+                      ),
+                    ChatPanel(
+                      visible: _chatOpen,
+                      messages: _chat.messages,
+                      thinking: _chatThinking,
+                      onSend: _sendChat,
+                      onClose: () => setState(() => _chatOpen = false),
+                      onVoiceTap: _onVoiceTap,
+                      onQuickTool: _onQuickTool,
+                      paceMs: _paceMs, // docs/22 §R4：同一档位喂聊天气泡的打字机
+                    ),
+                    // 横幅（z 5，压在所有东西上面）。
+                    // ① 拆解失败优先：失败必须**看得见**（旧版失败时屏幕上什么都不发生）。
+                    // ② 否则是绑定见面礼（数值语义在 goal_gen 的 kBindGift*）。
+                    // v3 顶部提示（参考稿 L409-413 / L1117-1122）
+                    if (_toasts.isNotEmpty)
+                      Positioned(
+                        left: 14,
+                        right: 14,
+                        top: MediaQuery.paddingOf(context).top + 14,
+                        child: IgnorePointer(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: <Widget>[
+                              for (final _Toast t in _toasts)
+                                Padding(
+                                  padding: const EdgeInsets.only(bottom: 8),
+                                  child: RefToast(
+                                    key: ValueKey<int>(t.id),
+                                    message: t.text,
+                                    kind: t.bad
+                                        ? RefToastKind.err
+                                        : RefToastKind.ok,
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    // v3 升级过场（参考稿 L450-460）：HUD 在后台跨级时补播
+                    if (_levelUpFrom != null)
+                      Positioned.fill(
+                        child: RefLevelUp(
+                          from: _levelUpFrom!,
+                          to: _levelUpTo ?? _host.lv,
+                          perk: _levelUpPerk(_levelUpTo ?? _host.lv),
+                          onTap: () {
+                            if (_moment == Moment.result) {
+                              _finishVerdict();
+                            } else {
+                              setState(() {
+                                _levelUpFrom = null;
+                                _levelUpTo = null;
+                                _moment = Moment.lobby;
+                              });
+                            }
+                          },
+                        ),
+                      ),
+                    // v3 确认弹窗（参考稿 #modal L476-480）：重置存档前先问一句
+                    if (_modalOn)
+                      Positioned.fill(
+                        child: ColoredBox(
+                          color: Ref.a(Ref.bg, .78),
+                          child: Center(
+                            child: RefModal(
+                              title: '重置存档？',
+                              body: '一切从「开机成功」重新开始。等级、晶核、名牒、主线、她记住的你 —— 全部清空。这项操作不可撤销。',
+                              yes: '确定重置',
+                              no: '再想想',
+                              onPick: (bool yes) {
+                                setState(() => _modalOn = false);
+                                if (yes) unawaited(_wipe());
+                              },
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
               ),
-            ),
-            // 3 · 覆盖层：开机自检（z 20，压在所有东西上面）
-            // v3 开机屏（参考稿 #boot L850-857）：170 核心 + HOST//SYSTEM 字标 +
-            // 日志 + 3 高渐变条 + 唤醒键。旧的 BootScreen 保留树（它的 42 条测试
-            // 锚在 `boot.bar` 等 Key 上），视觉由 RefBoot 接管。
-            if (boot)
+              // 3 · 覆盖层：开机自检（z 20，压在所有东西上面）
+              // v3 开机屏（参考稿 #boot L850-857）：170 核心 + HOST//SYSTEM 字标 +
+              // 日志 + 3 高渐变条 + 唤醒键。旧的 BootScreen 保留树（它的 42 条测试
+              // 锚在 `boot.bar` 等 Key 上），视觉由 RefBoot 接管。
+              if (boot)
+                Positioned.fill(
+                  child: RefBoot(
+                    lines: _bootLines,
+                    progress: _bootProgress,
+                    ready: _bootReady,
+                    onWake: _wake,
+                  ),
+                ),
+              // 4 · v3 斜切 wipe 转场（参考稿 L493-499 / L1172-1183）：
+              //     三道斜带 + 中央大字，盖住整次换页。
               Positioned.fill(
-                child: RefBoot(
-                  lines: _bootLines,
-                  progress: _bootProgress,
-                  ready: _bootReady,
-                  onWake: _wake,
+                child: IgnorePointer(
+                  child: RefWipe(
+                    key: _wipeKey,
+                    accent: _wipeAccent,
+                    title: _wipeTitle,
+                    sub: _wipeSub,
+                    onCovered: _runWipeCovered,
+                    onDone: _runWipeDone,
+                  ),
                 ),
               ),
-            // 4 · v3 斜切 wipe 转场（参考稿 L493-499 / L1172-1183）：
-            //     三道斜带 + 中央大字，盖住整次换页。
-            Positioned.fill(
-              child: IgnorePointer(
-                child: RefWipe(
-                  key: _wipeKey,
-                  accent: _sceneAccent,
-                  title: _wipeTitle,
-                  sub: _wipeSub,
-                  onCovered: _runWipeCovered,
-                  onDone: _runWipeDone,
-                ),
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
+  }
+
+  void _tapFx(PointerDownEvent e) {
+    final Offset p = e.localPosition;
+    final Color acc = _sceneAccent;
+    _fx.burst(
+      p.dx,
+      p.dy,
+      n: 7,
+      cols: <Color>[acc, Colors.white],
+      min: 60,
+      max: 240,
+      life: .27,
+      size: 1.3,
+      shards: 0,
+      g: 0,
+    );
+    _fx.ripple(p.dx, p.dy, r0: 0, r1: 28, ms: 500, color: acc, w: 2);
   }
 
   /// 绑定 · 第 0 幕收卷（原型 `makeGoal` 的空泛判定）：
@@ -1974,13 +2099,33 @@ class _AppShellState extends State<AppShell>
   /// 开投影面板（原型 `App.sheet(kind)`）
   void _openSheet(SheetKind kind) {
     FocusScope.of(context).unfocus(); // 键盘别压在面板上（宿主验收）
+    if (kind != SheetKind.system) {
+      // 档案 / 补给是参考稿里的整页场景：go('archive' | 'shop')
+      final Moment from = _moment == Moment.exec ? Moment.exec : Moment.lobby;
+      unawaited(
+        _go(kind == SheetKind.archive ? 'archive' : 'shop', () {
+          setState(() {
+            _sheetFrom = from;
+            _sheetKind = kind;
+            if (kind == SheetKind.archive) {
+              _archiveHistory = _flow.historyLog.entries();
+            }
+            _moment = Moment.sheet;
+            _drawerOn = false;
+          });
+        }),
+      );
+      return;
+    }
+    unawaited(Sfx.play('swipe'));
     setState(() {
-      _sheetFrom = _moment == Moment.exec ? Moment.exec : Moment.lobby;
-      _sheetKind = kind;
-      _moment = Moment.sheet;
+      _sysSheetOn = true;
       _drawerOn = false;
     });
   }
+
+  /// 系统设置抽屉（浮层，不占场景）
+  bool _sysSheetOn = false;
 
   /// 打开**悬浮牌局**（docs/32 §3）—— 牌直接浮在舞台上，不开面板、不开弹层壳。
   ///
@@ -2098,6 +2243,7 @@ class _AppShellState extends State<AppShell>
       return;
     }
     _clock.stopFast();
+    _verdictShots = List<EvidenceShot>.of(_flow.active!.evidence);
     _active = false; // 交出去了，药丸该消失
     // docs/24 #7 提交任务：交单前满意地点个头
     _pulse(color: const Color(0xFFBFF6FF), a: .24, ms: 280);
@@ -2120,6 +2266,7 @@ class _AppShellState extends State<AppShell>
       if (!mounted) return;
       setState(() {
         _result = r;
+        _hudCoinsHold = _flow.host.coins - r.coin;
         _resultChoicesOn = false;
         _moment = Moment.result;
         _host = _flow.host;
@@ -2169,12 +2316,90 @@ class _AppShellState extends State<AppShell>
       _levelUpFrom = null;
       _levelUpTo = null;
       _resultChoicesOn = false;
-      _boardFrom = Moment.lobby;
-      _pickedTask = null;
-      _moment = Moment.main;
-      _boardOn = idx < 0;
-      if (idx >= 0) _mainLead = idx;
     });
+    // 参考稿 L1536-1537：主线单 → go('main',{justDone})；其余 → go('board')
+    unawaited(
+      _go(idx >= 0 ? 'main' : 'board', () {
+        setState(() {
+          _boardFrom = Moment.lobby;
+          _pickedTask = null;
+          _moment = Moment.main;
+          _boardOn = idx < 0;
+          _boardFilter = 'all';
+          _mainJustDone = idx >= 0 ? idx : null;
+        });
+      }),
+    );
+  }
+
+  /// 「收下」：关掉验收浮层 → 晶核飞向 HUD（JS L1531-1533）→ 950ms 后
+  /// 再走升级 / 换页。
+  bool _verdictClosing = false;
+  int? _hudCoinsHold;
+  int _coinFlyTok = 0;
+  Offset _coinFlyTo = Offset.zero;
+  final GlobalKey _coinKey = GlobalKey();
+  final GlobalKey _stackKey = GlobalKey();
+
+  Future<void> _acceptVerdict() async {
+    if (_verdictClosing) return;
+    final RenderBox? chip =
+        _coinKey.currentContext?.findRenderObject() as RenderBox?;
+    final RenderBox? root =
+        _stackKey.currentContext?.findRenderObject() as RenderBox?;
+    setState(() {
+      _verdictClosing = true;
+      if (chip != null && root != null) {
+        _coinFlyTo = root.globalToLocal(
+          chip.localToGlobal(chip.size.center(Offset.zero)),
+        );
+        _coinFlyTok++;
+      }
+    });
+    await Future<void>.delayed(const Duration(milliseconds: 950));
+    if (!mounted) return;
+    setState(() {
+      _verdictClosing = false;
+      _hudCoinsHold = null;
+    });
+    _onResultDone();
+  }
+
+  /// 刚验收完的主线单序号（主线页播压印 + 解封）
+  int? _mainJustDone;
+
+  /// 正在执行的主线单在清单里的序号
+  int? get _activeMainIndex {
+    final Quest? a = _flow.active?.task;
+    if (a == null || a.kind != 'main' || a.goalId != _goal.id) return null;
+    return a.planIndex;
+  }
+
+  /// 主线页点当前卡（JS mainTap → startTask('m')）：
+  /// 已在执行 → 回执行页；手上有别的单 → 她拦；否则把这一环发到队首并接单。
+  void _takeMainTask(int i) {
+    if (_busy) return;
+    final Quest? act = _flow.active?.task;
+    if (act != null) {
+      if (_activeMainIndex == i) {
+        _resumeExec();
+      } else {
+        unawaited(Sfx.play('error'));
+        _toast('你手上还有一单没交差。', bad: true);
+        _resumeExec();
+      }
+      return;
+    }
+    Quest? q;
+    for (final Quest x in _flow.queue) {
+      if (x.kind == 'main' && x.goalId == _goal.id && x.planIndex == i) {
+        q = x;
+        break;
+      }
+    }
+    q ??= _flow.planTask(i);
+    unawaited(Sfx.play('stamp'));
+    _onBoardTap(q);
   }
 
   /// 收官出口（TODO-01）：第 N 环 CLEAR 时下一条主线**已经在 settle 里落库**
@@ -2218,9 +2443,17 @@ class _AppShellState extends State<AppShell>
     if (!mounted) return null;
     // v3 层优先：LLM 设置是模态，返回键先关它
     if (_llmPaneOn) return _BackTarget.sheet;
+    if (_modalOn) return _BackTarget.modal;
+    if (_sysSheetOn) return _BackTarget.sysSheet;
+    if (_chatOpen) return _BackTarget.chat;
     if (_moment == Moment.fail) return _BackTarget.fail;
-    if (_moment == Moment.main) {
-      if (_pickedTask != null) return _BackTarget.drawer;
+    if (_moment == Moment.main && _pickedTask != null) {
+      return _BackTarget.drawer;
+    }
+    // 参考稿 Esc：exec → 收起；其余非大厅场景 → back()
+    if (_moment == Moment.main ||
+        _moment == Moment.sheet ||
+        _moment == Moment.exec) {
       return _BackTarget.main;
     }
     return null;
@@ -2236,8 +2469,58 @@ class _AppShellState extends State<AppShell>
       case _BackTarget.drawer:
         setState(() => _pickedTask = null);
       case _BackTarget.main:
-        setState(() => _moment = Moment.lobby);
+        _sceneBack();
+      case _BackTarget.modal:
+        setState(() => _modalOn = false);
+      case _BackTarget.sysSheet:
+        setState(() => _sysSheetOn = false);
+      case _BackTarget.chat:
+        setState(() => _chatOpen = false);
       case null:
+        break;
+    }
+  }
+
+  /// 参考稿 `back()`：逐级退一层（与各页 ✕ / ‹ 同一条路）
+  void _sceneBack() {
+    switch (_moment) {
+      case Moment.main when _boardOn:
+        unawaited(
+          _go(
+            _boardFrom == Moment.main ? 'main' : 'home',
+            () => setState(() {
+              _boardOn = false;
+              _mainJustDone = null;
+              _moment = _boardFrom;
+            }),
+            back: true,
+          ),
+        );
+      case Moment.main:
+        unawaited(
+          _go('home', () => setState(() => _moment = Moment.lobby), back: true),
+        );
+      case Moment.sheet:
+        unawaited(
+          _go(
+            _sheetFrom == Moment.exec ? 'exec' : 'home',
+            () => setState(() => _moment = _sheetFrom),
+            back: true,
+          ),
+        );
+      case Moment.exec:
+        _toast('任务在后台继续计时。她还在看着。');
+        unawaited(
+          _go(
+            'home',
+            () => setState(() {
+              _drawerOn = false;
+              _moment = Moment.lobby;
+            }),
+            back: true,
+          ),
+        );
+      default:
         break;
     }
   }
@@ -2245,7 +2528,7 @@ class _AppShellState extends State<AppShell>
   /// 回执行面板（主线页「继续执行」/ 牌屉里执行中那张的 CTA）
   void _resumeExec() {
     if (_busy) return;
-    setState(() => _moment = Moment.exec);
+    unawaited(_go('exec', () => setState(() => _moment = Moment.exec)));
   }
 
   /// 大厅主 CTA 的三态分派（docs/39 H-15）—— **唯一主行动状态机**：
@@ -2269,20 +2552,24 @@ class _AppShellState extends State<AppShell>
       _sayAside('今天的单，清干净了。明天再来。', holdMs: 2200);
       return;
     }
-    unawaited(Sfx.play('publish'));
     unawaited(Haptics.buzz('publish'));
-    setState(() {
-      _boardFrom = Moment.lobby;
-      _moment = Moment.main;
-      _boardOn = true;
-      _boardFilter = 'all';
-      _pickedTask = null;
-    });
+    unawaited(
+      _go('board', () {
+        setState(() {
+          _boardFrom = Moment.lobby;
+          _moment = Moment.main;
+          _boardOn = true;
+          _boardFilter = 'all';
+          _pickedTask = null;
+        });
+      }),
+    );
   }
 
   /// 执行中那张的计时读数（`12:04`）
   static String _clockText(Duration d) {
-    final int m = d.inMinutes;
+    // 参考稿 fmt()：mm:ss 两位补零
+    final String m = d.inMinutes.toString().padLeft(2, '0');
     final String ss = (d.inSeconds % 60).toString().padLeft(2, '0');
     return '$m:$ss';
   }
@@ -2361,6 +2648,11 @@ class _AppShellState extends State<AppShell>
           Text.rich(
             TextSpan(
               children: <InlineSpan>[
+                // 参考稿 failSk：`🔥 <s>旧</s> → <hot>0</hot>`
+                TextSpan(
+                  text: '🔥 ',
+                  style: refText(size: 28, wght: 400, height: 1),
+                ),
                 TextSpan(
                   text: streak.toString(),
                   style: refText(
@@ -2372,7 +2664,17 @@ class _AppShellState extends State<AppShell>
                   ).copyWith(decoration: TextDecoration.lineThrough),
                 ),
                 TextSpan(
-                  text: ' → 0',
+                  text: ' → ',
+                  style: refText(
+                    family: Ref.fd,
+                    size: 34,
+                    wght: 700,
+                    height: 1,
+                    color: Ref.txt,
+                  ),
+                ),
+                TextSpan(
+                  text: '0',
                   style: refText(
                     family: Ref.fd,
                     size: 34,
@@ -2416,10 +2718,14 @@ class _AppShellState extends State<AppShell>
 
   /// 失败页「回到大厅」（参考稿 L1558 的 failOk）
   void _backToLobbyFromFail() {
-    setState(() {
-      _failRemedy = null;
-      _moment = Moment.lobby;
-    });
+    unawaited(
+      _go('home', () {
+        setState(() {
+          _failRemedy = null;
+          _moment = Moment.lobby;
+        });
+      }, back: true),
+    );
     _persist();
   }
 
@@ -2432,11 +2738,55 @@ class _AppShellState extends State<AppShell>
 
   /// 跑一次转场（与清档 _wipe 区分）：盖住时执行 swap，整段结束后执行 after。
   /// 减弱动态 / 已有转场在跑 → 直接执行 swap（不拖时间）。
+  /// 参考稿 SC 表（JS L1158-1165）：场景 → 转场大字 / 副标题 / 强调色
+  static const Map<String, (String, String, Color)> _sc =
+      <String, (String, String, Color)>{
+        'home': ('大厅', 'LOBBY', Ref.acid),
+        'main': ('主线', 'MAINLINE', Ref.cyan),
+        'board': ('委托板', 'COMMISSION BOARD', Ref.gold),
+        'exec': ('任务开始', 'MISSION START', Ref.hot),
+        'archive': ('档案', 'ARCHIVE', Ref.violet),
+        'shop': ('补给站', 'SUPPLY', Ref.mint),
+      };
+
+  bool _going = false;
+
+  /// FX 层的稳定身份：它前面的场景节点随 moment 增减，不给 key 会被重建
+  final GlobalKey _fxKey = GlobalKey();
+
+  /// 档案页的结算流水（每次进档案重读一次）
+  Future<List<HistoryEntry>>? _archiveHistory;
+  Color _wipeAccent = Ref.acid;
+
+  /// 参考稿 `go(name, {back})`：whoosh → 三道斜带推入 → 盖住时换页 →
+  /// swipe → 推走（返回时方向相反）。转场进行中再点 = 忽略（JS `busy`）。
+  Future<void> _go(String scene, VoidCallback swap, {bool back = false}) async {
+    if (_going) return;
+    _going = true;
+    final (String, String, Color) m = _sc[scene]!;
+    unawaited(Sfx.play('whoosh'));
+    setState(() => _wipeAccent = m.$3);
+    try {
+      await _runWipe(
+        title: m.$1,
+        sub: '${m.$2} · LOADING',
+        back: back,
+        swap: () {
+          swap();
+          unawaited(Sfx.play('swipe'));
+        },
+      );
+    } finally {
+      _going = false;
+    }
+  }
+
   Future<void> _runWipe({
     required String title,
     required String sub,
     VoidCallback? swap,
     VoidCallback? after,
+    bool back = false,
   }) async {
     final bool reduce = MediaQuery.maybeDisableAnimationsOf(context) ?? false;
     final RefWipeState? st = _wipeKey.currentState;
@@ -2453,7 +2803,7 @@ class _AppShellState extends State<AppShell>
     });
     // 等一帧让 RefWipe 拿到新标题再开播
     await Future<void>.delayed(Duration.zero);
-    await _wipeKey.currentState?.play();
+    await _wipeKey.currentState?.play(back: back);
   }
 
   void _runWipeCovered() {
@@ -2531,6 +2881,15 @@ class _AppShellState extends State<AppShell>
   ///
   /// 会话内的图直接读内存字节；重启后从文档目录回读（IO）。
   /// Web 只活在本次会话里 —— 没有字节时给空槽，不画假图。
+  /// 交单那一刻的证据（结算后 active 就清了，取景框要用它）
+  List<EvidenceShot> _verdictShots = const <EvidenceShot>[];
+
+  /// 验收取景框里的照片（参考稿 #vdImg = 本单证据）
+  Widget? _verdictPhoto() {
+    if (_verdictShots.isEmpty) return null;
+    return _evidenceThumb(_verdictShots.first);
+  }
+
   List<Widget> _evidenceThumbs() {
     final List<EvidenceShot> shots =
         _flow.active?.evidence ?? const <EvidenceShot>[];
@@ -2682,7 +3041,6 @@ class _AppShellState extends State<AppShell>
   bool _modalOn = false;
 
   /// 主线页当前领位（参考稿 `mainFocus(i)` 的 i）
-  int _mainLead = 0;
 
   /// 主线页 → 委托板：参考稿是**两个独立 scene**（#sc-main / #sc-board），
   /// 用 `on` 类切换。这里用同一个布尔表达（Moment.main 下再分一层）。
@@ -2901,7 +3259,7 @@ class _AppShellState extends State<AppShell>
 /// 系统返回键要消费的那一层（docs/39 M-04）。
 ///
 /// 顺序即优先级：失败页 > 牌屉 > 主线；null = 交给系统（退到桌面）。
-enum _BackTarget { fail, drawer, main, sheet }
+enum _BackTarget { fail, drawer, main, sheet, modal, sysSheet, chat }
 
 /// 「换目标」输入幕左上那颗**常驻取消圆**（docs/39 M-24）。
 ///

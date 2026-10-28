@@ -143,6 +143,8 @@ class _RefTypewriterState extends State<RefTypewriter> {
         widget.style.copyWith(
           fontFamily: Ref.fd,
           fontSize: (widget.style.fontSize ?? 15) * 1.15,
+          fontWeight: FontWeight.w700,
+          fontVariations: const <FontVariation>[FontVariation('wght', 700)],
           color: Ref.acid,
           shadows: <Shadow>[
             Shadow(color: Ref.a(Ref.acid, .55), blurRadius: 12),
