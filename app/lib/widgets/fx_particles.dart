@@ -38,6 +38,7 @@ class FxParticle {
   final Color color;
 
   /// 'line'（火花）| 'shard'（碎片）| 'dot'（尘）
+  /// | 'star'（八角星，参考稿 FX type:'star'）| 'conf'（彩带，参考稿 confetti）
   final String kind;
   final double gravity;
   final double drag;
@@ -139,10 +140,19 @@ class FxController extends ChangeNotifier {
     double shards = .35,
     double g = 160,
     double drag = .965,
+
+    /// 指定粒子种类（'star' / 'conf'…）；null = 按 [shards] 混 shard 与 dot
+    String? kind,
+
+    /// 定向喷射：中心角（弧度）± [spread]；null = 全向
+    double? angle,
+    double spread = .5,
   }) {
     final List<Color> c = cols ?? _burstCols;
     for (int i = 0; i < n; i++) {
-      final double a = _r(0, math.pi * 2);
+      final double a = angle == null
+          ? _r(0, math.pi * 2)
+          : angle + _r(-spread, spread);
       final double v = _r(min, max);
       parts.add(
         FxParticle(
@@ -153,7 +163,7 @@ class FxController extends ChangeNotifier {
           max: _r(.5, life),
           size: _r(1, size),
           color: c[_rnd.nextInt(c.length)],
-          kind: _rnd.nextDouble() < shards ? 'shard' : 'dot',
+          kind: kind ?? (_rnd.nextDouble() < shards ? 'shard' : 'dot'),
           gravity: g,
           drag: drag,
           rot: _r(0, 6),
@@ -162,6 +172,40 @@ class FxController extends ChangeNotifier {
       );
     }
     notifyListeners();
+  }
+
+  /// 参考稿 `FX.confetti()`（JS L966-968）：左下、右下两角各 60 片彩带朝内上方喷。
+  /// 原参数按 60fps 帧给（速度 8~17 px/帧、重力 .22 px/帧²、寿命 80~136 帧），
+  /// 这里换算成秒：速度 ×60、重力 ×3600、寿命 ÷60。升级 / 主线收官时用。
+  void confetti(Size screen) {
+    const List<Color> cols = <Color>[
+      Color(0xFFD6FF3D),
+      Color(0xFFFF3B7A),
+      Color(0xFF3BE8FF),
+      Color(0xFFFFCC4D),
+      Color(0xFF8F6BFF),
+      Colors.white,
+    ];
+    for (final (double x, double a) in <(double, double)>[
+      (0, -math.pi / 3),
+      (screen.width, -math.pi * 2 / 3),
+    ]) {
+      burst(
+        x,
+        screen.height * .75,
+        n: 60,
+        kind: 'conf',
+        angle: a,
+        spread: .5,
+        min: 8 * 60,
+        max: 17 * 60,
+        g: .22 * 3600,
+        drag: .985,
+        life: 136 / 60,
+        size: 10,
+        cols: cols,
+      );
+    }
   }
 
   /// 往上飘的数据尘
@@ -254,7 +298,7 @@ class FxController extends ChangeNotifier {
       p.vy = p.vy * k + p.gravity * dt;
       p.x += p.vx * dt;
       p.y += p.vy * dt;
-      if (p.kind == 'shard') p.rot += p.vr * dt;
+      if (p.kind == 'shard' || p.kind == 'conf') p.rot += p.vr * dt;
     }
     parts.removeWhere((FxParticle p) => p.life >= p.max);
     for (final FxRipple r in rips) {
@@ -361,6 +405,39 @@ class _FxPainter extends CustomPainter {
           Offset(p.x - p.vx * .03, p.y - p.vy * .03),
           stroke,
         );
+      } else if (p.kind == 'conf') {
+        // 彩带：正常混合（参考稿 source-over），绕 x 轴翻（scale(1, cos(life·.2帧))）
+        final double s = math.max(2.5, p.size);
+        canvas.save();
+        canvas.translate(p.x, p.y);
+        canvas.rotate(p.rot);
+        canvas.scale(1, math.cos(p.life * 12));
+        canvas.drawRect(
+          Rect.fromLTWH(-s, -s * .45, s * 2, s * .9),
+          Paint()
+            ..color = p.color.withValues(
+              alpha: (1 - math.pow(p.life / p.max, 2))
+                  .clamp(0.0, 1.0)
+                  .toDouble(),
+            ),
+        );
+        canvas.restore();
+      } else if (p.kind == 'star') {
+        // 八角星（参考稿 star(x,y,r)：外径 r、内径 .38r，r 随寿命收到 .8 倍）
+        final double r = p.size * (1.4 - (1 - a) * .6);
+        final Path path = Path();
+        for (int i = 0; i < 8; i++) {
+          final double ang = i * math.pi / 4;
+          final double rr = i.isOdd ? r * .38 : r;
+          final Offset o = Offset(
+            p.x + math.cos(ang) * rr,
+            p.y + math.sin(ang) * rr,
+          );
+          i == 0 ? path.moveTo(o.dx, o.dy) : path.lineTo(o.dx, o.dy);
+        }
+        path.close();
+        fill.color = col;
+        canvas.drawPath(path, fill);
       } else if (p.kind == 'shard') {
         final double s = p.size * 2.2;
         canvas.save();
@@ -416,7 +493,6 @@ class _FxPainter extends CustomPainter {
       fill.color = Colors.white;
       canvas.drawCircle(head, s.w * 1.4, fill);
     }
-
   }
 
   @override

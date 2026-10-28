@@ -1,8 +1,11 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
+
+import '../../state/sfx.dart';
 
 /// ═══════════════════════════════════════════════════════════
 ///  3D 卡轮播 —— 参考稿 `Carousel()`（JS L1190-1226）
@@ -25,6 +28,13 @@ import 'package:flutter/scheduler.dart';
 ///
 ///  性能：卡面包 RepaintBoundary，拖拽只改 Transform（合成层），
 ///  不重画卡面；物理用一颗 Ticker，静止即停。
+///   · 卡面按（序号, 焦点, 尺寸）缓存：拖动时每帧 setState 只重建外层变换，
+///     卡面 widget 实例不变 → Flutter 直接跳过整棵卡面子树（docs/49 E2）
+///   · 给了 [RefCarousel.shadeColor] 时压暗由轮播在卡**外**叠一层圆角暗片，
+///     卡面拿到的 shade 恒为 0 —— 压暗逐帧变化不再让卡面重栅格化
+///
+///  声音（docs/49 A1）：焦点每跨一格一声 `card.focus`（detent，规则表自带
+///  45ms 节流）；拖过两端一声 `card.deny`（每次手势只响一次）。
 /// ═══════════════════════════════════════════════════════════
 class RefCarouselController extends ChangeNotifier {
   _RefCarouselState? _s;
@@ -75,6 +85,9 @@ class RefCarousel extends StatefulWidget {
     this.controller,
     this.dealIn = true,
     this.underlay,
+    this.shadeColor,
+    this.shadeRadius = BorderRadius.zero,
+    this.sound = true,
   });
 
   final int count;
@@ -94,6 +107,15 @@ class RefCarousel extends StatefulWidget {
 
   /// 垫在所有卡下面的一层（主线的 .ped 光台）
   final Widget? underlay;
+
+  /// 非空 = 压暗由轮播在卡外叠（卡面 slot.shade 恒为 0）；颜色取卡面原来的压暗色
+  final Color? shadeColor;
+
+  /// 卡外压暗片的圆角（与卡面外形一致）
+  final BorderRadius shadeRadius;
+
+  /// 换焦点 / 越界是否出声
+  final bool sound;
 
   @override
   State<RefCarousel> createState() => _RefCarouselState();
@@ -119,6 +141,12 @@ class _RefCarouselState extends State<RefCarousel>
 
   double _cw = 0;
   double _ch = 0;
+
+  /// 这一次拖动是否已经顶到过两端（越界声每次手势只响一次）
+  bool _edgeHit = false;
+
+  /// 卡面缓存：序号 → (缓存键, 已建好的卡面)。父组件一重建就整体作废。
+  final Map<int, (Object, Widget)> _cards = <int, (Object, Widget)>{};
 
   late final AnimationController _deal = AnimationController(
     vsync: this,
@@ -151,6 +179,8 @@ class _RefCarouselState extends State<RefCarousel>
   @override
   void didUpdateWidget(RefCarousel old) {
     super.didUpdateWidget(old);
+    // 父组件重建 = itemBuilder 可能换了数据（翻面 / 解封 / 抖动…）→ 卡面全部重建一次
+    _cards.clear();
     if (old.controller != widget.controller) {
       old.controller?._s = null;
       widget.controller?._s = this;
@@ -197,6 +227,7 @@ class _RefCarouselState extends State<RefCarousel>
     final int idx = _pos.round().clamp(0, math.max(0, widget.count - 1));
     if (idx != _idx) {
       _idx = idx;
+      if (widget.sound) unawaited(Sfx.cue('card.focus'));
       widget.onFocus?.call(idx);
     }
     setState(() {});
@@ -211,6 +242,7 @@ class _RefCarouselState extends State<RefCarousel>
     _lt = e.timeStamp.inMilliseconds;
     _v = 0;
     _moved = 0;
+    _edgeHit = false;
     _kick();
   }
 
@@ -222,7 +254,13 @@ class _RefCarouselState extends State<RefCarousel>
     _v = _v * .5 + ((e.position.dx - _lx) / math.max(1, now - _lt)) * .5;
     _lx = e.position.dx;
     _lt = now;
-    _pos = (_p0 - dx / (_cw * .74)).clamp(-.35, widget.count - .65).toDouble();
+    final double raw = _p0 - dx / (_cw * .74);
+    _pos = raw.clamp(-.35, widget.count - .65).toDouble();
+    // 顶到两端（再拽也拽不动）：闷一声，告诉手指「到头了」
+    if (!_edgeHit && widget.sound && raw != _pos && widget.count > 0) {
+      _edgeHit = true;
+      unawaited(Sfx.cue('card.deny'));
+    }
     _kick();
   }
 
@@ -235,6 +273,8 @@ class _RefCarouselState extends State<RefCarousel>
         if (c == _idx) {
           widget.onTap?.call(c);
         } else {
+          // 参考稿：点侧卡 = 转过去 + soft（L1217）
+          if (widget.sound) unawaited(Sfx.cue('ui.soft'));
           _goTo(c);
         }
       }
@@ -315,21 +355,56 @@ class _RefCarouselState extends State<RefCarousel>
           final double shade = widget.shadeMode
               ? math.min(a, 1.4) * .5
               : math.min(a, 1.4) * .42;
-          final RefCarouselSlot slot = RefCarouselSlot(
-            focus: a < .5,
-            compact: compact,
-            shade: shade,
-            width: cw,
-            height: ch,
-          );
-          Widget card = RepaintBoundary(
-            child: SizedBox(
+          final bool outerShade = widget.shadeColor != null;
+          final bool focus = a < .5;
+          // 卡面缓存键：卡外压暗时 shade 不进键（卡面不随拖动变化）
+          final Object key = outerShade
+              ? (focus, compact, cw, ch)
+              : (focus, compact, cw, ch, shade);
+          final (Object, Widget)? hit = _cards[i];
+          Widget card;
+          if (hit != null && hit.$1 == key) {
+            card = hit.$2;
+          } else {
+            final RefCarouselSlot slot = RefCarouselSlot(
+              focus: focus,
+              compact: compact,
+              shade: outerShade ? 0 : shade,
               width: cw,
               height: ch,
-              child: widget.itemBuilder(context, i, slot),
-            ),
-          );
-          if (op < 1) card = Opacity(opacity: op.clamp(0, 1), child: card);
+            );
+            card = RepaintBoundary(
+              child: SizedBox(
+                width: cw,
+                height: ch,
+                child: widget.itemBuilder(context, i, slot),
+              ),
+            );
+            _cards[i] = (key, card);
+          }
+          // ⚠️ 结构必须恒定：shade 为 0 时也套这层 Stack / Opacity。
+          //    按条件套壳会让焦点卡一拖出去就换父节点 → 卡面 State（翻面控制器、
+          //    全息时钟）被卸载重建。透明的暗片与 1.0 的 Opacity 都不额外出图层。
+          if (outerShade) {
+            card = Stack(
+              children: <Widget>[
+                card,
+                Positioned.fill(
+                  child: IgnorePointer(
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: widget.shadeColor!.withValues(
+                          alpha: shade.clamp(0.0, 1.0),
+                        ),
+                        borderRadius: widget.shadeRadius,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            );
+          }
+          card = Opacity(opacity: op.clamp(0, 1), child: card);
           // ⚠️ Listener 必须在 Transform **里面**：RenderTransform 不按自身
           //    未变换的矩形判命中，而是把点逆变换给孩子 —— 侧卡才点得中。
           card = Transform(
@@ -346,24 +421,26 @@ class _RefCarouselState extends State<RefCarousel>
             animation: _deal,
             child: card,
             builder: (BuildContext _, Widget? c) {
-              if (_deal.value >= 1) return c!;
-              final int total = _deal.duration!.inMilliseconds;
-              final double startMs = 200.0 + (i - widget.start).abs() * 90.0;
-              final double k = ((_deal.value * total - startMs) / 700).clamp(
-                0.0,
-                1.0,
-              );
-              final double e = _dealCurve.transform(k);
-              if (e >= 1) return c!;
+              double k = 1;
+              double e = 1;
+              if (_deal.value < 1) {
+                final int total = _deal.duration!.inMilliseconds;
+                final double startMs = 200.0 + (i - widget.start).abs() * 90.0;
+                k = ((_deal.value * total - startMs) / 700).clamp(0.0, 1.0);
+                e = _dealCurve.transform(k);
+              }
+              // 入场前后结构一致（发完牌不换父节点 → 卡面 State 不被重建）
               return Transform(
                 alignment: Alignment.center,
-                transform: _dealMatrix(e),
-                child: Opacity(opacity: k.clamp(0.0, 1.0), child: c),
+                transform: e >= 1 ? Matrix4.identity() : _dealMatrix(e),
+                child: Opacity(opacity: e >= 1 ? 1 : k, child: c),
               );
             },
           );
           kids.add(
             Positioned(
+              // 远近排序每帧都会变：按序号给 key，元素跟着卡走（不按位置错配重建）
+              key: ValueKey<int>(i),
               left: left,
               top: top,
               width: cw,

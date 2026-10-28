@@ -5,6 +5,7 @@ import 'dart:ui' show ImageFilter;
 import 'package:flutter/material.dart';
 
 import '../../design/ref.dart';
+import '../../state/sfx.dart';
 import '../../widgets/frame_throttle.dart';
 import 'ref_kit.dart';
 
@@ -247,6 +248,40 @@ class _RefVerdictState extends State<RefVerdict> with TickerProviderStateMixin {
   void initState() {
     super.initState();
     _planTimeline();
+    _scan.addListener(_scanSound);
+    _master.addListener(_resultSound);
+  }
+
+  // ── 音效（docs/49 A8）─────────────────────────────────────
+  // 参考稿的结算是全程有声的（JS L1506-1528）：扫描每 80ms 一声 scan →
+  // 暴击 crit → 评级砸下 stamp → 每行奖励 coin → 跨级 success。
+  // 原来这里注释写「由调用方编排」，可调用方一声都没编 —— 整段结算是哑的。
+  // 拍点直接读本组件的时间线（[_stampAt] / [_rowStart] / [_xpAt]），不会对不上。
+  // 只在动画真正播放时出声：减弱动效 / 外部钉死阶段时直接落终值，不能一口气全响。
+  int _scanStep = -1;
+  final Set<String> _fired = <String>{};
+
+  void _scanSound() {
+    if (!_scan.isAnimating) return;
+    final int step = (_scan.value * 20).round();
+    if (step == _scanStep) return;
+    _scanStep = step;
+    unawaited(Sfx.play('scan'));
+  }
+
+  void _resultSound() {
+    if (!_master.isAnimating) return;
+    final double ms = _master.value * _totalMs;
+    void at(String id, int t, String key) {
+      if (ms >= t && _fired.add(id)) unawaited(Sfx.play(key));
+    }
+
+    if (widget.crit) at('crit', _stampAt, 'crit');
+    at('stamp', _stampAt + 440, 'stamp');
+    for (int i = 0; i < _rowStart.length; i++)
+      at('row$i', _rowStart[i], 'coin');
+    final int need = widget.xpNeed <= 0 ? 1 : widget.xpNeed;
+    if (widget.xpTo >= need) at('xp', _xpAt + 650, 'success');
   }
 
   /// JS L1511-1529 的时间线，换成一份毫秒刻度
@@ -289,6 +324,8 @@ class _RefVerdictState extends State<RefVerdict> with TickerProviderStateMixin {
   @override
   void dispose() {
     _phaseTimer?.cancel();
+    _scan.removeListener(_scanSound);
+    _master.removeListener(_resultSound);
     _scan.dispose();
     _laser.dispose();
     _marquee.dispose();
@@ -304,6 +341,8 @@ class _RefVerdictState extends State<RefVerdict> with TickerProviderStateMixin {
     _marquee.stop();
     _rainbow.stop();
     _master.stop();
+    _scanStep = -1;
+    _fired.clear();
 
     _phase =
         widget.phase ??

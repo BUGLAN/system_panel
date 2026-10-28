@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../design/fidelity.dart';
 import '../../design/ref.dart';
 import '../../widgets/frame_throttle.dart';
+import 'ref_kit.dart' show refPressSound;
 
 /// .task-orb（L174-186）—— 大厅右下那颗会呼吸的酸绿委托球。
 ///
@@ -486,7 +487,12 @@ class _HoverLinkState extends State<_HoverLink> {
       onExit: (_) => setState(() => _hover = false),
       cursor: SystemMouseCursors.click,
       child: GestureDetector(
-        onTap: widget.onTap,
+        onTap: widget.onTap == null
+            ? null
+            : () {
+                refPressSound('ui.tap');
+                widget.onTap!();
+              },
         behavior: HitTestBehavior.opaque,
         child: AnimatedDefaultTextStyle(
           duration: const Duration(milliseconds: 200),

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../design/ref.dart';
 import 'ref_inputs.dart';
+import 'ref_kit.dart' show refPressSound;
 
 /// ═══════════════════════════════════════════════════════════
 ///  系统设置抽屉 —— 参考稿 \`#sheet\`（CSS L481-491，DOM L837-843）
@@ -14,6 +15,10 @@ import 'ref_inputs.dart';
 ///
 ///  参考稿没有覆盖、但 APP 已有的入口（对话 / LLM 连接）按同一行样式补在
 ///  「隐藏彩蛋」之后、「重置存档」之前 —— 只加行，不改版式。
+///
+///  进出（docs/49 B2）：常驻挂载、由 [visible] 驱动 —— 挂上即 440ms 从底部滑上，
+///  关掉时反向滑下、滑完才摘树。原来首帧直接落终态、build 也不订阅控制器，
+///  抽屉是「啪」一下出现、「啪」一下消失的。开 `ui.open` / 关 `ui.close`。
 /// ═══════════════════════════════════════════════════════════
 class RefSheet extends StatefulWidget {
   const RefSheet({
@@ -59,16 +64,33 @@ class _RefSheetState extends State<RefSheet>
   @override
   void initState() {
     super.initState();
-    if (widget.visible) _in.value = 1;
+    // 首帧就可见（直接挂一张打开的抽屉）：只演入场、不出声 —— 声音只跟「开/关」
+    // 这个状态切换走（主壳里抽屉常驻挂载，开抽屉一定经过 didUpdateWidget）
+    if (widget.visible) _open(sound: false);
   }
 
   @override
   void didUpdateWidget(RefSheet old) {
     super.didUpdateWidget(old);
     if (widget.visible && !old.visible) {
-      _in.forward(from: 0);
+      _open();
     } else if (!widget.visible && old.visible) {
+      refPressSound('ui.close');
       _in.reverse();
+    }
+  }
+
+  void _open({bool sound = true}) {
+    if (sound) refPressSound('ui.open');
+    final bool reduce = WidgetsBinding
+        .instance
+        .platformDispatcher
+        .accessibilityFeatures
+        .disableAnimations;
+    if (reduce) {
+      _in.value = 1;
+    } else {
+      _in.forward(from: 0);
     }
   }
 
@@ -80,7 +102,17 @@ class _RefSheetState extends State<RefSheet>
 
   @override
   Widget build(BuildContext context) {
-    if (!widget.visible && _in.isDismissed) return const SizedBox.shrink();
+    return AnimatedBuilder(
+      animation: _in,
+      builder: (BuildContext context, Widget? _) {
+        if (!widget.visible && _in.isDismissed) return const SizedBox.shrink();
+        // 关闭途中不再接手势（防止滑下去的那半秒里又点中一行）
+        return IgnorePointer(ignoring: !widget.visible, child: _sheet(context));
+      },
+    );
+  }
+
+  Widget _sheet(BuildContext context) {
     final double t = Ref.ease.transform(_in.value);
     return Stack(
       children: <Widget>[
@@ -219,7 +251,12 @@ class _RefSheetState extends State<RefSheet>
   }) {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: onTap,
+      onTap: onTap == null
+          ? null
+          : () {
+              refPressSound('ui.tap');
+              onTap();
+            },
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 15),
         decoration: BoxDecoration(

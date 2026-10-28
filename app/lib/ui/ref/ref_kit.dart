@@ -1,9 +1,17 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
 import '../../design/ref.dart';
+import '../../state/sfx.dart';
 import '../../widgets/frame_throttle.dart';
+
+/// 基础组件按下即出声（docs/49 A2）：走 [Sfx.cue] 的规则表（音量分档 + 防连发），
+/// 结果声（成功 / 失败 / 购买）仍由业务回调负责。`cue == null` = 这一颗不出声。
+void refPressSound(String? cue, {int? variant}) {
+  if (cue != null) unawaited(Sfx.cue(cue, variant: variant));
+}
 
 /// ═══════════════════════════════════════════════════════════
 ///  参考稿组件基座 —— 逐条对齐「宿主养成系统_重设计.html」
@@ -63,10 +71,14 @@ class RefButton extends StatefulWidget {
     this.animateSheen = true,
     this.ink,
     this.trailing,
+    this.sound = 'ui.tap',
   });
 
   final String label;
   final VoidCallback? onTap;
+
+  /// 按下声（[SoundRule.cues] 的 cue 名；null = 不出声，调用方自己出结果声时用）
+  final String? sound;
   final bool primary;
   final bool small;
 
@@ -182,7 +194,12 @@ class _RefButtonState extends State<RefButton> with TickerProviderStateMixin {
         onTapDown: _on ? (_) => setState(() => _down = true) : null,
         onTapUp: _on ? (_) => setState(() => _down = false) : null,
         onTapCancel: _on ? () => setState(() => _down = false) : null,
-        onTap: _on ? widget.onTap : null,
+        onTap: _on
+            ? () {
+                refPressSound(widget.sound);
+                widget.onTap!();
+              }
+            : null,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 140),
           curve: Ref.ease,
@@ -338,8 +355,10 @@ class RefIconButton extends StatefulWidget {
     this.onTap,
     this.size = 42,
     this.semanticLabel,
+    this.sound = 'ui.tap',
   });
 
+  final String? sound;
   final Widget icon;
   final VoidCallback? onTap;
   final double size;
@@ -366,7 +385,12 @@ class _RefIconButtonState extends State<RefIconButton> {
           onTapDown: (_) => setState(() => _down = true),
           onTapUp: (_) => setState(() => _down = false),
           onTapCancel: () => setState(() => _down = false),
-          onTap: widget.onTap,
+          onTap: widget.onTap == null
+              ? null
+              : () {
+                  refPressSound(widget.sound);
+                  widget.onTap!();
+                },
           child: AnimatedScale(
             scale: _down ? .9 : 1,
             duration: const Duration(milliseconds: 150),
@@ -393,9 +417,18 @@ class _RefIconButtonState extends State<RefIconButton> {
 /// .xbtn（L64-67）：48x48 圆 + 1px color-mix(accent 40%)；
 /// hover rotate(90deg) + accent 15% 底；active scale(.88)。
 class RefXButton extends StatefulWidget {
-  const RefXButton({super.key, this.onTap, this.accent, this.back = false});
+  const RefXButton({
+    super.key,
+    this.onTap,
+    this.accent,
+    this.back = false,
+    this.sound = 'ui.close',
+  });
 
   final VoidCallback? onTap;
+
+  /// 按下声（默认 `ui.close`；null = 不出声）
+  final String? sound;
   final Color? accent;
 
   /// true = 返回箭头（参考稿 data-back 的 15 5 l-7 7 7 7）
@@ -423,7 +456,12 @@ class _RefXButtonState extends State<RefXButton> {
           onTapDown: (_) => setState(() => _down = true),
           onTapUp: (_) => setState(() => _down = false),
           onTapCancel: () => setState(() => _down = false),
-          onTap: widget.onTap,
+          onTap: widget.onTap == null
+              ? null
+              : () {
+                  refPressSound(widget.sound);
+                  widget.onTap!();
+                },
           child: AnimatedScale(
             scale: _down ? .88 : 1,
             duration: const Duration(milliseconds: 150),

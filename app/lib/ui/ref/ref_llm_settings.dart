@@ -5,6 +5,8 @@ import '../../agent/settings_store.dart';
 import '../../design/ref.dart';
 import '../ref/ref_inputs.dart';
 import '../ref/ref_kit.dart';
+import '../ref/ref_loading.dart';
+import '../ref/ref_motion.dart';
 
 /// ═══════════════════════════════════════════════════════════
 ///  LLM 设置（参考稿没有这一块 —— 按「补全设计稿缺失组件」要求新增）
@@ -22,6 +24,10 @@ import '../ref/ref_kit.dart';
 ///
 ///  ⚠️ 保存与测试都**不抛异常**：SettingsStore.save 自己吞磁盘错误并广播，
 ///     LlmClient.ping 把一切失败折叠成 LlmReply.failure。
+///
+///  动效（docs/49 B1）：进出由外层斜切转场负责；页内抬头 → 各分区 → 底栏
+///  按 RefReveal 逐层显影（与主线 / 档案页同一节奏）。测试中结果框挂扫描条。
+///  声音：档位切换 `card.focus`，测试成功 `success` / 失败 `error`，保存 `stamp`。
 /// ═══════════════════════════════════════════════════════════
 class LlmSettingsPane extends StatefulWidget {
   const LlmSettingsPane({
@@ -112,6 +118,7 @@ class _LlmSettingsPaneState extends State<LlmSettingsPane> {
     final AgentSettings s = _next;
     await _store.save(s);
     if (!mounted) return;
+    refPressSound('stamp');
     setState(() {
       _saving = false;
       _saved = true;
@@ -149,6 +156,7 @@ class _LlmSettingsPaneState extends State<LlmSettingsPane> {
     final LlmReply r = await client.ping();
     client.close();
     if (!mounted) return;
+    refPressSound(r.hasText ? 'success' : 'error');
     setState(() {
       _testing = false;
       _testOk = r.hasText;
@@ -199,41 +207,56 @@ class _LlmSettingsPaneState extends State<LlmSettingsPane> {
       key: const Key('ref.llmPane'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
-        _head(),
+        RefReveal(index: 0, child: _head()),
         Expanded(
           child: ListView(
             key: const Key('ref.llmScroll'),
             padding: const EdgeInsets.fromLTRB(22, 4, 22, 8),
             children: <Widget>[
-              const RefSectionHeader(title: '连接 · ENDPOINT', trailing: '01'),
-              _field(
-                label: 'Base URL',
-                hint: LlmConfig.kDefaultBase,
-                controller: _base,
-                mono: true,
-                note: 'OpenAI 兼容端点；带 /v1 或写全 /chat/completions 都可以',
-                keyName: 'ref.llm.base',
+              const RefReveal(
+                index: 1,
+                child: RefSectionHeader(title: '连接 · ENDPOINT', trailing: '01'),
               ),
-              _field(
-                label: 'API Key',
-                hint: 'sk-…',
-                controller: _key,
-                obscure: true,
-                mono: true,
-                note: '只存本机，不上传；请求头 Authorization: Bearer',
-                keyName: 'ref.llm.key',
+              RefReveal(
+                index: 2,
+                child: _field(
+                  label: 'Base URL',
+                  hint: LlmConfig.kDefaultBase,
+                  controller: _base,
+                  mono: true,
+                  note: 'OpenAI 兼容端点；带 /v1 或写全 /chat/completions 都可以',
+                  keyName: 'ref.llm.base',
+                ),
               ),
-              _field(
-                label: '模型',
-                hint: LlmConfig.kDefaultModel,
-                controller: _model,
-                mono: true,
-                note: '别名会在请求前归一（v4.1flash → deepseek-flash）',
-                keyName: 'ref.llm.model',
+              RefReveal(
+                index: 3,
+                child: _field(
+                  label: 'API Key',
+                  hint: 'sk-…',
+                  controller: _key,
+                  obscure: true,
+                  mono: true,
+                  note: '只存本机，不上传；请求头 Authorization: Bearer',
+                  keyName: 'ref.llm.key',
+                ),
               ),
-              const RefSectionHeader(title: '采样 · SAMPLING', trailing: '02'),
-              _temperatureRow(),
-              _contextRow(),
+              RefReveal(
+                index: 4,
+                child: _field(
+                  label: '模型',
+                  hint: LlmConfig.kDefaultModel,
+                  controller: _model,
+                  mono: true,
+                  note: '别名会在请求前归一（v4.1flash → deepseek-flash）',
+                  keyName: 'ref.llm.model',
+                ),
+              ),
+              const RefReveal(
+                index: 5,
+                child: RefSectionHeader(title: '采样 · SAMPLING', trailing: '02'),
+              ),
+              RefReveal(index: 6, child: _temperatureRow()),
+              RefReveal(index: 7, child: _contextRow()),
               _switchRow(
                 label: '流式输出',
                 sub: '向端点要 stream:true；客户端仍按整包解析后一次性上屏',
@@ -261,7 +284,7 @@ class _LlmSettingsPaneState extends State<LlmSettingsPane> {
             ],
           ),
         ),
-        _footer(),
+        RefReveal(index: 4, child: _footer()),
       ],
     );
   }
@@ -396,6 +419,8 @@ class _LlmSettingsPaneState extends State<LlmSettingsPane> {
                   label: v == 0 ? '自动' : '${v ~/ 1024}k',
                   on: _ctx == v,
                   onTap: () {
+                    refPressSound('ui.tap');
+                    if (_ctx != v) refPressSound('ui.soft');
                     setState(() => _ctx = v);
                     _touch();
                   },
@@ -497,15 +522,28 @@ class _LlmSettingsPaneState extends State<LlmSettingsPane> {
             ),
             const SizedBox(width: 10),
             Expanded(
-              child: Text(
-                msg,
-                style: refText(
-                  family: Ref.fc,
-                  size: 12.5,
-                  wght: 500,
-                  height: 1.5,
-                  color: Ref.txt,
-                ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: <Widget>[
+                  Text(
+                    msg,
+                    style: refText(
+                      family: Ref.fc,
+                      size: 12.5,
+                      wght: 500,
+                      height: 1.5,
+                      color: Ref.txt,
+                    ),
+                  ),
+                  // 测试中：不定进度扫描条（docs/49 D5，原来只有按钮文字在变）
+                  if (_testing) ...<Widget>[
+                    const SizedBox(height: 10),
+                    const RefScanBar(
+                      key: Key('ref.llm.testing'),
+                      color: Ref.acid,
+                    ),
+                  ],
+                ],
               ),
             ),
           ],

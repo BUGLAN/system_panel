@@ -14,6 +14,9 @@ import 'ref_text.dart';
 ///  第 1 幕：访谈卡（3~5 张，逐张问，选项即答）
 ///
 ///  没有 HUD（参考稿 .scene.nohud 的 30 上边距），天幕由外层提供。
+///
+///  [loading] 非空 = 正在等 LLM（匹配类别 / 拆解清单）：输入区与访谈卡整块
+///  换成加载卡，按钮全部不可点（docs/49 D1：原来这段几十秒毫无反馈）。
 /// ═══════════════════════════════════════════════════════════
 class RefOnboard extends StatefulWidget {
   const RefOnboard({
@@ -27,6 +30,7 @@ class RefOnboard extends StatefulWidget {
     this.onDone,
     this.onSkip,
     this.planError,
+    this.loading,
   });
 
   final TextEditingController controller;
@@ -44,6 +48,9 @@ class RefOnboard extends StatefulWidget {
 
   final VoidCallback? onSkip;
   final String? planError;
+
+  /// 非空 = 忙（外层给好的加载卡，见 RefPlanLoading）
+  final Widget? loading;
 
   @override
   State<RefOnboard> createState() => _RefOnboardState();
@@ -76,7 +83,9 @@ class _RefOnboardState extends State<RefOnboard> {
 
   void _answer(String v) {
     final List<InterviewCard> cards = widget.cards ?? const <InterviewCard>[];
+    if (widget.loading != null) return; // 拆解中：不收新答案
     if (cards.isEmpty || v.trim().isEmpty) return;
+    refPressSound('choose');
     _answers[cards[_cardIx].id] = v.trim();
     if (_cardIx >= cards.length - 1) {
       widget.onDone?.call(Map<String, String>.unmodifiable(_answers));
@@ -94,6 +103,7 @@ class _RefOnboardState extends State<RefOnboard> {
     final EdgeInsets safe = MediaQuery.paddingOf(context);
     final double keyboard = MediaQuery.viewInsetsOf(context).bottom;
     final bool interview = widget.cards != null && widget.cards!.isNotEmpty;
+    final bool busy = widget.loading != null;
 
     return SingleChildScrollView(
       padding: EdgeInsets.fromLTRB(
@@ -109,9 +119,12 @@ class _RefOnboardState extends State<RefOnboard> {
             children: <Widget>[
               RefEyebrow(text: interview ? 'INTERVIEW · 访谈' : 'BINDING · 绑定仪式'),
               const Spacer(),
-              if (widget.onSkip != null)
+              if (widget.onSkip != null && !busy)
                 GestureDetector(
-                  onTap: widget.onSkip,
+                  onTap: () {
+                    refPressSound('ui.tap');
+                    widget.onSkip!();
+                  },
                   child: Text(
                     '暂时跳过 ›',
                     style: refText(
@@ -184,59 +197,100 @@ class _RefOnboardState extends State<RefOnboard> {
             ),
           ),
           const SizedBox(height: 22),
-          if (!interview) ...<Widget>[
-            _fieldLabel('目标 ›'),
-            const SizedBox(height: 8),
-            RefTextField(
-              controller: widget.controller,
-              hint: '比如：三个月跑完半马',
-              accent: Ref.acid,
-              textSize: 15,
-              height: 52,
-              onChanged: (String _) => setState(() {}),
-            ),
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: <Widget>[
-                for (final String p in widget.presets)
-                  _chip(p, () {
-                    widget.controller.text = p;
-                    widget.controller.selection = TextSelection.collapsed(
-                      offset: p.length,
-                    );
-                    setState(() {});
-                  }),
-              ],
-            ),
-            const SizedBox(height: 22),
-            RefButton(
-              key: const Key('ref.onboard.submit'),
-              label: '确立目标',
-              trailingTriangle: true,
-              onTap: widget.controller.text.trim().isEmpty
-                  ? null
-                  : widget.onSubmit,
-            ),
-            if (widget.planError != null) ...<Widget>[
-              const SizedBox(height: 14),
-              Text(
-                widget.planError!,
-                textAlign: TextAlign.center,
-                style: refText(
-                  family: Ref.fc,
-                  size: 12,
-                  wght: 500,
-                  height: 1.5,
-                  color: Ref.hot,
-                ),
-              ),
-            ],
-          ] else
-            _interview(),
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 360),
+            switchInCurve: Ref.ease,
+            switchOutCurve: Ref.snap,
+            transitionBuilder: _rise,
+            layoutBuilder: _topStack,
+            child: busy
+                ? KeyedSubtree(
+                    key: const ValueKey<String>('busy'),
+                    child: widget.loading!,
+                  )
+                : KeyedSubtree(
+                    key: ValueKey<String>(interview ? 'interview' : 'ask'),
+                    child: _form(interview),
+                  ),
+          ),
         ],
       ),
+    );
+  }
+
+  /// 换块：淡入 + 上浮 16（与 RefReveal 同一曲线）
+  static Widget _rise(Widget child, Animation<double> a) => FadeTransition(
+    opacity: a,
+    child: SlideTransition(
+      position: Tween<Offset>(
+        begin: const Offset(0, .04),
+        end: Offset.zero,
+      ).animate(a),
+      child: child,
+    ),
+  );
+
+  static Widget _topStack(Widget? current, List<Widget> previous) => Stack(
+    alignment: Alignment.topCenter,
+    children: <Widget>[...previous, ?current],
+  );
+
+  Widget _form(bool interview) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        if (!interview) ...<Widget>[
+          _fieldLabel('目标 ›'),
+          const SizedBox(height: 8),
+          RefTextField(
+            controller: widget.controller,
+            hint: '比如：三个月跑完半马',
+            accent: Ref.acid,
+            textSize: 15,
+            height: 52,
+            onChanged: (String _) => setState(() {}),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: <Widget>[
+              for (final String p in widget.presets)
+                _chip(p, () {
+                  widget.controller.text = p;
+                  widget.controller.selection = TextSelection.collapsed(
+                    offset: p.length,
+                  );
+                  setState(() {});
+                }),
+            ],
+          ),
+          const SizedBox(height: 22),
+          RefButton(
+            key: const Key('ref.onboard.submit'),
+            label: '确立目标',
+            trailingTriangle: true,
+            onTap: widget.controller.text.trim().isEmpty
+                ? null
+                : widget.onSubmit,
+          ),
+          if (widget.planError != null) ...<Widget>[
+            const SizedBox(height: 14),
+            Text(
+              widget.planError!,
+              textAlign: TextAlign.center,
+              style: refText(
+                family: Ref.fc,
+                size: 12,
+                wght: 500,
+                height: 1.5,
+                color: Ref.hot,
+              ),
+            ),
+          ],
+        ] else
+          _interview(),
+      ],
     );
   }
 
@@ -293,8 +347,26 @@ class _RefOnboardState extends State<RefOnboard> {
         ),
         const SizedBox(height: 18),
         AnimatedSwitcher(
-          duration: const Duration(milliseconds: 260),
+          duration: const Duration(milliseconds: 320),
           switchInCurve: Ref.ease,
+          switchOutCurve: Ref.snap,
+          layoutBuilder: _topStack,
+          // 下一张从右侧 18px 滑入（与卡轮播「往右翻」同方向），上一张原地淡出
+          transitionBuilder: (Widget c, Animation<double> a) {
+            final bool incoming = c.key == ValueKey<int>(_cardIx);
+            return FadeTransition(
+              opacity: a,
+              child: incoming
+                  ? SlideTransition(
+                      position: Tween<Offset>(
+                        begin: const Offset(.05, 0),
+                        end: Offset.zero,
+                      ).animate(a),
+                      child: c,
+                    )
+                  : c,
+            );
+          },
           child: Column(
             key: ValueKey<int>(_cardIx),
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -317,6 +389,7 @@ class _RefOnboardState extends State<RefOnboard> {
               if (!_custom)
                 GestureDetector(
                   onTap: () {
+                    refPressSound('ui.tap');
                     setState(() => _custom = true);
                     _customFocus.requestFocus();
                   },
@@ -394,7 +467,10 @@ class _RefOnboardState extends State<RefOnboard> {
 
   Widget _chip(String label, VoidCallback onTap) {
     return GestureDetector(
-      onTap: onTap,
+      onTap: () {
+        refPressSound('ui.tap');
+        onTap();
+      },
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
         decoration: BoxDecoration(

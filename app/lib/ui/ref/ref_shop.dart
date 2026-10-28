@@ -225,6 +225,11 @@ class _RefShopState extends State<RefShop> with RefTimers<RefShop> {
                           if (mounted) setState(() => _i = i);
                         },
                         onTap: (_) => _buy(),
+                        // 压暗由轮播叠在卡外（拖动时卡面不重栅格化，docs/49 E2）
+                        shadeColor: Colors.black,
+                        shadeRadius: const BorderRadius.all(
+                          Radius.circular(_kShopCardR),
+                        ),
                         itemBuilder:
                             (BuildContext _, int i, RefCarouselSlot slot) {
                               final Item x = widget.items[i];
@@ -322,6 +327,9 @@ class _RefShopState extends State<RefShop> with RefTimers<RefShop> {
 }
 
 /// .gcard（L190-216）+ 商品专属区（L386-400）
+/// 货架卡圆角（卡面 ClipRRect 与轮播卡外压暗片共用）
+const double _kShopCardR = 22;
+
 class _ShopCard extends StatefulWidget {
   const _ShopCard({
     required this.item,
@@ -393,7 +401,7 @@ class _ShopCardState extends State<_ShopCard> with TickerProviderStateMixin {
     final Item it = widget.item;
     final Color gc = Color(it.color);
     final bool focus = widget.slot.focus;
-    final BorderRadius r = BorderRadius.circular(22);
+    final BorderRadius r = BorderRadius.circular(_kShopCardR);
     final Widget face = DecoratedBox(
       decoration: BoxDecoration(
         borderRadius: r,

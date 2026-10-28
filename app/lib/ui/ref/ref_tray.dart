@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../data/items.dart';
 import '../../design/ref.dart';
+import 'ref_kit.dart' show refPressSound;
 import 'ref_motion.dart';
 import 'ref_svg.dart';
 
@@ -80,7 +81,10 @@ class _RefItemTrayState extends State<RefItemTray> {
               top: -400,
               bottom: -200,
               child: GestureDetector(
-                onTap: widget.onClose,
+                onTap: () {
+                  refPressSound('ui.close');
+                  widget.onClose?.call();
+                },
                 child: AnimatedOpacity(
                   opacity: open ? 1 : 0,
                   duration: const Duration(milliseconds: 350),

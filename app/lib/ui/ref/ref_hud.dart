@@ -270,7 +270,10 @@ class _Tap extends StatelessWidget {
       label: label,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
-        onTap: onTap,
+        onTap: () {
+          refPressSound('ui.tap');
+          onTap!();
+        },
         child: child,
       ),
     );

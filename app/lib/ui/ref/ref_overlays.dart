@@ -123,6 +123,9 @@ class _RefLevelUpState extends State<RefLevelUp> with TickerProviderStateMixin {
       _enter.stop();
       return;
     }
+    // 参考稿 levelUp()：openOvl 同一拍 SFX.levelup()（L1549）—— 原来这里是哑的
+    if (!_enter.isAnimating && _enter.value < 1)
+      refPressSound('reward.levelup');
     if (_reduce) {
       _enter.value = 1;
       _rays.stop();
@@ -187,7 +190,13 @@ class _RefLevelUpState extends State<RefLevelUp> with TickerProviderStateMixin {
         final bool tapReady = _reduce || ms >= 1000; // JS L1548 的 sleep(1000)
 
         return _OverlayScreen(
-          onTap: tapReady ? widget.onTap : null,
+          // 参考稿 L1554：点掉升级幕 = SFX.click()
+          onTap: tapReady
+              ? () {
+                  refPressSound('ui.tap');
+                  widget.onTap();
+                }
+              : null,
           // #lvup（L451）：radial acid .25 → rgba(4,3,10,.92) 60%
           background: const DecoratedBox(
             decoration: BoxDecoration(
@@ -979,7 +988,10 @@ class _ModalButtonState extends State<_ModalButton> {
         onTapDown: (_) => setState(() => _down = true),
         onTapUp: (_) => setState(() => _down = false),
         onTapCancel: () => setState(() => _down = false),
-        onTap: widget.onTap,
+        onTap: () {
+          refPressSound('ui.tap');
+          widget.onTap();
+        },
         child: AnimatedScale(
           // .btn:active{transform:translateY(3px) scale(.965)}（L82）
           scale: _down ? .965 : 1,

@@ -76,9 +76,8 @@ class RefTCardData {
   }
 
   String? get km {
-    final RegExpMatch? m = RegExp(
-      r'(\d+(?:\.\d+)?)\s*(?:公里|km|KM|千米)',
-    ).firstMatch(title);
+    final RegExpMatch? m = RegExp(r'(\d+(?:\.\d+)?)\s*(?:公里|km|KM|千米)')
+        .firstMatch(title);
     return m?.group(1);
   }
 }
@@ -394,10 +393,15 @@ class _Face extends StatelessWidget {
               child: ColoredBox(color: Color(0x1FFFFFFF)),
             ),
             child,
+            // ⚠️ 逐帧作画的图层都单独包 RepaintBoundary（docs/49 E2）：
+            //    焦点卡的时钟 50ms 一跳，不包的话每一跳都会把整张卡（两层 60~70px
+            //    大投影 + 渐变底 + 全部文字）重新录一遍；包了只重画这一小层。
             if (holo)
               IgnorePointer(
-                child: CustomPaint(
-                  painter: _HoloPainter(t: t, opacity: focus ? .5 : .22),
+                child: RepaintBoundary(
+                  child: CustomPaint(
+                    painter: _HoloPainter(t: t, opacity: focus ? .5 : .22),
+                  ),
                 ),
               ),
             if (focus)
@@ -414,8 +418,10 @@ class _Face extends StatelessWidget {
                 ),
               ),
             IgnorePointer(
-              child: CustomPaint(
-                painter: _FramePainter(gc: gc, t: t, conic: animFrame),
+              child: RepaintBoundary(
+                child: CustomPaint(
+                  painter: _FramePainter(gc: gc, t: t, conic: animFrame),
+                ),
               ),
             ),
             if (shade > .001)
@@ -951,7 +957,9 @@ class _FrontBody extends StatelessWidget {
                 children: <Widget>[
                   const ColoredBox(color: Ref.acid),
                   IgnorePointer(
-                    child: CustomPaint(painter: _FootSheenPainter(t: t)),
+                    child: RepaintBoundary(
+                      child: CustomPaint(painter: _FootSheenPainter(t: t)),
+                    ),
                   ),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
@@ -1471,8 +1479,10 @@ class _ArtWindow extends StatelessWidget {
       child: Stack(
         fit: StackFit.expand,
         children: <Widget>[
-          CustomPaint(
-            painter: _ArtBgPainter(gc: gc, t: t, scan: focus),
+          RepaintBoundary(
+            child: CustomPaint(
+              painter: _ArtBgPainter(gc: gc, t: t, scan: focus),
+            ),
           ),
           Positioned(
             right: -8,
@@ -1493,13 +1503,15 @@ class _ArtWindow extends StatelessWidget {
             ),
           ),
           Positioned.fill(
-            child: CustomPaint(
-              painter: _ArtFigurePainter(
-                kind: kind,
-                gc: gc,
-                minutes: data.minutes,
-                bike: data.bike,
-                t: t,
+            child: RepaintBoundary(
+              child: CustomPaint(
+                painter: _ArtFigurePainter(
+                  kind: kind,
+                  gc: gc,
+                  minutes: data.minutes,
+                  bike: data.bike,
+                  t: t,
+                ),
               ),
             ),
           ),
@@ -2082,8 +2094,10 @@ class _SealedBack extends StatelessWidget {
                   SizedBox(
                     width: emb,
                     height: emb,
-                    child: CustomPaint(
-                      painter: _EmblemPainter(gc: gc, t: t),
+                    child: RepaintBoundary(
+                      child: CustomPaint(
+                        painter: _EmblemPainter(gc: gc, t: t),
+                      ),
                     ),
                   ),
                   SizedBox(height: gap),
@@ -2241,9 +2255,8 @@ class _SealBgPainter extends CustomPainter {
       c,
       rr,
       Paint()
-        ..shader = RadialGradient(
-          colors: <Color>[Ref.a(gc, .24), Ref.a(gc, 0)],
-        ).createShader(Rect.fromCircle(center: c, radius: rr)),
+        ..shader = RadialGradient(colors: <Color>[Ref.a(gc, .24), Ref.a(gc, 0)])
+            .createShader(Rect.fromCircle(center: c, radius: rr)),
     );
   }
 

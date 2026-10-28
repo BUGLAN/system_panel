@@ -4,6 +4,7 @@ import '../../design/ref.dart';
 import '../../state/quest.dart';
 import 'ref_inputs.dart';
 import 'ref_kit.dart';
+import 'ref_loading.dart';
 import 'ref_orb.dart';
 
 /// ═══════════════════════════════════════════════════════════
@@ -21,6 +22,7 @@ class RefExec extends StatelessWidget {
     required this.elapsed,
     this.critChance = 0,
     this.evidenceThumbs = const <Widget>[],
+    this.evidenceBusy = false,
     this.onAddEvidence,
     this.onDemoEvidence,
     this.onRemoveEvidence,
@@ -43,6 +45,9 @@ class RefExec extends StatelessWidget {
 
   /// 已上传的证据缩略图（0~3 张）
   final List<Widget> evidenceThumbs;
+
+  /// 正在取图 / 视觉校验（下一个空槽转圈、全部槽位不可点；docs/49 D4）
+  final bool evidenceBusy;
   final VoidCallback? onAddEvidence;
 
   /// 参考稿 .link『⚡ 用演示截图 ›』（L755 / JS L1440）：没相机时也能验证流程
@@ -321,6 +326,7 @@ class RefExec extends StatelessWidget {
     final List<Widget> slots = <Widget>[];
     for (int i = 0; i < 3; i++) {
       final bool filled = i < evidenceThumbs.length;
+      final bool pending = evidenceBusy && i == evidenceThumbs.length;
       slots.add(
         Padding(
           padding: EdgeInsets.only(right: i == 2 ? 0 : 10),
@@ -328,7 +334,16 @@ class RefExec extends StatelessWidget {
             key: Key('ref.exec.slot.$i'),
             size: 82,
             image: filled ? evidenceThumbs[i] : null,
-            onTap: filled
+            placeholder: pending
+                ? const RefSpinner(
+                    key: Key('ref.exec.slot.pending'),
+                    size: 26,
+                    color: Ref.cyan,
+                  )
+                : null,
+            onTap: evidenceBusy
+                ? null
+                : filled
                 ? (onRemoveEvidence == null ? null : () => onRemoveEvidence!(i))
                 : onAddEvidence,
           ),
@@ -383,17 +398,27 @@ class RefExec extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 children: <Widget>[
                   Text(
-                    evidenceThumbs.isEmpty ? '上传截图。没有证据，她不认账。' : '收下了。她会盯着看。',
+                    evidenceBusy
+                        ? '校验中……她在看。'
+                        : evidenceThumbs.isEmpty
+                        ? '上传截图。没有证据，她不认账。'
+                        : '收下了。她会盯着看。',
                     style: refText(
                       family: Ref.fc,
                       size: 14,
                       wght: 500,
                       height: 1.5,
-                      color: evidenceThumbs.isEmpty ? Ref.txt : Ref.acid,
+                      color: evidenceBusy
+                          ? Ref.cyan
+                          : evidenceThumbs.isEmpty
+                          ? Ref.txt
+                          : Ref.acid,
                     ),
                   ),
                   const SizedBox(height: 4),
-                  if (evidenceThumbs.isEmpty && onDemoEvidence != null)
+                  if (evidenceThumbs.isEmpty &&
+                      onDemoEvidence != null &&
+                      !evidenceBusy)
                     Padding(
                       padding: const EdgeInsets.only(bottom: 6),
                       child: GestureDetector(
@@ -550,6 +575,9 @@ class _HoldToQuitState extends State<_HoldToQuit>
   );
   bool _on = false;
 
+  /// 按住进度走到第几个 1/8（每跨一格一声 `hold`，原型 ui.js:313 的节奏）
+  int _step = 0;
+
   @override
   void initState() {
     super.initState();
@@ -557,7 +585,13 @@ class _HoldToQuitState extends State<_HoldToQuit>
     _c.addStatusListener(_status);
   }
 
-  void _report() => widget.onProgress?.call(_c.value);
+  void _report() {
+    // 参考稿 holdSet(p)：锯齿随进度从 90Hz 升到 510Hz —— 烘成 8 档，每过 1/8 换下一档
+    final int k = (_c.value * 8).floor();
+    if (_on && k > _step && k < 8) refPressSound('hold', variant: k);
+    _step = k;
+    widget.onProgress?.call(_c.value);
+  }
 
   void _status(AnimationStatus s) {
     if (s != AnimationStatus.completed) return;
@@ -576,6 +610,8 @@ class _HoldToQuitState extends State<_HoldToQuit>
 
   void _down() {
     setState(() => _on = true);
+    _step = 0;
+    refPressSound('hold', variant: 0);
     _c.forward(from: 0);
   }
 

@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
+import '../../design/fidelity.dart';
 import '../../design/ref.dart';
 
 /// ═══════════════════════════════════════════════════════════
@@ -75,7 +76,9 @@ class _RefRevealState extends State<RefReveal>
           offset: Offset(0, 30 * (1 - e)),
           child: child,
         );
-        if (blur > .3) {
+        // 省电档跳过模糊（docs/49 E7）：每次换页 5~7 层同时做整块 blur，
+        // 位移 + 透明已经足够把「显影」讲清楚
+        if (blur > .3 && !Fidelity.lowPower.value) {
           w = ImageFiltered(
             imageFilter: ui.ImageFilter.blur(
               sigmaX: blur / 2,

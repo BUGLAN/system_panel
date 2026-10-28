@@ -2,7 +2,9 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../../design/fidelity.dart';
 import '../../design/ref.dart';
+import '../../widgets/slow_ticker.dart';
 
 /// ═══════════════════════════════════════════════════════════
 ///  设备壳 —— 参考稿 #app（L38-39）
@@ -258,27 +260,43 @@ class RefWipeState extends State<RefWipe> with TickerProviderStateMixin {
   }
 }
 
-/// 浮尘氛围层（参考稿 L974-990 的 #bgfx）：46 颗尘缓缓上浮 + 正弦横摆。
+/// 浮尘氛围层 —— 参考稿 `#bgfx`（JS L974-990，z-index 1：天幕之上、界面之下）。
 ///
-/// 减弱动态时整层不挂（返回 0 尺寸），不产生常驻 ticker。
+/// docs/49 G：这一层在参考稿里**每一页都在**，App 里组件写了却从没挂上去。
+/// 逐条对照参考稿（它按 60fps 每帧推进，这里换算成随时间的闭式解）：
+///   · 46 颗尘：r .5~2、上浮 v .12~.5 px/帧、相位 p 每帧 +s（.01~.04）
+///     x 每帧 += sin(p)·.25 → 横摆幅度 .25/s（6~25px）
+///   · 透明度 .45 ± .25·sin(2p) 一呼一吸；r > 1.5 的用场景强调色，其余白
+///   · 流星：每帧 .6% 概率出一道（≈ 每 2.8s 一道），从左外 −120 横穿，
+///     9~16 px/帧、长 60~160、透明 → 强调色渐变、高 1.2、整体 .6
+///
+/// 性能：时钟是 30fps 的 [SlowTicker]（Timer，不逐 vsync 排帧），只触发这一层
+/// 的 repaint（`CustomPainter(repaint:)`，不重建 widget）；自带 RepaintBoundary。
+/// 减弱动态 / 省电档 / [animate] = false：整层不画、时钟停。
 class RefAmbient extends StatefulWidget {
-  const RefAmbient({super.key, this.accent, this.count = 46});
+  const RefAmbient({
+    super.key,
+    this.accent,
+    this.count = 46,
+    this.animate = true,
+  });
 
   final Color? accent;
   final int count;
+
+  /// false = 停（被不透明整页盖住时用）
+  final bool animate;
 
   @override
   State<RefAmbient> createState() => _RefAmbientState();
 }
 
-class _RefAmbientState extends State<RefAmbient>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _c = AnimationController(
-    vsync: this,
-    duration: const Duration(seconds: 24),
-  );
-
+class _RefAmbientState extends State<RefAmbient> {
+  late final SlowTicker _clock = SlowTicker(const Duration(milliseconds: 33));
   final math.Random _rnd = math.Random(20261026);
+  final _Streak _streak = _Streak();
+  bool _reduce = false;
+  bool _on = false;
 
   late final List<_Mote> _motes = List<_Mote>.generate(
     widget.count,
@@ -293,33 +311,72 @@ class _RefAmbientState extends State<RefAmbient>
   );
 
   @override
+  void initState() {
+    super.initState();
+    _clock.addListener(_maybeStreak);
+    Fidelity.lowPower.addListener(_sync);
+  }
+
+  @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final bool reduce = MediaQuery.maybeDisableAnimationsOf(context) ?? false;
-    if (reduce) {
-      if (_c.isAnimating) _c.stop();
-    } else if (!_c.isAnimating) {
-      _c.repeat();
+    _reduce = MediaQuery.maybeDisableAnimationsOf(context) ?? false;
+    _sync();
+  }
+
+  @override
+  void didUpdateWidget(RefAmbient old) {
+    super.didUpdateWidget(old);
+    _sync();
+  }
+
+  bool get _want => widget.animate && !_reduce && !Fidelity.lowPower.value;
+
+  void _sync() {
+    final bool want = _want;
+    if (want == _on) return;
+    _on = want;
+    if (want) {
+      _clock.start();
+    } else {
+      _clock.stop();
     }
+    if (mounted) setState(() {});
+  }
+
+  /// 参考稿 `if(!streak&&Math.random()<.006)`：每 60fps 帧 .6% → 每 30fps 一拍约 1.2%
+  void _maybeStreak() {
+    final double t = _clock.value;
+    if (_streak.active(t)) return;
+    if (_rnd.nextDouble() >= .012) return;
+    _streak
+      ..t0 = t
+      ..y = .1 + _rnd.nextDouble() * .8
+      ..v = (9 + _rnd.nextDouble() * 7) * 60
+      ..l = 60 + _rnd.nextDouble() * 100;
   }
 
   @override
   void dispose() {
-    _c.dispose();
+    _clock.removeListener(_maybeStreak);
+    Fidelity.lowPower.removeListener(_sync);
+    _clock.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final bool reduce = MediaQuery.maybeDisableAnimationsOf(context) ?? false;
-    if (reduce) return const SizedBox.shrink();
+    if (!_on && (_reduce || Fidelity.lowPower.value)) {
+      return const SizedBox.shrink();
+    }
     return IgnorePointer(
-      child: AnimatedBuilder(
-        animation: _c,
-        builder: (BuildContext context, Widget? _) => CustomPaint(
+      child: RepaintBoundary(
+        child: CustomPaint(
+          size: Size.infinite,
           painter: _MotePainter(
             motes: _motes,
-            t: _c.value * 24,
+            clock: _clock,
+            streak: _streak,
             accent: widget.accent ?? Ref.acid,
           ),
         ),
@@ -346,32 +403,72 @@ class _Mote {
   final double speed;
 }
 
+/// 当前那一道流星（t0 < 0 = 没有）；横穿完自动失效
+class _Streak {
+  double t0 = -1;
+  double y = 0;
+  double v = 0; // px/s
+  double l = 0;
+  double width = 430;
+
+  double xAt(double t) => -120 + (t - t0) * v;
+  bool active(double t) => t0 >= 0 && xAt(t) <= width;
+}
+
 class _MotePainter extends CustomPainter {
-  const _MotePainter({
+  _MotePainter({
     required this.motes,
-    required this.t,
+    required this.clock,
+    required this.streak,
     required this.accent,
-  });
+  }) : super(repaint: clock);
 
   final List<_Mote> motes;
-  final double t;
+  final SlowTicker clock;
+  final _Streak streak;
   final Color accent;
 
   @override
   void paint(Canvas canvas, Size s) {
     if (s.isEmpty) return;
+    final double t = clock.value;
+    final double f = t * 60; // 参考稿按帧推进：换算成「第几帧」
+    final double w = s.width;
+    final double h = s.height;
+    final double span = h + 10; // 参考稿 y < −5 → 回到 H + 5
     final Paint p = Paint();
     for (final _Mote m in motes) {
-      final double y = ((m.y - t * m.v / 24) % 1 + 1) % 1;
+      final double ph = m.phase + m.speed * f;
+      // y 每帧 −v，越过顶端从底下重新出来
+      final double y = ((m.y * h - m.v * f + 5) % span + span) % span - 5;
+      // x 每帧 += sin(p)·.25 的累加 = −(.25/s)·(cos p − cos p0)
       final double x =
-          ((m.x + math.sin(t * m.speed + m.phase) * .006) % 1 + 1) % 1;
-      p.color = (m.r > 1.5 ? accent : Colors.white).withAlpha(
-        (.5 * 255).round(),
+          ((m.x * w - (.25 / m.speed) * (math.cos(ph) - math.cos(m.phase))) %
+                  w +
+              w) %
+          w;
+      final double a = (.45 + math.sin(ph * 2) * .25).clamp(0.0, 1.0);
+      p.color = (m.r > 1.5 ? accent : Colors.white).withValues(alpha: a);
+      canvas.drawCircle(Offset(x, y), m.r, p);
+    }
+    streak.width = w;
+    if (streak.active(t)) {
+      final double x = streak.xAt(t);
+      final Rect r = Rect.fromLTWH(x, streak.y * h, streak.l, 1.2);
+      canvas.drawRect(
+        r,
+        Paint()
+          ..shader = LinearGradient(
+            colors: <Color>[
+              const Color(0x00FFFFFF),
+              accent.withValues(alpha: .6),
+            ],
+          ).createShader(r),
       );
-      canvas.drawCircle(Offset(x * s.width, y * s.height), m.r, p);
     }
   }
 
   @override
-  bool shouldRepaint(_MotePainter o) => o.t != t || o.accent != accent;
+  bool shouldRepaint(_MotePainter o) =>
+      o.accent != accent || !identical(o.motes, motes);
 }

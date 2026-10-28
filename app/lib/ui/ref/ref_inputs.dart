@@ -3,7 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../../design/ref.dart';
-import 'ref_kit.dart' show cutCornerPath;
+import 'ref_kit.dart' show cutCornerPath, refPressSound;
 
 /// .tabs（L238-241）：容器 r14 / padding 4 / rgba(255,255,255,.04) / 1px line；
 /// 按钮高 36 / 14px 700；滑块发 --gold + 0 0 18px 50%，
@@ -61,7 +61,12 @@ class RefTabs extends StatelessWidget {
                     Expanded(
                       child: GestureDetector(
                         behavior: HitTestBehavior.opaque,
-                        onTap: () => onChanged(i),
+                        onTap: () {
+                          // 参考稿 tabs：按下 click + 换页 soft（L1386）
+                          refPressSound('ui.tap');
+                          if (i != index) refPressSound('ui.soft');
+                          onChanged(i);
+                        },
                         child: Center(
                           child: Text(
                             labels[i],
@@ -223,6 +228,18 @@ class _RefEvidenceSlotState extends State<RefEvidenceSlot>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    _syncLaser();
+  }
+
+  /// ⚠️ 也要在 didUpdateWidget 里同步：槽位是「先空后有图」的，只在
+  ///    didChangeDependencies 里起播的话，放进图之后激光扫描根本不会动。
+  @override
+  void didUpdateWidget(RefEvidenceSlot old) {
+    super.didUpdateWidget(old);
+    if ((old.image != null) != (widget.image != null)) _syncLaser();
+  }
+
+  void _syncLaser() {
     final bool reduce = MediaQuery.maybeDisableAnimationsOf(context) ?? false;
     final bool has = widget.image != null;
     if (has && !reduce) {
@@ -391,7 +408,12 @@ class RefSwitch extends StatelessWidget {
     return Semantics(
       toggled: on,
       child: GestureDetector(
-        onTap: enabled && onChanged != null ? () => onChanged!(!on) : null,
+        onTap: enabled && onChanged != null
+            ? () {
+                refPressSound('ui.tap');
+                onChanged!(!on);
+              }
+            : null,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 250),
           width: 52,
@@ -437,6 +459,9 @@ class RefTextField extends StatefulWidget {
     this.height = 46,
     this.textSize = 14,
     this.mono = false,
+    this.focusNode,
+    this.onSubmitted,
+    this.enabled = true,
   });
 
   final TextEditingController controller;
@@ -449,18 +474,38 @@ class RefTextField extends StatefulWidget {
   final double textSize;
   final bool mono;
 
+  /// 外部焦点（调用方要主动弹键盘时给；不给就自建一颗）
+  final FocusNode? focusNode;
+
+  /// 键盘「完成」键（给了就把回车键标成 done）
+  final ValueChanged<String>? onSubmitted;
+
+  /// false = 只读（加载中锁输入，边框压暗）
+  final bool enabled;
+
   @override
   State<RefTextField> createState() => _RefTextFieldState();
 }
 
 class _RefTextFieldState extends State<RefTextField> {
-  final FocusNode _focus = FocusNode();
+  FocusNode? _own;
+  FocusNode get _focus => widget.focusNode ?? (_own ??= FocusNode());
   bool _hidden = true;
 
   @override
   void initState() {
     super.initState();
     _focus.addListener(_onFocus);
+  }
+
+  @override
+  void didUpdateWidget(RefTextField old) {
+    super.didUpdateWidget(old);
+    final FocusNode prev = old.focusNode ?? _own!;
+    if (prev != _focus) {
+      prev.removeListener(_onFocus);
+      _focus.addListener(_onFocus);
+    }
   }
 
   void _onFocus() {
@@ -470,7 +515,7 @@ class _RefTextFieldState extends State<RefTextField> {
   @override
   void dispose() {
     _focus.removeListener(_onFocus);
-    _focus.dispose();
+    _own?.dispose();
     super.dispose();
   }
 
@@ -483,7 +528,9 @@ class _RefTextFieldState extends State<RefTextField> {
       decoration: BoxDecoration(
         color: Ref.ink,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: _focus.hasFocus ? accent : Ref.line),
+        border: Border.all(
+          color: _focus.hasFocus && widget.enabled ? accent : Ref.line,
+        ),
         boxShadow: _focus.hasFocus
             ? <BoxShadow>[BoxShadow(color: Ref.a(accent, .22), blurRadius: 14)]
             : null,
@@ -496,6 +543,11 @@ class _RefTextFieldState extends State<RefTextField> {
               focusNode: _focus,
               obscureText: widget.obscure && _hidden,
               onChanged: widget.onChanged,
+              onSubmitted: widget.onSubmitted,
+              textInputAction: widget.onSubmitted == null
+                  ? null
+                  : TextInputAction.done,
+              enabled: widget.enabled,
               keyboardType: widget.keyboardType,
               cursorColor: accent,
               cursorWidth: 2,

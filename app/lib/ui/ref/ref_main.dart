@@ -279,6 +279,7 @@ class _RefMainState extends State<RefMain>
       unawaited(Sfx.play('swipe'));
       final Offset? c = _cardCenter();
       if (c != null) {
+        // 参考稿 mainTap 翻面：FX.burst type:'star'（八角星，L1328）
         widget.fx?.burst(
           c.dx,
           c.dy,
@@ -288,6 +289,8 @@ class _RefMainState extends State<RefMain>
           max: 300,
           g: 40,
           life: .9,
+          kind: 'star',
+          size: 6,
         );
       }
       if (f) {
@@ -547,6 +550,10 @@ class _RefMainState extends State<RefMain>
           compactH: 430,
           onFocus: _onFocus,
           onTap: _onTap,
+          // 压暗由轮播叠在卡外（拖动时卡面不重栅格化，docs/49 E2）；
+          // 颜色 / 圆角与 RefTCard 内部的 .tc-face 压暗一致
+          shadeColor: const Color(0xFF05040A),
+          shadeRadius: const BorderRadius.all(Radius.circular(20)),
           underlay: RefPedestal(color: _pedColor),
           itemBuilder: (BuildContext _, int i, RefCarouselSlot slot) {
             final PlanTask t = widget.goal.plan[i];

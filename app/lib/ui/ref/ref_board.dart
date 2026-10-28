@@ -249,7 +249,12 @@ class RefTabsBar extends StatelessWidget {
                     Expanded(
                       child: GestureDetector(
                         behavior: HitTestBehavior.opaque,
-                        onTap: () => onChanged(i),
+                        onTap: () {
+                          // 参考稿 boardTabs：按下 click + 换页 soft（L1386）
+                          refPressSound('ui.tap');
+                          if (i != index) refPressSound('ui.soft');
+                          onChanged(i);
+                        },
                         child: Center(
                           child: Text(
                             labels[i],

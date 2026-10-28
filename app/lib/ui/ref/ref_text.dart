@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../design/ref.dart';
+import '../../state/sfx.dart';
 
 /// ═══════════════════════════════════════════════════════════
 ///  参考稿的类型机 —— \`typeTo()\`（JS L999-1004）
@@ -25,6 +26,7 @@ class RefTypewriter extends StatefulWidget {
     this.textAlign,
     this.overflow = TextOverflow.clip,
     this.softWrap = true,
+    this.sound = true,
   });
 
   final String text;
@@ -42,6 +44,10 @@ class RefTypewriter extends StatefulWidget {
   final TextAlign? textAlign;
   final TextOverflow overflow;
   final bool softWrap;
+
+  /// 逐字出声（参考稿 typeTo：每显形两个字一声 `type`，L1003）。
+  /// 原来 v3 打字机是哑的 —— 她说话没有声音，是「音效不太行」的一大半（docs/49 A7）
+  final bool sound;
 
   @override
   State<RefTypewriter> createState() => _RefTypewriterState();
@@ -124,6 +130,12 @@ class _RefTypewriterState extends State<RefTypewriter> {
         return;
       }
       setState(() => _shown++);
+      // 参考稿 `if(i%2===0)SFX.type()`：第 1、3、5… 个字出声，空白不出声
+      if (widget.sound &&
+          _shown.isOdd &&
+          _segs[_shown - 1].ch.trim().isNotEmpty) {
+        unawaited(Sfx.play('type'));
+      }
     });
   }
 

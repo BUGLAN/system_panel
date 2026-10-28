@@ -122,9 +122,14 @@ class ShakeLayer extends StatefulWidget {
     this.px = 4,
     this.ms = 240,
     this.reduceMotion = false,
+    this.ticking = true,
   });
 
   final Widget child;
+
+  /// false = 冻结整棵子树的 Ticker（被不透明整页盖住时用，docs/49 E6）。
+  /// 挂在 KeyedSubtree 里面：开关切换不改结构、不重挂子树。
+  final bool ticking;
 
   /// 每加一次就抖一次（原型是命令式调用 `FX.shake()`）
   final int token;
@@ -218,7 +223,10 @@ class _ShakeLayerState extends State<ShakeLayer>
     //
     // ⚠️ 两个分支的**共同子层**必须带同一个 GlobalKey（见 _subtreeKey 注）：
     // 分支切换 = 「搬子树」而不是「重建子树」。
-    final Widget child = KeyedSubtree(key: _subtreeKey, child: widget.child);
+    final Widget child = KeyedSubtree(
+      key: _subtreeKey,
+      child: TickerMode(enabled: widget.ticking, child: widget.child),
+    );
     if (_dx == 0 && _dy == 0) return child;
     return Transform.translate(offset: Offset(_dx, _dy), child: child);
   }

@@ -51,6 +51,8 @@ import 'ui/ref/ref_core.dart';
 import 'ui/ref/ref_boot.dart';
 import 'ui/ref/ref_motion.dart';
 import 'ui/ref/ref_exec.dart';
+import 'ui/ref/ref_goal_swap.dart';
+import 'ui/ref/ref_loading.dart';
 import 'ui/ref/ref_home.dart';
 import 'ui/ref/ref_device.dart';
 import 'ui/ref/ref_hud.dart';
@@ -64,13 +66,11 @@ import 'ui/ref/ref_shop.dart';
 import 'ui/ref/ref_tray.dart';
 import 'ui/ref/ref_overlays.dart';
 import 'ui/ref/ref_verdict.dart';
-import 'widgets/ask_field.dart';
 import 'widgets/fail_layer.dart';
 import 'widgets/fx_layer.dart';
 import 'widgets/fx_particles.dart';
 import 'widgets/hud.dart';
 import 'widgets/line_layer.dart';
-import 'widgets/press_scale.dart';
 import 'widgets/rail_base.dart' show railReduceMotion;
 import 'widgets/table_overlay.dart';
 import 'dev/agent_bridge.dart';
@@ -234,6 +234,56 @@ class _AppShellState extends State<AppShell>
   bool _goalChangeOn = false;
   final TextEditingController _goalAsk = TextEditingController();
 
+  /// 换目标页 sysbox 里她的那句（页内常驻，不随 `_aside` 到点收掉）；
+  /// token 每变一次重播打字机
+  String? _swapLine;
+  int _swapLineTok = 0;
+
+  void _swapSay(String text) => setState(() {
+    _swapLine = text;
+    _swapLineTok++;
+  });
+
+  /// ── 拆解加载态（docs/49 D）────────────────────────────────────
+  ///
+  /// 正在等 LLM 的那一件事（null = 没在等）。同一时刻只有一件：绑定页 /
+  /// 换目标页 / 收官结算的加载卡都读它；它也是「防连点」的闸门。
+  /// 完成后**按身份**清（`identical(_planJob, job)`）——中途被取消 / 重置时，
+  /// 迟到的回包不会把新的那件事清掉。
+  _PlanJob? _planJob;
+
+  /// [_buildGoalWithAgent] 每进一步调一次：加载卡的分步进度跟着真实阶段走
+  void _planStageTo(int n) {
+    final _PlanJob? j = _planJob;
+    if (!mounted || j == null || j.stage == n) return;
+    setState(() => j.stage = n);
+  }
+
+  /// 分段拆解的进度（加载卡第 2 步显示「3/8 段」）
+  void _planSegTo(int done, int total) {
+    final _PlanJob? j = _planJob;
+    if (!mounted || j == null) return;
+    setState(() {
+      j.segDone = done;
+      j.segTotal = total;
+    });
+  }
+
+  /// 给某几类任务出加载卡（不是这几类 → null，页面照常显示表单）
+  Widget? _planLoadingFor(Set<_PlanJobKind> kinds, {Color accent = Ref.acid}) {
+    final _PlanJob? j = _planJob;
+    if (j == null || !kinds.contains(j.kind)) return null;
+    return RefPlanLoading(
+      key: ObjectKey(j), // 新的一件事 = 新的计时
+      steps: j.steps,
+      stage: j.stage,
+      title: j.title,
+      goal: j.goal,
+      startedAt: j.at,
+      accent: accent,
+    );
+  }
+
   /// 换日游标：上次补发日常的那一天（原型 `S.day`；清晨首次进入补发）
   DateTime? _lastRollDay;
 
@@ -246,8 +296,12 @@ class _AppShellState extends State<AppShell>
   /// 屏幕空间特效（#fx 画布）
   final FxController _fx = FxController();
 
-  /// 认输按住的进度（原型用它驱动 #veil 的暗度：p × .75）
-  double _quitP = 0;
+  /// 认输按住的进度（原型用它驱动 #veil 的暗度：p × .75）。
+  ///
+  /// ⚠️ 用 ValueNotifier 而不是 setState：按住期间**每帧**都在变，setState
+  ///    会让整个 AppShell（天幕 / HUD / 执行页…）每帧重建（docs/49 E5）。
+  ///    现在只有暗幕那一小块跟着重建。
+  final ValueNotifier<double> _quitP = ValueNotifier<double>(0);
 
   /// 点一下跳过打字机（原型 Tap.next()）
   int _tap = 0;
@@ -547,15 +601,21 @@ class _AppShellState extends State<AppShell>
 
   /// ── 换目标（TODO-01 · 主线页入口）──────────────────────────────
 
-  /// 点「换目标」→ 先问一句新目标（旧主线单先不动，说清楚再动）。
+  /// 点「换目标」→ 斜切进换目标页（旧主线单先不动，说清楚再动）。
   void _beginGoalChange() {
-    if (_busy) return;
-    // docs/24 #17 换目标：她先琢磨一下（thinking + exp_serious02）
-    setState(() {
-      _goalChangeOn = true;
-      _goalAsk.clear();
-    });
-    _sayAside('要换？那就说清楚换成什么。[[旧的那条]]，说换就换。', holdMs: 2600);
+    if (_busy || _goalChangeOn) return;
+    unawaited(
+      _go('swap', () {
+        setState(() {
+          _goalChangeOn = true;
+          _pickedTask = null;
+          _planError = null;
+          _goalAsk.clear();
+        });
+        // docs/24 #17 换目标：她先琢磨一下
+        _swapSay('要换？那就说清楚换成什么。[旧的那条]，说换就换。');
+      }),
+    );
   }
 
   /// 换目标输入框里那颗「先问小祥」的暗号（她接管追问，落库仍走 [newGoal]）
@@ -565,9 +625,10 @@ class _AppShellState extends State<AppShell>
   //    这两个"等待上限"就是静默降级的闸门：到点没等到就退回类别模板。
   //    现在没有模板可退，所以也没有等待上限 —— 请求慢就慢，失败就报。
 
-  /// 入口牌「先问小祥」：带场合上下文开对话（**不填输入框、不落库**）
+  /// 「先问小祥 ›」：带场合上下文开对话（**不填输入框、不落库**）。
+  /// 换目标页留在原地 —— 聊完关掉对话层，回来接着填。
   void _enterAskXiang() {
-    setState(() => _goalChangeOn = false);
+    FocusScope.of(context).unfocus();
     _openChat(scenario: _newGoalScenario);
   }
 
@@ -581,26 +642,32 @@ class _AppShellState extends State<AppShell>
   ///   ③ 拆解任务 → `PlanAgent` 调 `set_plan`
   ///   ④ 规则校验 → `buildGoalFromPlan`（不合格就抛）
   /// 任何一步失败都走 [_failPlan]：**不落库、不改目标**，把原因摆在屏幕上。
+  ///
+  /// docs/49 C/D：等待期间换目标页整块换成加载卡（三步进度跟着真实阶段走）；
+  /// 宿主中途点 × 走掉 → 这一件作废，迟到的回包直接丢弃。
   Future<void> _onGoalChangeSubmitted() async {
+    if (_planJob != null) return; // 正在拆：不收第二次
     FocusScope.of(context).unfocus();
     final String typed = _goalAsk.text.trim();
     // 「先问小祥」不是目标，是入口：带场合上下文开对话（D5 的入口保留）
     if (typed == _kAskXiangPreset) {
-      setState(() => _goalChangeOn = false);
-      _openChat(scenario: _newGoalScenario);
+      _enterAskXiang();
       return;
     }
     if (isVagueGoal(typed)) {
-      _sayAside('太空了。说点具体的——[[一句话]]。', holdMs: 2000);
+      unawaited(Sfx.play('error'));
+      _swapSay('太空了。说点具体的——[一句话]。');
       return;
     }
     final Goal prev = _flow.goal;
+    final _PlanJob job = _PlanJob(_PlanJobKind.swap, typed);
     // 新的尝试开始 → 上一次的失败读数清掉（成功时不至于挂着旧错误）
     setState(() {
-      _goalChangeOn = false;
       _planError = null;
+      _planJob = job;
     });
-    _sayAside('……行，让我把这条拆开。', holdMs: 1400);
+    unawaited(Sfx.cue('ui.open'));
+    _swapSay('……行，让我把这条拆开。[别催]。');
     try {
       final Goal next = await _buildGoalWithAgent(
         text: typed,
@@ -612,27 +679,55 @@ class _AppShellState extends State<AppShell>
         // 换了一句话就不是同一条线了。
         at: DateTime.now(),
       );
-      // 等待期间宿主可能又换了目标 / 重置了存档 —— 对不上就整件事作废
-      if (!mounted || !identical(_flow.goal, prev)) return;
+      // 等待期间宿主可能取消了 / 又换了目标 / 重置了存档 —— 对不上就整件事作废
+      if (!mounted ||
+          !identical(_planJob, job) ||
+          !identical(_flow.goal, prev)) {
+        return;
+      }
       _flow.newGoal(next);
       setState(() {
+        _planJob = null;
         _host = _flow.host;
         _goal = _flow.goal;
-        _goalChangeOn = false;
         _pickedTask = null;
-        _moment = Moment.main;
       });
       _persist();
-      // docs/24 #17 换目标落库：正色点头（nod + exp_serious02）
-      _sayAside(
-        '行。旧的撤了，新清单 [[${_goal.plan.length} 单]] 已经在你手上。'
-        '「$typed」——别又三天热度。',
-        holdMs: 3000,
+      unawaited(Sfx.play('unlock'));
+      // 斜切回主线页：新清单按 goal.id 换 key → 发牌入场
+      unawaited(
+        _goOrNow('main', () {
+          setState(() {
+            _goalChangeOn = false;
+            _goalAsk.clear();
+            _boardOn = false;
+            _mainJustDone = null;
+            _moment = Moment.main;
+          });
+          // docs/24 #17 换目标落库：正色点头（nod + exp_serious02）
+          _sayAside(
+            '行。旧的撤了，新清单 [[${_goal.plan.length} 单]] 已经在你手上。'
+            '「$typed」——别又三天热度。',
+            holdMs: 3000,
+          );
+        }),
       );
-    } on PlanFailure catch (e) {
-      _failPlan(e, goalText: typed);
+    } catch (e) {
+      if (!mounted || !identical(_planJob, job)) return;
+      setState(() => _planJob = null);
+      unawaited(Sfx.play('error'));
+      _failPlan(_asPlanFailure(e), goalText: typed);
+      _swapSay('拆不动。[换个说法]再来，或者先问问我。');
     }
   }
+
+  /// 拆解链路上**任何**异常都要落成可见的失败（docs/49 F）。
+  ///
+  /// 原来只 `on PlanFailure`：链路里冒出别的异常（StateError / 类型错 / 插件异常）
+  /// 时 catch 不住，加载卡会永远挂在屏幕上 —— 看起来就是「拆解一直不结束」。
+  static PlanFailure _asPlanFailure(Object e) => e is PlanFailure
+      ? e
+      : PlanGenerationError(PlanFailureCode.badResponse, '意外异常：$e');
 
   /// 匹配 + 拆解 = 一次完整的目标铸造。**失败一律抛**，由调用方决定怎么显示。
   ///
@@ -657,14 +752,14 @@ class _AppShellState extends State<AppShell>
     final String? status = firstGoal ? null : _statusLineForAgent();
 
     // ① 匹配：类别 / 天幕短字 / 期限
+    //
+    // ⚠️ 2026-10-28（docs/49 F）：两步都**只挂交卷工具**，不再挂 get_status /
+    //    recall。宿主档案（[status]）与相关记忆（MemoryStore.digest）本来就写进
+    //    了系统提示，查询工具只会多出一整轮「先查档案」的往返 —— 推理模型一轮
+    //    10~40s，换目标原来至少 4 轮串行，真机实测 2 分钟还没拆完。
+    _planStageTo(0);
     final GoalMatchDraft matchDraft = GoalMatchDraft();
     final StrictAgentToolRegistry matchTools = StrictAgentToolRegistry();
-    if (!firstGoal && _agentTools != null) {
-      for (final String name in <String>['get_status', 'recall']) {
-        final AgentTool? t = _agentTools!.tool(name);
-        if (t != null) matchTools.register(t);
-      }
-    }
     matchTools.register(setGoalCategoryTool(goalText: text, draft: matchDraft));
     final GoalMatch m = await matcher0.match(
       goalText: text,
@@ -685,25 +780,10 @@ class _AppShellState extends State<AppShell>
     //    非首目标仍按模型给的期限/配额。
     final int days = firstGoal ? kFirstGoalDays : m.days;
     final int need = planTaskCountFor(days, quota: m.quota);
-    final PlanDraft planDraft = PlanDraft();
-    final StrictAgentToolRegistry planTools = StrictAgentToolRegistry();
-    if (!firstGoal && _agentTools != null) {
-      for (final String name in <String>['get_status', 'recall']) {
-        final AgentTool? t = _agentTools!.tool(name);
-        if (t != null) planTools.register(t);
-      }
-    }
-    planTools.register(
-      setPlanTool(
-        goalText: text,
-        taskCount: need,
-        days: days,
-        draft: planDraft,
-        firstGoal: firstGoal,
-        quota: m.quota,
-      ),
-    );
-    final PlanResult pr = await planner0.generate(
+    _planStageTo(1);
+    // docs/49 F3：长清单（条数 = 天数，三个月就是 90 张）分段并行拆，
+    // 每段一套独立的 set_plan；拼回后下面的 buildGoalFromPlan 仍全量复核。
+    final List<TaskSpec> tasks = await planner0.generateTasks(
       brief: PlanBrief(
         goalText: text,
         days: days,
@@ -713,18 +793,19 @@ class _AppShellState extends State<AppShell>
         statusLine: status,
         firstGoal: firstGoal,
       ),
-      tools: planTools,
-      draft: planDraft,
+      quota: m.quota,
+      onProgress: _planSegTo,
     );
 
     // ③ 规则校验 + 铸计划（校验不过会抛 PlanRuleError）
+    _planStageTo(2);
     return buildGoalFromPlan(
       text: text,
       short: m.short,
       cat: m.cat,
       days: days,
       quota: m.quota,
-      tasks: pr.tasks,
+      tasks: tasks,
       answers: answers,
       at: at,
       firstGoal: firstGoal,
@@ -746,14 +827,22 @@ class _AppShellState extends State<AppShell>
     _sayAside('拆解失败：${e.code.name}。${_clip(e.detail, 60)}', holdMs: 6000);
   }
 
-  /// 换目标中途算了：什么都不动。
+  /// 换目标中途算了：什么都不动，斜切回主线页。
+  /// 拆解还在等也照样能走 —— 那一件作废（[_onGoalChangeSubmitted] 按身份丢弃回包）。
   void _cancelGoalChange() {
+    if (!_goalChangeOn) return;
     FocusScope.of(context).unfocus(); // 键盘一并收起（宿主验收）
-    setState(() {
-      _goalChangeOn = false;
-      _goalAsk.clear();
-    });
-    _sayAside('没换。……明智。', holdMs: 1600);
+    unawaited(
+      _goOrNow('main', () {
+        setState(() {
+          _goalChangeOn = false;
+          _goalAsk.clear();
+          _planError = null;
+          if (_planJob?.kind == _PlanJobKind.swap) _planJob = null;
+        });
+        _sayAside('没换。……明智。', holdMs: 1600);
+      }, back: true),
+    );
   }
 
   /// 上一次宿主操作（原型 `App.lastAct`）
@@ -865,7 +954,9 @@ class _AppShellState extends State<AppShell>
 
   void _poke() {
     final int i = math.min(LINES.poke.length - 1, ++_pokeN - 1);
-    unawaited(Sfx.play('poke'));
+    unawaited(
+      Sfx.play('boop', variant: math.min(_pokeN, 8)),
+    ); // 参考稿 boop(min(pokes,8))：越戳越尖
     unawaited(Haptics.buzz('poke'));
     final String emo = i >= 4
         ? 'cold'
@@ -1038,6 +1129,8 @@ class _AppShellState extends State<AppShell>
               ShakeLayer(
                 token: _shake,
                 px: _shakePx,
+                // LLM 设置是不透明整页：盖住时冻结下层全部动画（docs/49 E6）
+                ticking: !_llmPaneOn,
                 // docs/39 §5.5：reduce 时组件内部直接不抖（震屏整个跳过）
                 reduceMotion: reduce,
                 child: Stack(
@@ -1074,7 +1167,14 @@ class _AppShellState extends State<AppShell>
                             RefBackground(
                               accent: _sceneAccent,
                               ghost: _sceneGhost,
-                              animate: !reduce,
+                              // 天幕走 Timer 不走 Ticker，TickerMode 管不到 → 单独关
+                              animate: !reduce && !_llmPaneOn,
+                            ),
+                            // 参考稿 #bgfx 浮尘层（46 颗尘上浮 + 偶发流星，z 1：
+                            // 天幕之上、界面之下）。组件早就写了却从没挂上 —— docs/49 G
+                            RefAmbient(
+                              accent: _sceneAccent,
+                              animate: !reduce && !_llmPaneOn,
                             ),
                           ],
                         ),
@@ -1087,11 +1187,9 @@ class _AppShellState extends State<AppShell>
                       child: Listener(
                         behavior: HitTestBehavior.translucent,
                         onPointerDown: (PointerDownEvent _) {
-                          if (_lastAct.isBefore(
-                            DateTime.now().subtract(const Duration(seconds: 1)),
-                          )) {
-                            setState(() => _lastAct = DateTime.now());
-                          }
+                          // ⚠️ 不进 setState：只有每秒的 `_onSecond` 读它，
+                          //    setState 会让整个 AppShell 跟着每次触屏重建（docs/49 E5）
+                          _lastAct = DateTime.now();
                           // docs/24 #15：瞌睡中被戳醒（惊一下 → 回情绪）
                         },
                       ),
@@ -1122,7 +1220,7 @@ class _AppShellState extends State<AppShell>
                           (main && _boardOn) ||
                           (sheet && _sheetKind == SheetKind.supply),
                       onMenu: () => _openSheet(SheetKind.system),
-                      onMenuLongPress: () => setState(() => _llmPaneOn = true),
+                      onMenuLongPress: _openLlmPane,
                       onLevelTap: () => _toast(
                         'EXP ${_host.exp} / ${HostState.need(_host.lv)} · '
                         '距 LV${_host.lv + 1} 还差 '
@@ -1237,6 +1335,7 @@ class _AppShellState extends State<AppShell>
                               },
                             ),
                             evidenceThumbs: _evidenceThumbs(),
+                            evidenceBusy: _evidenceBusy,
                             onAddEvidence: _addEvidence,
                             onDemoEvidence: _demoEvidence,
                             onRemoveEvidence: _removeEvidence,
@@ -1249,8 +1348,7 @@ class _AppShellState extends State<AppShell>
                               });
                               _beginFail();
                             },
-                            onQuitProgress: (double p) =>
-                                setState(() => _quitP = p),
+                            onQuitProgress: (double p) => _quitP.value = p,
                             onItems: () =>
                                 setState(() => _drawerOn = !_drawerOn),
                             onCollapse: () {
@@ -1302,8 +1400,6 @@ class _AppShellState extends State<AppShell>
                           box: _failBox(),
                         ),
                       ),
-                    // 屏幕空间特效（#fx 在 DOM 里排在 #ui 之后、#veil 之前）
-                    FxField(key: _fxKey, controller: _fx),
                     // 参考稿 coinFly：结算收下后晶核从屏心飞向 HUD 晶核
                     Positioned.fill(
                       child: SizedBox.expand(
@@ -1332,9 +1428,12 @@ class _AppShellState extends State<AppShell>
                       ),
                     ),
                     // 认输按住时屏幕跟着暗下去（最多 75%），认输后停在 60%
-                    Veil(
-                      opacity: fail ? .6 : _quitP * .75,
-                      instant: _quitP > 0, // 按住期间跟手，松手才回到 900ms 过渡
+                    ValueListenableBuilder<double>(
+                      valueListenable: _quitP,
+                      builder: (BuildContext _, double q, Widget? _) => Veil(
+                        opacity: fail ? .6 : q * .75,
+                        instant: q > 0, // 按住期间跟手，松手才回到 900ms 过渡
+                      ),
                     ),
                     // 亮帧（`#flash` 在 DOM 里排在 veil 之后；正 z 的那些会盖在它上面）
                     // ⚠️ 必须判 isAnimating —— 控制器停在 0 时 `1 - easeOut(0) = 1`，
@@ -1361,9 +1460,14 @@ class _AppShellState extends State<AppShell>
                       Positioned.fill(
                         child: RefOnboard(
                           controller: _ask,
-                          probe: _interviewCat != null
-                              ? '答完这几张，我给你排三天。'
-                              : (_probeLine ?? LINES.askGoal),
+                          probe: switch (_planJob?.kind) {
+                            _PlanJobKind.interview => '先让我读懂这句。……[别催]。',
+                            _PlanJobKind.bind => '答案收到。我在排[三天]——别走开。',
+                            _ =>
+                              _interviewCat != null
+                                  ? '答完这几张，我给你排三天。'
+                                  : (_probeLine ?? LINES.askGoal),
+                          },
                           probeToken: _tap,
                           presets: const <String>[
                             '三个月跑完半马',
@@ -1382,66 +1486,15 @@ class _AppShellState extends State<AppShell>
                                 ),
                           onDone: _completeOnboarding,
                           onSkip: _planError == null ? null : _skipLlmAndStart,
+                          loading: _planLoadingFor(const <_PlanJobKind>{
+                            _PlanJobKind.interview,
+                            _PlanJobKind.bind,
+                          }, accent: Ref.cyan),
                           planError: _planError == null
                               ? null
                               : _planError!.code.name +
                                     ' · ' +
                                     _clip(_planError!.detail, 60),
-                        ),
-                      ),
-                    // docs/39 M-24 · 换目标输入幕的**常驻取消**（左上 44 圆 + 顶部 11pt
-                    // 上下文行）。两条都不依赖牌列 —— 键盘弹起、牌列退场、LLM 长句
-                    // 把字幕顶上去，取消都还在原地。进 240ms kOut（淡 + 8px 下落）。
-                    _GoalChangeChrome(
-                      visible: _goalChangeOn,
-                      onCancel: _cancelGoalChange,
-                    ),
-                    // 换目标 · 问新目标（TODO-01）：主线页「换目标」→ 这一层
-                    // （旧主线单先不动；确定才走 `flow.newGoal` 落库）
-                    // ⚠️ 用 Builder 把 viewInsets 依赖锁在这一小块：
-                    // 直接在主壳 build 里读 MediaQuery.viewInsetsOf 会让键盘每
-                    // 动画一帧都重建整个 AppShell（含天幕/主页/所有覆盖层）。
-                    Builder(
-                      builder: (BuildContext askCtx) => AskField(
-                        prompt: '新目标 ›',
-                        placeholder: '比如：半年减重 10 斤',
-                        presets: const <String>[
-                          '半年减重 10 斤',
-                          '三个月跑完半马',
-                          '一个月早睡早起',
-                          '考研上岸',
-                        ],
-                        controller: _goalAsk,
-                        focusNode: _goalAskFocus,
-                        visible: _goalChangeOn,
-                        bottomInset: MediaQuery.viewInsetsOf(askCtx).bottom,
-                        onPreset: (String v) => _goalAsk.text = v,
-                        onSubmit: _onGoalChangeSubmitted,
-                        // docs/39 M-24：取消**不再走牌列**（原来在牌列最右、被屏宽裁掉一半，
-                        // 键盘一弹整条牌列退场就彻底没有退路）。现在取消 = 输入幕左上那颗
-                        // 常驻 44 圆（见下面 `ask.cancel` 的挂载），_cancelGoalChange 由它调。
-                        // 「先问小祥」仍是**入口牌**：开对话、不填输入框（§4.B.2）
-                        onEntry: _enterAskXiang,
-                      ),
-                    ),
-                    // v3 LLM 设置（参考稿未覆盖，按「补全缺失组件」要求新增）：
-                    // Base URL / ApiKey / 模型 / 温度 / 上下文 / 流式 / 测试 / 保存。
-                    if (_llmPaneOn)
-                      Positioned.fill(
-                        child: ColoredBox(
-                          // ⚠️ 必须**不**透明：`.96` 让底下的「LLM 设置」入口按钮
-                          //    透到面板上（实测遮在「连接 · ENDPOINT」那一栏）。
-                          color: Ref.bg,
-                          child: SafeArea(
-                            child: LlmSettingsPane(
-                              initial: _agentSettings,
-                              onClose: () => setState(() => _llmPaneOn = false),
-                              onSaved: (AgentSettings s) => setState(() {
-                                _agentSettings = s;
-                                _llmPaneOn = false;
-                              }),
-                            ),
-                          ),
                         ),
                       ),
                     // v3 档案（参考稿 L767-787）：独立整页，不再是投影面板
@@ -1508,7 +1561,7 @@ class _AppShellState extends State<AppShell>
                     //    也是整层收掉，只留她说话 + 输入）。
                     // v3 主线页（参考稿 L719-731）：抬头 / meta / daybar / 大牌 /
                     // 刻度 / sysbox / 去委托板 + 换目标。
-                    if (main && !_boardOn)
+                    if (main && !_boardOn && !_goalChangeOn)
                       Positioned.fill(
                         child: RefMain(
                           key: ValueKey<String>(
@@ -1542,6 +1595,34 @@ class _AppShellState extends State<AppShell>
                             }),
                           ),
                           onSwapGoal: _beginGoalChange,
+                        ),
+                      ),
+                    // v3 换目标（docs/49 C 重写）：独立场景，斜切转场进出。
+                    // 旧版 AskField + 左上取消圆是上一代视觉，已撤。
+                    if (main && _goalChangeOn)
+                      Positioned.fill(
+                        child: RefGoalSwap(
+                          goal: _goal,
+                          controller: _goalAsk,
+                          focusNode: _goalAskFocus,
+                          presets: const <String>[
+                            '半年减重 10 斤',
+                            '三个月跑完半马',
+                            '一个月早睡早起',
+                            '考研上岸',
+                          ],
+                          line: _swapLine,
+                          lineToken: _swapLineTok,
+                          error: _planError == null
+                              ? null
+                              : '${_planError!.code.name} · '
+                                    '${_clip(_planError!.detail, 60)}',
+                          loading: _planLoadingFor(const <_PlanJobKind>{
+                            _PlanJobKind.swap,
+                          }, accent: Ref.gold),
+                          onBack: _cancelGoalChange,
+                          onSubmit: () => unawaited(_onGoalChangeSubmitted()),
+                          onAskXiang: _enterAskXiang,
                         ),
                       ),
                     // v3 委托板（参考稿 L237-264）：tabs + ticket 列表。
@@ -1581,35 +1662,33 @@ class _AppShellState extends State<AppShell>
                     // APP 原有的「和她聊聊」「LLM 连接」按同一行样式补在中间。
                     // 它是盖在**当前场景**上的浮层（#sheet 是 .ovl，不是场景）：
                     // 不改 _moment，关掉就回到原处（委托板/补给里点 ☰ 也一样）。
-                    if (_sysSheetOn)
-                      Positioned.fill(
-                        child: RefSheet(
-                          visible: true,
-                          sound: _agentSettings.sound,
-                          onSound: (bool v) {
-                            if (v != _agentSettings.sound) _toggleSound();
-                          },
-                          onClose: () => setState(() => _sysSheetOn = false),
-                          onHint: () {
-                            setState(() => _sysSheetOn = false);
-                            _toast('戳大厅的「她」7 次 · 长按她 · 连点计时器 5 次', bad: false);
-                          },
-                          onChat: () {
-                            setState(() => _sysSheetOn = false);
-                            _openChat();
-                          },
-                          onLlm: () {
-                            setState(() {
-                              _sysSheetOn = false;
-                              _llmPaneOn = true;
-                            });
-                          },
-                          onReset: () {
-                            setState(() => _sysSheetOn = false);
-                            _askWipe();
-                          },
-                        ),
+                    // 常驻挂载、visible 驱动：进出都有滑动（docs/49 B2）
+                    Positioned.fill(
+                      child: RefSheet(
+                        visible: _sysSheetOn,
+                        sound: _agentSettings.sound,
+                        onSound: (bool v) {
+                          if (v != _agentSettings.sound) _toggleSound();
+                        },
+                        onClose: () => setState(() => _sysSheetOn = false),
+                        onHint: () {
+                          setState(() => _sysSheetOn = false);
+                          _toast('戳大厅的「她」7 次 · 长按她 · 连点计时器 5 次', bad: false);
+                        },
+                        onChat: () {
+                          setState(() => _sysSheetOn = false);
+                          _openChat();
+                        },
+                        onLlm: () {
+                          setState(() => _sysSheetOn = false);
+                          _openLlmPane();
+                        },
+                        onReset: () {
+                          setState(() => _sysSheetOn = false);
+                          _askWipe();
+                        },
                       ),
+                    ),
                     ChatPanel(
                       visible: _chatOpen,
                       messages: _chat.messages,
@@ -1620,6 +1699,28 @@ class _AppShellState extends State<AppShell>
                       onQuickTool: _onQuickTool,
                       paceMs: _paceMs, // docs/22 §R4：同一档位喂聊天气泡的打字机
                     ),
+                    // 收官结算在等下一份计划（docs/49 D3）：超过 400ms 才挂，普通结算不闪
+                    if (_settleShown && _planJob?.kind == _PlanJobKind.settle)
+                      Positioned.fill(
+                        child: ColoredBox(
+                          key: const Key('ref.settleLoading'),
+                          color: Ref.a(Ref.bg, .82),
+                          child: Center(
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: Ref.gutter,
+                              ),
+                              child: RefReveal(
+                                index: 0,
+                                base: 0,
+                                child: _planLoadingFor(const <_PlanJobKind>{
+                                  _PlanJobKind.settle,
+                                }, accent: Ref.mint)!,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
                     // 横幅（z 5，压在所有东西上面）。
                     // ① 拆解失败优先：失败必须**看得见**（旧版失败时屏幕上什么都不发生）。
                     // ② 否则是绑定见面礼（数值语义在 goal_gen 的 kBindGift*）。
@@ -1668,29 +1769,51 @@ class _AppShellState extends State<AppShell>
                           },
                         ),
                       ),
+                    // 屏幕空间特效（参考稿 #fx z-index 92：压在结算 / 升级等浮层之上 ——
+                    // 升级的彩带、结算的爆散都要盖在幕上才看得见；docs/49 G）。
+                    // GlobalKey 钉身份：挪位置不重建、在飞的粒子不丢。
+                    FxField(key: _fxKey, controller: _fx),
                     // v3 确认弹窗（参考稿 #modal L476-480）：重置存档前先问一句
+                    // RefModal 自带渐入暗幕 + 居中；外面不再包一层瞬显的暗幕（docs/49 B3）
                     if (_modalOn)
                       Positioned.fill(
-                        child: ColoredBox(
-                          color: Ref.a(Ref.bg, .78),
-                          child: Center(
-                            child: RefModal(
-                              title: '重置存档？',
-                              body:
-                                  '一切从「开机成功」重新开始。等级、晶核、名牒、主线、她记住的你 —— 全部清空。这项操作不可撤销。',
-                              yes: '确定重置',
-                              no: '再想想',
-                              onPick: (bool yes) {
-                                setState(() => _modalOn = false);
-                                if (yes) unawaited(_wipe());
-                              },
-                            ),
-                          ),
+                        child: RefModal(
+                          title: '重置存档？',
+                          body: '一切从「开机成功」重新开始。等级、晶核、名牒、主线、她记住的你 —— 全部清空。这项操作不可撤销。',
+                          yes: '确定重置',
+                          no: '再想想',
+                          onPick: (bool yes) {
+                            setState(() => _modalOn = false);
+                            if (yes) unawaited(_wipe());
+                          },
                         ),
                       ),
                   ],
                 ),
               ),
+              // v3 LLM 设置（参考稿未覆盖，按「补全缺失组件」要求新增）：
+              // Base URL / ApiKey / 模型 / 温度 / 上下文 / 流式 / 测试 / 保存。
+              // 进出走斜切转场（docs/49 B1）；挂在 ShakeLayer **外面**：
+              // 它打开时下层整棵树的 Ticker 被冻结（ShakeLayer.ticking），
+              // 它自己的显影 / 扫光 / 扫描条不能跟着被冻住。
+              if (_llmPaneOn)
+                Positioned.fill(
+                  child: ColoredBox(
+                    // ⚠️ 必须**不**透明：`.96` 让底下的「LLM 设置」入口按钮
+                    //    透到面板上（实测遮在「连接 · ENDPOINT」那一栏）。
+                    color: Ref.bg,
+                    child: SafeArea(
+                      child: LlmSettingsPane(
+                        initial: _agentSettings,
+                        onClose: _closeLlmPane,
+                        onSaved: (AgentSettings s) {
+                          setState(() => _agentSettings = s);
+                          _closeLlmPane();
+                        },
+                      ),
+                    ),
+                  ),
+                ),
               // 3 · 覆盖层：开机自检（z 20，压在所有东西上面）
               // v3 开机屏（参考稿 #boot L850-857）：170 核心 + HOST//SYSTEM 字标 +
               // 日志 + 3 高渐变条 + 唤醒键。旧的 BootScreen 保留树（它的 42 条测试
@@ -1750,8 +1873,11 @@ class _AppShellState extends State<AppShell>
   /// 猜的。现在类别也走 LLM（`GoalMatchAgent`），所以匹配挪到这一步现取：
   /// 拿不到类别就**不进访谈**，把原因摆出来 —— 不再用正则硬猜一个。
   void _onGoalSubmitted() {
+    if (_planJob != null) return; // 正在读上一句：不收第二次（防连点）
+    FocusScope.of(context).unfocus();
     final String typed = _ask.text.trim();
     if (isVagueGoal(typed)) {
+      unawaited(Sfx.play('error'));
       _takeProbeLine(typed.isEmpty ? '目标' : typed); // 追问文案接管（兜底=askGoal）
       _sayAside('太空了。说点具体的。', holdMs: 1800);
       return;
@@ -1768,6 +1894,7 @@ class _AppShellState extends State<AppShell>
   Future<void> _startInterview(String typed) async {
     final GoalMatchAgent? matcher = _matchAgent;
     if (matcher == null) {
+      unawaited(Sfx.play('error'));
       _failPlan(
         const PlanGenerationError(
           PlanFailureCode.noKey,
@@ -1777,6 +1904,10 @@ class _AppShellState extends State<AppShell>
       );
       return;
     }
+    // docs/49 D1：匹配要等 LLM —— 加载卡顶上（原来这段毫无反馈，像卡死）
+    final _PlanJob job = _PlanJob(_PlanJobKind.interview, typed);
+    setState(() => _planJob = job);
+    unawaited(Sfx.cue('ui.open'));
     try {
       final GoalMatchDraft draft = GoalMatchDraft();
       final StrictAgentToolRegistry tools = StrictAgentToolRegistry();
@@ -1788,13 +1919,19 @@ class _AppShellState extends State<AppShell>
         // 绑定期还没有真档案：不给 statusLine（旧版的 withStatus: false 同理）
         statusLine: null,
       );
-      if (!mounted) return;
+      if (!mounted || !identical(_planJob, job)) return;
+      _planStageTo(1);
       setState(() {
+        _planJob = null;
         _pendingGoalText = typed;
         _interviewCat = m.cat;
       });
-    } on PlanFailure catch (e) {
-      _failPlan(e, goalText: typed);
+      unawaited(Sfx.play('deal'));
+    } catch (e) {
+      if (!mounted || !identical(_planJob, job)) return;
+      setState(() => _planJob = null);
+      unawaited(Sfx.play('error'));
+      _failPlan(_asPlanFailure(e), goalText: typed);
     }
   }
 
@@ -1827,8 +1964,15 @@ class _AppShellState extends State<AppShell>
   /// 现在拿不到拆解就不落库：目标仍然空着，宿主看得到失败原因。
   Future<void> _bindWithPlan(Map<String, String> answers) async {
     final GoalCategory? cat = _interviewCat;
-    if (cat == null) return;
+    if (cat == null || _planJob != null) return;
     final String text = _pendingGoalText;
+    // docs/49 D1：「开始计划」之后要等完整拆解（匹配 + 拆解 + 校验，常见几十秒）
+    final _PlanJob job = _PlanJob(_PlanJobKind.bind, text);
+    setState(() {
+      _planError = null;
+      _planJob = job;
+    });
+    unawaited(Sfx.cue('ui.open'));
     try {
       final Goal goal = await _buildGoalWithAgent(
         text: text,
@@ -1836,7 +1980,8 @@ class _AppShellState extends State<AppShell>
         firstGoal: true,
         answers: answers,
       );
-      if (!mounted || _interviewCat != cat) return; // 这中间被重置/换目标了
+      // 这中间被重置/换目标了
+      if (!mounted || _interviewCat != cat || !identical(_planJob, job)) return;
       // ⚠️ 重置存档会冻结存储（原型靠随后的 location.reload() 解冻，我们没有重载），
       //    所以重新绑定这一刻要显式解冻，否则这次存盘会被静默跳过。
       _save.unfreeze();
@@ -1856,16 +2001,29 @@ class _AppShellState extends State<AppShell>
         );
         _host = _flow.host;
         _lastRollDay = startOfDay(DateTime.now());
-        _interviewCat = null;
-        _moment = Moment.lobby;
+        job.stage = 3; // 三步全部打勾，留到转场盖住再撤
       });
       _persist();
       _rememberInterview(cat, answers);
-      _sayAside('排好了。三天，一天一张。', holdMs: 2200);
-      _toast('${kBindGiftKicker}：${kBindGiftText}');
-    } on PlanFailure catch (e) {
+      unawaited(Sfx.play('unlock'));
+      // 斜切进大厅（原来是硬切）：加载卡留到被盖住那一拍才撤
+      unawaited(
+        _goOrNow('home', () {
+          setState(() {
+            _planJob = null;
+            _interviewCat = null;
+            _moment = Moment.lobby;
+          });
+          _sayAside('排好了。三天，一天一张。', holdMs: 2200);
+          _toast('${kBindGiftKicker}：${kBindGiftText}');
+        }),
+      );
+    } catch (e) {
       // 拆不出首目标就不落库：目标仍空着，原因摆在屏幕上（不退回模板）
-      _failPlan(e, goalText: text);
+      if (!mounted || !identical(_planJob, job)) return;
+      setState(() => _planJob = null);
+      unawaited(Sfx.play('error'));
+      _failPlan(_asPlanFailure(e), goalText: text);
     }
   }
 
@@ -1964,16 +2122,26 @@ class _AppShellState extends State<AppShell>
   Future<void> _wipe() async {
     final SaveData d = await _save.wipe(fallback: SaveData.fresh());
     if (!mounted) return;
-    setState(() {
-      _flow = QuestFlow.fromSave(host: d.host, goal: d.goal, queue: d.queue);
-      _wireFlow(_flow);
-      _host = _flow.host;
-      _goal = d.goal;
-      _moment = Moment.onboard;
-      // 回到绑定仪式第 0 幕（访谈进行到一半被重置的也收回来）
-      _interviewCat = null;
-      _pendingGoalText = '';
-      _lastRollDay = null;
+    unawaited(Sfx.play('fail'));
+    // 斜切进绑定仪式（docs/49 B4：原来是硬切）。数据在被盖住的那一拍换
+    await _goOrNow('onboard', () {
+      setState(() {
+        _flow = QuestFlow.fromSave(host: d.host, goal: d.goal, queue: d.queue);
+        _wireFlow(_flow);
+        _host = _flow.host;
+        _goal = d.goal;
+        _moment = Moment.onboard;
+        // 回到绑定仪式第 0 幕（访谈进行到一半被重置的也收回来）
+        _interviewCat = null;
+        _pendingGoalText = '';
+        _lastRollDay = null;
+        _planJob = null; // 在途的拆解一律作废（按身份丢弃回包）
+        _planError = null;
+        _goalChangeOn = false;
+        _boardOn = false;
+        _active = false;
+        _ask.clear();
+      });
     });
     _takeProbeLine('绑定：宿主想变成什么样'); // 追问文案接管（兜底=askGoal 原句）
   }
@@ -2123,7 +2291,6 @@ class _AppShellState extends State<AppShell>
       );
       return;
     }
-    unawaited(Sfx.play('swipe'));
     setState(() {
       _sysSheetOn = true;
       _drawerOn = false;
@@ -2198,6 +2365,9 @@ class _AppShellState extends State<AppShell>
   /// 进入失败态（认输与超时共用）：原型 `_fail()` 的视觉前几下
   void _beginFail({String how = 'quit'}) {
     _clock.stopFast();
+    // 参考稿 giveUp()：SFX.fail()（L1559）—— 原来认输 / 超时判负都是哑的
+    unawaited(Sfx.play('fail'));
+    unawaited(Haptics.buzz('fail'));
     // 原型 `_fail()` L529：`Stage.setCam('fail'); Stage.emote('sad'); Stage.motion('down')`
     // —— 原生/WebView 桥已接通（T7），这里恢复当时的"暂时拿掉"：
     // docs/24 #11：认输垂头（exp_sad01）；**超时**另换惨白脸（exp_pale02）
@@ -2206,7 +2376,7 @@ class _AppShellState extends State<AppShell>
     final FailOutcome? fo = _flow.fail(how: how);
     setState(() {
       _moment = Moment.fail;
-      _quitP = 0;
+      _quitP.value = 0;
       _resultChoicesOn = false;
       // 终态优先：进失败页 = 这一段演出到此为止，顺手把「她正在说回来那几句」
       // 的演出闸门放掉（`_greetAfter` / `_wakeSequence` 会把它举起来 ~1~3 秒）。
@@ -2237,8 +2407,16 @@ class _AppShellState extends State<AppShell>
   /// 旧版是内联的 `_result = _flow.settle() ?? _result`：settle 返回 null 时
   /// 悄悄沿用上一单的结算数据（看着像结算成功，其实什么都没发生）。
   /// 现在 settle 要么给结果、要么抛，失败走 [_failPlan]（目标/队列都不动）。
+  /// 结算闸门（docs/49 D3）：settle 在途时不收第二次提交
+  bool _settling = false;
+
+  /// 结算超过 400ms 还没回来（收官那单在等下一份计划的拆解）才挂加载层 ——
+  /// 普通结算是瞬时的，不能让加载层闪一下
+  Timer? _settleSlow;
+  bool _settleShown = false;
+
   Future<void> _submitQuest() async {
-    if (_busy) return; // 原型 `App.submit()` → `run()`
+    if (_busy || _settling) return; // 原型 `App.submit()` → `run()`
     // 参考稿 JS L1469-1471：**没有证据她不收**。原来这里直接进结算，
     // 等于允许空手交差（真机实测：点提交就结算，证据槽还是三个「+」）。
     if ((_flow.active?.evidence ?? const <EvidenceShot>[]).isEmpty) {
@@ -2248,6 +2426,13 @@ class _AppShellState extends State<AppShell>
       _sayAside('空手来交差？先[上传截图]。', holdMs: 2400);
       return;
     }
+    _settling = true;
+    final _PlanJob job = _PlanJob(_PlanJobKind.settle, _goal.text);
+    _planJob ??= job; // 收官拆解的分步进度要从第一拍就记上（显示另由 _settleShown 管）
+    _settleSlow?.cancel();
+    _settleSlow = Timer(const Duration(milliseconds: 400), () {
+      if (mounted && _settling) setState(() => _settleShown = true);
+    });
     _clock.stopFast();
     _verdictShots = List<EvidenceShot>.of(_flow.active!.evidence);
     _active = false; // 交出去了，药丸该消失
@@ -2291,6 +2476,15 @@ class _AppShellState extends State<AppShell>
       });
       _failPlan(e, goalText: _goal.text);
       _persist();
+    } finally {
+      _settling = false;
+      _settleSlow?.cancel();
+      if (mounted) {
+        setState(() {
+          _settleShown = false;
+          if (identical(_planJob, job)) _planJob = null;
+        });
+      }
     }
   }
 
@@ -2307,6 +2501,9 @@ class _AppShellState extends State<AppShell>
         _levelUpFrom = _result.beforeLv;
         _levelUpTo = ups.last;
       });
+      // 参考稿 levelUp()：flash(acid .6, 600) + FX.confetti() + shake(10)（L1549）
+      _pulse(color: Ref.acid, a: .6, ms: 600, shakePx: 10);
+      if (!railReduceMotion(context)) _fx.confetti(MediaQuery.sizeOf(context));
       return;
     }
     _finishVerdict();
@@ -2453,6 +2650,7 @@ class _AppShellState extends State<AppShell>
     if (_sysSheetOn) return _BackTarget.sysSheet;
     if (_chatOpen) return _BackTarget.chat;
     if (_moment == Moment.fail) return _BackTarget.fail;
+    if (_moment == Moment.main && _goalChangeOn) return _BackTarget.swap;
     if (_moment == Moment.main && _pickedTask != null) {
       return _BackTarget.drawer;
     }
@@ -2469,7 +2667,9 @@ class _AppShellState extends State<AppShell>
   void _onSystemBack() {
     switch (_popScopeTarget()) {
       case _BackTarget.sheet:
-        setState(() => _llmPaneOn = false);
+        _closeLlmPane();
+      case _BackTarget.swap:
+        _cancelGoalChange();
       case _BackTarget.fail:
         _backToLobbyFromFail(); // 失败页接住了返回键 = 回到大厅
       case _BackTarget.drawer:
@@ -2588,7 +2788,7 @@ class _AppShellState extends State<AppShell>
   /// 每个页面一个色：home acid / main cyan / board gold / exec hot /
   /// archive violet / shop mint。
   Color get _sceneAccent => switch (_moment) {
-    Moment.main => _boardOn ? Ref.gold : Ref.cyan,
+    Moment.main => _boardOn || _goalChangeOn ? Ref.gold : Ref.cyan,
     Moment.dispatch => Ref.gold,
     Moment.exec => Ref.hot,
     Moment.result => Ref.mint,
@@ -2604,7 +2804,9 @@ class _AppShellState extends State<AppShell>
   /// 天幕上那枚 200px 描边大字（参考稿 L1178 的 SC[name].ghost）。
   String get _sceneGhost {
     if (_moment == Moment.boot || _moment == Moment.onboard) return '系统';
-    if (_moment == Moment.main) return _boardOn ? '委托' : '骑行';
+    if (_moment == Moment.main) {
+      return _goalChangeOn ? '换线' : (_boardOn ? '委托' : '骑行');
+    }
     if (_moment == Moment.exec) return '执行';
     if (_moment == Moment.sheet) {
       return switch (_sheetKind) {
@@ -2753,9 +2955,52 @@ class _AppShellState extends State<AppShell>
         'exec': ('任务开始', 'MISSION START', Ref.hot),
         'archive': ('档案', 'ARCHIVE', Ref.violet),
         'shop': ('补给站', 'SUPPLY', Ref.mint),
+        // docs/49：原来没走转场的几处，补成同一套斜切
+        'llm': ('LLM 设置', 'NEURAL LINK', Ref.acid),
+        'swap': ('换目标', 'REWRITE', Ref.gold),
+        'onboard': ('绑定', 'BINDING', Ref.cyan),
+        'resume': ('执行中', 'IN PROGRESS', Ref.hot),
       };
 
+  /// 当前场景在 [_sc] 里的名字（从浮层整页退回原处时，转场写回这一页的名字）
+  String get _sceneKey => switch (_moment) {
+    Moment.main when _goalChangeOn => 'swap',
+    Moment.main when _boardOn => 'board',
+    Moment.main => 'main',
+    Moment.exec => 'resume',
+    Moment.sheet => _sheetKind == SheetKind.supply ? 'shop' : 'archive',
+    Moment.onboard => 'onboard',
+    _ => 'home',
+  };
+
+  /// LLM 设置：斜切推入（docs/49 B1；原来是瞬间挂上）
+  void _openLlmPane() {
+    if (_llmPaneOn) return;
+    FocusScope.of(context).unfocus();
+    unawaited(_go('llm', () => setState(() => _llmPaneOn = true)));
+  }
+
+  /// LLM 设置：斜切退回原来那一页
+  void _closeLlmPane() {
+    if (!_llmPaneOn) return;
+    FocusScope.of(context).unfocus();
+    unawaited(
+      _go(_sceneKey, () => setState(() => _llmPaneOn = false), back: true),
+    );
+  }
+
   bool _going = false;
+
+  /// 程序性换页（拆解完成 / 清档 / 取消）：**必须落地**。
+  /// [_go] 在转场进行中会忽略新请求（防连点），这里改为直接换、不演转场 ——
+  /// 否则「拆解成功但正好撞上一段转场」会把加载卡永远留在屏幕上。
+  Future<void> _goOrNow(String scene, VoidCallback swap, {bool back = false}) {
+    if (_going) {
+      swap();
+      return Future<void>.value();
+    }
+    return _go(scene, swap, back: back);
+  }
 
   /// FX 层的稳定身份：它前面的场景节点随 moment 增减，不给 key 会被重建
   final GlobalKey _fxKey = GlobalKey();
@@ -2893,7 +3138,8 @@ class _AppShellState extends State<AppShell>
   /// 验收取景框里的照片（参考稿 #vdImg = 本单证据）
   Widget? _verdictPhoto() {
     if (_verdictShots.isEmpty) return null;
-    return _evidenceThumb(_verdictShots.first);
+    // 取景框 220×150pt：按 3x 屏解到 720px 宽足够清楚
+    return _evidenceThumb(_verdictShots.first, decodeW: 720);
   }
 
   List<Widget> _evidenceThumbs() {
@@ -2902,35 +3148,64 @@ class _AppShellState extends State<AppShell>
     return <Widget>[for (final EvidenceShot s in shots) _evidenceThumb(s)];
   }
 
-  Widget _evidenceThumb(EvidenceShot s) {
+  /// 证据图读盘缓存（docs/49 E3）：路径 → 字节。
+  /// ⚠️ 原来 `FutureBuilder(future: visionReadBytes(abs))` 在 build 里现建
+  ///    Future —— 执行页的时钟 250ms 重建一次，等于每秒 4 次读盘 + 4 张新字节
+  ///    （MemoryImage 按字节身份做缓存键 → 每次都是一次全新的原图解码）。
+  final Map<String, Future<Uint8List?>> _evidenceBytes =
+      <String, Future<Uint8List?>>{};
+
+  /// [decodeW]：按显示尺寸降采样解码（docs/49 E4）。1200 万像素原图全解是
+  /// ~48MB 位图，塞进 82pt 的证据槽只需要 ~360px。
+  Widget _evidenceThumb(EvidenceShot s, {int decodeW = 360}) {
     if (s.bytes != null) {
-      return Image.memory(s.bytes!, fit: BoxFit.cover);
+      return Image.memory(
+        s.bytes!,
+        fit: BoxFit.cover,
+        cacheWidth: decodeW,
+        gaplessPlayback: true,
+      );
     }
     final String? abs = s.absPath;
     if (abs == null || abs.isEmpty) return const SizedBox.shrink();
-    return FutureBuilder(
-      future: visionReadBytes(abs),
-      builder: (BuildContext context, AsyncSnapshot snap) {
-        final Object? data = snap.data;
+    return FutureBuilder<Uint8List?>(
+      future: _evidenceBytes.putIfAbsent(abs, () => visionReadBytes(abs)),
+      builder: (BuildContext context, AsyncSnapshot<Uint8List?> snap) {
+        final Uint8List? data = snap.data;
         if (data == null) return const SizedBox.shrink();
-        return Image.memory(data as dynamic, fit: BoxFit.cover);
+        return Image.memory(
+          data,
+          fit: BoxFit.cover,
+          cacheWidth: decodeW,
+          gaplessPlayback: true,
+        );
       },
     );
   }
+
+  /// 正在取图 / 视觉校验（docs/49 D4）：证据槽转圈 + 防连点
+  bool _evidenceBusy = false;
 
   /// 证据入槽：走内置 VisionService 管线（相册 → 落盘 → 可选校验）。
   /// 参考稿的执行页只有一个「+」上传口（L754），点它直接开相册。
   Future<void> _addEvidence() async {
     final ActiveQuest? a = _flow.active;
-    if (a == null) return;
+    if (a == null || _evidenceBusy) return;
     if (a.evidence.length >= QuestFlow.kMaxEvidence) return;
-    final EvidenceShot? shot = await VisionService().capture(
-      quest: a.task,
-      source: ImageSource.gallery,
-    );
+    setState(() => _evidenceBusy = true);
+    EvidenceShot? shot;
+    try {
+      shot = await VisionService().capture(
+        quest: a.task,
+        source: ImageSource.gallery,
+      );
+    } finally {
+      if (mounted) setState(() => _evidenceBusy = false);
+    }
     if (shot == null || !mounted) return;
+    unawaited(Sfx.play('success'));
     setState(() {
-      a.evidence.add(shot);
+      a.evidence.add(shot!);
     });
     _persist();
   }
@@ -2940,14 +3215,21 @@ class _AppShellState extends State<AppShell>
   /// 证据图，用来在没有相机 / 无法选图的设备上验证整条验收链路。
   Future<void> _demoEvidence() async {
     final ActiveQuest? a = _flow.active;
-    if (a == null) return;
+    if (a == null || _evidenceBusy) return;
     if (a.evidence.length >= QuestFlow.kMaxEvidence) return;
-    final EvidenceShot? shot = await VisionService().captureDemo(
-      quest: a.task,
-      elapsed: _execReadout().elapsed,
-    );
+    setState(() => _evidenceBusy = true);
+    EvidenceShot? shot;
+    try {
+      shot = await VisionService().captureDemo(
+        quest: a.task,
+        elapsed: _execReadout().elapsed,
+      );
+    } finally {
+      if (mounted) setState(() => _evidenceBusy = false);
+    }
     if (shot == null || !mounted) return;
-    setState(() => a.evidence.add(shot));
+    unawaited(Sfx.play('success'));
+    setState(() => a.evidence.add(shot!));
     _persist();
   }
 
@@ -3015,13 +3297,18 @@ class _AppShellState extends State<AppShell>
   /// 绑定仪式里的「稍后再立」：**不伪造计划**（拆解没有模板兜底），
   /// 只是先放宿主进大厅看看；目标仍是空的，下次唤醒会回到绑定仪式。
   void _skipLlmAndStart() {
-    setState(() {
-      _planError = null;
-      _interviewCat = null;
-      _pendingGoalText = '';
-      _moment = Moment.lobby;
-    });
-    _sayAside('先这样。等你把脑子（Key）配好，再谈拆解。', holdMs: 2800);
+    unawaited(
+      _go('home', () {
+        setState(() {
+          _planError = null;
+          _planJob = null;
+          _interviewCat = null;
+          _pendingGoalText = '';
+          _moment = Moment.lobby;
+        });
+        _sayAside('先这样。等你把脑子（Key）配好，再谈拆解。', holdMs: 2800);
+      }),
+    );
   }
 
   /// 重置存档的确认弹窗（参考稿 #modal L476-480：340 宽 / r22 / 两键 52）。
@@ -3255,9 +3542,13 @@ class _AppShellState extends State<AppShell>
     _flashC.dispose();
     _fx.dispose();
     _ask.dispose();
+    _goalAsk.dispose();
+    _goalAskFocus.dispose();
+    _quitP.dispose();
     _asideDone?.cancel();
     _pokeReset?.cancel();
     _coreMoodReset?.cancel();
+    _settleSlow?.cancel();
     super.dispose();
   }
 }
@@ -3265,150 +3556,53 @@ class _AppShellState extends State<AppShell>
 /// 系统返回键要消费的那一层（docs/39 M-04）。
 ///
 /// 顺序即优先级：失败页 > 牌屉 > 主线；null = 交给系统（退到桌面）。
-enum _BackTarget { fail, drawer, main, sheet, modal, sysSheet, chat }
+enum _BackTarget { fail, drawer, main, sheet, modal, sysSheet, chat, swap }
 
-/// 「换目标」输入幕左上那颗**常驻取消圆**（docs/39 M-24）。
-///
-/// 为什么要有它：原来取消是牌列最右一张「算了，不换」，真机上被 430 屏宽裁掉
-/// 一半（走查图 04/08）；而键盘一弹，整条牌列连布局都不占（`ask_field.dart` 的
-/// 布局纪律 2）—— 取消就彻底消失了，宿主只能硬着头皮换目标。现在它**不依赖
-/// 牌列**：与 × 同一套语言（玻璃圆 + 1px 描边 + PressScale 按下 .94 + tap 音），
-/// 44×44 命中，键盘弹不弹都在。
-///
-/// 位置：top = 安全区下限（math.max(18, padding.top)）+ 14，left 20 —— 与
-/// HUD 的左边距（H-02 的 20）同轴；无刘海机型（padding.top = 0）落在 32，
-/// 有刘海真机落在 `max(18, 59) + 14 = 73`，都在她的脸（10%~30% 屏高）之上。
-class _GoalChangeChrome extends StatefulWidget {
-  const _GoalChangeChrome({required this.visible, required this.onCancel});
+/// 正在等 LLM 的那一件事属于哪一页（加载卡按它分发）
+enum _PlanJobKind {
+  /// 绑定第 0 幕 → 第 1 幕：匹配类别、挑访谈卡
+  interview,
 
-  final bool visible;
-  final VoidCallback onCancel;
+  /// 绑定收卷：拆首目标
+  bind,
 
-  @override
-  State<_GoalChangeChrome> createState() => _GoalChangeChromeState();
+  /// 换目标：拆新主线
+  swap,
+
+  /// 收官结算：拆下一条主线
+  settle,
 }
 
-class _GoalChangeChromeState extends State<_GoalChangeChrome>
-    with SingleTickerProviderStateMixin {
-  /// 进 240ms kOut（§5.3「输入幕 240ms 进」）；出用同一个进度反着走。
-  /// 首帧按 visible 落位：不可见时 0、可见时 1（不补播首屏入场）。
-  late final AnimationController _c = AnimationController(
-    vsync: this,
-    value: widget.visible ? 1 : 0,
-  );
+/// 一次拆解等待（docs/49 D）：加载卡的数据源 + 防连点闸门
+class _PlanJob {
+  _PlanJob(this.kind, this.goal) : at = DateTime.now();
 
-  @override
-  void didUpdateWidget(covariant _GoalChangeChrome old) {
-    super.didUpdateWidget(old);
-    if (old.visible == widget.visible) return;
-    // 减弱动态：直接落终态（§5.5）
-    if (MediaQuery.maybeDisableAnimationsOf(context) ?? false) {
-      _c.value = widget.visible ? 1 : 0;
-      return;
-    }
-    _c.duration = const Duration(milliseconds: 240);
-    if (widget.visible) {
-      _c.forward(from: 0);
-    } else {
-      _c.reverse();
-    }
-  }
+  final _PlanJobKind kind;
+  final String goal;
+  final DateTime at;
 
-  @override
-  void dispose() {
-    _c.dispose();
-    super.dispose();
-  }
+  /// 进行到第几步（[_AppShellState._planStageTo] 推进）
+  int stage = 0;
 
-  @override
-  Widget build(BuildContext context) {
-    // 顶部安全区下限：无刘海 0 → 18，有刘海真机 → max(18, 59) = 59；
-    // 再 +14 才是这颗圆的上缘（不压在状态栏/岛上，也与 HUD 的 20 左边距同轴）
-    final double top = math.max(18, MediaQuery.paddingOf(context).top) + 14;
-    return AnimatedBuilder(
-      animation: _c,
-      builder: (BuildContext _, Widget? child) {
-        // M-24「进 240ms kOut」
-        final double k = kOut.transform(_c.value).clamp(0.0, 1.0);
-        return Positioned(
-          left: 20,
-          right: 20,
-          top: top,
-          child: IgnorePointer(
-            ignoring: k < .01,
-            child: Opacity(
-              opacity: k,
-              child: Transform.translate(
-                offset: Offset(
-                  0,
-                  _c.status == AnimationStatus.reverse
-                      ? 8 *
-                            (1 - k) // 出：往下沉 8
-                      : -8 * (1 - k),
-                ), // 进：从 -8 落到 0
-                child: child,
-              ),
-            ),
-          ),
-        );
-      },
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: <Widget>[
-          SizedBox(
-            width: 44,
-            height: 44,
-            child: PressScale(
-              scale: .94,
-              onTap: () {
-                Sfx.play('tap');
-                widget.onCancel();
-              },
-              // 视觉 44 = 命中 44（44 已达标，§5.6）
-              child: Container(
-                key: const Key('ask.cancel'),
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: const Color(0x99040E20), // rgba(4,14,32,.60)
-                  border: Border.all(color: C.line, width: 1),
-                ),
-                child: Text(
-                  '←',
-                  style: fs(
-                    family: F.cn,
-                    size: 20,
-                    wght: 500,
-                    height: 1,
-                    color: C.ice,
-                  ),
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(width: 10),
-          // 顶部 11pt 上下文行：「换目标 · 旧主线会清空」
-          // （走查图 04：整屏只剩她的腿/牌列/输入条，没有一句"这一下会清掉旧主线"）
-          Flexible(
-            child: Text(
-              '换目标 · 旧主线会清空',
-              key: const Key('ask.context'),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: fs(
-                family: F.cn,
-                size: 11,
-                wght: 500,
-                ls: .8,
-                height: 1,
-                color: C.mist,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+  /// 分段拆解进度（总段数 ≤ 1 = 没分段，不显示）
+  int segDone = 0;
+  int segTotal = 0;
+
+  List<String> get steps => switch (kind) {
+    _PlanJobKind.interview => const <String>['读懂你的目标', '挑出访谈卡'],
+    _ => <String>[
+      '匹配类别与期限',
+      segTotal > 1 ? '拆解任务清单 · $segDone/$segTotal 段并行' : '拆解任务清单',
+      '规则校验',
+    ],
+  };
+
+  String get title => switch (kind) {
+    _PlanJobKind.interview => 'SYSTEM 正在读你的目标',
+    _PlanJobKind.bind => 'SYSTEM 正在排你的三天',
+    _PlanJobKind.swap => 'SYSTEM 正在拆新主线',
+    _PlanJobKind.settle => '收官 · 正在拆下一条主线',
+  };
 }
 
 /// 一条顶部提示（参考稿 L1117-1122 的 toast 队列项）
