@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io' show Platform;
 import 'dart:math';
 
 import 'package:audioplayers/audioplayers.dart';
@@ -26,6 +27,12 @@ class Sfx {
 
   /// 由设置分发设置（false = 完全静音；不碰播放器）
   static bool enabled = true;
+
+  /// `flutter test` 里没有音频插件：一碰播放器就报 MissingPluginException、
+  /// 把测试判红。打字机现在逐字出声（docs/49 A7），几乎每个页面测试都会碰到，
+  /// 所以在总线这一层直接不出声（flutter test 进程带 FLUTTER_TEST 环境变量）。
+  static final bool _underTest =
+      !kIsWeb && Platform.environment.containsKey('FLUTTER_TEST');
 
   /// 全局音量（0~1）。素材里已经按原型叠好相对响度，这里只做总衰减
   static double volume = 1.0;
@@ -90,7 +97,7 @@ class Sfx {
       'audio/detent_3.wav',
       'audio/detent_4.wav',
     ],
-    'stamp': <String>['audio/stamp.wav'], // 落定压印（0.29s，比 seal 轻得多）
+    'stamp': <String>['audio/ref_stamp.wav'], // 落定压印（参考稿 stamp）
     'deal': <String>[
       // 发牌（一次最多 2 声：首张 0 + 末张 4）
       'audio/deal_0.wav',
@@ -108,16 +115,62 @@ class Sfx {
       'audio/count_1.wav',
       'audio/count_2.wav',
     ],
-    'crit': <String>['audio/crit.wav'],
-    'levelup': <String>['audio/levelup.wav'],
-    'fail': <String>['audio/fail.wav'],
+    'crit': <String>['audio/ref_crit.wav'],
+    'levelup': <String>['audio/ref_levelup.wav'],
+    'fail': <String>['audio/ref_fail.wav'],
     // docs/41 §1 Bug ③：`boot.wav` **一直在盘上（85 件里的第 1 件）**，
     // 但 `table` 里从来没有这个 key —— 而 `main.dart` 的唤醒流程每次都在调
     // `Sfx.play('boot')`。于是每次唤醒都是一次**空调用**：`_pick` 返回 null、
     // 静默返回、连 `failCount` 都不加，因此这个漏项从来没被任何统计发现。
-    'boot': <String>['audio/boot.wav'],
+    'boot': <String>['audio/ref_boot.wav'],
     // ── 底噪（可循环，设置页可关；原型 audio.js 的 ambient）──
     'ambient': <String>['audio/ambient_loop.wav'],
+    // ── 参考稿音效（docs/49 A6）：`宿主养成系统_重设计.html` 的 SFX 逐条烘焙 ──
+    // v3 界面全按参考稿重做了，音效也用参考稿这一套。原来这些名字经 [designAlias]
+    // 映射到 opus-v2 的「最接近件」（error→结算砸印、swipe→28ms detent…），听感对不上。
+    // 同名覆盖：stamp / crit / levelup / fail / boot / hold 也换成参考稿版本。
+    'click': <String>['audio/ref_click.wav'],
+    'soft': <String>['audio/ref_soft.wav'],
+    'hover': <String>['audio/ref_hover.wav'],
+    'swipe': <String>['audio/ref_swipe.wav'],
+    'whoosh': <String>['audio/ref_whoosh.wav'],
+    'type': <String>[
+      'audio/ref_type_0.wav',
+      'audio/ref_type_1.wav',
+      'audio/ref_type_2.wav',
+      'audio/ref_type_3.wav',
+    ],
+    'tick': <String>['audio/ref_tick.wav'],
+    'beat': <String>['audio/ref_beat.wav'],
+    'success': <String>['audio/ref_success.wav'],
+    'error': <String>['audio/ref_error.wav'],
+    'coin': <String>['audio/ref_coin.wav'],
+    'buy': <String>['audio/ref_buy.wav'],
+    'unlock': <String>['audio/ref_unlock.wav'],
+    'scan': <String>['audio/ref_scan.wav'],
+    // 戳她：variant = min(连戳数, 8)，越戳越尖（参考稿 boop(p)）
+    'boop': <String>[
+      'audio/ref_boop_0.wav',
+      'audio/ref_boop_1.wav',
+      'audio/ref_boop_2.wav',
+      'audio/ref_boop_3.wav',
+      'audio/ref_boop_4.wav',
+      'audio/ref_boop_5.wav',
+      'audio/ref_boop_6.wav',
+      'audio/ref_boop_7.wav',
+      'audio/ref_boop_8.wav',
+    ],
+    // 按住认输：variant = 进度第几个 1/8（参考稿是一条随进度升调的锯齿）
+    'hold': <String>[
+      'audio/ref_hold_0.wav',
+      'audio/ref_hold_1.wav',
+      'audio/ref_hold_2.wav',
+      'audio/ref_hold_3.wav',
+      'audio/ref_hold_4.wav',
+      'audio/ref_hold_5.wav',
+      'audio/ref_hold_6.wav',
+      'audio/ref_hold_7.wav',
+    ],
   };
 
   /// 逐字音节（打字机每个显形字一发）：`syl_<情绪>_<变体>.wav`
@@ -171,13 +224,21 @@ class Sfx {
   static const Map<String, Duration> _longHold = <String, Duration>{
     "seal": Duration(milliseconds: 1500),
     "impact": Duration(milliseconds: 1500),
-    "boot": Duration(milliseconds: 3900),
-    "levelup": Duration(milliseconds: 1600),
+    "boot": Duration(milliseconds: 1800),
+    "levelup": Duration(milliseconds: 2050),
     "rank": Duration(milliseconds: 1200),
-    "stamp": Duration(milliseconds: 500),
-    "crit": Duration(milliseconds: 900),
-    "fail": Duration(milliseconds: 900),
+    "stamp": Duration(milliseconds: 650),
+    "crit": Duration(milliseconds: 1150),
+    "fail": Duration(milliseconds: 1100),
     "publish": Duration(milliseconds: 700),
+    // 参考稿件（docs/49 A6）：素材时长 + 200ms 余量
+    "whoosh": Duration(milliseconds: 800),
+    "success": Duration(milliseconds: 950),
+    "error": Duration(milliseconds: 580),
+    "coin": Duration(milliseconds: 500),
+    "buy": Duration(milliseconds: 680),
+    "unlock": Duration(milliseconds: 820),
+    "hold": Duration(milliseconds: 480),
   };
 
   /// 这一发最多占着槽位多久
@@ -273,7 +334,7 @@ class Sfx {
   /// 参考稿事件名先经 [designAlias] 映射；[variant] 用于**按档位变调**的事件
   /// （目前只有 `rank`：稀有度 F~S = 0~6），传别的 key 无副作用（越界会被 clamp 到列表内）。
   static Future<void> play(String key, {int? variant, double gain = 1}) async {
-    if (!enabled) return;
+    if (!enabled || _underTest) return;
     if (!table.containsKey(key)) key = designAlias[key] ?? key;
     final String? f = _pick(key, variant);
     if (f == null) return;
@@ -292,23 +353,25 @@ class Sfx {
   /// 有最小间隔 —— 连点/快速拖牌不会变成机关枪。未登记的 cue 名当作
   /// 普通 key 直接播（不吞声）。
   static Future<void> cue(String name, {int? variant}) async {
-    if (!enabled) return;
+    if (!enabled || _underTest) return;
     final SoundRule? r = SoundRule.cues[name];
     if (r == null) return play(name, variant: variant);
     if (r.minGapMs > 0) {
+      // ⚠️ 按**素材**节流，不按 cue 名：按钮按下的 click 与它打开的面板的
+      //    click 是同一声，几毫秒内连发两次只会听成一声「咔哒」变厚。
       final DateTime now = DateTime.now();
-      final DateTime? last = _lastCue[name];
+      final DateTime? last = _lastCue[r.key];
       if (last != null && now.difference(last).inMilliseconds < r.minGapMs) {
         return;
       }
-      _lastCue[name] = now;
+      _lastCue[r.key] = now;
     }
     return play(r.key, variant: variant, gain: r.gain);
   }
 
   /// 打字机逐字音节（[emotion] 取 persona 的 12 情绪；[soft] = 她的低声/旁白）
   static Future<void> syllable(String emotion, {bool soft = false}) async {
-    if (!enabled) return;
+    if (!enabled || _underTest) return;
     final String e = _emotions.contains(emotion) ? emotion : 'neutral';
     final int n = _rnd.nextInt(4);
     await _playFile('audio/syl_${e}_$n.wav', 'syl:$e', soft: soft);
@@ -320,6 +383,7 @@ class Sfx {
 
   /// 开/关环境底噪（原型 `Sound.ambient(level)`；这里是"在/不在"两态）
   static Future<void> ambient(bool on) async {
+    if (_underTest) return;
     if (!enabled || !on) {
       if (_ambientOn) {
         _ambientOn = false;

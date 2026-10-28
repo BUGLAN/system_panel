@@ -190,14 +190,17 @@ function renderLayers(sr, layers, rng, key) {
 /* ══════════════ master 链（audio.js L13-20 的近似） ══════════════
    sfx/vox → lowpass 18k → master gain .9 → DynamicsCompressor(-16dB, ratio 3.5, knee 30dB)
    近似点：压缩器无 lookahead；逐文件独立压缩（原型是全局总线，同时发声才互相压）。 */
-function masterChain(buf, sr) {
+function masterChain(buf, sr, m = {}) {
   if (RAW) return buf;
-  for (let i = 0; i < buf.length; i++) buf[i] *= 0.9;
-  if (18000 < sr * 0.49) {
+  const gain = m.gain != null ? m.gain : 0.9;
+  for (let i = 0; i < buf.length; i++) buf[i] *= gain;
+  if (m.lowpass !== false && 18000 < sr * 0.49) {
     const F = new Biquad('lowpass', 18000, 1, sr);
     for (let i = 0; i < buf.length; i++) buf[i] = F.run(buf[i]);
   }
-  const threshold = -16, knee = 30, ratio = 3.5;
+  const threshold = m.threshold != null ? m.threshold : -16;
+  const knee = 30;
+  const ratio = m.ratio != null ? m.ratio : 3.5;
   const aC = Math.exp(-1 / (0.003 * sr)), rC = Math.exp(-1 / (0.25 * sr));
   let gr = 0, peak = 0;
   for (let i = 0; i < buf.length; i++) {
@@ -295,9 +298,103 @@ const RANK_BASE = [392, 440, 494, 523.3, 587.3, 659.3, 784];
 const RANK_I = 2; // 总线只查 rank.wav → 取中档（原型按稀有度 i 变调变重，见 README 差异表）
 const IGNITE_F = [523.3, 587.3, 659.3, 784, 880, 1046.5, 1174.7, 1318.5]; // audio.js:89（clamp(x|0,0,7)）
 
+/* ══════════════ 参考稿音效（`宿主养成系统_重设计.html` JS L877-929 的 `SFX`）══════════════
+   docs/49 A6：v3 界面全部按参考稿重做了，音效却一直是 opus-v2 那套「找最接近的顶上」
+   （error 顶成结算砸印 impact、swipe 顶成 28ms 的 detent……），听感对不上。这里把参考稿
+   的 tone()/noise()/chord() **逐条转写**：
+     tone({f,f2,t,type,v,at,delay,det})  →  T({f,f2,dur:t,type,vol:v,a:at,at:delay,detune:det})
+     noise({t,v,f,f2,q,type,delay})      →  N({dur:t,vol:v,f,f2,q,type,at:delay})（gain 起点即 v）
+     chord(fs,{step,delay,…})            →  逐音 delay + step·i
+   master 链照参考稿：gain .55 → DynamicsCompressor(threshold −14, ratio 4)，不加 18k 低通。 */
+const REF_MASTER = { gain: 0.55, threshold: -14, ratio: 4, lowpass: false };
+const rt = (o) => T({
+  f: o.f != null ? o.f : 440,
+  f2: o.f2 ? o.f2 : undefined,
+  dur: o.t != null ? o.t : 0.12,
+  type: o.type || 'sine',
+  vol: o.v != null ? o.v : 0.25,
+  a: o.at != null ? o.at : 0.004,
+  at: o.delay || 0,
+  detune: o.det || 0,
+});
+const rn = (o) => N({
+  dur: o.t != null ? o.t : 0.2,
+  vol: o.v != null ? o.v : 0.3,
+  f: o.f != null ? o.f : 1200,
+  f2: o.f2 ? o.f2 : undefined,
+  q: o.q != null ? o.q : 1,
+  type: o.type || 'bandpass',
+  at: o.delay || 0,
+  a: 0.001,
+});
+const rchord = (fs, o = {}) => fs.map((f, i) => rt({ ...o, f, delay: (o.delay || 0) + (o.step || 0) * i }));
+const REF = {
+  click: () => [rt({ f: 720, f2: 1100, t: 0.06, type: 'square', v: 0.06 }), rt({ f: 180, f2: 90, t: 0.08, type: 'triangle', v: 0.22 })],
+  soft: () => [rt({ f: 1400, f2: 1900, t: 0.04, type: 'sine', v: 0.08 })],
+  hover: () => [rt({ f: 2200, t: 0.025, type: 'sine', v: 0.025 })],
+  swipe: () => [rn({ t: 0.12, v: 0.12, f: 3000, f2: 900, q: 0.7 }), rt({ f: 500, f2: 760, t: 0.05, type: 'triangle', v: 0.05 })],
+  whoosh: () => [
+    rn({ t: 0.5, v: 0.4, f: 250, f2: 5000, q: 0.6 }),
+    rt({ f: 140, f2: 50, t: 0.4, type: 'sine', v: 0.25 }),
+    rn({ t: 0.25, v: 0.2, f: 5000, f2: 600, delay: 0.32, q: 0.8 }),
+  ],
+  tick: () => [rt({ f: 2600, t: 0.02, type: 'square', v: 0.03 })],
+  beat: () => [rt({ f: 70, f2: 40, t: 0.18, type: 'sine', v: 0.35 })],
+  success: () => [
+    ...rchord([523, 659, 784, 1047], { t: 0.22, type: 'triangle', v: 0.16, step: 0.07 }),
+    ...rchord([1047, 1319], { t: 0.4, type: 'sine', v: 0.08, delay: 0.28, step: 0.05 }),
+  ],
+  error: () => [rt({ f: 160, f2: 120, t: 0.16, type: 'sawtooth', v: 0.16 }), rt({ f: 118, f2: 80, t: 0.26, type: 'square', v: 0.1, delay: 0.1 })],
+  coin: () => [rt({ f: 988, t: 0.07, type: 'square', v: 0.07 }), rt({ f: 1319, t: 0.22, type: 'square', v: 0.07, delay: 0.065 })],
+  stamp: () => [rt({ f: 110, f2: 38, t: 0.42, type: 'sine', v: 0.7 }), rn({ t: 0.18, v: 0.5, f: 900, type: 'lowpass' }), rt({ f: 55, t: 0.3, type: 'square', v: 0.08 })],
+  unlock: () => [...rchord([784, 988, 1175, 1568, 1976], { t: 0.35, type: 'sine', v: 0.1, step: 0.06 }), rn({ t: 0.6, v: 0.08, f: 8000, type: 'highpass' })],
+  fail: () => [...rchord([392, 330, 262, 196], { t: 0.4, type: 'sawtooth', v: 0.09, step: 0.16 }), rn({ t: 0.8, v: 0.15, f: 600, f2: 120, type: 'lowpass' })],
+  scan: () => [rt({ f: 1800, f2: 2400, t: 0.05, type: 'square', v: 0.03 })],
+};
+REF.buy = () => [
+  ...REF.coin(),
+  ...rchord([660, 880, 1320], { t: 0.18, type: 'triangle', v: 0.12, step: 0.05, delay: 0.15 }),
+  rn({ t: 0.3, v: 0.1, f: 6000, type: 'highpass', delay: 0.15 }),
+];
+REF.crit = () => [
+  rn({ t: 0.6, v: 0.5, f: 400, f2: 8000, q: 0.5 }),
+  rt({ f: 200, f2: 1600, t: 0.45, type: 'sawtooth', v: 0.14 }),
+  ...REF.stamp(),
+  ...rchord([1568, 2093, 2637], { t: 0.5, type: 'sine', v: 0.08, step: 0.04, delay: 0.35 }),
+];
+REF.levelup = () => [
+  ...[523, 659, 784, 1047, 784, 1047, 1319, 1568].map((f, i) => rt({ f, t: 0.2, type: 'square', v: 0.07, delay: i * 0.075 })),
+  ...rchord([523, 659, 784, 1047], { t: 1.2, type: 'triangle', v: 0.1, delay: 0.62 }),
+  rn({ t: 1.2, v: 0.12, f: 7000, type: 'highpass', delay: 0.6 }),
+];
+REF.boot = () => [
+  rt({ f: 60, f2: 180, t: 1.2, type: 'sawtooth', v: 0.08 }),
+  ...rchord([262, 392, 523, 784], { t: 0.9, type: 'triangle', v: 0.1, step: 0.12, delay: 0.3 }),
+  rn({ t: 1, v: 0.15, f: 200, f2: 6000, delay: 0.2 }),
+];
+
 function buildManifest() {
   const M = [];
-  const add = (name, sr, make) => M.push({ name, sr, kind: 'layers', make });
+  const add = (name, sr, make, master) => M.push({ name, sr, kind: 'layers', make, master });
+
+  // ── R 参考稿音效（v3 界面用这一套；docs/49 A6）──
+  for (const [k, make] of Object.entries(REF)) add(`ref_${k}`, 44100, make, REF_MASTER);
+  // type：参考稿每次随机 1100~1600Hz → 烘 4 档变体
+  for (let n = 0; n < 4; n++) {
+    add(`ref_type_${n}`, 44100, () => [rt({ f: 1100 + (n + 0.5) * 125, t: 0.018, type: 'square', v: 0.018 })], REF_MASTER);
+  }
+  // boop(p)：戳她，p = min(连戳数, 8) → 9 档（越戳越尖）
+  for (let p = 0; p <= 8; p++) {
+    add(`ref_boop_${p}`, 44100, () => [
+      rt({ f: 420 + p * 80, f2: 260 + p * 90, t: 0.14, type: 'sine', v: 0.3 }),
+      rt({ f: 840 + p * 160, t: 0.05, type: 'triangle', v: 0.06 }),
+    ], REF_MASTER);
+  }
+  // hold：参考稿是一条**持续**的锯齿（90Hz，按住进度 p → 90+p·420Hz，gain .09）。
+  // 播放器做不了实时变调，烘成 8 档：按住每过 1/8 播下一档（每档 0.26s，与下一档交叠一点）
+  for (let k = 0; k < 8; k++) {
+    add(`ref_hold_${k}`, 44100, () => [rt({ f: 90 + (k / 7) * 420, t: 0.26, type: 'sawtooth', v: 0.09, at: 0.03 })], REF_MASTER);
+  }
 
   // ── A 高频 12 件 ──
   add('tap', 44100, () => [T({ f: 1320, f2: 1080, dur: 0.05, vol: 0.04 })]);
@@ -442,7 +539,7 @@ let total = 0;
 for (const e of selected) {
   const sr = e.sr;
   const rng = makeRng(e.name);
-  const buf = e.kind === 'ambient' ? renderAmbient(sr) : masterChain(renderLayers(sr, e.make(rng), rng, e.name), sr);
+  const buf = e.kind === 'ambient' ? renderAmbient(sr) : masterChain(renderLayers(sr, e.make(rng), rng, e.name), sr, e.master);
   const bytes = writeWav(join(OUT, `${e.name}.wav`), buf, sr, mulberry32(fnv1a(`dither:${e.name}`)));
   const dur = buf.length / sr;
   total += bytes;

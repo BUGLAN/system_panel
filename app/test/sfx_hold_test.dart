@@ -26,14 +26,30 @@ void main() {
     });
 
     test('长音按素材时长给上界，不再被 250ms 腰斩', () {
-      // 素材实测时长（gen_sfx 输出）：seal 1.26s / impact 1.29s / boot 3.65s
+      // 素材实测时长（gen_sfx 输出）：seal 1.26s / impact 1.29s
       expect(Sfx.holdForTest('seal').inMilliseconds, greaterThan(1260));
       expect(Sfx.holdForTest('impact').inMilliseconds, greaterThan(1290));
-      expect(Sfx.holdForTest('boot').inMilliseconds, greaterThan(3650));
-      expect(
-        Sfx.holdForTest('stamp').inMilliseconds,
-        greaterThanOrEqualTo(290),
-      );
+      // docs/49 A6：以下几件换成参考稿版本（ref_*.wav），按新素材时长钉上界
+      for (final (String k, int ms) in <(String, int)>[
+        ('boot', 1570),
+        ('levelup', 1830),
+        ('crit', 940),
+        ('fail', 890),
+        ('success', 740),
+        ('unlock', 610),
+        ('whoosh', 580),
+        ('buy', 460),
+        ('stamp', 430),
+        ('error', 370),
+        ('coin', 295),
+        ('hold', 270),
+      ]) {
+        expect(
+          Sfx.holdForTest(k).inMilliseconds,
+          greaterThan(ms),
+          reason: '$k 素材 ${ms}ms，槽位不能比它先放回池子',
+        );
+      }
     });
 
     test('未登记的 key 回落到默认 250ms（新增短音不必改表）', () {

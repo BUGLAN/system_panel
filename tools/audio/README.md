@@ -7,6 +7,12 @@
 - 烘焙器：`gen_sfx.mjs`（Node ≥ 18，实测 v22.19.0）
 - 实测器：`inspect_wav.mjs`（读回 WAV 头 + 算 peak/RMS/DC/削顶 + 无缝循环接缝 + FFT 主频）
 
+> **2026-10-28 追加（docs/49 A6）**：v3 界面用的是参考稿 `宿主养成系统_重设计.html` 那套音效，
+> 已逐条转写进本脚本（`REF` 表，master 链按参考稿 gain .55 + 压缩 −14dB/4:1），产出 39 件 `ref_*.wav`：
+> `click soft hover swipe whoosh tick beat success error coin buy stamp crit levelup unlock fail boot scan`
+> + `ref_type_0..3` + `ref_boop_0..8` + `ref_hold_0..7`。`sfx.dart` 直接按参考稿音名取这一套。
+> 只重烤这一组：`node tools/audio/gen_sfx.mjs --only $(node tools/audio/gen_sfx.mjs --list | grep ^ref_ | cut -f1 | paste -sd, -)`
+
 ## 用法
 
 ```bash

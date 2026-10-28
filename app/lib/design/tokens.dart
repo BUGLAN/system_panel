@@ -384,15 +384,21 @@ class SoundRule {
   /// 同一 cue 两发之间的最小间隔
   final int minGapMs;
 
+  /// 2026-10-28（docs/49 A6）：全部改指参考稿那套音（`宿主养成系统_重设计.html`
+  /// 的 SFX，已烘进 `ref_*.wav`，参考稿的 master .55 已经烘在素材里 → gain 1）。
+  /// 参考稿的规矩：可点元素**按下那一刻**统一 `click`（开/关面板也就是这一声）；
+  /// 卡轮播换焦点 `swipe`；点侧卡 / 切分页 / 点节点 `soft`。
+  /// 节流按素材算（[Sfx.cue]）：同一声几毫秒内只响一次。
   static const Map<String, SoundRule> cues = <String, SoundRule>{
-    // 过程音（soft + 节流）
-    'ui.tap': SoundRule('tap', gain: .55, minGapMs: 60),
-    'ui.open': SoundRule('choose', gain: .45, minGapMs: 120),
-    'ui.close': SoundRule('detent', gain: .35, minGapMs: 120),
-    'card.focus': SoundRule('detent', gain: .5, minGapMs: 45),
+    // 过程音（节流）
+    'ui.tap': SoundRule('click', minGapMs: 60),
+    'ui.open': SoundRule('click', minGapMs: 120),
+    'ui.close': SoundRule('click', minGapMs: 120),
+    'ui.soft': SoundRule('soft', minGapMs: 45),
+    'card.focus': SoundRule('swipe', minGapMs: 70),
     'card.lift': SoundRule('deal', gain: .4, minGapMs: 90),
-    'card.deny': SoundRule('detent', gain: .6, minGapMs: 160),
-    'stage.touch': SoundRule('poke', gain: .8, minGapMs: 180),
+    'card.deny': SoundRule('tick', minGapMs: 160),
+    'stage.touch': SoundRule('boop', gain: .8, minGapMs: 180),
     // 落定音（满音量）
     'card.commit': SoundRule('stamp'),
     'reward.seal': SoundRule('seal'),
