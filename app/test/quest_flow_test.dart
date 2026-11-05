@@ -1162,9 +1162,64 @@ void main() {
       expect(f.active!.verifiedCount, 1);
       expect(f.active!.unverifiedCount, 1);
       expect(f.critChance(), closeTo(.06 + .07 + .04, 1e-9));
-      // 存疑按未校验计（exec_panel 同口径）
-      expect(f.addEvidence(shot('c', EvidenceStatus.suspect)), isTrue);
+      // 拿不准（存疑）照收、按未校验计（exec_panel 同口径）
+      expect(f.addEvidence(shot('c', EvidenceStatus.unsure)), isTrue);
+      expect(f.active!.unsureCount, 1);
       expect(f.critChance(), closeTo(.06 + .07 + .04 + .04, 1e-9));
+    });
+
+    test('C4：判定不符的证据 addEvidence 直接拒（不入槽、不计暴击）', () {
+      final QuestFlow f = freshFlow();
+      f.accept(eQuest);
+      expect(f.addEvidence(shot('m', EvidenceStatus.mismatch)), isFalse);
+      expect(f.active!.photos, 0);
+      expect(f.critChance(), closeTo(.06, 1e-9));
+    });
+
+    test('C4 + C7：后台结论落槽 —— 不符撤掉，拿不准 / 断网未校验照收', () {
+      final QuestFlow f = freshFlow();
+      f.accept(eQuest);
+      f.addEvidence(shot('a', EvidenceStatus.unverified)); // 入槽时都是未校验
+      f.addEvidence(shot('b', EvidenceStatus.unverified));
+      f.addEvidence(shot('c', EvidenceStatus.unverified));
+
+      expect(
+        f.applyVerdict('a', const VisionVerdict.mismatch('这是一束花')),
+        EvidenceApply.rejected,
+      );
+      expect(
+        f.applyVerdict('b', const VisionVerdict.unsure('太糊')),
+        EvidenceApply.kept,
+      );
+      expect(
+        f.applyVerdict('c', const VisionVerdict.unverified('校验失败：网络不可达')),
+        EvidenceApply.kept,
+      );
+      expect(
+        f.active!.evidence.map((EvidenceShot s) => s.id).toList(),
+        <String>['b', 'c'],
+      );
+      expect(f.active!.evidence.first.status, EvidenceStatus.unsure);
+      expect(f.active!.evidence.first.note, '太糊');
+      expect(f.critChance(), closeTo(.06 + .04 + .04, 1e-9));
+
+      // 已撤掉 / 不存在的 id → gone，什么都不动
+      expect(
+        f.applyVerdict('a', const VisionVerdict.verified('')),
+        EvidenceApply.gone,
+      );
+      expect(f.active!.photos, 2);
+    });
+
+    test('C7：那单结算后才回来的结论 → gone', () async {
+      final QuestFlow f = freshFlow();
+      f.accept(eQuest);
+      f.addEvidence(shot('a', EvidenceStatus.unverified));
+      await f.settle(forceCrit: false);
+      expect(
+        f.applyVerdict('a', const VisionVerdict.mismatch('晚了')),
+        EvidenceApply.gone,
+      );
     });
 
     test('settle 用的 chance 就是证据联动口径（进 QuestResult!.chance）', () async {

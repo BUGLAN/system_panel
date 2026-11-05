@@ -38,6 +38,7 @@ import 'state/plan_failure.dart';
 import 'design/fidelity.dart';
 import 'state/app_clock.dart';
 import 'state/away.dart';
+import 'state/evidence_checks.dart';
 import 'state/haptics.dart';
 import 'state/sfx.dart';
 import 'state/voice.dart';
@@ -1001,7 +1002,11 @@ class _AppShellState extends State<AppShell>
     //    说完就 hide 了，所以大部分时候是「关着的」。我们的演示档让页面字幕常驻，
     //    所以改成「她没有正在插话」（见 BEHAVIOR-GAPS.md D 组）
     // 超时判负（原型 Exec.tick() 末尾： >= lim → App.fail('timeout')）
-    if (_moment == Moment.exec && _execReadout().timedOut) {
+    // C7：已经点了提交（在等证据校验 / 结算中）—— 交单算在超时之前，不判负
+    if (_moment == Moment.exec &&
+        !_evidenceWaiting &&
+        !_settling &&
+        _execReadout().timedOut) {
       _beginFail(how: 'timeout');
       return;
     }
@@ -1339,13 +1344,16 @@ class _AppShellState extends State<AppShell>
                             ),
                             evidenceThumbs: _evidenceThumbs(),
                             evidenceBusy: _evidenceBusy,
+                            evidenceChecking: _evidenceChecking(),
+                            submitWaiting: _evidenceWaiting,
                             onAddEvidence: _addEvidence,
                             // A17（docs/50）：演示截图是开发验证用，release 不给
                             onDemoEvidence: kDebugMode ? _demoEvidence : null,
                             onRemoveEvidence: _removeEvidence,
                             onSubmit: () => unawaited(_submitQuest()),
                             onQuit: () {
-                              if (_busy) return;
+                              // C7：交单在等证据校验时不许认输（结算马上要接手这单）
+                              if (_busy || _evidenceWaiting) return;
                               setState(() {
                                 _drawerOn = false;
                                 _active = false;
@@ -1356,6 +1364,7 @@ class _AppShellState extends State<AppShell>
                             onItems: () =>
                                 setState(() => _drawerOn = !_drawerOn),
                             onCollapse: () {
+                              if (_evidenceWaiting) return; // C7：交单等校验中
                               _toast('任务在后台继续计时。她还在看着。');
                               _go(
                                 'home',
@@ -2421,7 +2430,26 @@ class _AppShellState extends State<AppShell>
   bool _settleShown = false;
 
   Future<void> _submitQuest() async {
-    if (_busy || _settling) return; // 原型 `App.submit()` → `run()`
+    // 原型 `App.submit()` → `run()`；_evidenceWaiting = 已在等校验（防连点）
+    if (_busy || _settling || _evidenceWaiting) return;
+    // C7（docs/50 定案）：证据在后台校验，交单时先等本单还在途的校验出结果
+    // （上限 20s，等不到的照收、按未校验计）。不符的会在这期间被撤出槽位。
+    final ActiveQuest? waitFor = _flow.active;
+    if (waitFor != null) {
+      final List<String> ids = <String>[
+        for (final EvidenceShot s in waitFor.evidence) s.id,
+      ];
+      if (_evChecks.anyChecking(ids)) {
+        setState(() => _evidenceWaiting = true);
+        try {
+          await _evChecks.waitFor(ids);
+        } finally {
+          if (mounted) setState(() => _evidenceWaiting = false);
+        }
+        // 等的这段时间那单没了（不该发生：认输/收起都被挡住了）→ 不结算
+        if (!mounted || !identical(_flow.active, waitFor)) return;
+      }
+    }
     // 参考稿 JS L1469-1471：**没有证据她不收**。原来这里直接进结算，
     // 等于允许空手交差（真机实测：点提交就结算，证据槽还是三个「+」）。
     if ((_flow.active?.evidence ?? const <EvidenceShot>[]).isEmpty) {
@@ -2720,6 +2748,7 @@ class _AppShellState extends State<AppShell>
           ),
         );
       case Moment.exec:
+        if (_evidenceWaiting) break; // C7：交单等校验中，返回键不收起
         _toast('任务在后台继续计时。她还在看着。');
         unawaited(
           _go(
@@ -3191,24 +3220,41 @@ class _AppShellState extends State<AppShell>
     );
   }
 
-  /// 正在取图 / 视觉校验：证据槽转圈 + 防连点
+  /// 正在取图（选好图 → 读盘落盘 → 入槽之间）：下一个空槽转圈 + 防连点
   bool _evidenceBusy = false;
 
   /// 相册开着（还没选图）：只用来防连点，不驱动 UI
   bool _evidencePicking = false;
 
-  /// 证据入槽：走内置 VisionService 管线（相册 → 落盘 → 可选校验）。
+  /// C7：证据后台校验的在途表（按证据 id；槽位「校验中」与交单等待都读它）
+  final EvidenceChecks _evChecks = EvidenceChecks();
+
+  /// C7：点了「提交任务」、正在等在途校验 —— 主键转圈 + 防连点
+  bool _evidenceWaiting = false;
+
+  /// 与 [_evidenceThumbs] 对齐的「这一槽还在校验」
+  List<bool> _evidenceChecking() {
+    final List<EvidenceShot> shots =
+        _flow.active?.evidence ?? const <EvidenceShot>[];
+    return <bool>[
+      for (final EvidenceShot s in shots) _evChecks.isChecking(s.id),
+    ];
+  }
+
+  /// 证据入槽：走内置 VisionService 管线（相册 → 落盘 → 入槽 → 后台校验）。
   /// 参考稿的执行页只有一个「+」上传口（L754），点它直接开相册。
   Future<void> _addEvidence() async {
     final ActiveQuest? a = _flow.active;
-    if (a == null || _evidenceBusy || _evidencePicking) return;
+    if (a == null || _evidenceBusy || _evidencePicking || _evidenceWaiting) {
+      return;
+    }
     if (a.evidence.length >= QuestFlow.kMaxEvidence) return;
-    // A15（docs/50）：相册开着时只挡连点，不显示「校验中」；
-    // 选好图（onPicked）之后才转圈。
+    // A15（docs/50）：相册开着时只挡连点，不转圈；选好图（onPicked）之后
+    // 到入槽前那一下才转圈。C7：入槽后不再等 LLM，校验挪到后台。
     _evidencePicking = true;
     EvidenceShot? shot;
     try {
-      shot = await VisionService().capture(
+      shot = await VisionService().pick(
         quest: a.task,
         source: ImageSource.gallery,
         onPicked: () {
@@ -3220,24 +3266,21 @@ class _AppShellState extends State<AppShell>
       if (mounted) setState(() => _evidenceBusy = false);
     }
     if (shot == null || !mounted) return;
-    unawaited(Sfx.play('success'));
-    setState(() {
-      a.evidence.add(shot!);
-    });
-    _persist();
+    _admitEvidence(a, shot);
   }
 
   /// 参考稿 JS L1425-1440 的 `demoShot()`：**不是 mock 数据**，而是把本次
   /// 执行的真实读数（用时 / 目标时长 / 任务名）画成一张「骑行记录」样式的
   /// 证据图，用来在没有相机 / 无法选图的设备上验证整条验收链路。
+  /// C7：与相册同一条路 —— 先入槽、后台校验、不符拒收、交单等结果。
   Future<void> _demoEvidence() async {
     final ActiveQuest? a = _flow.active;
-    if (a == null || _evidenceBusy) return;
+    if (a == null || _evidenceBusy || _evidenceWaiting) return;
     if (a.evidence.length >= QuestFlow.kMaxEvidence) return;
     setState(() => _evidenceBusy = true);
     EvidenceShot? shot;
     try {
-      shot = await VisionService().captureDemo(
+      shot = await VisionService().pickDemo(
         quest: a.task,
         elapsed: _execReadout().elapsed,
       );
@@ -3245,9 +3288,41 @@ class _AppShellState extends State<AppShell>
       if (mounted) setState(() => _evidenceBusy = false);
     }
     if (shot == null || !mounted) return;
+    _admitEvidence(a, shot);
+  }
+
+  /// C7：图先入槽（缩略图 +「校验中」），校验在后台跑；结论回来交给
+  /// [_onEvidenceVerdict]。入槽时状态是「未校验」—— 这时杀进程，存档里
+  /// 它就按「没校验成 = 照收」留着，与兜底铁律同口径。
+  void _admitEvidence(ActiveQuest a, EvidenceShot shot) {
+    // 取图期间那单可能已经没了（认输 / 超时）或被换掉
+    if (!identical(_flow.active, a)) return;
+    if (!_flow.addEvidence(shot)) return; // 满 3 张
+    _evChecks.start(
+      shot.id,
+      VisionService().verifyShot(quest: a.task, shot: shot),
+      (VisionVerdict v) => _onEvidenceVerdict(shot.id, v),
+    );
     unawaited(Sfx.play('success'));
-    setState(() => a.evidence.add(shot!));
+    setState(() {});
     _persist();
+  }
+
+  /// C4（docs/50 定案）：判定不符 → 撤出槽位 + 她说明原因、要求重传；
+  /// 拿不准 / 没校验成 → 照收（就地换状态）。槽已不在（撤了 / 那单结束）→ 不吭声。
+  void _onEvidenceVerdict(String id, VisionVerdict v) {
+    if (!mounted) return;
+    final EvidenceApply r = _flow.applyVerdict(id, v);
+    if (r == EvidenceApply.gone) return;
+    setState(() {});
+    _persist();
+    if (r == EvidenceApply.rejected) {
+      unawaited(Sfx.play('fail'));
+      unawaited(Haptics.buzz('fail'));
+      final String why = v.note.isEmpty ? '这张和任务对不上' : v.note;
+      _toast('这张我不收：$why。重传一张。', bad: true);
+      _sayAside('拿这个糊弄我？$why。[重传]。', holdMs: 3200);
+    }
   }
 
   void _removeEvidence(int i) {

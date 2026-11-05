@@ -32,7 +32,12 @@ import 'settings_store.dart';
 ///
 ///  链路：拍照/选图（picker 侧压到 ≤1280px JPEG q80）→ base64
 ///    → OpenAI 兼容 /chat/completions 多模态 → {"match":…,"note":"≤40字"}
-///    → 证据标记（已校验 ✓ / 存疑+note / 未校验）→ 暴击率联动 7%/4%。
+///    → 证据标记（已校验 ✓ / 存疑+note / 不符+note / 未校验）→ 暴击率联动 7%/4%。
+///
+///  **C4 定案（docs/50，2026-11-05）**：LLM 判定**不符**（match=false）→ 拒收，
+///  不入槽、她说明原因、要求重传；**拿不准**（unsure）与**没校验成**照收。
+///  **C7 定案**：选好图先入槽，校验在后台跑（[VisionService.pick] +
+///  [VisionService.verifyShot]），提交时等在途校验出结果。
 ///
 ///  **兜底铁律**：无 Key / 断网 / 超时 / 坏 JSON 四情形一律
 ///  「证据照收、标未校验、按未校验加成计」——校验失败永不阻塞提交，
@@ -46,16 +51,36 @@ enum EvidenceStatus {
   /// LLM 判定证据可信（match=true）
   verified,
 
-  /// LLM 判定不可信/拿不准（match=false|unsure），附 note
-  suspect,
+  /// LLM 拿不准（match=unsure：看不清/像翻拍），附 note —— **照收**，按未校验计
+  unsure,
+
+  /// LLM 判定不符（match=false），附 note —— **拒收**：不入槽，要求重传
+  mismatch,
 }
 
 extension EvidenceStatusX on EvidenceStatus {
   /// 槽位角标文案
   String get badge => switch (this) {
     EvidenceStatus.verified => '✓',
-    EvidenceStatus.suspect => '存疑',
+    EvidenceStatus.unsure => '存疑',
+    EvidenceStatus.mismatch => '不符',
     EvidenceStatus.unverified => '未校验',
+  };
+
+  /// 收不收（C4 定案：只有「不符」拒收；拿不准 / 没校验成都照收）
+  bool get accepted => this != EvidenceStatus.mismatch;
+
+  /// 存档里的状态名 → 枚举。旧档的 `suspect`（拆分前 match=false 与 unsure
+  /// 共用的一态）映射成 [EvidenceStatus.unsure]：那张图当时已经被收下、按
+  /// 未校验计了暴击，而旧档分不清它是「不符」还是「拿不准」—— 事后拒收会把
+  /// 宿主执行中那单的证据凭空删掉，所以按「照收」那一档读回，口径与拆分前一致。
+  /// 认不出的名字一律 [EvidenceStatus.unverified]（没校验成 = 照收）。
+  static EvidenceStatus parse(Object? name) => switch (name) {
+    'suspect' => EvidenceStatus.unsure,
+    _ => EvidenceStatus.values.firstWhere(
+      (EvidenceStatus s) => s.name == name,
+      orElse: () => EvidenceStatus.unverified,
+    ),
   };
 }
 
@@ -85,6 +110,17 @@ class EvidenceShot {
   final String note;
   final DateTime takenAt;
 
+  /// 后台校验回来后就地换状态（其余字段原样，id 不变 —— 槽位按 id 找它）
+  EvidenceShot withVerdict(VisionVerdict v) => EvidenceShot(
+    id: id,
+    path: path,
+    absPath: absPath,
+    bytes: bytes,
+    status: v.status,
+    note: v.note,
+    takenAt: takenAt,
+  );
+
   Map<String, dynamic> toJson() => <String, dynamic>{
     'id': id,
     'path': path,
@@ -96,10 +132,7 @@ class EvidenceShot {
   factory EvidenceShot.fromJson(Map<String, dynamic> json) => EvidenceShot(
     id: '${json['id'] ?? ''}',
     path: '${json['path'] ?? ''}',
-    status: EvidenceStatus.values.firstWhere(
-      (EvidenceStatus s) => s.name == json['status'],
-      orElse: () => EvidenceStatus.unverified,
-    ),
+    status: EvidenceStatusX.parse(json['status']),
     note: '${json['note'] ?? ''}',
     takenAt: DateTime.tryParse('${json['takenAt'] ?? ''}') ?? DateTime.now(),
   );
@@ -112,22 +145,29 @@ class VisionVerdict {
     : this(EvidenceStatus.unverified, note);
   const VisionVerdict.verified(String note)
     : this(EvidenceStatus.verified, note);
-  const VisionVerdict.suspect(String note) : this(EvidenceStatus.suspect, note);
+  const VisionVerdict.unsure(String note) : this(EvidenceStatus.unsure, note);
+  const VisionVerdict.mismatch(String note)
+    : this(EvidenceStatus.mismatch, note);
 
   final EvidenceStatus status;
   final String note;
 }
 
-/// 证据 → 暴击率联动：已校验每张 +7%、未校验每张 +4%
-/// （替代原型 `.06/张`）。执行页最多 3 张，实际封顶由 [critChance] 兜住。
-double evidenceCritBonus({required int verified, required int unverified}) =>
-    verified * .07 + unverified * .04;
+/// 证据 → 暴击率联动：已校验每张 +7%、未校验 / 拿不准每张 +4%
+/// （替代原型 `.06/张`）。「不符」被拒收、根本不在槽里，不计（0%）。
+/// 执行页最多 3 张，实际封顶由 [critChance] 兜住。
+double evidenceCritBonus({
+  required int verified,
+  required int unverified,
+  int unsure = 0,
+}) => verified * .07 + (unverified + unsure) * .04;
 
 /// 暴击率总公式（原型 store.js critChance 的证据联动升级版）：
 /// `min(.85, .06 + 已校验×7% + 未校验×4% + min(10,连击)×1% + 暴击芯片 25%)`
 double critChance({
   int verified = 0,
   int unverified = 0,
+  int unsure = 0,
   int streak = 0,
   bool critItem = false,
   double base = .06,
@@ -135,6 +175,7 @@ double critChance({
   final double bonus = evidenceCritBonus(
     verified: verified,
     unverified: unverified,
+    unsure: unsure,
   );
   final double streakBonus = streak.clamp(0, 10) * .01;
   return math.min(.85, base + bonus + streakBonus + (critItem ? .25 : 0));
@@ -197,14 +238,53 @@ class VisionService {
 
   /// 拍照/选图 → 落盘 → 视觉校验 → 证据。用户取消或读图失败返回 null。
   ///
-  /// 压缩在 picker 侧完成（maxWidth/maxHeight 1280 + JPEG q80），
+  /// = [pick] + [verifyShot] 串起来等完（同步口径，测试与旧调用点用）。
+  /// 执行页走 C7 的异步口径：先 [pick] 入槽，再在后台跑 [verifyShot]。
   /// 任何一步失败都不抛异常：落盘失败降级「已丢失」，校验失败标「未校验」。
   Future<EvidenceShot?> capture({
     required Quest quest,
     ImageSource source = ImageSource.camera,
     AgentSettings? settings,
 
-    /// 宿主真的选好了图（取消则不调）—— UI 从这一刻起才显示「校验中」
+    /// 宿主真的选好了图（取消则不调）
+    void Function()? onPicked,
+  }) async {
+    final EvidenceShot? shot = await pick(
+      quest: quest,
+      source: source,
+      onPicked: onPicked,
+    );
+    if (shot == null) return null;
+    return shot.withVerdict(
+      await verifyShot(quest: quest, shot: shot, settings: settings),
+    );
+  }
+
+  /// 参考稿 JS L1425-1440 的 `demoShot()`：把**本次执行的真实读数**画成一张
+  /// 证据图（用时 / 目标时长 / 任务名），用来在没有相机的设备上验证验收链路。
+  ///
+  /// ⚠️ 这不是 mock 结算：画进去的是执行页上的真实 elapsed 与真实任务名，
+  ///    落盘、进证据槽、参与暴击率计算、进结算，全部走与拍照完全相同的那条路。
+  Future<EvidenceShot?> captureDemo({
+    required Quest quest,
+    required Duration elapsed,
+    AgentSettings? settings,
+  }) async {
+    final EvidenceShot? shot = await pickDemo(quest: quest, elapsed: elapsed);
+    if (shot == null) return null;
+    return shot.withVerdict(
+      await verifyShot(quest: quest, shot: shot, settings: settings),
+    );
+  }
+
+  /// C7 第一步：拍照/选图 → 落盘 → 一张**还没校验**的证据（[EvidenceStatus.unverified]）。
+  /// 用户取消或读图失败返回 null。压缩在 picker 侧完成（≤1280px + JPEG q80）。
+  /// 选好图到入槽只隔一次读盘 + 写盘，不等 LLM。
+  Future<EvidenceShot?> pick({
+    required Quest quest,
+    ImageSource source = ImageSource.camera,
+
+    /// 宿主真的选好了图（取消则不调）
     void Function()? onPicked,
   }) async {
     final XFile? xf;
@@ -227,50 +307,13 @@ class VisionService {
     } catch (_) {
       return null;
     }
-
-    final AgentSettings s = settings ?? await _settings.load();
-
-    // 落盘：App 文档目录 evidence/<quest>/…；存档只存相对路径
-    String rel = '';
-    String? abs;
-    try {
-      final String docs = await _docsPath();
-      final String name =
-          'q${quest.serial}-${DateTime.now().millisecondsSinceEpoch}.jpg';
-      rel = 'evidence/q${quest.serial}/$name';
-      if (docs.isNotEmpty) {
-        abs = docs + visionPathSeparator + rel;
-        await _writeBytes(abs, bytes);
-      }
-    } catch (_) {
-      abs = null; // 照片留不住：证据计数照旧，缩略图降级
-    }
-
-    final VisionVerdict v = await verify(
-      quest: quest,
-      base64Images: <String>[base64Encode(bytes)],
-      settings: s,
-    );
-    return EvidenceShot(
-      id: 'q${quest.serial}-${DateTime.now().microsecondsSinceEpoch}',
-      path: rel,
-      absPath: abs,
-      bytes: bytes,
-      status: v.status,
-      note: v.note,
-      takenAt: DateTime.now(),
-    );
+    return _store(quest, bytes);
   }
 
-  /// 参考稿 JS L1425-1440 的 `demoShot()`：把**本次执行的真实读数**画成一张
-  /// 证据图（用时 / 目标时长 / 任务名），用来在没有相机的设备上验证验收链路。
-  ///
-  /// ⚠️ 这不是 mock 结算：画进去的是执行页上的真实 elapsed 与真实任务名，
-  ///    落盘、进证据槽、参与暴击率计算、进结算，全部走与拍照完全相同的那条路。
-  Future<EvidenceShot?> captureDemo({
+  /// [captureDemo] 的第一步（同 [pick]）：画演示图 → 落盘 → 未校验证据
+  Future<EvidenceShot?> pickDemo({
     required Quest quest,
     required Duration elapsed,
-    AgentSettings? settings,
   }) async {
     final Uint8List bytes;
     try {
@@ -278,14 +321,44 @@ class VisionService {
     } catch (_) {
       return null;
     }
-    final AgentSettings s = settings ?? await _settings.load();
+    return _store(quest, bytes, tag: 'demo-');
+  }
 
+  /// C7 第二步：给一张已入槽的证据跑视觉校验。不抛异常（四情形兜底 →
+  /// 「未校验」）；会话里没有字节（不该发生）也按「未校验」照收。
+  Future<VisionVerdict> verifyShot({
+    required Quest quest,
+    required EvidenceShot shot,
+    AgentSettings? settings,
+  }) async {
+    final Uint8List? bytes = shot.bytes;
+    if (bytes == null || bytes.isEmpty) {
+      return const VisionVerdict.unverified('读不到图');
+    }
+    try {
+      return await verify(
+        quest: quest,
+        base64Images: <String>[base64Encode(bytes)],
+        settings: settings,
+      );
+    } catch (_) {
+      return const VisionVerdict.unverified('校验失败');
+    }
+  }
+
+  /// 落盘：App 文档目录 `evidence/q<serial>/…`；存档只存相对路径。
+  /// 落盘失败不抛：照片留不住，证据计数照旧，缩略图降级。
+  Future<EvidenceShot> _store(
+    Quest quest,
+    Uint8List bytes, {
+    String tag = '',
+  }) async {
     String rel = '';
     String? abs;
     try {
       final String docs = await _docsPath();
       final String name =
-          'q${quest.serial}-demo-${DateTime.now().millisecondsSinceEpoch}.jpg';
+          'q${quest.serial}-$tag${DateTime.now().millisecondsSinceEpoch}.jpg';
       rel = 'evidence/q${quest.serial}/$name';
       if (docs.isNotEmpty) {
         abs = docs + visionPathSeparator + rel;
@@ -294,19 +367,12 @@ class VisionService {
     } catch (_) {
       abs = null;
     }
-
-    final VisionVerdict v = await verify(
-      quest: quest,
-      base64Images: <String>[base64Encode(bytes)],
-      settings: s,
-    );
     return EvidenceShot(
-      id: 'q${quest.serial}-demo-${DateTime.now().microsecondsSinceEpoch}',
+      id: 'q${quest.serial}-$tag${DateTime.now().microsecondsSinceEpoch}',
       path: rel,
       absPath: abs,
       bytes: bytes,
-      status: v.status,
-      note: v.note,
+      status: EvidenceStatus.unverified,
       takenAt: DateTime.now(),
     );
   }
@@ -465,8 +531,11 @@ class VisionService {
       if (match == true) {
         return VisionVerdict.verified(note);
       }
-      if (match == false || match == 'false' || match == 'unsure') {
-        return VisionVerdict.suspect(note.isEmpty ? '证据存疑' : note);
+      if (match == false || match == 'false') {
+        return VisionVerdict.mismatch(note.isEmpty ? '证据和任务对不上' : note);
+      }
+      if (match == 'unsure') {
+        return VisionVerdict.unsure(note.isEmpty ? '证据存疑' : note);
       }
       return const VisionVerdict.unverified('match 字段无法识别');
     } catch (_) {
