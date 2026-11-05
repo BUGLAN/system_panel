@@ -67,6 +67,7 @@ class TaskSpec {
     required this.proof,
     required this.minutes,
     required this.rank,
+    this.timed = true,
   });
 
   final String short;
@@ -74,6 +75,9 @@ class TaskSpec {
   final String proof;
   final int minutes;
   final String rank;
+
+  /// 计时单（true，默认）/ 打卡单（false）—— `set_plan` 的 `mode`
+  final bool timed;
 }
 
 /// 日常任务模板（原型 `CATS.daily` / `DAILY_COMMON`）——
@@ -1457,6 +1461,7 @@ List<PlanTask> buildPlanTasks({
       attrs: QuestFlow.splitAttrs(cat.tilt, Rarity.of(tasks[i].rank).pt),
       // 首目标不摆兑现门；其余末张 = 兑现单
       finalTask: !firstGoal && i == tasks.length - 1,
+      timed: tasks[i].timed,
     ),
 ];
 

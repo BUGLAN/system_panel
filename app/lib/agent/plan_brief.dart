@@ -101,6 +101,14 @@ class PlanBrief {
       ..writeln(
         seg == null || seg.last ? '兑现单（最后一张）时限必须 ≥ $kPlanFinalMinutes 分钟。' : '',
       );
+    // 计时 / 打卡（docs/50 C3）：全天类动作配倒计时会逼他「5 分钟内上秤」
+    b
+      ..writeln(
+        '每张标 mode：一天内分散完成、或瞬间就能完成的动作'
+        '（称重、拍三餐、量腰围、早睡打卡）标 "checkin"（打卡：不计时、随时传证据提交）；'
+        '需要连续投入一段时间的（跑步、练琴、刷题）标 "timed"（计时）。',
+      )
+      ..writeln('打卡单的 minutes 照样填预计耗时（同样不许超档位上限），只作参考、不倒计时。');
     b
       ..writeln()
       ..writeln(

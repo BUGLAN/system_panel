@@ -138,6 +138,7 @@ class QuestFlowAdapter implements AgentContext {
       rank: newRank,
       attrs: newAttrs,
       hinted: head.hinted,
+      timed: head.timed,
     );
     // 队列手术后的读数对齐——main 直接做队列手术时同款动作（见 main.dart）
     f.host = f.host.copyWith(queue: f.queue.length);

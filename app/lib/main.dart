@@ -1001,7 +1001,8 @@ class _AppShellState extends State<AppShell>
     //    说完就 hide 了，所以大部分时候是「关着的」。我们的演示档让页面字幕常驻，
     //    所以改成「她没有正在插话」（见 BEHAVIOR-GAPS.md D 组）
     // 超时判负（原型 Exec.tick() 末尾： >= lim → App.fail('timeout')）
-    if (_moment == Moment.exec && _execReadout().timedOut) {
+    // 打卡单不计时，永不超时（docs/50 C3）
+    if (_moment == Moment.exec && _execQuest.timed && _execReadout().timedOut) {
       _beginFail(how: 'timeout');
       return;
     }
@@ -1027,7 +1028,9 @@ class _AppShellState extends State<AppShell>
         _chatter.resetExec(up);
         final ExecReadout r = _execReadout();
         _sayAside(
-          r.remaining.inMinutes < 3 && !r.remaining.isNegative
+          _execQuest.timed &&
+                  r.remaining.inMinutes < 3 &&
+                  !r.remaining.isNegative
               ? LINES.execNear.replaceFirst('[[{t}]]', fmtDur(r.remaining))
               : LINES.exec.first,
           holdMs: 2600,
@@ -1356,7 +1359,11 @@ class _AppShellState extends State<AppShell>
                             onItems: () =>
                                 setState(() => _drawerOn = !_drawerOn),
                             onCollapse: () {
-                              _toast('任务在后台继续计时。她还在看着。');
+                              _toast(
+                                _execQuest.timed
+                                    ? '任务在后台继续计时。她还在看着。'
+                                    : '打卡单不计时。做完随时回来交。',
+                              );
                               _go(
                                 'home',
                                 () => setState(() {
@@ -3094,15 +3101,9 @@ class _AppShellState extends State<AppShell>
     _ => '全属性成长潜力 +1。「继续。我在看。」',
   };
 
-  /// 验收评级（参考稿 JS L1490）：时长比 ≥1 = A，≥.5 = B，否则 C；
-  /// 暴击且 A → S。
-  String _verdictRank(QuestResult r) {
-    final int limit = r.quest.minutes * 60;
-    final double ratio = limit <= 0 ? 1 : r.held.inSeconds / limit;
-    String rank = ratio >= 1 ? 'A' : (ratio >= .5 ? 'B' : 'C');
-    if (r.crit && rank == 'A') rank = 'S';
-    return rank;
-  }
+  /// 验收评级（参考稿 JS L1490）：计时单看时长比、打卡单看证据是否齐全；
+  /// 暴击且 A → S。口径唯一真源 = [QuestResult.grade]。
+  String _verdictRank(QuestResult r) => r.grade;
 
   /// .vline：她的验收评语（参考稿 JS L1519 四档 + 暴击）
   String _verdictLine(QuestResult r) {

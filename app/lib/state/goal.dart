@@ -48,6 +48,7 @@ class PlanTask {
     this.finalTask = false,
     this.held,
     this.doneAt,
+    this.timed = true,
   });
 
   /// 计划内序号（0 基）—— 只用于显示「第几张」，不是执行顺序
@@ -62,8 +63,13 @@ class PlanTask {
   /// 怎么证明
   final String proof;
 
-  /// 时限（分钟）
+  /// 时限（分钟）—— 打卡单只作预计耗时参考
   final int minutes;
+
+  /// 计时单（true，默认）/ 打卡单（false）—— 拆解时由 `set_plan` 的
+  /// `mode` 标注（"timed" | "checkin"），派单时原样带进 `Quest.timed`。
+  /// 存档键 `mode`：只有打卡单写 `'checkin'`，老存档缺省 = 计时单。
+  final bool timed;
 
   final String rank;
 
@@ -112,6 +118,7 @@ class PlanTask {
     bool? finalTask,
     Duration? held,
     DateTime? doneAt,
+    bool? timed,
   }) => PlanTask(
     index: index ?? this.index,
     short: short ?? this.short,
@@ -124,6 +131,7 @@ class PlanTask {
     finalTask: finalTask ?? this.finalTask,
     held: held ?? this.held,
     doneAt: doneAt ?? this.doneAt,
+    timed: timed ?? this.timed,
   );
 
   // ── 存档 ──────────────────────────────────────────────────
@@ -152,6 +160,7 @@ class PlanTask {
         doneAt: j['doneAt'] is String
             ? DateTime.tryParse(j['doneAt'] as String)
             : null,
+        timed: j['mode'] != 'checkin',
       );
 
   Map<String, dynamic> toJson() => <String, dynamic>{
@@ -160,6 +169,7 @@ class PlanTask {
     'title': title,
     'proof': proof,
     'minutes': minutes,
+    if (!timed) 'mode': 'checkin',
     'rank': rank,
     if (attrs.isNotEmpty) 'attrs': attrs,
     'state': state.name,

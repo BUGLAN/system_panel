@@ -116,6 +116,7 @@ void main() {
         'proof',
         'minutes',
         'rank',
+        'mode', // C3（2026-11-05 定案）：计时 / 打卡，可选
       ]);
       expect((props['short'] as Map<String, dynamic>)['type'], 'string');
       expect((props['title'] as Map<String, dynamic>)['type'], 'string');
@@ -131,6 +132,12 @@ void main() {
         'A',
         'S',
       ]);
+      expect((props['mode'] as Map<String, dynamic>)['type'], 'string');
+      expect((props['mode'] as Map<String, dynamic>)['enum'], <String>[
+        'timed',
+        'checkin',
+      ]);
+      // mode 不进必填：老模型 / 缺省一律按计时单
       expect(item['required'], <String>[
         'short',
         'title',

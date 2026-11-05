@@ -14,6 +14,9 @@ import 'ref_orb.dart';
 ///  → .tbar（8 高进度 + 5 刻度 + 白端点）/ .tmeta → .watch（SYSTEM 在看你）
 ///  → .evi（82 证据槽 + 说明）→ 动作区（道具 / 提交 · 让她验收）
 ///  → 第二排（按住认输 1600ms / 收起）
+///
+///  打卡单（`Quest.timed == false`，docs/50 C3）：不显示计时 / 进度条 / tmeta，
+///  换成一段「打卡 · 做完随时交」说明，其余（证据区、提交任务）不变。
 /// ═══════════════════════════════════════════════════════════
 class RefExec extends StatelessWidget {
   const RefExec({
@@ -128,11 +131,14 @@ class RefExec extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(height: 10),
-                        _timer(context, progress),
-                        const SizedBox(height: 10),
-                        RefProgressBar(value: progress, ticks: 5),
-                        const SizedBox(height: 10),
-                        _tmeta(progress, limit),
+                        if (quest.timed) ...<Widget>[
+                          _timer(context, progress),
+                          const SizedBox(height: 10),
+                          RefProgressBar(value: progress, ticks: 5),
+                          const SizedBox(height: 10),
+                          _tmeta(progress, limit),
+                        ] else
+                          _checkin(),
                         const SizedBox(height: 16),
                         _watch(),
                         const SizedBox(height: 16),
@@ -272,6 +278,53 @@ class RefExec extends StatelessWidget {
             wght: 500,
             height: 1,
             color: Ref.dim,
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// 打卡单的说明（替代计时 / 进度条）：不计时，做完随时交
+  Widget _checkin() {
+    return Column(
+      key: const Key('ref.exec.checkin'),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Row(
+          children: <Widget>[
+            Text(
+              'CHECK-IN',
+              style: refText(
+                family: Ref.fm,
+                size: 12,
+                wght: 700,
+                ls: 3,
+                height: 1,
+                color: Ref.acid,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              '打卡 · 不计时',
+              style: refText(
+                family: Ref.fc,
+                size: 13,
+                wght: 700,
+                height: 1,
+                color: Ref.dim,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        Text(
+          '做完随时交 —— 先留快照记录，再点【提交任务】。',
+          style: refText(
+            family: Ref.fc,
+            size: 15,
+            wght: 500,
+            height: 1.5,
+            color: Ref.txt,
           ),
         ),
       ],

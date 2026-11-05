@@ -184,13 +184,17 @@ class _RefMainState extends State<RefMain>
       coin: Rewards.coinOf(t.rank),
       boss: t.finalTask,
       bike: _bike,
+      timed: t.timed,
     );
   }
 
   RefTCardRecord _recordOf(PlanTask t) {
     final Duration held = t.held ?? Duration(minutes: t.minutes);
     final double ratio = t.minutes <= 0 ? 1 : held.inSeconds / (t.minutes * 60);
-    final String r = ratio >= 1 ? 'A' : (ratio >= .5 ? 'B' : 'C');
+    // 打卡单不看用时：交得上来 = 证据齐了（提交必须带证据），战报记 A
+    final String r = !t.timed
+        ? 'A'
+        : (ratio >= 1 ? 'A' : (ratio >= .5 ? 'B' : 'C'));
     return RefTCardRecord(
       rank: r,
       time: held,
@@ -233,7 +237,9 @@ class _RefMainState extends State<RefMain>
         txt = '[$_count/$_total] 单。清单不会自己变短。';
       } else if (t.finalTask) {
         mood = '期待';
-        txt = '终局单。[${t.minutes}] 分钟。我会在终点等你——大概。';
+        txt = t.timed
+            ? '终局单。[${t.minutes}] 分钟。我会在终点等你——大概。'
+            : '终局单。[打卡]，随时交。我会在终点等你——大概。';
       } else {
         mood = '冷静';
         txt = '第 [${i + 1}] 单还锁着。先把眼前那单干掉。';

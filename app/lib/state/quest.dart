@@ -19,6 +19,7 @@ class Quest {
     required this.rank,
     required this.attrs,
     this.hinted = false,
+    this.timed = true,
   });
 
   /// 单号（原型按 4 位补零显示）
@@ -46,8 +47,19 @@ class Quest {
   /// 验证方式
   final String proof;
 
-  /// 时限（分钟）
+  /// 时限（分钟）—— 打卡单（[timed] = false）只作预计耗时参考，不计时
   final int minutes;
+
+  /// 计时单（true，默认）还是打卡单（false）。
+  ///
+  /// 打卡单 = 一天内分散完成、或瞬间就能完成的动作（称重、拍三餐、量腰围、
+  /// 早睡打卡）：执行面板不显示倒计时与进度条、**不会超时判负**，随时传证据
+  /// 随时交；结算评级看证据是否齐全而不是用时（见 `QuestResult.grade`）。
+  /// 老存档没有这个字段 → 计时单。
+  final bool timed;
+
+  /// 打卡单（[timed] 的反面，读起来更顺）
+  bool get checkin => !timed;
 
   final String rank;
 
@@ -66,6 +78,9 @@ class Quest {
     return '日常委托';
   }
 
+  /// 委托板 / 任务卡上的时长读数：计时单 = [minutesText]，打卡单 = 「打卡」
+  String get timeLabel => timed ? minutesText : '打卡';
+
   /// util.js `fmtMin`
   String get minutesText {
     final int m = minutes;
@@ -73,6 +88,37 @@ class Quest {
     if (m % 60 == 0) return '${m ~/ 60} 小时';
     return '${m ~/ 60} 小时 ${m % 60} 分';
   }
+
+  /// 按字段复制一单（改哪项传哪项）
+  Quest copyWith({
+    int? serial,
+    String? kind,
+    int? planIndex,
+    int? planTotal,
+    String? goalId,
+    String? name,
+    String? reason,
+    String? proof,
+    int? minutes,
+    String? rank,
+    Map<String, int>? attrs,
+    bool? hinted,
+    bool? timed,
+  }) => Quest(
+    serial: serial ?? this.serial,
+    kind: kind ?? this.kind,
+    planIndex: planIndex ?? this.planIndex,
+    planTotal: planTotal ?? this.planTotal,
+    goalId: goalId ?? this.goalId,
+    name: name ?? this.name,
+    reason: reason ?? this.reason,
+    proof: proof ?? this.proof,
+    minutes: minutes ?? this.minutes,
+    rank: rank ?? this.rank,
+    attrs: attrs ?? this.attrs,
+    hinted: hinted ?? this.hinted,
+    timed: timed ?? this.timed,
+  );
 
   /// ui.js `rewardHTML` 的纯文本版：`EXP 50 · ◈ 24 体+1 力+1`
   ///

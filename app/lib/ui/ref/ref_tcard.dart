@@ -40,6 +40,7 @@ class RefTCardData {
     this.prefix = 'MAIN',
     this.boss = false,
     this.bike = false,
+    this.timed = true,
   });
 
   final String prefix;
@@ -61,6 +62,12 @@ class RefTCardData {
 
   /// 画单车（骑行类目标）；否则画系统之眼
   final bool bike;
+
+  /// 计时单（默认）/ 打卡单（false：牌面不显示「N 分钟」，改显示「打卡」）
+  final bool timed;
+
+  /// 时长读数：计时单「N 分钟」，打卡单「打卡」
+  String get timeLabel => timed ? '$minutes 分钟' : '打卡';
 
   Color get gc => boss ? Ref.gold : Ref.rankOf(rank);
 
@@ -821,7 +828,7 @@ class _FrontBody extends StatelessWidget {
               spacing: 5,
               runSpacing: 5,
               children: <Widget>[
-                _chip('⏱', '${data.minutes} 分钟', gc),
+                _chip(data.timed ? '⏱' : 'CK', data.timeLabel, gc),
                 _chip('EV', data.proof, gc),
               ],
             ),
@@ -1470,14 +1477,16 @@ class _ArtWindow extends StatelessWidget {
     final Color gc = data.gc;
     final RefArtKind kind = data.kind;
     final String lab = switch (kind) {
-      RefArtKind.clock => 'TIME TRIAL',
+      RefArtKind.clock => data.timed ? 'TIME TRIAL' : 'CHECK-IN',
       RefArtKind.route => 'ROUTE',
       RefArtKind.hill => 'CLIMB',
       RefArtKind.cup => 'ERRAND',
       RefArtKind.boss => 'FINAL · BOSS',
     };
     final (String, String)? big = switch (kind) {
-      RefArtKind.clock || RefArtKind.boss => ('${data.minutes}', 'MIN'),
+      // 打卡单不计时：不摆「N MIN」大字
+      RefArtKind.clock ||
+      RefArtKind.boss => data.timed ? ('${data.minutes}', 'MIN') : null,
       RefArtKind.route => (data.km ?? '', 'KM'),
       RefArtKind.hill => ('12', '%'),
       RefArtKind.cup => null,
@@ -2190,7 +2199,7 @@ class _SealedBack extends StatelessWidget {
                           ),
                           const SizedBox(height: 2),
                           Text(
-                            '${data.minutes} 分钟 · ${data.proof}',
+                            '${data.timeLabel} · ${data.proof}',
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: refText(
@@ -2507,7 +2516,7 @@ class _RecordBack extends StatelessWidget {
               text: '${_mmss(r.time)} ',
               children: <InlineSpan>[
                 TextSpan(
-                  text: '/ ${_pad2(data.minutes)}:00',
+                  text: data.timed ? '/ ${_pad2(data.minutes)}:00' : '/ 打卡',
                   style: refText(
                     family: Ref.fd,
                     size: 11,

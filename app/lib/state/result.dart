@@ -20,6 +20,7 @@ class QuestResult {
     required this.dbl,
     required this.photos,
     required this.chance,
+    this.verified = 0,
     this.near = 0,
     // ── T2 补全：真实结算（store.js settle() 返回值）的其余字段 ──
     this.ups = const <int>[],
@@ -59,6 +60,9 @@ class QuestResult {
   /// 交了几份证据、当时的暴击率
   final int photos;
   final double chance;
+
+  /// 其中经 LLM 校验判真的份数（打卡单评级看它）
+  final int verified;
 
   /// 暴击判定**差了多少**（百分点）。原型 `store.js` L280：
   ///
@@ -124,6 +128,25 @@ class QuestResult {
   /// ⚠️ 真值由 `Store.settle()` 给，那属于业务规则（还没定）；
   /// 这里按"暴击 = 翻倍"倒推，未暴击时就是最终值 —— 演示档正好是后者。
   int get baseExp => crit ? exp ~/ 2 : exp;
+
+  /// 验收评级（参考稿 JS L1490）。
+  ///
+  ///  · 计时单：时长比 ≥1 = A，≥.5 = B，否则 C
+  ///  · 打卡单：不看用时，看**证据是否齐全** —— 有判真的证据 = A，
+  ///    只有未校验/存疑的 = B，没有证据 = C
+  ///  · 暴击且 A → S
+  String get grade {
+    String g;
+    if (quest.timed) {
+      final int limit = quest.minutes * 60;
+      final double ratio = limit <= 0 ? 1 : held.inSeconds / limit;
+      g = ratio >= 1 ? 'A' : (ratio >= .5 ? 'B' : 'C');
+    } else {
+      g = verified > 0 ? 'A' : (photos > 0 ? 'B' : 'C');
+    }
+    if (crit && g == 'A') g = 'S';
+    return g;
+  }
 
   /// 暴击率百分比（整数）
   int get chancePct => (chance * 100).round();
