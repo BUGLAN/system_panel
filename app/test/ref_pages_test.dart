@@ -40,6 +40,30 @@ void main() {
     }
   });
 
+  testWidgets('C5：无清单 + 记着的目标 → 主按钮是「重试拆解」', (WidgetTester tester) async {
+    int taps = 0;
+    await mountAt(
+      tester,
+      const Size(390, 844),
+      RefMain(
+        goal: Goal.empty(),
+        pendingGoal: '三个月学会弹吉他',
+        onRetryPlan: () => taps++,
+      ),
+    );
+    expect(tester.takeException(), isNull);
+    expect(find.byKey(const Key('ref.main.retryPlan')), findsOneWidget);
+    expect(find.byKey(const Key('ref.main.toBoard')), findsNothing);
+    expect(find.byKey(const Key('ref.main.swapGoal')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('ref.main.retryPlan')));
+    await tester.pump();
+    expect(taps, 1);
+    // 没记着目标的空态保持原样
+    await mountAt(tester, const Size(390, 844), RefMain(goal: Goal.empty()));
+    expect(find.byKey(const Key('ref.main.retryPlan')), findsNothing);
+    expect(find.byKey(const Key('ref.main.toBoard')), findsOneWidget);
+  });
+
   testWidgets('RefArchive 四列读数 / 名牒 / 六维都在', (WidgetTester tester) async {
     await mountAt(
       tester,

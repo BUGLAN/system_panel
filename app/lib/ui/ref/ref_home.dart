@@ -6,6 +6,7 @@ import '../../design/ref.dart';
 import '../../state/goal.dart';
 import '../../state/host_state.dart';
 import 'ref_core.dart';
+import 'ref_kit.dart';
 import 'ref_orb.dart';
 import 'ref_text.dart';
 
@@ -38,6 +39,8 @@ class RefHome extends StatefulWidget {
     this.onActivePill,
     this.onSide,
     this.onOrb,
+    this.pendingGoal = '',
+    this.onRetryPlan,
   });
 
   final HostState host;
@@ -70,6 +73,11 @@ class RefHome extends StatefulWidget {
   /// 0 主线 / 1 档案 / 2 补给
   final ValueChanged<int>? onSide;
   final VoidCallback? onOrb;
+
+  /// C5（docs/50）：拆解失败「暂时跳过」时记下的目标（空串 = 没有）。
+  /// 没主线且有它 → 主线卡位换成待拆卡，主按钮是「重试拆解」。
+  final String pendingGoal;
+  final VoidCallback? onRetryPlan;
 
   @override
   State<RefHome> createState() => _RefHomeState();
@@ -164,6 +172,10 @@ class _RefHomeState extends State<RefHome> with TickerProviderStateMixin {
               if (widget.goal.plan.isNotEmpty)
                 _questCard(done, math.max(total, 1)),
               if (widget.goal.plan.isNotEmpty) const SizedBox(height: 16),
+              if (widget.goal.plan.isEmpty && widget.pendingGoal.isNotEmpty)
+                _pendingCard(),
+              if (widget.goal.plan.isEmpty && widget.pendingGoal.isNotEmpty)
+                const SizedBox(height: 16),
               _dock(),
               const SizedBox(height: 4),
               _orbCap(),
@@ -499,6 +511,81 @@ class _RefHomeState extends State<RefHome> with TickerProviderStateMixin {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  /// C5（docs/50）：没拆成的目标 —— 与主线卡同一套外框，主按钮「重试拆解」。
+  /// 按下声由 RefButton 自带；加载态由主壳整屏挂 RefPlanLoading。
+  Widget _pendingCard() {
+    return Container(
+      key: const Key('ref.home.pendingGoal'),
+      padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: <Color>[
+            Ref.a(Ref.acid, .12),
+            Ref.a(Ref.violet, .06),
+            const Color(0x05FFFFFF),
+          ],
+          stops: const <double>[0, .5, 1],
+        ),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Ref.a(Ref.acid, .25)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Text(
+            'MAINLINE · 待拆解',
+            maxLines: 1,
+            softWrap: false,
+            overflow: TextOverflow.clip,
+            style: refText(
+              family: Ref.fm,
+              size: 10,
+              wght: 500,
+              ls: 3,
+              height: 1,
+              color: Ref.acid,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            widget.pendingGoal,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: refText(
+              family: Ref.fc,
+              size: 19,
+              wght: 900,
+              height: 1.3,
+              color: Ref.txt,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            '上次没拆成。目标我替你记着，先做日常也行。',
+            style: refText(
+              family: Ref.fc,
+              size: 12,
+              wght: 500,
+              height: 1.4,
+              color: Ref.dim,
+            ),
+          ),
+          const SizedBox(height: 12),
+          RefButton(
+            key: const Key('ref.home.retryPlan'),
+            label: '重试拆解',
+            small: true,
+            trailingTriangle: true,
+            onTap: widget.onRetryPlan,
+          ),
+        ],
       ),
     );
   }

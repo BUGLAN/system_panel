@@ -1528,4 +1528,138 @@ void main() {
       expect(all.single.coin, 3);
     });
   });
+  group('C5 暂时跳过：记住目标 + 先发日常 + 重试拆解', () {
+    setUp(() {
+      SharedPreferencesAsyncPlatform.instance =
+          InMemorySharedPreferencesAsync.withData(<String, Object>{});
+    });
+
+    /// 真新档（绑定前）：空目标、空队列 —— 跳过发生在这一刻
+    QuestFlow newcomer() => QuestFlow(
+      host: HostState.empty,
+      goal: Goal.empty(),
+      serial: 1000,
+      rnd: math.Random(7),
+    );
+
+    /// 与 main `_genTodaysDailies` 同一条路：日常池候选 → 挑 1~2 → 占位单号
+    List<Quest> todaysDailies(QuestFlow f) {
+      final math.Random rnd = math.Random(3);
+      final List<DailyTemplate> picks = pickDailies(
+        candidates: genDailyCandidates(catId: 'gen', rnd: rnd),
+        attrs: f.host.attrs,
+        goalCatId: 'gen',
+        n: dailyCountFor(level: f.host.lv, streak: f.host.streak),
+        rnd: rnd,
+      );
+      final List<Quest> slots = f.genDaily(picks.length);
+      return <Quest>[
+        for (int i = 0; i < picks.length && i < slots.length; i++)
+          dailyQuestFrom(
+            picks[i],
+            serial: slots[i].serial,
+            level: f.host.lv,
+            rnd: rnd,
+          ),
+      ];
+    }
+
+    test('跳过：目标记下、当天日常发出（> 0）、可重试', () {
+      final QuestFlow f = newcomer();
+      expect(f.canRetryPlan, isFalse);
+      final List<Quest> sent = f.skipPlan(
+        '  三个月学会弹吉他 ',
+        dailies: todaysDailies(f),
+      );
+      expect(f.pendingGoal, '三个月学会弹吉他');
+      expect(f.canRetryPlan, isTrue);
+      expect(f.goal.isEmpty, isTrue, reason: '不伪造计划');
+      expect(sent, isNotEmpty);
+      final int dailies = f.queue.where((Quest q) => q.kind == 'daily').length;
+      expect(dailies, greaterThan(0));
+      expect(f.queue.any((Quest q) => q.kind == 'main'), isFalse);
+      expect(f.host.queue, f.queue.length);
+    });
+
+    test('调用方没给日常（或给了空表）也兜一张，且重复跳过不叠发', () {
+      final QuestFlow f = newcomer();
+      f.skipPlan('考研上岸', dailies: const <Quest>[]);
+      final int n = f.queue.where((Quest q) => q.kind == 'daily').length;
+      expect(n, greaterThan(0));
+      f.skipPlan('考研上岸');
+      expect(f.queue.where((Quest q) => q.kind == 'daily').length, n);
+    });
+
+    test('序列化往返：跳过后存档 → 读档 → 目标仍在、日常仍在', () async {
+      final QuestFlow f = newcomer();
+      f.skipPlan('半年减重 10 斤', dailies: todaysDailies(f));
+      final SaveData out = SaveData(
+        host: f.host,
+        goal: f.goal,
+        queue: f.queue,
+        activeJson: f.activeToSaveJson(),
+        pendingGoal: f.pendingGoal,
+      );
+      // ① 纯 JSON 往返
+      final SaveData viaJson = SaveData.fromJson(
+        jsonDecode(jsonEncode(out.toJson())) as Map<String, dynamic>,
+        fallback: SaveData.fresh(),
+      );
+      expect(viaJson.pendingGoal, '半年减重 10 斤');
+      // ② 真走一遍 SaveFile（杀进程 = 新 SaveFile 实例读回）
+      await SaveFile().save(out);
+      final SaveData back = await SaveFile().load();
+      expect(back.pendingGoal, '半年减重 10 斤');
+      final QuestFlow g = QuestFlow.fromSave(
+        host: back.host,
+        goal: back.goal,
+        queue: back.queue,
+        pendingGoal: back.pendingGoal,
+      );
+      expect(g.canRetryPlan, isTrue);
+      expect(g.pendingGoal, '半年减重 10 斤');
+      expect(
+        g.queue.where((Quest q) => q.kind == 'daily').length,
+        greaterThan(0),
+      );
+    });
+
+    test('老存档没有 pendingGoal 字段 → 空串（无影响）', () {
+      final SaveData d = SaveData.fromJson(<String, dynamic>{
+        'host': HostState.demo.toJson(),
+        'goal': Goal.demo().toJson(),
+      }, fallback: SaveData.fresh());
+      expect(d.pendingGoal, '');
+      expect(d.toJson().containsKey('pendingGoal'), isFalse);
+    });
+
+    test('重试成功（newGoal 落库）→ 记着的目标清掉，日常保留', () {
+      final QuestFlow f = newcomer();
+      f.skipPlan('三个月学会弹吉他', dailies: todaysDailies(f));
+      final int dailies = f.queue.where((Quest q) => q.kind == 'daily').length;
+      f.newGoal(fakeGoal('三个月学会弹吉他', days: 3));
+      expect(f.pendingGoal, '');
+      expect(f.canRetryPlan, isFalse);
+      expect(f.queue.where((Quest q) => q.kind == 'main'), isNotEmpty);
+      expect(f.queue.where((Quest q) => q.kind == 'daily').length, dailies);
+    });
+
+    test('重试失败（没落库）→ 记着的目标原样保留', () {
+      final QuestFlow f = newcomer();
+      f.skipPlan('三个月学会弹吉他');
+      expect(() => f.newGoal(Goal.empty()), throwsStateError);
+      expect(f.pendingGoal, '三个月学会弹吉他');
+      expect(f.canRetryPlan, isTrue);
+    });
+
+    test('读档时已有主线 → 记着的目标作废（防脏档）', () {
+      final QuestFlow f = QuestFlow.fromSave(
+        host: HostState.demo,
+        goal: Goal.demo(),
+        pendingGoal: '旧的那句',
+      );
+      expect(f.pendingGoal, '');
+      expect(f.canRetryPlan, isFalse);
+    });
+  });
 }

@@ -115,6 +115,7 @@ class SaveData {
     this.queue = const <Quest>[],
     this.activeJson,
     this.lastSeen,
+    this.pendingGoal = '',
   });
 
   final HostState host;
@@ -131,6 +132,11 @@ class SaveData {
 
   /// 上次离开的时间（原型 `S.prevSeen` / `S.lastSeen`）—— 回来时算"你走了多久"用
   final DateTime? lastSeen;
+
+  /// C5（docs/50）：拆解失败后「暂时跳过」时宿主输入过的那句目标。
+  /// 有它、但还没有主线 → 大厅 / 主线页的主按钮是「重试拆解」；拆成功后清空。
+  /// 老档缺这个字段 → 默认空串（合并式迁移，不影响老档）。
+  final String pendingGoal;
 
   /// 全新档 = 未绑定（原型的 `Store.fresh()`）
   factory SaveData.fresh() =>
@@ -167,6 +173,9 @@ class SaveData {
       lastSeen: json['lastSeen'] is String
           ? (DateTime.tryParse(json['lastSeen'] as String) ?? fallback.lastSeen)
           : fallback.lastSeen,
+      pendingGoal: json['pendingGoal'] is String
+          ? (json['pendingGoal'] as String).trim()
+          : fallback.pendingGoal,
     );
   }
 
@@ -178,6 +187,7 @@ class SaveData {
     ],
     if (activeJson != null) 'active': activeJson,
     if (lastSeen != null) 'lastSeen': lastSeen!.toIso8601String(),
+    if (pendingGoal.isNotEmpty) 'pendingGoal': pendingGoal,
   };
 
   SaveData copyWith({
@@ -186,11 +196,13 @@ class SaveData {
     List<Quest>? queue,
     Map<String, dynamic>? activeJson,
     DateTime? lastSeen,
+    String? pendingGoal,
   }) => SaveData(
     host: host ?? this.host,
     goal: goal ?? this.goal,
     queue: queue ?? this.queue,
     activeJson: activeJson ?? this.activeJson,
     lastSeen: lastSeen ?? this.lastSeen,
+    pendingGoal: pendingGoal ?? this.pendingGoal,
   );
 }

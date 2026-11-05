@@ -73,6 +73,43 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
+  testWidgets('C5：RefHome 无主线 + 记着的目标 → 待拆卡与「重试拆解」', (
+    WidgetTester tester,
+  ) async {
+    int taps = 0;
+    for (final Size size in <Size>[
+      const Size(320, 640),
+      const Size(390, 844),
+    ]) {
+      await mountAt(
+        tester,
+        size,
+        RefHome(
+          host: HostState.empty,
+          goal: Goal.empty(),
+          queue: 1,
+          days: 0,
+          pendingGoal: '三个月学会弹吉他',
+          onRetryPlan: () => taps++,
+        ),
+      );
+      expect(tester.takeException(), isNull);
+      expect(find.byKey(const Key('ref.home.pendingGoal')), findsOneWidget);
+      expect(find.text('三个月学会弹吉他'), findsOneWidget);
+    }
+    await tester.tap(find.byKey(const Key('ref.home.retryPlan')));
+    await tester.pump();
+    expect(taps, 1);
+    // 没记着目标：不出待拆卡
+    await mountAt(
+      tester,
+      const Size(390, 844),
+      RefHome(host: HostState.empty, goal: Goal.empty(), days: 0),
+    );
+    expect(find.byKey(const Key('ref.home.pendingGoal')), findsNothing);
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets('RefHud：三颗 chip 与等级环都在', (WidgetTester tester) async {
     await mountAt(
       tester,

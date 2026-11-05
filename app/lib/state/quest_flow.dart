@@ -179,6 +179,7 @@ class QuestFlow {
     int? serial,
     math.Random? rnd,
     HistoryLog? historyLog,
+    this.pendingGoal = '',
   }) : queue = List<Quest>.of(queue ?? const <Quest>[]),
        _serial = serial ?? kFirstSerial,
        _rnd = rnd ?? math.Random(),
@@ -243,6 +244,13 @@ class QuestFlow {
 
   /// 她手里的单（队首 = head）。可变的、有顺序的 —— 结算/接单都要改它
   final List<Quest> queue;
+
+  /// C5（docs/50）：拆解失败「暂时跳过」时记下的那句目标（空串 = 没有）。
+  /// 随档走（`SaveData.pendingGoal`）；[newGoal] 落库成功即清空。
+  String pendingGoal;
+
+  /// 还没有主线、但记着一句没拆成的目标 → 大厅 / 主线页主按钮是「重试拆解」
+  bool get canRetryPlan => goal.plan.isEmpty && pendingGoal.isNotEmpty;
 
   ActiveQuest? _active;
   Quest? _remedyOffer;
@@ -412,6 +420,7 @@ class QuestFlow {
     required HostState host,
     required Goal goal,
     List<Quest>? queue,
+    String pendingGoal = '',
   }) {
     // 新单号接在存档里最大单号之后，绝不与存档里的单撞号
     int next = kFirstSerial;
@@ -425,6 +434,8 @@ class QuestFlow {
       goal: goal,
       queue: queue,
       serial: next,
+      // 已经有主线了，记着的那句就没用了（防脏档：主线 + 待拆目标并存）
+      pendingGoal: goal.plan.isEmpty ? pendingGoal.trim() : '',
     );
     if (f.queue.isEmpty) f.seedForCurrentGoal();
     return f;
@@ -498,6 +509,31 @@ class QuestFlow {
     }
     publishPlanTasks();
     _seedDailies(3);
+  }
+
+  /// C5（docs/50）：拆解失败后「暂时跳过」。
+  ///
+  /// 不伪造计划（拆解没有模板兜底），只做两件事：
+  ///   ① 记住宿主输入过的那句目标（[pendingGoal]，随档走 —— 杀进程后还在），
+  ///      大厅 / 主线页据此给「重试拆解」；
+  ///   ② 先发当天的日常单，新用户第一天不至于无事可做。
+  /// [dailies] 由调用方按日常池挑好（main 的 `_genTodaysDailies`）；
+  /// 没给或给了空表 → 按 [genDaily] 兜一张，保证队里至少有一单日常。
+  /// 队里已经有日常（重复跳过）就不再追加。返回这次发出去的日常。
+  List<Quest> skipPlan(String text, {List<Quest>? dailies}) {
+    final String t = text.trim();
+    if (t.isNotEmpty) pendingGoal = t;
+    final List<Quest> out = <Quest>[];
+    if (!queue.any((Quest q) => q.kind == 'daily')) {
+      final List<Quest> d = (dailies == null || dailies.isEmpty)
+          ? genDaily(1)
+          : dailies;
+      queue.addAll(d);
+      out.addAll(d);
+    }
+    _syncQueueCount();
+    _notify();
+    return out;
   }
 
   void _seedDailies(int n) {
@@ -1065,6 +1101,7 @@ class QuestFlow {
     }
     queue.removeWhere((Quest q) => q.kind == 'main');
     goal = next;
+    pendingGoal = ''; // C5：有主线了，记着的那句没拆成的目标清掉
     final List<Quest> pub = publishPlanTasks();
     _syncQueueCount();
     _notify();
