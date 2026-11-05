@@ -89,30 +89,31 @@ class _RefHomeState extends State<RefHome> with TickerProviderStateMixin {
     duration: const Duration(milliseconds: 440),
   );
 
-  static final Animatable<double> _pressTween =
-      TweenSequence<double>(<TweenSequenceItem<double>>[
-        TweenSequenceItem<double>(
-          tween: Tween<double>(
-            begin: 1,
-            end: .86,
-          ).chain(CurveTween(curve: Curves.easeIn)),
-          weight: 30,
-        ),
-        TweenSequenceItem<double>(
-          tween: Tween<double>(
-            begin: .86,
-            end: 1.08,
-          ).chain(CurveTween(curve: Curves.easeOut)),
-          weight: 40,
-        ),
-        TweenSequenceItem<double>(
-          tween: Tween<double>(
-            begin: 1.08,
-            end: 1,
-          ).chain(CurveTween(curve: Curves.easeInOut)),
-          weight: 30,
-        ),
-      ]);
+  static final Animatable<double> _pressTween = TweenSequence<double>(
+    <TweenSequenceItem<double>>[
+      TweenSequenceItem<double>(
+        tween: Tween<double>(
+          begin: 1,
+          end: .86,
+        ).chain(CurveTween(curve: Curves.easeIn)),
+        weight: 30,
+      ),
+      TweenSequenceItem<double>(
+        tween: Tween<double>(
+          begin: .86,
+          end: 1.08,
+        ).chain(CurveTween(curve: Curves.easeOut)),
+        weight: 40,
+      ),
+      TweenSequenceItem<double>(
+        tween: Tween<double>(
+          begin: 1.08,
+          end: 1,
+        ).chain(CurveTween(curve: Curves.easeInOut)),
+        weight: 30,
+      ),
+    ],
+  );
 
   @override
   void didUpdateWidget(RefHome old) {
@@ -213,18 +214,19 @@ class _RefHomeState extends State<RefHome> with TickerProviderStateMixin {
           ),
         ),
         const SizedBox(width: 8),
-        Text(
-          'DAY $day / ${widget.days}',
-          maxLines: 1,
-          style: refText(
-            family: Ref.fm,
-            size: 11,
-            wght: 500,
-            ls: 3,
-            height: 1,
-            color: Ref.dim,
+        if (widget.days > 0)
+          Text(
+            'DAY $day / ${widget.days}',
+            maxLines: 1,
+            style: refText(
+              family: Ref.fm,
+              size: 11,
+              wght: 500,
+              ls: 3,
+              height: 1,
+              color: Ref.dim,
+            ),
           ),
-        ),
       ],
     );
   }

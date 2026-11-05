@@ -8,7 +8,7 @@ import 'ref_core.dart';
 import 'ref_motion.dart';
 
 /// ═══════════════════════════════════════════════════════════
-///  加载态（docs/49 D）—— 参考稿没有这一块，按它的语言补：
+///  加载态—— 参考稿没有这一块，按它的语言补：
 ///
 ///  · [RefSpinner]     —— 小号转圈（证据槽「校验中」/ 按钮内）
 ///  · [RefScanBar]     —— 不定进度扫描条（.tbar 的轨道 + 一段 accent 光带来回扫）
@@ -237,7 +237,7 @@ class RefPlanLoading extends StatefulWidget {
 
   /// 默认的等待台词（毒舌但靠谱：她在干活，不是在发呆）
   static const List<String> kPlanQuips = <String>[
-    '别催。拆东西要时间。',
+    '拆东西要时间，急也没用。', // A8（docs/50）：气泡里已经有「别催」
     '我在逐字读你那句话。',
     '规则校验比你想的严。',
     '在排先后顺序……谁先谁后很重要。',

@@ -197,7 +197,7 @@ void main() {
     });
 
     testWidgets('⚠️ 中途跳过：不能把剩下的字一次性喂给 onChar', (WidgetTester tester) async {
-      // docs/22 批次②：这条钉的是根因 —— `AnimationController.value` 的 setter
+      // 这条钉的是根因 —— `AnimationController.value` 的 setter
       // 无条件 notifyListeners，`_c!.value = 1` 会立刻打一次 `_tick`，而 `_tick`
       // 里的 while 会把**所有还没回调过的字**一次性喂给 `onChar`。
       // 实机症状：跳过整句时逐字音节/口型被喂一整串（A/B 实测：不修 = 同一帧 8 个字，

@@ -116,7 +116,15 @@ const Map<String, List<String>> kRecQuotes = <String, List<String>>{
 };
 
 /// 评级色（verdict `--rc`：S 白 / A acid / B cyan / C hot；战报用 GC）
-Color refRecColor(String r) => Ref.rankOf(r);
+/// A13（docs/50）：原来误用了稀有度色谱（C=紫），与结算页同一个 C（hot）不一致。
+/// 评级是验收结果，不是任务稀有度 —— 与 ref_verdict `_rankColor` 同一份。
+Color refRecColor(String r) => switch (r.toUpperCase()) {
+  'S' => const Color(0xFFFFFFFF),
+  'A' => Ref.acid,
+  'B' => Ref.cyan,
+  'C' => Ref.hot,
+  _ => Ref.rankOf(r),
+};
 
 class RefTCard extends StatefulWidget {
   const RefTCard({
@@ -393,7 +401,7 @@ class _Face extends StatelessWidget {
               child: ColoredBox(color: Color(0x1FFFFFFF)),
             ),
             child,
-            // ⚠️ 逐帧作画的图层都单独包 RepaintBoundary（docs/49 E2）：
+            // ⚠️ 逐帧作画的图层都单独包 RepaintBoundary：
             //    焦点卡的时钟 50ms 一跳，不包的话每一跳都会把整张卡（两层 60~70px
             //    大投影 + 渐变底 + 全部文字）重新录一遍；包了只重画这一小层。
             if (holo)
@@ -928,7 +936,7 @@ class _FrontBody extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
             cell('经验 EXP', '+${data.exp}', Ref.acid, first: true),
-            cell('晶核 ◆', '${data.coin}', Ref.cyan),
+            cell('晶核', '${data.coin}', Ref.cyan),
             cell(data.catName, '+1', Ref.mint),
           ],
         ),
@@ -2510,7 +2518,7 @@ class _RecordBack extends StatelessWidget {
               ],
             ),
           ),
-          row('获得', TextSpan(text: 'EXP +${r.exp} · ◆ ${r.coin}')),
+          row('获得', TextSpan(text: 'EXP +${r.exp} · 晶核 +${r.coin}')),
           row('完成于', TextSpan(text: 'DAY ${_pad2(r.day)}')),
           const Spacer(),
           Container(

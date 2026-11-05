@@ -13,7 +13,7 @@ import 'chat_history.dart';
 import 'chat_service.dart';
 
 /// ═══════════════════════════════════════════════════════════
-///  对话层（docs/18 §2.6 + docs/19 §A3 快捷工具行）
+///  对话层（快捷工具行）
 ///
 ///  从底部滑入、占屏高 72%；背景半透明压暗，她在后面仍可见
 ///  ——层序在亮帧之下（main.dart 挂载点保证）。
@@ -24,7 +24,7 @@ import 'chat_service.dart';
 ///  ChatService 剥掉，正文直接可念。〔工具〕前缀的消息渲染成
 ///  系统条目（等宽读数风，不打字机）。
 ///
-///  快捷 chip = 无 LLM 也能直调工具（docs/19 §A3）：查状态/换任务/
+///  快捷 chip = 无 LLM 也能直调工具：查状态/换任务/
 ///  调整计划。样式沿用 interview_deck 选项 chip 惯例（42px 圆角盒 +
 ///  PressBuilder 按下反馈），配色/字体走 design/tokens.dart。
 /// ═══════════════════════════════════════════════════════════
@@ -37,7 +37,7 @@ class ChatQuickChip {
   final String tool;
 }
 
-/// 首发三枚（无 LLM 也可直调，docs/19 §A3）
+/// 首发三枚（无 LLM 也可直调）
 const List<ChatQuickChip> kChatQuickChips = <ChatQuickChip>[
   ChatQuickChip('查状态', 'get_status'),
   ChatQuickChip('换任务', 'swap_quest'),
@@ -71,14 +71,14 @@ class ChatPanel extends StatefulWidget {
   final VoidCallback? onClose;
   final VoidCallback? onVoiceTap;
 
-  /// 快捷 chip 直调工具（docs/19 §A3）；null = chips 置灰不可点
+  /// 快捷 chip 直调工具；null = chips 置灰不可点
   final ValueChanged<String>? onQuickTool;
 
   /// chip 数据（测试可注入）
   final List<ChatQuickChip> quickChips;
   final bool enabled;
 
-  /// 对白节奏（docs/22 §R4）：气泡打字机每字显形毫秒数，三档见
+  /// 对白节奏：气泡打字机每字显形毫秒数，三档见
   /// `settings_store.dart` 的 `kPace*Ms`。没给 = 保持 [TypeText] 的默认
   /// （非 soft = 34）——这里**不留第二份字面量**：原先那个自己写死的值已删，
   /// 全仓每字毫秒数只剩 `type_text.dart` 的默认 + `settings_store.dart` 的三档常量。
@@ -337,7 +337,7 @@ class _ChatPanelState extends State<ChatPanel> {
 
   Widget _bubble(ChatMessage m, int i) {
     final bool host = m.fromHost;
-    // 〔诊断〕严格模式的失败条目（docs/22 §2.0）：开发构建下失败不伪装成台词，
+    // 〔诊断〕严格模式的失败条目：开发构建下失败不伪装成台词，
     // 红框等宽直接摆出来——问题必须一眼可见。
     if (!host && m.text.startsWith(ChatService.diagTag)) {
       return Align(
@@ -429,7 +429,7 @@ class _ChatPanelState extends State<ChatPanel> {
         ? TypeText(
             key: ValueKey<String>('chat.bubble.type.${m.id}'),
             text: m.text,
-            // 对白节奏三档（docs/22 §R4）：原来这里写死过一个与字幕真源
+            // 对白节奏三档：原来这里写死过一个与字幕真源
             // 不同的数（同一件事两个值）。现在统一走设置值；null → TypeText 默认 34。
             speed: widget.paceMs,
             style: fs(
@@ -470,7 +470,7 @@ class _ChatPanelState extends State<ChatPanel> {
           padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 9),
           constraints: const BoxConstraints(maxWidth: 286),
           decoration: BoxDecoration(
-            // 她 = 左 + 青框深底；宿主 = 右 + 青底深字（docs/18 §2.6）
+            // 她 = 左 + 青框深底；宿主 = 右 + 青底深字
             color: host ? Ref.acid : const Color(0x0FFFFFFF),
             borderRadius: BorderRadius.circular(14),
             border: host ? null : Border.all(color: Ref.line, width: 1),
@@ -525,7 +525,7 @@ class _ChatPanelState extends State<ChatPanel> {
     );
   }
 
-  /// 快捷工具 chip 行（docs/19 §A3）：无 LLM 也能直调工具。
+  /// 快捷工具 chip 行：无 LLM 也能直调工具。
   /// 样式=interview_deck 选项 chip 同款语言（42px 圆角盒 + PressBuilder
   /// 按下换底 `rgba(56,225,255,.2)`），thinking/未接线时置灰不可点。
   Widget _quickTools() {

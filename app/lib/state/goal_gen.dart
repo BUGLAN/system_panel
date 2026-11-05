@@ -7,7 +7,7 @@ import 'quest.dart';
 import 'quest_flow.dart';
 
 /// ═══════════════════════════════════════════════════════════
-///  目标生成 —— 类别表 · 访谈卡组 · 计划规则（docs/34）
+///  目标生成 —— 类别表 · 访谈卡组 · 计划规则
 ///
 ///  ⚠️ 2026-10-23 宿主定调（**这条最重要，别改回去**）：
 ///    目标拆解**只有 LLM 一条路**。旧版这里有「类别模板兜底」
@@ -529,7 +529,7 @@ final GoalCategory _catSleep = GoalCategory(
   label: '早起',
   tilt: const <String, int>{'体': 2, '知': 1},
   cards: const <InterviewCard>[
-    // docs/18 §2.1 示例卡组（早睡早起）——三张原样
+    // 示例卡组（早睡早起）——三张原样
     InterviewCard(
       id: 'sleep.schedule',
       question: '现在几点起、几点睡？',
@@ -1174,7 +1174,7 @@ const List<DailyTemplate> kDailyCommon = <DailyTemplate>[
 //    · 任何一条不合规 → 抛 [PlanRuleError]，不做修正、不做降级
 // ═══════════════════════════════════════════════════════════
 
-/// 计划条数区间（docs/34：条数 = 期限天数）。
+/// 计划条数区间（条数 = 期限天数）。
 /// 下限 2 = 至少「一张推进单 + 一张兑现单」；上限只是防呆（一年也就 366）。
 const int kPlanMinTasks = 2;
 const int kPlanMaxTasks = 400;
@@ -1194,7 +1194,7 @@ int rankCapMinutes(String rank) => switch (rank) {
 /// 兑现单的时限下限（原型 makeGoal 尾部那句 m: 120）
 const int kPlanFinalMinutes = 120;
 
-/// 首目标允许的档位（docs/05「前 10 任务必胜」：E/D/C）
+/// 首目标允许的档位（「前 10 任务必胜」：E/D/C）
 const List<String> kFirstGoalRanks = <String>['E', 'D', 'C'];
 
 /// 期限 → 清单条数。
@@ -1212,7 +1212,7 @@ int planTaskCountFor(int days, {int quota = 0}) {
 }
 
 // ═══════════════════════════════════════════════════════════
-//  分段并行拆解（docs/49 F3，2026-10-28 真机：换目标 2 分钟拆不完还报错）
+//  分段并行拆解（2026-10-28 真机：换目标 2 分钟拆不完还报错）
 // ═══════════════════════════════════════════════════════════
 //
 //  根因：条数 = 期限天数。「三个月跑完半马」是 90 张、「半年减重」是 180 张，
@@ -1360,7 +1360,7 @@ void validatePlanSegment(PlanSegment seg, List<TaskSpec> tasks) {
 
 /// 计划规则校验 —— **fail fast**：任何一条不合规都抛 [PlanRuleError]。
 ///
-/// 校验项（docs/34 §3）：
+/// 校验项：
 ///   · 条数 == 期限天数，且期限落在 [kPlanMinTasks, kPlanMaxTasks]
 ///   · 首目标（[firstGoal]）期限固定 [kFirstGoalDays]、档位只能是 E/D/C
 ///   · 每张：short / title / proof 非空、minutes 是正整数且不超档位上限、
@@ -1440,7 +1440,7 @@ void validatePlan({
 /// 已校验的任务池 → [PlanTask]（加六维分配、下标、兑现标记）。
 ///
 /// 六维按类别倾向 [GoalCategory.tilt] 与档位点数走 [QuestFlow.splitAttrs]，
-/// 生成时定死，结算只读（docs/34 §2.2）。
+/// 生成时定死，结算只读。
 List<PlanTask> buildPlanTasks({
   required GoalCategory cat,
   required List<TaskSpec> tasks,
@@ -1455,7 +1455,7 @@ List<PlanTask> buildPlanTasks({
       minutes: tasks[i].minutes,
       rank: tasks[i].rank,
       attrs: QuestFlow.splitAttrs(cat.tilt, Rarity.of(tasks[i].rank).pt),
-      // 首目标不摆兑现门（docs/05）；其余末张 = 兑现单
+      // 首目标不摆兑现门；其余末张 = 兑现单
       finalTask: !firstGoal && i == tasks.length - 1,
     ),
 ];
@@ -1526,10 +1526,7 @@ List<InterviewCard> interviewCardsFor(GoalCategory cat, {int level = 1}) {
   final List<InterviewCard> cards = <InterviewCard>[...cat.cards];
   if (level >= 2) cards.add(_kCommonSlot);
   if (level >= 4) cards.add(_kCommonHistory);
-  assert(
-    cards.length >= 3 && cards.length <= 5,
-    '访谈卡组必须落在 3~5 张（docs/18 §2.1）',
-  );
+  assert(cards.length >= 3 && cards.length <= 5, '访谈卡组必须落在 3~5 张');
   return List<InterviewCard>.unmodifiable(cards);
 }
 
@@ -1578,23 +1575,23 @@ Map<String, int> applyBindGift(Map<String, int> items) => <String, int>{
   kBindGiftItemKey: (items[kBindGiftItemKey] ?? 0) + kBindGiftDbl,
 };
 
-// ═══ 周期任务生成（docs/18 §2.2 · T6-2）══════════════════════════
+// ═══ 周期任务生成══════════════════════════
 //
 // ⚠️ 这一段与「目标拆解」无关：日常池是**产品内容**（每日委托），不是
 //    拆解失败时的兜底。拆解失败一律抛，不会退到这里。
 
-/// 每日日常单数：lv≥5 或连击≥3 → 2，否则 1（docs/18 §2.2）。
+/// 每日日常单数：lv≥5 或连击≥3 → 2，否则 1。
 int dailyCountFor({required int level, required int streak}) =>
     (level >= 5 || streak >= 3) ? 2 : 1;
 
-/// 日常单的日上限（docs/01：日上限 6；主线单/补救单不占日常配额）。
+/// 日常单的日上限（日上限 6；主线单/补救单不占日常配额）。
 const int kDailyCap = 6;
 
 /// 候选池规模：「生成数个、用 1~2 个」—— 每次出 4~6 个候选再挑。
 const int kDailyCandidateMin = 4;
 const int kDailyCandidateMax = 6;
 
-/// 候选池：目标类型专属池在前、通用池补位，随机去重出 4~6 个（docs/18 §2.2）。
+/// 候选池：目标类型专属池在前、通用池补位，随机去重出 4~6 个。
 List<DailyTemplate> genDailyCandidates({
   required String catId,
   required math.Random rnd,
@@ -1653,7 +1650,7 @@ List<DailyTemplate> pickDailies({
   return out;
 }
 
-/// 日常档位（store.js:112-114 沿用 + docs/18 §2.3 的 F 兼容档新政）：
+/// 日常档位（store.js:112-114 沿用 + F 兼容档新政）：
 /// lv≥4 有 30% 提一档、lv≥8 再 20%；封顶 lv<8 到 D、lv≥8 到 C；
 /// **新生成任务不再出 F**（F 只留给老存档/补救残单）。
 String dailyRankFor(

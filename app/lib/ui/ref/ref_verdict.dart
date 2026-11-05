@@ -99,7 +99,9 @@ const List<String> _kScanSubs = <String>[
 ];
 
 /// 扫描总时长：JS L1506 `for(i=0;i<=20;i++){…await sleep(80)}` = 21×80
-const int _kScanMs = 21 * 80;
+// A22（docs/50）：结算总长原来 ≈5.3s（扫描 1.68s + 逐行 450ms + 经验条排在最后），
+// 远超「结算 ≤1.6s」。扫描压到 ≈0.6s，结果阶段 ≈1.5s，经验条与奖励行并行。
+const int _kScanMs = 21 * 30;
 
 /// `.critban span` 的跑马灯内容（DOM L812 原文）
 const String _kCritText =
@@ -237,8 +239,8 @@ class _RefVerdictState extends State<RefVerdict> with TickerProviderStateMixin {
   bool _motionSet = false;
 
   // ── 结果阶段各元素的起止毫秒（JS L1511-1529）───────────────
-  static const int _stampAt = 220; // JS L1512 sleep(220) → 横幅 + 砸印
-  static const int _rowsAt = 660; // 砸印 440ms 之后（L1513-1515）
+  static const int _stampAt = 100; // 横幅 + 砸印（原 JS 220）
+  static const int _rowsAt = 540; // 砸印 440ms 落地后（L1513-1515）
   int _xpAt = 0;
   int _btnAt = 0;
   int _totalMs = 1;
@@ -252,7 +254,7 @@ class _RefVerdictState extends State<RefVerdict> with TickerProviderStateMixin {
     _master.addListener(_resultSound);
   }
 
-  // ── 音效（docs/49 A8）─────────────────────────────────────
+  // ── 音效─────────────────────────────────────
   // 参考稿的结算是全程有声的（JS L1506-1528）：扫描每 80ms 一声 scan →
   // 暴击 crit → 评级砸下 stamp → 每行奖励 coin → 跨级 success。
   // 原来这里注释写「由调用方编排」，可调用方一声都没编 —— 整段结算是哑的。
@@ -281,15 +283,16 @@ class _RefVerdictState extends State<RefVerdict> with TickerProviderStateMixin {
     for (int i = 0; i < _rowStart.length; i++)
       at('row$i', _rowStart[i], 'coin');
     final int need = widget.xpNeed <= 0 ? 1 : widget.xpNeed;
-    if (widget.xpTo >= need) at('xp', _xpAt + 650, 'success');
+    // A22：跟 520ms 经验条
+    if (widget.xpTo >= need) at('xp', _xpAt + 480, 'success');
   }
 
   /// JS L1511-1529 的时间线，换成一份毫秒刻度
   void _planTimeline() {
-    const int rowGap = 450; // 320ms 进场 + 380ms 滚动 + 70ms 间隔（L1524）
-    const int rowRoll = 380;
-    const int xpDur = 700; // JS L1528 duration:700
-    const int btnDur = 320; // JS L1529 duration:320
+    const int rowGap = 160; // A22：奖励行几乎同时到（原 450）
+    const int rowRoll = 260;
+    const int xpDur = 520; // AGENTS：不跨级经验条 520ms ease-out
+    const int btnDur = 200;
     final List<int> starts = <int>[
       for (int i = 0; i < widget.rows.length; i++) _rowsAt + i * rowGap,
     ];
@@ -297,8 +300,8 @@ class _RefVerdictState extends State<RefVerdict> with TickerProviderStateMixin {
         ? _rowsAt
         : starts.last + math.max(rowRoll, 320);
     _rowStart = starts;
-    _xpAt = rowsEnd + 220; // L1525-1526：xpw 淡入 250ms + sleep(150)
-    _btnAt = _xpAt + xpDur; // 经验条跑完才亮「收下」
+    _xpAt = _rowsAt + 200; // A22：经验条与奖励行并行，不再排队
+    _btnAt = math.max(rowsEnd, _xpAt + xpDur); // 都落定才亮「收下」
     _totalMs = _btnAt + btnDur;
     _master.duration = Duration(milliseconds: _totalMs);
   }
@@ -864,7 +867,7 @@ class _RefVerdictState extends State<RefVerdict> with TickerProviderStateMixin {
   /// `.xpw`（L445-448）
   Widget _buildXp(int ms) {
     final int need = widget.xpNeed <= 0 ? 1 : widget.xpNeed;
-    final double k = _seg(ms, _xpAt, _xpAt + 700, Curves.easeOutCubic);
+    final double k = _seg(ms, _xpAt, _xpAt + 520, Curves.easeOutCubic);
     final double from = (widget.xpFrom / need).clamp(0.0, 1.0);
     final double to = (widget.xpTo / need).clamp(0.0, 1.0);
     final double frac = from + (to - from) * k;

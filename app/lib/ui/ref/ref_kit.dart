@@ -7,7 +7,7 @@ import '../../design/ref.dart';
 import '../../state/sfx.dart';
 import '../../widgets/frame_throttle.dart';
 
-/// 基础组件按下即出声（docs/49 A2）：走 [Sfx.cue] 的规则表（音量分档 + 防连发），
+/// 基础组件按下即出声：走 [Sfx.cue] 的规则表（音量分档 + 防连发），
 /// 结果声（成功 / 失败 / 购买）仍由业务回调负责。`cue == null` = 这一颗不出声。
 void refPressSound(String? cue, {int? variant}) {
   if (cue != null) unawaited(Sfx.cue(cue, variant: variant));

@@ -3,7 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:system_panel/state/voice.dart';
 import 'package:system_panel/widgets/voice_bars.dart';
 
-/// docs/39 §5.5 性能收口：`VoiceBars` 原来是**常驻 60fps Ticker**
+/// 性能收口：`VoiceBars` 原来是**常驻 60fps Ticker**
 /// （只有 `enabled=false` 才停）—— 这排条挂在每一页的字幕带上，她一个字
 /// 都没说的时候也在满帧刷五根 2px 的条。现在改成：
 ///   · 说话中（包络目标抬起来 / 还没落回去）→ 60fps Ticker（公式照旧）；

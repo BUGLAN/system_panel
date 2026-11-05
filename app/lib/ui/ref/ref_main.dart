@@ -425,7 +425,8 @@ class _RefMainState extends State<RefMain>
           ),
         ),
         const SizedBox(width: 12),
-        RefXButton(onTap: widget.onBack, accent: Ref.cyan),
+        // A18（docs/50）：整页场景统一用 ‹ 返回（✕ 只留给弹窗式面板）
+        RefXButton(onTap: widget.onBack, accent: Ref.cyan, back: true),
       ],
     );
   }
@@ -550,7 +551,7 @@ class _RefMainState extends State<RefMain>
           compactH: 430,
           onFocus: _onFocus,
           onTap: _onTap,
-          // 压暗由轮播叠在卡外（拖动时卡面不重栅格化，docs/49 E2）；
+          // 压暗由轮播叠在卡外（拖动时卡面不重栅格化）；
           // 颜色 / 圆角与 RefTCard 内部的 .tc-face 压暗一致
           shadeColor: const Color(0xFF05040A),
           shadeRadius: const BorderRadius.all(Radius.circular(20)),

@@ -25,7 +25,7 @@ import '../ref/ref_motion.dart';
 ///  ⚠️ 保存与测试都**不抛异常**：SettingsStore.save 自己吞磁盘错误并广播，
 ///     LlmClient.ping 把一切失败折叠成 LlmReply.failure。
 ///
-///  动效（docs/49 B1）：进出由外层斜切转场负责；页内抬头 → 各分区 → 底栏
+///  动效：进出由外层斜切转场负责；页内抬头 → 各分区 → 底栏
 ///  按 RefReveal 逐层显影（与主线 / 档案页同一节奏）。测试中结果框挂扫描条。
 ///  声音：档位切换 `card.focus`，测试成功 `success` / 失败 `error`，保存 `stamp`。
 /// ═══════════════════════════════════════════════════════════
@@ -535,7 +535,7 @@ class _LlmSettingsPaneState extends State<LlmSettingsPane> {
                       color: Ref.txt,
                     ),
                   ),
-                  // 测试中：不定进度扫描条（docs/49 D5，原来只有按钮文字在变）
+                  // 测试中：不定进度扫描条（原来只有按钮文字在变）
                   if (_testing) ...<Widget>[
                     const SizedBox(height: 10),
                     const RefScanBar(

@@ -8,7 +8,7 @@ import 'package:flutter/foundation.dart';
 import '../design/tokens.dart' show SoundRule;
 
 /// ═══════════════════════════════════════════════════════════
-///  音效总线（docs/22 R3）—— 素材是**离线烘好的包**（`tools/audio/` 生成，
+///  音效总线—— 素材是**离线烘好的包**（`tools/audio/` 生成，
 ///  参数照 `prototype/opus-v2-dir/js/audio.js` 那套 Web Audio 规格），
 ///  事件名与原型 `Sound.play(name)` 一一对应。
 ///
@@ -29,7 +29,7 @@ class Sfx {
   static bool enabled = true;
 
   /// `flutter test` 里没有音频插件：一碰播放器就报 MissingPluginException、
-  /// 把测试判红。打字机现在逐字出声（docs/49 A7），几乎每个页面测试都会碰到，
+  /// 把测试判红。打字机现在逐字出声，几乎每个页面测试都会碰到，
   /// 所以在总线这一层直接不出声（flutter test 进程带 FLUTTER_TEST 环境变量）。
   static final bool _underTest =
       !kIsWeb && Platform.environment.containsKey('FLUTTER_TEST');
@@ -53,7 +53,7 @@ class Sfx {
   /// 多条 = 变体：每次随机取一条（原型每发都随机音高，不随机就丢手感）。
   /// 命名约定由 `tools/audio/` 的烘焙脚本保证。
   static const Map<String, List<String>> table = <String, List<String>>{
-    // ── 高频 12 件（docs/22 R3-A）──
+    // ── 高频 12 件──
     'tap': <String>['audio/tap.wav'],
     // 戳她（原型 audio.js L130 `poke` 620→990Hz triangle；flows.js L649 播它）
     'poke': <String>['audio/poke.wav'],
@@ -88,7 +88,7 @@ class Sfx {
       'audio/ignite_6.wav',
       'audio/ignite_7.wav',
     ],
-    // ── docs/41 §4：卡牌专属（v16）────────────────────────────────
+    // ── 卡牌专属（v16）────────────────────────────────
     // detent：档位咬合（28ms，与 8ms 震动同量级；rung 是 70ms 给派单板的）
     'detent': <String>[
       'audio/detent_0.wav',
@@ -118,14 +118,14 @@ class Sfx {
     'crit': <String>['audio/ref_crit.wav'],
     'levelup': <String>['audio/ref_levelup.wav'],
     'fail': <String>['audio/ref_fail.wav'],
-    // docs/41 §1 Bug ③：`boot.wav` **一直在盘上（85 件里的第 1 件）**，
+    // Bug：`boot.wav` **一直在盘上（85 件里的第 1 件）**，
     // 但 `table` 里从来没有这个 key —— 而 `main.dart` 的唤醒流程每次都在调
     // `Sfx.play('boot')`。于是每次唤醒都是一次**空调用**：`_pick` 返回 null、
     // 静默返回、连 `failCount` 都不加，因此这个漏项从来没被任何统计发现。
     'boot': <String>['audio/ref_boot.wav'],
     // ── 底噪（可循环，设置页可关；原型 audio.js 的 ambient）──
     'ambient': <String>['audio/ambient_loop.wav'],
-    // ── 参考稿音效（docs/49 A6）：`宿主养成系统_重设计.html` 的 SFX 逐条烘焙 ──
+    // ── 参考稿音效：`宿主养成系统_重设计.html` 的 SFX 逐条烘焙 ──
     // v3 界面全按参考稿重做了，音效也用参考稿这一套。原来这些名字经 [designAlias]
     // 映射到 opus-v2 的「最接近件」（error→结算砸印、swipe→28ms detent…），听感对不上。
     // 同名覆盖：stamp / crit / levelup / fail / boot / hold 也换成参考稿版本。
@@ -210,7 +210,7 @@ class Sfx {
   /// 12 槽 / 250ms = 48 发每秒 > 打字机 29 字每秒（34ms/字），不会饿死。
   static const Duration _busyHold = Duration(milliseconds: 250);
 
-  /// **长音**的槽位保持时长（docs/41 §4.2）。
+  /// **长音**的槽位保持时长。
   ///
   /// 原来的 [_busyHold] 是固定 250ms —— 它按「最高频那条路」（逐字音 ~60ms）
   /// 标定的，于是所有 >250ms 的音都被**腰斩**：
@@ -231,7 +231,7 @@ class Sfx {
     "crit": Duration(milliseconds: 1150),
     "fail": Duration(milliseconds: 1100),
     "publish": Duration(milliseconds: 700),
-    // 参考稿件（docs/49 A6）：素材时长 + 200ms 余量
+    // 参考稿件：素材时长 + 200ms 余量
     "whoosh": Duration(milliseconds: 800),
     "success": Duration(milliseconds: 950),
     "error": Duration(milliseconds: 580),
@@ -244,7 +244,7 @@ class Sfx {
   /// 这一发最多占着槽位多久
   static Duration _holdFor(String key) => _longHold[key] ?? _busyHold;
 
-  /// 供测试与诊断：某个 key 的槽位保持时长（docs/41 §4.2 的回归点）。
+  /// 供测试与诊断：某个 key 的槽位保持时长（的回归点）。
   ///
   /// 为什么要暴露它：`_busyHold` 固定 250ms 曾把 `seal`(1.26s) / `impact`(1.29s)
   /// 腰斩 —— 那是**听不出来**但会引发槽位复用错乱的一类缺陷，必须有钉子。
@@ -347,7 +347,7 @@ class Sfx {
   /// 每个 cue 上一次出声的时间（节流用）
   static final Map<String, DateTime> _lastCue = <String, DateTime>{};
 
-  /// 按**触发规则**出声（docs/48 §4，规则表在 tokens.dart `SoundRule.cues`）。
+  /// 按**触发规则**出声（规则表在 tokens.dart `SoundRule.cues`）。
   ///
   /// 与 [play] 的区别：音量按规则缩放（过程音 soft、落定音满），且同一 cue
   /// 有最小间隔 —— 连点/快速拖牌不会变成机关枪。未登记的 cue 名当作

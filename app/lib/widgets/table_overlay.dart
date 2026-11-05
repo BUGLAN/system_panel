@@ -8,7 +8,7 @@ import 'card_table.dart';
 import 'rail_base.dart';
 
 /// ═══════════════════════════════════════════════════════════
-///  悬浮牌局（docs/32 §3）—— 牌**直接浮在主界面上**
+///  悬浮牌局—— 牌**直接浮在主界面上**
 ///
 ///  宿主原话：「脱离传统的网页 UI 设计，直接让卡牌悬浮在主界面上」。
 ///  所以这里**没有面板、没有弹层壳、没有分节标题**：
@@ -114,7 +114,7 @@ class _TableOverlayState extends State<TableOverlay>
     final HostState? h = _host;
     if (h == null) return null;
     return switch (widget.scene) {
-      // docs/48 §2：补给不再重复印余额 —— HUD 右上的金色货币胶囊就在
+      // 补给不再重复印余额 —— HUD 右上的金色货币胶囊就在
       // 同一屏（宿主截图里「26」和「◈26」同时出现，读两遍）。
       TableScene.supply => null,
       TableScene.titles =>

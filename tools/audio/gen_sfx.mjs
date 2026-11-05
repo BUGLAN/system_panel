@@ -299,7 +299,7 @@ const RANK_I = 2; // 总线只查 rank.wav → 取中档（原型按稀有度 i 
 const IGNITE_F = [523.3, 587.3, 659.3, 784, 880, 1046.5, 1174.7, 1318.5]; // audio.js:89（clamp(x|0,0,7)）
 
 /* ══════════════ 参考稿音效（`宿主养成系统_重设计.html` JS L877-929 的 `SFX`）══════════════
-   docs/49 A6：v3 界面全部按参考稿重做了，音效却一直是 opus-v2 那套「找最接近的顶上」
+   v3 界面全部按参考稿重做了，音效却一直是 opus-v2 那套「找最接近的顶上」
    （error 顶成结算砸印 impact、swipe 顶成 28ms 的 detent……），听感对不上。这里把参考稿
    的 tone()/noise()/chord() **逐条转写**：
      tone({f,f2,t,type,v,at,delay,det})  →  T({f,f2,dur:t,type,vol:v,a:at,at:delay,detune:det})
@@ -377,7 +377,7 @@ function buildManifest() {
   const M = [];
   const add = (name, sr, make, master) => M.push({ name, sr, kind: 'layers', make, master });
 
-  // ── R 参考稿音效（v3 界面用这一套；docs/49 A6）──
+  // ── R 参考稿音效（v3 界面用这一套）──
   for (const [k, make] of Object.entries(REF)) add(`ref_${k}`, 44100, make, REF_MASTER);
   // type：参考稿每次随机 1100~1600Hz → 烘 4 档变体
   for (let n = 0; n < 4; n++) {
@@ -412,7 +412,7 @@ function buildManifest() {
   for (let x = 0; x < 5; x++) {
     add(`rung_${x}`, 44100, () => [T({ f: 300 * Math.pow(2, x / 5), dur: 0.07, vol: 0.045, type: 'square', lp: 2600 })]);
   }
-  // ── docs/41 §3.3 / §3.4 / §3.1：卡牌专属的三组（v16）─────────────────
+  // ── 卡牌专属的三组（v16）─────────────────
   // 为什么另立一组而不是复用 rung：rung 是 70ms 方波、5 档跨度 1.74×，
   // 是给派单板的稀有度滚档用的；牌桌的「档位咬合」是**每 104px 一发**的高频
   // 动作，需要更短（与 8ms 震动同量级）+ 带噪声瞬态（不然手机小喇叭上像塑料）。
@@ -436,7 +436,7 @@ function buildManifest() {
   ]);
 
   // deal_0..4：发牌（牌扇入场）。纸牌划出的"唰"——高通噪声扫频 + 短促的落点。
-  // 出声预算：一次发牌最多 2 声（首张 deal_0 + 末张 deal_4），见 docs/41 §3.1。
+  // 出声预算：一次发牌最多 2 声（首张 deal_0 + 末张 deal_4）。
   for (let x = 0; x < 5; x++) {
     add(`deal_${x}`, 44100, () => [
       N({ type: 'highpass', f: 1200 + x * 220, f2: 3800 + x * 400, dur: 0.11, vol: 0.045, a: 0.004 }),

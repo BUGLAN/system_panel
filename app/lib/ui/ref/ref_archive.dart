@@ -359,7 +359,8 @@ class _RefArchiveState extends State<RefArchive>
           ),
         ),
         const SizedBox(width: 12),
-        RefXButton(onTap: widget.onBack, accent: Ref.violet),
+        // A18（docs/50）：整页场景统一用 ‹ 返回（✕ 只留给弹窗式面板）
+        RefXButton(onTap: widget.onBack, accent: Ref.violet, back: true),
       ],
     );
   }

@@ -18,7 +18,7 @@ void main() {
       expect(_flashPaint(tester), isNull);
     });
 
-    testWidgets('白 16% —— 与 docs/08 的「亮帧」一致', (WidgetTester tester) async {
+    testWidgets('白 16% ——「亮帧」', (WidgetTester tester) async {
       await tester.pumpWidget(_wrap(const FlashLayer(alpha: .16)));
       final Color c = _flashPaint(tester)!.color;
       expect(c.a, closeTo(41 / 255, .01)); // .16 × 255

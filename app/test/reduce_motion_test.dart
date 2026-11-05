@@ -5,7 +5,7 @@ import 'package:shared_preferences_platform_interface/shared_preferences_async_p
 import 'package:system_panel/main.dart';
 import 'package:system_panel/widgets/fx_layer.dart';
 
-/// docs/39 §5.5（宿主点名的坑）：**`FlashLayer` / `ShakeLayer` 的
+/// 宿主点名的坑：**`FlashLayer` / `ShakeLayer` 的
 /// `reduceMotion` 形参在调用点从来没传过** —— 两个组件内部早就写好了降级
 /// （亮帧 alpha 砍半、震屏整个不抖），但 `main.dart` 挂载时不喂这个开关，
 /// 于是「减弱动态效果」对亮帧和震屏完全无效。
@@ -49,12 +49,12 @@ void main() {
     expect(
       tester.widget<FlashLayer>(flash).reduceMotion,
       isTrue,
-      reason: 'docs/39 §5.5：reduce 时亮帧强度要砍半（形参没接上就永远不砍）',
+      reason: 'reduce 时亮帧强度要砍半（形参没接上就永远不砍）',
     );
     expect(
       tester.widget<ShakeLayer>(shake).reduceMotion,
       isTrue,
-      reason: 'docs/39 §5.5：reduce 时震屏要整个不抖（形参没接上就照样抖）',
+      reason: 'reduce 时震屏要整个不抖（形参没接上就照样抖）',
     );
 
     // 收干净：壳里有秒时钟与各层 ticker，别把 pending timer 留给下一条用例

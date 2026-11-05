@@ -1,4 +1,4 @@
-/// 小祥的长期记忆（docs/18 §2.5）。
+/// 小祥的长期记忆。
 ///
 /// 独立存档 key `opus-v2/memory/v1`（不进宿主档案，与 SaveFile 互不干扰）；
 /// 上限 200 条，满了按「权重低者先、同权最旧者先」淘汰；读取给 LLM 注入
@@ -70,7 +70,7 @@ class MemoryStore {
     : _injected = prefs,
       key = storageKey ?? defaultKey;
 
-  /// 存档 key（docs/18 §2.8）
+  /// 存档 key
   static const String defaultKey = 'opus-v2/memory/v1';
 
   /// 条目上限，满了淘汰

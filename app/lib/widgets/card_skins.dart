@@ -6,7 +6,7 @@ import 'package:flutter/material.dart';
 import '../design/tokens.dart';
 
 /// ═══════════════════════════════════════════════════════════
-///  牌面皮肤（docs/32 §4 / §5）—— 三种**完全不同**的牌面语言
+///  牌面皮肤—— 三种**完全不同**的牌面语言
 ///
 ///  宿主原话：「这些地方的卡片样式绝对不能每一处都一样」。
 ///  所以三种场景不是换色，而是换**形状 + 材质 + 排布 + 动效**：
@@ -50,12 +50,12 @@ enum CardSkin {
   /// 证据 · 取景窗（横版宽幅 + 四角括号 + 扫描线）
   frame,
 
-  /// 主线 · 委托（docs/33：一条 2px 状态线 + 左侧印位 + 题面/规则行，
+  /// 主线 · 委托（一条 2px 状态线 + 左侧印位 + 题面/规则行，
   /// 大牌审视态多出报酬条 / 代价条 / 她的批注）—— 第 4 套皮肤
   duty,
 }
 
-/// 主线委托的状态线（docs/33 §3.3）—— 只有 [CardSkin.duty] 读它。
+/// 主线委托的状态线—— 只有 [CardSkin.duty] 读它。
 ///
 ///  · [sealed]    待发布：系统还没派（暗青虚线）
 ///  · [open]      可接：亮青实线 + 外辉
@@ -79,7 +79,7 @@ Dims dimsOf(CardSkin skin, CardTableSize size) {
   if (skin == CardSkin.duty) {
     return switch (size) {
       CardTableSize.l => const Dims(208, 292),
-      // docs/39 M-05：132×196 → 148×220（牌扇领位牌）。
+      // 132×196 → 148×220（牌扇领位牌）。
       // CardTable 高度 = 220 + topPad 26 + dy2 38 + 30 = 314。
       CardTableSize.m => const Dims(148, 220),
       CardTableSize.s => const Dims(100, 72),
@@ -178,7 +178,7 @@ SkinGeom geomOf(CardSkin s) => switch (s) {
   // 委托：**竖牌扇**（2026-10-12 重设计）——像手里捏着一把牌：领位抬起，
   // 两侧向外倾、往下沉、缩小。横条牌的「竖直堆叠」（stride 66 / dx1 6）已退役。
   //
-  // docs/39 M-05 / M-06（2026-10-17 真机走查后）：牌 132×196 → 148×220，
+  // 2026-10-17 真机走查后：牌 132×196 → 148×220，
   // stride 96 → 104，侧位缩放 .86 → .84，领位纵向提升 −6 → −12。
   // 露出宽度账（M 档牌宽 148、侧位缩放 .84 = 124.3）：
   //   dx1 104 → 侧位内侧缘 104 − 124.3/2 = 41.85、外侧缘 −82.45；领位左缘 −74
@@ -274,7 +274,7 @@ class TableCard {
   /// 档位字母（F~S）—— duty 的印位读它（其余皮肤走 [rarity] 索引）
   final String rank;
 
-  /// 状态线（docs/33 §3.3）
+  /// 状态线
   final DutyState dutyState;
 
   /// ⑤ 规则行：`20 min · 训练照片 · 力`
@@ -286,7 +286,7 @@ class TableCard {
   /// 执行中的计时读数（`12:04`）—— 状态线右侧
   final String? elapsed;
 
-  /// ⑩ 证据带已经拍到几张（docs/39 M-16）。0 = 还没拍。
+  /// ⑩ 证据带已经拍到几张。0 = 还没拍。
   ///
   /// 只给 [CardSkin.duty] 的牌屉读；本轮只读**份数**（缩略图要接存档里的
   /// 相对路径 + 会话里的 absPath，那是 P1 的活）。
@@ -453,7 +453,7 @@ class CardFace extends StatelessWidget {
     this.foilLevel = 1,
   });
 
-  /// 全息箔强度（docs/48 §3）：牌桌按画质档传入（富效果 1 / 省电 0）。
+  /// 全息箔强度：牌桌按画质档传入（富效果 1 / 省电 0）。
   /// 稀有度越高的牌越亮由 [GlassPainter] 自己按 accent 处理。
   final double foilLevel;
 
@@ -493,18 +493,18 @@ class CardFace extends StatelessWidget {
   /// 拖拽进度 -1~1 —— 液态玻璃的**对角高光跟着它走**
   final double dragPhase;
 
-  /// 离领位 ≥2 格（docs/39 M-07「±2 位只留档位 + 状态线，不画文字」）。
+  /// 离领位 ≥2 格（「±2 位只留档位 + 状态线，不画文字」）。
   ///
   /// 只有 [CardSkin.duty] 读它（其余三套皮肤的侧位本来就靠缩放压暗表达层级，
   /// 没有「±2 位」这个概念）—— 默认 false，别处行为一行不变。
   final bool far;
 
-  /// 领位外辉的淡入进度 0~1（docs/39 M-06「换领位时外辉 200ms 淡入」）。
+  /// 领位外辉的淡入进度 0~1（「换领位时外辉 200ms 淡入」）。
   ///
   /// 同样只有 duty 读它；默认 1 = 立刻就位（其余皮肤不画这层辉光）。
   final double leadT;
 
-  /// 执行中状态线的**光包相位** 0~1（docs/39 M-09「12px 光包 1.6s 走」）。
+  /// 执行中状态线的**光包相位** 0~1（「12px 光包 1.6s 走」）。
   ///
   /// `< 0` = 不画（默认 -1）—— 因此**不给它灌值的地方完全没有光包、行为不变**；
   /// 只有主线页的牌扇会用一个 15fps 的 ticker 往里灌。
@@ -1486,7 +1486,7 @@ class GlassPainter extends CustomPainter {
 
   final double radius;
 
-  // ── docs/48 §3「卡片材质 v2」（全部可选，旧调用点零改动）──────────
+  // ──「卡片材质 v2」（全部可选，旧调用点零改动）──────────
   /// 边缘光的染色（稀有度色）；null = 电光青
   final Color? accent;
 
@@ -2032,7 +2032,7 @@ class _BackPainter extends CustomPainter {
 }
 
 // ═══════════════════════════════════════════════════════════
-//  第 4 套皮肤 · 主线委托（docs/33 §3.2 九区解剖）
+//  第 4 套皮肤 · 主线委托（九区解剖）
 //
 //  宿主原话：「不要自己重写一套，直接搬补给页那一桌」——
 //  所以外壳照抄货架的材质（[GlassLayer] / [ShelfColors] 同源），
@@ -2052,7 +2052,7 @@ class _BackPainter extends CustomPainter {
 
 /// 状态线的颜色（暗青虚线 / 亮青 / 金 / 灰）。
 ///
-/// docs/39 M-09：五态改成**形状 + 颜色双编码** —— 以前 open 与 active 是
+/// 五态改成**形状 + 颜色双编码** —— 以前 open 与 active 是
 /// 完全同款的一条亮青线，真机上分不出「能接」和「正在做」。现在：
 ///   可接 = 亮青**实线**；执行中 = 亮青实线 + **12px 光包 1.6s 沿 2px 线走**；
 ///   已完成 = 金线；待发布 = 暗青虚线；已放弃 = 灰线 + 整张压暗 .55。
@@ -2211,18 +2211,18 @@ extension _DutyFace on CardFace {
     );
   }
 
-  // ── 竖牌（牌扇，docs/39 M-05 起为 148×220）—— 只放「读得下的一档」──
+  // ── 竖牌（牌扇，148×220）—— 只放「读得下的一档」──
   //
   // ⚠️ 这个盒子**放不下完整九区**（148 宽 → 内容区 124；塞满必 overflow，
   //    实机踩过 `BOTTOM OVERFLOWED BY 81 PIXELS`）。所以牌扇给的是
   //    ① 角标 / ② 印位 / ③ 字形 / ④ 名称 / ⑤ 规则行(1 行) / ⑥ 报酬(数字)
   //    / ⑨ 状态线 / 印章；**完整九区在牌屉**（`_dutyDrawer`）。
   //
-  // docs/39 M-07 侧位摘要：相邻位只留 ① 角标 / ② 档位 / ④ 单行标题 / ⑨ 状态线
+  // 侧位摘要：相邻位只留 ① 角标 / ② 档位 / ④ 单行标题 / ⑨ 状态线
   //   （隐藏 kicker 之外的规则行与报酬）；±2 位**只留档位 + 状态线、不画文字**
   //   —— 侧位被压住的那 33px 上不许有字（铁律 2）。
   //
-  // docs/39 M-08 排版：档位 26pt/800（辉光 blur 10）、标题 17pt、kicker 9.5、
+  // 排版：档位 26pt/800（辉光 blur 10）、标题 17pt、kicker 9.5、
   //   规则行 11.5、报酬 13、印章 10。
   Widget _dutyFull(BuildContext context, Dims d) {
     final Color accent = card.accent ?? C.blue;
@@ -2235,7 +2235,7 @@ extension _DutyFace on CardFace {
           color: solid ? C.line2 : (lead ? C.blue.withAlpha(120) : C.line2),
         ),
         boxShadow: <BoxShadow>[
-          // docs/39 M-06：领位的**青色外辉** α .45 / blur 22（换领位 200ms 淡入），
+          // 领位的**青色外辉** α .45 / blur 22（换领位 200ms 淡入），
           // 黑色落影保留 —— 一个说「这张被抽出来了」，一个说「它离台面有多高」。
           if (lead && !solid)
             BoxShadow(
@@ -2294,7 +2294,7 @@ extension _DutyFace on CardFace {
               ),
             ),
             _glass(lead: lead, solid: solid, radius: 12),
-            // docs/39 M-09「已放弃 = 整张压暗 .55」：压暗用**叠一块深底**表达，
+            //「已放弃 = 整张压暗 .55」：压暗用**叠一块深底**表达，
             // 不是给整张卡套 Opacity —— 后者会 saveLayer（§5.5 红线），
             // 而且会把后面的舞台一起透出来（宿主三次反馈过的老病）。
             if (dim)
@@ -2351,7 +2351,7 @@ extension _DutyFace on CardFace {
                   // M-07「±2 位只留档位 + 状态线，不画文字」：档位照样在顶部（它是
                   // 这张牌仅剩的识别信息），中间整段留白，底部交给状态线。
                   if (!far) const SizedBox(height: 6),
-                  // ② 印位（docs/39 M-08：30 → 26pt，辉光 14 → blur 10 / α .45）
+                  // ② 印位（30 → 26pt，辉光 14 → blur 10 / α .45）
                   Text(
                     card.rank,
                     style: fs(
@@ -2502,7 +2502,7 @@ extension _DutyFace on CardFace {
               child: ColoredBox(color: accent),
             ),
             Padding(
-              // docs/39 M-15：批注已经进了内容流（原来是 Positioned 吸底的），
+              // 批注已经进了内容流（原来是 Positioned 吸底的），
               // 底部不再需要预留 58 那两行 —— 留 14 就够，多出来的高度给证据带。
               padding: const EdgeInsets.fromLTRB(18, 14, 18, 14),
               child: Column(
@@ -2532,7 +2532,7 @@ extension _DutyFace on CardFace {
                             Row(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: <Widget>[
-                                // ② 印位（docs/39 M-15：40 → 34，别让档位字母抢了题面）
+                                // ② 印位（40 → 34，别让档位字母抢了题面）
                                 Text(
                                   card.rank,
                                   style: fs(
@@ -2628,7 +2628,7 @@ extension _DutyFace on CardFace {
                       ),
                     ],
                   ),
-                  // ② 证据带（docs/39 M-16）：原来是最下面那排**牌外**的
+                  // ② 证据带：原来是最下面那排**牌外**的
                   //    五个无标签虚线圈（真机上是「空板下的五个空圈」）。
                   //    移进卡里，按五态给内容 —— 这一段就是被它填掉的空白。
                   const SizedBox(height: 12),
@@ -2692,7 +2692,7 @@ extension _DutyFace on CardFace {
     );
   }
 
-  /// ② 证据带（docs/39 M-15 / M-16）—— 牌屉中段那五个槽。
+  /// ② 证据带—— 牌屉中段那五个槽。
   ///
   /// 原来它在**牌外**（main_view 的独立托盘）：五个无标签、无数据、无点击的
   /// 虚线圈，加上牌屉卡片里 55% 的空玻璃，就是真机图 03/07 的样子。
@@ -2833,7 +2833,7 @@ extension _DutyFace on CardFace {
     );
   }
 
-  /// ⑨ 状态线 —— 五态**形状 + 颜色双编码**（docs/39 M-09）。
+  /// ⑨ 状态线 —— 五态**形状 + 颜色双编码**。
   ///
   ///  · 待发布 = 暗青**虚线**（CustomPainter 画，真正的虚线不是细线）
   ///  · 可接   = 亮青**实线** + 两端渐隐（静止）
@@ -2989,7 +2989,7 @@ extension _DutyFace on CardFace {
   };
 }
 
-/// 执行中那条线上跑的**光包**（docs/39 M-09）。
+/// 执行中那条线上跑的**光包**。
 ///
 /// 12px 宽的一段亮青，沿 2px 状态线从左往右走一圈（1.6s 循环）；
 /// [progress] < 0 = 不画（reduced-motion / 非执行态）。
@@ -3001,7 +3001,7 @@ class _DutyRunPainter extends CustomPainter {
   /// 0~1 的相位；< 0 = 不画
   final double progress;
 
-  /// 光包宽度（docs/39 M-09「12px 光包」）
+  /// 光包宽度（「12px 光包」）
   static const double kRunW = 12;
 
   @override

@@ -16,7 +16,7 @@ import 'package:system_panel/state/save_file.dart';
 
 /// QuestFlow —— 业务唯一真源（store.js 移植）。
 ///
-/// 这里钉住「提交任务卡死」修复后的**数值契约**（docs/18 §2.3 + 第四章 T2）：
+/// 这里钉住「提交任务卡死」修复后的**数值契约**（+ 第四章 T2）：
 ///  · E 级单 EXP +1、金币 +5；暴击 ×2、双倍卡 ×2、可叠 ×4；补救 ×0.5
 ///  · 升级走 need = 12 + lv×6
 ///  · 主线环点亮 + 队首补下一环；队列空 → empty（结算页弹【收工。】）
@@ -201,7 +201,7 @@ void main() {
     });
   });
 
-  group('数值表（docs/18 §2.3）', () {
+  group('数值表', () {
     test('E~S 经验 / 金币，F 兼容档', () {
       expect(QuestFlow.expOf('F'), 0);
       expect(QuestFlow.expOf('E'), 1);
@@ -540,7 +540,7 @@ void main() {
       expect(plan[4].state, PlanState.done);
       expect(plan[4].held, const Duration(minutes: 45));
       expect(plan[4].doneAt, DateTime(2026, 1, 1, 10, 45));
-      // docs/33：清单里那张回到 todo（「在手」是队列的事，不是清单状态）
+      // 清单里那张回到 todo（「在手」是队列的事，不是清单状态）
       expect(plan[5].state, PlanState.todo);
       // 补发到「在手窗口」：第 6/7/8 张（0 基 5/6/7）一次都进了队列
       final List<Quest> mains = f.queue
@@ -577,7 +577,7 @@ void main() {
           kind: 'main',
           planIndex: 0,
           planTotal: 1,
-          // ⚠️ docs/33：主线单必须认领自己的目标（goalId），否则不许动清单
+          // ⚠️ 主线单必须认领自己的目标（goalId），否则不许动清单
           goalId: oneRing.id,
           name: '唯一的一环',
           reason: '',
@@ -638,7 +638,7 @@ void main() {
           kind: 'main',
           planIndex: 0,
           planTotal: 1,
-          // ⚠️ docs/33：主线单必须认领自己的目标（goalId），否则不许动清单
+          // ⚠️ 主线单必须认领自己的目标（goalId），否则不许动清单
           goalId: oneRing.id,
           name: '唯一的一环',
           reason: '',
@@ -680,7 +680,7 @@ void main() {
           kind: 'main',
           planIndex: 0,
           planTotal: 1,
-          // ⚠️ docs/33：主线单必须认领自己的目标（goalId），否则不许动清单
+          // ⚠️ 主线单必须认领自己的目标（goalId），否则不许动清单
           goalId: oneRing.id,
           name: '唯一的一环',
           reason: '',
@@ -725,7 +725,7 @@ void main() {
           kind: 'main',
           planIndex: 0,
           planTotal: 1,
-          // ⚠️ docs/33：主线单必须认领自己的目标（goalId），否则不许动清单
+          // ⚠️ 主线单必须认领自己的目标（goalId），否则不许动清单
           goalId: oneRing.id,
           name: '唯一的一环',
           reason: '',
@@ -772,7 +772,7 @@ void main() {
           kind: 'main',
           planIndex: 0,
           planTotal: 1,
-          // ⚠️ docs/33：主线单必须认领自己的目标（goalId），否则不许动清单
+          // ⚠️ 主线单必须认领自己的目标（goalId），否则不许动清单
           goalId: oneRing.id,
           name: '唯一的一环',
           reason: '',
@@ -818,7 +818,7 @@ void main() {
           kind: 'main',
           planIndex: 0,
           planTotal: 1,
-          // ⚠️ docs/33：主线单必须认领自己的目标（goalId），否则不许动清单
+          // ⚠️ 主线单必须认领自己的目标（goalId），否则不许动清单
           goalId: oneRing.id,
           name: '唯一的一环',
           reason: '',
@@ -1031,7 +1031,7 @@ void main() {
       // 补救单：C 降两档 = E；时限 = max(5, ⌈45/2⌉)
       expect(fo.remedy?.rank, 'E');
       expect(fo.remedy?.minutes, 23);
-      expect(fo.remedy?.name, contains('（做一半）'));
+      expect(fo.remedy?.name, contains('（简化版）'));
       expect(fo.remedy?.reason, contains('补救')); // 附言是补救台词，不是日常的
       expect(
         fo.remedyDeadline?.difference(DateTime(2026, 1, 1, 10, 10)),

@@ -46,7 +46,7 @@ class RefExec extends StatelessWidget {
   /// 已上传的证据缩略图（0~3 张）
   final List<Widget> evidenceThumbs;
 
-  /// 正在取图 / 视觉校验（下一个空槽转圈、全部槽位不可点；docs/49 D4）
+  /// 正在取图 / 视觉校验（下一个空槽转圈、全部槽位不可点）
   final bool evidenceBusy;
   final VoidCallback? onAddEvidence;
 
@@ -401,7 +401,7 @@ class RefExec extends StatelessWidget {
                     evidenceBusy
                         ? '校验中……她在看。'
                         : evidenceThumbs.isEmpty
-                        ? '上传截图。没有证据，她不认账。'
+                        ? '上传照片或截图。没有证据，她不认账。'
                         : '收下了。她会盯着看。',
                     style: refText(
                       family: Ref.fc,
@@ -527,7 +527,7 @@ class RefExec extends StatelessWidget {
             Expanded(
               child: RefButton(
                 key: const Key('ref.exec.submit'),
-                label: '提交 · 让她验收',
+                label: '提交任务', // A7（docs/50）：AGENTS 锁定用词
                 onTap: onSubmit,
               ),
             ),
@@ -639,7 +639,7 @@ class _HoldToQuitState extends State<_HoldToQuit>
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
                   child: Text(
-                    p > 0 ? '松手还来得及' : '按住 · 认输',
+                    p > 0 ? '松手还来得及' : '认输（按住）', // A7：锁定用词「认输」
                     style: refText(
                       family: Ref.fc,
                       size: 14,

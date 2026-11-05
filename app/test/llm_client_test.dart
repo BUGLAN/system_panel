@@ -6,7 +6,7 @@ import 'package:http/testing.dart';
 import 'package:system_panel/agent/llm_client.dart';
 import 'package:system_panel/agent/llm_telemetry.dart';
 
-/// LlmClient 单测（docs/18 §2.4 / §3.1-T4）。
+/// LlmClient 单测。
 /// 全部走 MockClient，不打真网。
 ///
 /// 实测事实（ENV.md round 15）：`deepseek-v4.1flash` 在端点 400，
@@ -491,7 +491,7 @@ void main() {
       );
     });
 
-    test('ping() 发**真实形状**探测请求（docs/22 R1：不再是 maxTokens 8 的假绿灯）', () async {
+    test('ping() 发**真实形状**探测请求（不再是 maxTokens 8 的假绿灯）', () async {
       Map<String, dynamic>? body;
       final LlmClient client = LlmClient(
         config: const LlmConfig(apiKey: 'k'),
@@ -539,7 +539,7 @@ void main() {
       );
     });
 
-    test('遥测（docs/22 §2.0）：每次应答计数 + 失败留类别与 detail', () async {
+    test('遥测：每次应答计数 + 失败留类别与 detail', () async {
       LlmTelemetry.reset();
       // ① 成功
       final LlmClient ok = LlmClient(

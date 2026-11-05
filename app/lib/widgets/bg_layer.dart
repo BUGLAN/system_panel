@@ -31,7 +31,7 @@ class _BgLayerState extends State<BgLayer> with TickerProviderStateMixin {
   //    Ticker，相位连续累计、**每 100ms 才提交一次**（环1每步弧长
   //    r165×0.26°≈0.74px，亚像素级，肉眼不可辨）。
   //
-  // docs/39 §5.5 性能收口：提交**不再走整层 setState** —— 原来 100ms 一次
+  // 性能收口：提交**不再走整层 setState** —— 原来 100ms 一次
   //    `setState(() {})` 会把天幕这一整棵（渐变×3、底图、大字两层、噪点贴图）
   //    全部重建一遍，只为让三个环的 Transform 转一点。现在相位发给
   //    [_orbitRev] 这个 Listenable，三个环的 CustomPainter 用 `repaint:` 订阅它，
@@ -73,7 +73,7 @@ class _BgLayerState extends State<BgLayer> with TickerProviderStateMixin {
   Duration _floorLast = Duration.zero;
 
   /// 地面网格的重绘信号（值 = 上一次真正画出去的相位）。
-  /// docs/39 §5.5：与轨道环同一套收口 —— 31Hz 的提交只重画网格这一张画布，
+  /// 与轨道环同一套收口 —— 31Hz 的提交只重画网格这一张画布，
   /// 不再整层 rebuild。量子（0.25 逻辑像素）与相位数值原样保留。
   final ValueNotifier<double> _floorRev = ValueNotifier<double>(0);
 
@@ -239,7 +239,7 @@ class _BgLayerState extends State<BgLayer> with TickerProviderStateMixin {
   /// 轨道环：圆心钉在她的头（--hx/--hy），整环缓慢自转
   /// [t] 是**相位取值器**（0~1，10Hz Ticker 推进，见 `_onOrbitTick`）。
   ///
-  /// docs/39 §5.5：原来这里读的是 build 时的 `_t1` 并挂在 `Transform.rotate` 上，
+  /// 原来这里读的是 build 时的 `_t1` 并挂在 `Transform.rotate` 上，
   /// 所以每次相位推进都得整层 setState。现在相位与旋转都进 painter：
   /// `repaint: _orbitRev` 只让这一张画布 markNeedsPaint，widget 树不动。
   /// 旋转的写法与 `Transform.rotate` 等价 —— 都是绕画布中心转（画布是紧约束的
@@ -315,7 +315,7 @@ class _BgLayerState extends State<BgLayer> with TickerProviderStateMixin {
                 shaderCallback: (Rect r) => const LinearGradient(
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
-                  // docs/48 §2：大字退到「环境层」—— 原来 .16 的填充 + .2 描边
+                  // 大字退到「环境层」—— 原来 .16 的填充 + .2 描边
                   // 跟她抢视线（宿主截图里「骑行」的空心大字盖满她身后），减半。
                   colors: <Color>[Color(0x1438E1FF), Color(0x0038E1FF)],
                   stops: <double>[0, .7],
@@ -357,7 +357,7 @@ class _BgLayerState extends State<BgLayer> with TickerProviderStateMixin {
           transform: Matrix4.identity()
             ..setEntry(3, 2, -1 / 320)
             ..rotateX(66 * math.pi / 180),
-          // docs/39 §5.5：painter 自己订阅 `_floorRev` 重绘（31Hz 的提交不再
+          // painter 自己订阅 `_floorRev` 重绘（31Hz 的提交不再
           // 触发整层 rebuild；相位取值器读的是 State 上最新的 _floorPhase）。
           child: CustomPaint(
             painter: _GridPainter(phase: () => _floorPhase, repaint: _floorRev),
@@ -436,7 +436,7 @@ class _SkyPainter extends CustomPainter {
 
 /// 轨道环：1px 实线或虚线
 ///
-/// docs/39 §5.5：自转从 `Transform.rotate` 搬进 painter（`repaint:` 订阅
+/// 自转从 `Transform.rotate` 搬进 painter（`repaint:` 订阅
 /// 10Hz 的提交信号，只 markNeedsPaint、不重建 widget）。`canvas.rotate` 绕的是
 /// 画布原点 —— 画布中心即环心，所以先平移到中心、转、再平移回去；
 /// 与 `Transform.rotate(alignment: center)` 的合成结果逐像素等价。

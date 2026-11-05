@@ -7,7 +7,7 @@ import '../design/tokens.dart';
 
 /// 日志行的入场时长 —— app.css L534 `.bt-log div { animation: fadeUp .3s var(--out) }`。
 /// 快进时「先铺完日志、再演唤醒」的那一拍也用它：铺完的行先把入场走完，唤醒才接管画面。
-/// （不等的后果就是快进一闪而过 ≈ 还是把日志跳掉了，正是 docs/22 §R5 要修的那个问题。）
+/// （不等的后果就是快进一闪而过 ≈ 还是把日志跳掉了，正是要修的那个问题。）
 const Duration _kLineIn = Duration(milliseconds: 300);
 
 /// 进度条走一格的时长 —— app.css L537 `.bt-bar i { transition: width .5s var(--out) }`。
@@ -31,7 +31,7 @@ class _Step {
 ///  开机自检（app.css L524-540 `#boot` · flows.js `boot()`）
 ///  不是 logo 页，是一台正在启动的系统：日志在滚、进度在走、
 ///  底下写「触碰屏幕 · 唤醒系统」——点一下才开始。
-///  门禁（docs/22 §R5 裁决 D-m）：点任意处 = 触发唤醒这一拍；
+///  门禁（裁决 D-m）：点任意处 = 触发唤醒这一拍；
 ///  日志没滚完就先快进再唤醒，演出开始后不可二次跳过。
 /// ═══════════════════════════════════════════════════════════
 class BootScreen extends StatefulWidget {
@@ -175,7 +175,7 @@ class _BootScreenState extends State<BootScreen> with TickerProviderStateMixin {
     if (bar != null) _bar = bar;
   }
 
-  /// 门禁（docs/22 §R5 裁决 D-m）：**点任意处 = 触发唤醒这一拍**
+  /// 门禁（裁决 D-m）：**点任意处 = 触发唤醒这一拍**
   /// · 日志没滚完 → 先把剩下的铺完（快进），等行入场走完（`_kLineIn`）再演唤醒；
   /// · 日志已滚完 → 直接唤醒（不多等一拍）；
   /// · 演出开始后不可二次跳过 —— `_gate` 一落，后面所有点击都进不来。

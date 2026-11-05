@@ -39,7 +39,7 @@ const String kIconDownload =
     'stroke-linecap="round" stroke-linejoin="round">'
     '<path d="M8 2v8M4.5 6.5L8 10l3.5-3.5M2.5 13.5h11"/></g></svg>';
 
-/// 「对话」入口（docs/18 §2.6 新增；对话气泡 + 两点，同 HUD/底栏的线宽语言）
+/// 「对话」入口（新增；对话气泡 + 两点，同 HUD/底栏的线宽语言）
 const String kIconChat =
     '<svg viewBox="0 0 24 24"><g fill="none" stroke="#38E1FF" stroke-width="1.5" '
     'stroke-linecap="round" stroke-linejoin="round">'

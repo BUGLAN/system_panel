@@ -1,4 +1,4 @@
-/// SystemCopyProvider —— 系统「说话」的四个入口（docs/18 §2.5，docs/07 四语气）。
+/// SystemCopyProvider —— 系统「说话」的四个入口（四语气）。
 ///
 /// 发布 `dispatchLine` / 结算 `settleLine` / 毒舌 `roastLine` / 追问 `probeLine`。
 /// 每个入口：先试 LLM（人设 prompt + 语气场合 + 真实上下文，temperature 0.8、
@@ -9,12 +9,12 @@
 ///
 /// ⚠️ 为什么是 512 而不是 120：端点是**推理模型**，`max_tokens` 同时算
 /// `reasoning_content` 与正文——120 会被思考整段吃光、正文永远为空，于是
-/// 发布/结算/毒舌的 AI 文案从来没生效过（docs/22 R1 实锤）。
+/// 发布/结算/毒舌的 AI 文案从来没生效过（实锤）。
 /// 文案在严格模式下**也不中断**（演出不能因为模型出错而崩），它的失败可见性
-/// 走「日志 + 遥测 + 设置页回显」（docs/22 §2.0 例外条款）。
+/// 走「日志 + 遥测 + 设置页回显」（例外条款）。
 ///
 /// LLM 客户端本体归 t9（`lib/agent/llm_client.dart`，OpenAI 兼容 chat +
-/// function calling，docs/18 §2.4 契约）。本文件只依赖 [CopyLlmGateway] 这个
+/// function calling 契约）。本文件只依赖 [CopyLlmGateway] 这个
 /// 最小面，集成任务用几行适配器把 t9 的实现插进来即可。
 library;
 
@@ -29,7 +29,7 @@ import 'persona.dart';
 /// 「一句话」的补全上限 —— 台词链路（发布/结算/毒舌/追问）与聊天的一次性
 /// 回复共用。
 ///
-/// ⚠️ 历史（docs/22 R1）：最早 120，被推理模型的 `reasoning_content` 吃光 →
+/// ⚠️ 历史：最早 120，被推理模型的 `reasoning_content` 吃光 →
 ///    正文空 → 永远回退模板，于是抬到 512。512 同样是拍出来的数字：真机实测
 ///    同一句 38 字台词，思考量在 **68~2067** 之间乱跳 —— 任何"刚好够"的预算
 ///    都是抛硬币。宿主 2026-10-12 定调「不用那么省」，所以这里直接给足，
@@ -61,7 +61,7 @@ abstract interface class CopyLlmGateway {
   });
 }
 
-/// 结算档位（docs/07：结算语气按档位 tier）
+/// 结算档位（结算语气按档位 tier）
 enum SettleTier { low, mid, high, top }
 
 /// 文案出处：LLM 生成 / 内置模板
@@ -361,7 +361,7 @@ class SystemCopyProvider {
       );
     }
     try {
-      // 相关记忆注入（docs/18 §2.5：上下文含等级/连击/相关记忆）
+      // 相关记忆注入（上下文含等级/连击/相关记忆）
       final MemoryStore? mem = memory;
       final String? digest = mem == null
           ? null
@@ -470,7 +470,7 @@ class SystemCopyProvider {
     return h % pool.length;
   }
 
-  /// docs/18 §2.5：LLM 文案 300 字符钳制
+  /// LLM 文案 300 字符钳制
   static String _clamp(String s) =>
       s.length > maxChars ? s.substring(0, maxChars) : s;
 }

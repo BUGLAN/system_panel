@@ -7,7 +7,7 @@ import '../agent/tools.dart';
 import 'chat_history.dart';
 
 /// ═══════════════════════════════════════════════════════════
-///  聊天回复服务（docs/18 §2.6 消息流 + docs/19 §A3 工具接线）
+///  聊天回复服务（消息流 + 工具接线）
 ///
 ///  发送 → persona（人设+铁律）+ memory（相关 ≤8 条）+ 近几轮历史
 ///  → [LlmGateway]（OpenAI 兼容）→ `[情绪] 正文` → 气泡 + 舞台 mood。
@@ -39,14 +39,14 @@ class ChatService {
   /// 「系统回执」用户消息，任何 OpenAI 兼容端点都收）
   final LlmClient? client;
 
-  /// agent 工具注册表（docs/19 §A3：查状态/换任务/调整计划/记住/查记忆/总结）
+  /// agent 工具注册表（查状态/换任务/调整计划/记住/查记忆/总结）
   final AgentToolRegistry? tools;
 
   /// 长期记忆（每轮注入最相关 ≤8 条；重启仍在）
   final MemoryStore? memory;
   final Persona persona;
 
-  /// 严格模式（docs/22 §2.0）：开发构建默认开——失败**不产假台词**，
+  /// 严格模式：开发构建默认开——失败**不产假台词**，
   /// 直接给一条诊断条目（HTTP 状态/超时/正文为空 + 原文）。release 关。
   final bool strict;
 
@@ -63,7 +63,7 @@ class ChatService {
   /// function calling 的最大轮数（防模型无限要工具）
   static const int maxToolRounds = 3;
 
-  /// 兜底句（docs/18 §2.6：固定 5 句毒舌之一）——句句毒舌但给下一步
+  /// 兜底句（固定 5 句毒舌之一）——句句毒舌但给下一步
   static const List<String> fallbackLines = <String>[
     '线路断了。……正好，省得你拿「在聊」当「在做」。先把今天那单交了。',
     '这会儿连不上我。连不上也得干活——你手里那单不会自己完成。',
@@ -103,7 +103,7 @@ class ChatService {
       '${planTotal == null || planTotal == 0 ? '' : ' · 主线进度 ${planDone ?? 0}/$planTotal 单'}';
 
   /// 回一句。失败/无 LLM → 兜底毒舌（emotion=annoyed）。
-  /// [scenario] 传「找小祥说说 / 换目标」等场合上下文（docs/18 §2.7）。
+  /// [scenario] 传「找小祥说说 / 换目标」等场合上下文。
   /// 要工具循环（含〔工具〕系统条目）用 [respond]。
   Future<ChatMessage> reply(
     String userText, {
@@ -155,7 +155,7 @@ class ChatService {
     }
   }
 
-  /// 回一轮（docs/19 §A3）。**产物是一条列表**：LLM 要工具时，先产出
+  /// 回一轮。**产物是一条列表**：LLM 要工具时，先产出
   /// 〔工具〕系统条目（每次调用一条，写进历史、UI 可见），最后一条才是
   /// 她的正式回复。没配 Key / 没接工具 / 客户端失败 → 退化为 [reply] 单条。
   Future<List<ChatMessage>> respond(
@@ -273,7 +273,7 @@ class ChatService {
     }
   }
 
-  /// 失败出口（docs/22 §2.0）——**兜底不许再默默发生**：
+  /// 失败出口——**兜底不许再默默发生**：
   ///
   /// - **严格模式**（开发构建）：不产假台词，给一条 `〔诊断〕` 条目，
   ///   把失败类别与原文（截断）直接摆到宿主面前，问题一眼可见。

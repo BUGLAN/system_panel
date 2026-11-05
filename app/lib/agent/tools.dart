@@ -1,9 +1,9 @@
-/// 小祥的 agent 工具注册表（docs/18 §2.5）。
+/// 小祥的 agent 工具注册表。
 ///
 /// 形态：`AgentTool{name, desc, schema, run(args)}`，注册表可扩展——
 /// 后续任何页面操作注册一个 AgentTool 就能被对话驱动。
 ///
-/// **QuestFlow 缝隙**：t2 正在施工 `lib/state/quest_flow.dart`（docs/18 §3.1 契约：
+/// **QuestFlow 缝隙**：t2 正在施工 `lib/state/quest_flow.dart`（契约：
 /// bind/newGoal/rollDay/head/accept/settle/fail/retreat/…）。本文件**不 import**它，
 /// 只定义 [AgentContext] 抽象作为接缝；集成任务（t12）用几行适配器把真实
 /// QuestFlow/存档接进来，[MockAgentContext] 是替换前的可运行占位（demo 档语义）。
@@ -52,7 +52,7 @@ class AgentTool {
   final Map<String, dynamic> parameters;
   final AgentToolRun run;
 
-  /// OpenAI function calling 的 tools 数组条目（docs/18 §2.5）
+  /// OpenAI function calling 的 tools 数组条目
   Map<String, dynamic> toOpenAiTool() => <String, dynamic>{
     'type': 'function',
     'function': <String, dynamic>{
@@ -115,7 +115,7 @@ abstract interface class AgentContext {
   Map<String, dynamic> statusSummary();
 
   /// 换任务：换单券语义（retreat/newGoal 的对话形态）。
-  /// 主线单**必须拒绝**（docs/18 §2.7，原型 store.js:254 语义）。
+  /// 主线单**必须拒绝**（原型 store.js:254 语义）。
   ToolOutcome swapQuest({String? rank, String? note});
 
   /// 调整计划：改时限/降档/顺延——只许动队列里的日常/补救单。
@@ -190,7 +190,7 @@ class MockAgentContext implements AgentContext {
     }
     final Quest head = queue.first;
     if (head.kind == 'main') {
-      // docs/18 §2.7：主线单不可换——她直接拒绝
+      // 主线单不可换——她直接拒绝
       return ToolOutcome.fail('主线上的单不能换。这是你自己选的目标，要么做完，要么认输重来。');
     }
     final Quest? candidate = nextCandidate?.call();
@@ -283,7 +283,7 @@ Quest _questWith(Quest q, {int? minutes, String? rank}) => Quest(
 );
 
 // ═══════════════════════════════════════════════════════════
-//  首发六工具（docs/18 §2.5 表）
+//  首发六工具（表）
 // ═══════════════════════════════════════════════════════════
 
 const Map<String, dynamic> _emptySchema = <String, dynamic>{

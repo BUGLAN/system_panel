@@ -10,7 +10,7 @@ import 'package:system_panel/data/rarity.dart';
 import 'package:system_panel/state/goal_gen.dart';
 import 'package:system_panel/state/plan_failure.dart';
 
-/// docs/49 F3：长清单分段并行拆。
+/// 长清单分段并行拆。
 ///
 /// 钉三件事：切段规则（张数守恒 / 段长上限 / 档位区间首尾相接）；
 /// 段校验（越区间、末段不收 S 都要抛）；整条编排拆出来的 90 张能过全量 [validatePlan]。

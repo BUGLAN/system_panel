@@ -28,7 +28,7 @@ import 'vision_platform.dart';
 import 'settings_store.dart';
 
 /// ═══════════════════════════════════════════════════════════
-///  证据与 LLM 视觉校验（docs/18 §2.4 / §3.1-T4 · D9）
+///  证据与 LLM 视觉校验
 ///
 ///  链路：拍照/选图（picker 侧压到 ≤1280px JPEG q80）→ base64
 ///    → OpenAI 兼容 /chat/completions 多模态 → {"match":…,"note":"≤40字"}
@@ -59,7 +59,7 @@ extension EvidenceStatusX on EvidenceStatus {
   };
 }
 
-/// 一张证据照片。存档只存 [path]（相对路径，docs/18 §2.8）；
+/// 一张证据照片。存档只存 [path]（相对路径）；
 /// [absPath] 仅供本次会话渲染缩略图，不进存档。
 class EvidenceShot {
   const EvidenceShot({
@@ -118,7 +118,7 @@ class VisionVerdict {
   final String note;
 }
 
-/// 证据 → 暴击率联动（docs/18 §2.4）：已校验每张 +7%、未校验每张 +4%
+/// 证据 → 暴击率联动：已校验每张 +7%、未校验每张 +4%
 /// （替代原型 `.06/张`）。执行页最多 3 张，实际封顶由 [critChance] 兜住。
 double evidenceCritBonus({required int verified, required int unverified}) =>
     verified * .07 + unverified * .04;
@@ -144,7 +144,7 @@ double critChance({
 typedef EvidenceWriter = Future<void> Function(String absPath, Uint8List bytes);
 
 /// 拍照/选图钩子（生产 = image_picker；测试注入假实现）。
-/// source 用位置参数，压缩参数照 docs/18 §2.4 固定传入。
+/// source 用位置参数，压缩参数固定传入。
 typedef EvidencePicker = Future<XFile?> Function(
   ImageSource source, {
   double? maxWidth,
@@ -181,7 +181,7 @@ class VisionService {
     );
   }
 
-  static const int kMaxDim = 1280; // ≤1280px（docs/18 §2.4）
+  static const int kMaxDim = 1280; // ≤1280px
   static const int kJpegQuality = 80; // JPEG q80
 
   static const String _kSystemPrompt =
@@ -203,6 +203,9 @@ class VisionService {
     required Quest quest,
     ImageSource source = ImageSource.camera,
     AgentSettings? settings,
+
+    /// 宿主真的选好了图（取消则不调）—— UI 从这一刻起才显示「校验中」
+    void Function()? onPicked,
   }) async {
     final XFile? xf;
     try {
@@ -216,6 +219,7 @@ class VisionService {
       return null; // picker 挂了 = 没拍到
     }
     if (xf == null) return null; // 用户取消
+    onPicked?.call();
 
     final Uint8List bytes;
     try {
@@ -226,7 +230,7 @@ class VisionService {
 
     final AgentSettings s = settings ?? await _settings.load();
 
-    // 落盘：App 文档目录 evidence/<quest>/…；存档只存相对路径（docs/18 §2.8）
+    // 落盘：App 文档目录 evidence/<quest>/…；存档只存相对路径
     String rel = '';
     String? abs;
     try {
@@ -419,7 +423,7 @@ class VisionService {
         apiKey: s.apiKey,
         model: s.model,
         // 思考档位跟着设置走（与聊天/文案同一档）：端点是推理模型，
-        // 档位越高，判词越容易被思考挤掉（docs/22 R1 同根）
+        // 档位越高，判词越容易被思考挤掉（同根）
         reasoningEffort: s.reasoningEffort,
       ),
     );
@@ -434,7 +438,7 @@ class VisionService {
         ),
       ],
       temperature: 0,
-      // 200 → 512（docs/22 §10-O-1）：`max_tokens` 同时算 reasoning_content 与正文，
+      // 200 → 512：`max_tokens` 同时算 reasoning_content 与正文，
       // 200 会被思考吃光 → 坏 JSON/空正文 → 永远判「未校验」——它比聊天隐蔽，
       // 界面上显示的是「未校验」，看起来像"没配 Key"。四情形兜底（不阻塞提交）不变。
       maxTokens: 512,
@@ -479,7 +483,7 @@ class VisionService {
     return text.substring(start, end + 1);
   }
 
-  /// note ≤40 字（docs/18 §2.4），按 Unicode 码点截断
+  /// note ≤40 字，按 Unicode 码点截断
   static String clampNote(String raw) {
     final String t = raw.trim();
     if (t.runes.length <= 40) return t;

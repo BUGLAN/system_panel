@@ -141,7 +141,7 @@ void main() {
       await tester.pumpWidget(const SizedBox());
     });
 
-    // ── 门禁（docs/22 §R5 裁决 D-m）：点任意处 = 触发唤醒这一拍 ──
+    // ── 门禁（裁决 D-m）：点任意处 = 触发唤醒这一拍 ──
 
     testWidgets('门禁①：日志没滚完时点一下 → 先快进铺完最终 5 行，再触发一次唤醒', (
       WidgetTester tester,

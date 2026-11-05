@@ -15,7 +15,7 @@ import 'sys_icons.dart';
 /// ═══════════════════════════════════════════════════════════
 ///  HUD（app.css L94-117 #hud）
 ///  等级环 + 名字/称号/连击 + 金币 + 菜单。
-///  实测盒模型（390×844，**docs/39 §3.1 H-02…H-06 的新规格**）：
+///  实测盒模型（390×844，**新规格**）：
 ///    hud [0,0,390,74] · 左右边距 20 · lv [20,22,48,48]
 ///    name 起点 78（20 + 48 + 10；H-02 的 76 是按 46 的环算的 —— H-03 把环
 ///    抬到 48 后保持同一个 10pt 间隙，名字自然落到 78）
@@ -59,7 +59,7 @@ const double kLvFlashMs = 180; // 白闪（亮帧同源：16% / 180ms）
 const double kLvSecondMs = 420; // 归零后再涨到余额
 const double kLvTotalMs = kLvRiseMs + kLvSecondMs;
 
-/// docs/39 H-01 · 顶部承托的高度（压在 HUD 盒 74 之上、到她眉眼上方为止）
+/// 顶部承托的高度（压在 HUD 盒 74 之上、到她眉眼上方为止）
 const double kHudScrimH = 116;
 
 /// 跨级编排的相位函数（纯函数，可单测）：给时刻 t（0~kLvTotalMs），
@@ -181,7 +181,7 @@ class _HudState extends State<Hud> with SingleTickerProviderStateMixin {
             // H-01 的承托比 HUD 盒（74）高出一截，必须允许画到盒外
             clipBehavior: Clip.none,
             children: <Widget>[
-              // docs/39 H-01 · 顶部压暗：她之上、HUD 之下的一层承托。
+              // 顶部压暗：她之上、HUD 之下的一层承托。
               // 没有它名字/称号直接压在浅灰蓝头发上（真机图 01/05）。
               // 不压脸：116 只盖到她眉眼上方，脸（屏高 10%~30%）不受影响。
               const Positioned(
@@ -192,7 +192,7 @@ class _HudState extends State<Hud> with SingleTickerProviderStateMixin {
                 child: IgnorePointer(child: _TopScrim()),
               ),
               Padding(
-                // docs/39 H-02：左右边距统一 20（原 16/18），高 74 不变
+                // 左右边距统一 20（原 16/18），高 74 不变
                 padding: const EdgeInsets.fromLTRB(20, 18, 20, 0),
                 child: Row(
                   children: <Widget>[
@@ -226,7 +226,7 @@ class _HudState extends State<Hud> with SingleTickerProviderStateMixin {
                     Expanded(child: _Who(state: widget.state)),
                     const SizedBox(width: 10),
                     _Coin(coins: widget.state.coins),
-                    // docs/39 H-06：菜单的透明命中盒是 44（视觉仍 34、右对齐）——
+                    // 菜单的透明命中盒是 44（视觉仍 34、右对齐）——
                     // 多出来的 10 全落在它左边，所以这里不再另给 10：
                     // 胶囊右缘 326、汉堡条视觉左缘 336，观感间距仍是 10pt。
                     _Menu(onTap: widget.onMenu),
@@ -253,7 +253,7 @@ class _HudState extends State<Hud> with SingleTickerProviderStateMixin {
   }
 }
 
-/// docs/39 H-01 · 顶部压暗渐变：#020610 α .78 → 0（top→bottom）。
+/// 顶部压暗渐变：#020610 α .78 → 0（top→bottom）。
 /// 它是 HUD 的**承托**，不是氛围层：只买对比度，不循环、不吃点击。
 class _TopScrim extends StatelessWidget {
   const _TopScrim();
@@ -298,7 +298,7 @@ class _LvRing extends StatelessWidget {
   Widget build(BuildContext context) {
     return SizedBox(
       key: const Key('hud.lv'),
-      // docs/39 H-03：46 → 48（viewBox 48 现在 1:1，环不再被整体缩小）
+      // 46 → 48（viewBox 48 现在 1:1，环不再被整体缩小）
       width: 48,
       height: 48,
       child: Stack(
@@ -381,7 +381,7 @@ class _LvRingPainter extends CustomPainter {
     final double r = _r * k;
     final Rect rect = Rect.fromCircle(center: c, radius: r);
 
-    // docs/48 §4「HUD 是仪表，不是图标」：
+    //「HUD 是仪表，不是图标」：
     // ① 内盘：一枚有深度的暗色表盘（中心微亮 → 边缘沉）
     canvas.drawCircle(
       c,
@@ -470,7 +470,7 @@ class _LvRingPainter extends CustomPainter {
 
 /// .hud-who —— 名字 / 称号 / 连击（app.css L105-109）
 ///
-/// docs/39 H-04：名字 15 / 称号 11.5，两者都加一层黑色投影 —— 顶部压暗
+/// 名字 15 / 称号 11.5，两者都加一层黑色投影 —— 顶部压暗
 /// （H-01）是承托，投影是给亮发上那几笔留的最后一层保险。
 class _Who extends StatelessWidget {
   const _Who({required this.state});
@@ -536,7 +536,7 @@ class _Who extends StatelessWidget {
 /// 既离开了那个角落，又稳稳落在委托卡上方（派单板与执行面板都在屏幕下三分之一）。
 ///
 /// 读数照旧：连击 N 天（数字走 Tektur），0 连击显示破折号。
-/// docs/39 H-07：宿主决定隐藏，本轮**不动**（main.dart 仍传 visible:false）。
+/// 宿主决定隐藏，本轮**不动**（main.dart 仍传 visible:false）。
 class StreakPill extends StatelessWidget {
   const StreakPill({super.key, required this.streak, this.visible = true});
 
@@ -619,7 +619,7 @@ class StreakPill extends StatelessWidget {
 
 /// .hud-coin（app.css L110-112）
 ///
-/// docs/39 H-05：高 30→32、内边距 9/11、图标 14、数字 16（Tektur 700）、
+/// 高 30→32、内边距 9/11、图标 14、数字 16（Tektur 700）、
 /// 底 .55→.62、边 .12→.16；进账时 300ms count-up + 1.12→1 的 180ms 回弹。
 class _Coin extends StatefulWidget {
   const _Coin({required this.coins});
@@ -666,7 +666,7 @@ class _CoinState extends State<_Coin> with SingleTickerProviderStateMixin {
 
   @override
   Widget build(BuildContext context) {
-    // docs/39 §5.5：reduced-motion 下只保留数字变化
+    // reduced-motion 下只保留数字变化
     final bool reduce = railReduceMotion(context);
     return Container(
       key: const Key('hud.coin'),
@@ -674,7 +674,7 @@ class _CoinState extends State<_Coin> with SingleTickerProviderStateMixin {
       // ⚠️ Flutter 的 Border 会占布局空间，CSS 的 inset box-shadow 不会 ——
       // 所以用 Border 模拟 inset 描边时，padding 要各减 1px 才与原型同宽。
       padding: const EdgeInsets.fromLTRB(9, 0, 11, 0),
-      // docs/48 §4：货币 = 金色（全 App 唯一的暖色读数），与青色的
+      // 货币 = 金色（全 App 唯一的暖色读数），与青色的
       // 经验 / 状态彻底分开 —— 一眼就知道「这是钱」。
       decoration: BoxDecoration(
         gradient: const LinearGradient(
@@ -736,7 +736,7 @@ class _CoinState extends State<_Coin> with SingleTickerProviderStateMixin {
 
 /// .hud-menu —— 三根不等长的横杠（app.css L115-117）
 ///
-/// docs/39 H-06：视觉不变（18/12/15，杠高 1.6→2），但**透明命中扩到 44×44**；
+/// 视觉不变（18/12/15，杠高 1.6→2），但**透明命中扩到 44×44**；
 /// 按下 bars α .72、tap 音效、补 Semantics / tooltip —— 原先 34×34 又没有任何
 /// 反馈，真机上「像装饰，不像按钮」。
 class _Menu extends StatefulWidget {
@@ -767,7 +767,7 @@ class _MenuState extends State<_Menu> {
         child: GestureDetector(
           onTap: on
               ? () {
-                  Sfx.play('tap'); // docs/39 §5.4：菜单归 tap
+                  Sfx.play('tap'); // 菜单归 tap
                   widget.onTap!();
                 }
               : null,
@@ -788,7 +788,7 @@ class _MenuState extends State<_Menu> {
   }
 
   Widget _bars() {
-    // docs/48 §4：汉堡条落在一块斜切小铭牌上（与 CTA / 卡角同一套切角语言）
+    // 汉堡条落在一块斜切小铭牌上（与 CTA / 卡角同一套切角语言）
     return Container(
       key: const Key('hud.menu'),
       width: 34,

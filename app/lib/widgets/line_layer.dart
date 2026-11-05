@@ -21,7 +21,7 @@ import '../design/tokens.dart';
 ///  打字机 / 电子音节 / 口型包络属于行为，尚未由宿主约束 ——
 ///  这里只渲染「一句话已经说完」的静态样子。
 ///
-///  ── docs/39 H-12（2026-10-17 真机走查 · P1）───────────────────
+///  ── 2026-10-17 真机走查 · P1───────────────────
 ///  真机问题是**没有上限**：LLM 拆出来的长句会把玻璃带一路撑到聊天钮和
 ///  主线挂签上（走查 §2.1 / §0：17pt 正文、行高 1.58、无 maxLines）。
 ///  这一版把四条一起收口：
@@ -32,13 +32,13 @@ import '../design/tokens.dart';
 ///  玻璃 blur 3.5、左侧 2px 光条、34ms 打字机、跳字全部保留（走查明确不动）。
 /// ═══════════════════════════════════════════════════════════
 
-/// docs/39 H-12：字幕进场 240ms / 出场 360ms。
+/// 字幕进场 240ms / 出场 360ms。
 /// （§5.1 的「退场 = 进场的 60%」是 144ms，但方案表给的是 360 —— 字幕是长句，
 ///  退太快像被掐断；以方案表为准。）
 const int kLineInMs = 240;
 const int kLineOutMs = 360;
 
-/// docs/39 H-12：字幕最多 3 行（超出省略号）。
+/// 字幕最多 3 行（超出省略号）。
 const int kLineMaxLines = 3;
 
 /// 估算用：每行约 19 个中文字。
@@ -109,11 +109,11 @@ class LineLayer extends StatefulWidget {
   /// main.dart 自造的「专注」）退回 `neutral`，宁可平一点也不瞎猜。
   final String? emotion;
 
-  /// 对白节奏（docs/22 §R4）：每字显形毫秒数，透传给 [TypeText] 的 `speed`。
+  /// 对白节奏：每字显形毫秒数，透传给 [TypeText] 的 `speed`。
   /// 没给 = 保持 [TypeText] 的既有默认（soft 42 / 普通 34）；给了就以档位为准。
   final int? paceMs;
 
-  /// docs/39 H-17：字幕带**底边不许越过**的那条线距屏底多少 pt。
+  /// 字幕带**底边不许越过**的那条线距屏底多少 pt。
   ///
   /// 0 = 不设下限（默认，老调用点行为逐字节不变）。
   /// main.dart 传「底部安全区，或主线上让开底部两键的 34 + 56 + 12」——
@@ -292,7 +292,7 @@ class _LineLayerState extends State<LineLayer>
                     stops: <double>[0, .16, .84, 1],
                   ),
                   border: Border(
-                    // docs/39 H-12：上边线 α .20 → .26（51 → 66）
+                    // 上边线 α .20 → .26（51 → 66）
                     top: BorderSide(color: C.blue.withAlpha(66), width: 1),
                     bottom: BorderSide(color: C.blue.withAlpha(18), width: 1),
                   ),
@@ -340,7 +340,7 @@ class _LineLayerState extends State<LineLayer>
                     text: widget.text,
                     soft: widget.soft,
                     skipToken: widget.skipToken,
-                    // 对白节奏三档（docs/22 §R4）：设置页选的值从这里下来；
+                    // 对白节奏三档：设置页选的值从这里下来；
                     // 没接线时传 null，退回 type_text.dart 的默认（34）。
                     speed: widget.paceMs,
                     // 口型包络照旧先走（`VoiceEnvelope.syllable`），后面这一发
@@ -394,7 +394,7 @@ class _LineLayerState extends State<LineLayer>
         // .wave —— 五根随声音起伏的竖条
         // 给了口型包络就用活的那套（原型 `ui.js` L70-73 由 `Voice.mouth` 驱动）
         //
-        // docs/39 §5.5：减弱动态 → 退回**静态高度**（`.15`，CSS 的原始值），
+        // 减弱动态 → 退回**静态高度**（`.15`，CSS 的原始值），
         // 不跑波形循环。默认路径（没开 reduce）一个像素都不变。
         if (widget.voice != null)
           VoiceBars(

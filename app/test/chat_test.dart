@@ -21,7 +21,7 @@ import 'package:system_panel/state/quest.dart';
 import 'package:system_panel/widgets/chat_bar.dart';
 import 'package:system_panel/widgets/type_text.dart';
 
-/// 失败出口断言（docs/22 §2.0「严格模式」）：
+/// 失败出口断言（「严格模式」）：
 /// - 非严格模式（release 语义）：`〔兜底〕<原句>（原因）` —— 兜底照样发生但看得见
 /// - 严格模式（debug/profile 语义）：`〔诊断〕LLM 失败 · <原因>` —— **不产假台词**
 void expectFallbackText(String text) {
@@ -42,7 +42,7 @@ void expectDiagText(String text) {
   );
 }
 
-/// 对话层三件（docs/18 §2.6）：历史持久化 / 回复服务兜底 / 面板 UI。
+/// 对话层三件：历史持久化 / 回复服务兜底 / 面板 UI。
 /// 全离线：存储用内存实现，LLM 用假网关。
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -116,7 +116,7 @@ void main() {
       expect(r.fromHost, isFalse);
     });
 
-    test('严格模式（docs/22 §2.0）：失败直接报错，不产假台词', () async {
+    test('严格模式：失败直接报错，不产假台词', () async {
       // ① 没配 Key
       final ChatMessage a = await ChatService(strict: true).reply('在吗');
       expectDiagText(a.text);
@@ -291,7 +291,7 @@ void main() {
       // 关闭钮
       expect(find.byKey(const Key('chat.close')), findsOneWidget);
 
-      // ── docs/22 §R4 对白节奏三档：ChatPanel.paceMs 透传到气泡打字机 ──
+      // ── 对白节奏三档：ChatPanel.paceMs 透传到气泡打字机 ──
       // （原来这里硬编码 30，与字幕真源 34 是两个数；现在只有一个来源）
       // 同一句话、同一段假时钟，两档跑出不同结果 = 档位真的在生效：
       List<ChatMessage> withLine(String id) => <ChatMessage>[
@@ -418,7 +418,7 @@ void main() {
     });
   });
 
-  // ═══════════ A3 · 工具接线（docs/19 §A3）═══════════
+  // ═══════════ A3 · 工具接线═══════════
 
   group('A3 · function calling 全链路（mock LlmClient，配 Key）', () {
     /// 一张日常（MockAgentContext 队列用）
@@ -630,7 +630,7 @@ void main() {
     });
 
     test('宿主那个 bug 的回归：HTTP 200 但正文为空（推理模型吃光 max_tokens）', () async {
-      // docs/22 R1：端点是推理模型，max_tokens 同时算思考与正文——
+      // 端点是推理模型，max_tokens 同时算思考与正文——
       // 200 会被思考吃光 → content 空 → 旧版静默兜底、宿主永远不知道原因。
       final List<Map<String, dynamic>> sent = <Map<String, dynamic>>[];
       ChatService svc({required bool strict}) => ChatService(
@@ -855,7 +855,7 @@ void main() {
     });
   });
 
-  // ═══════════ TODO-07 · 聊天网关热更（docs/20 遗留观察①）═══════════
+  // ═══════════ TODO-07 · 聊天网关热更（遗留观察①）═══════════
   //
   // 验收口径：设置页改 Key/BaseURL/模型名后，**不重启**直接对话即用新值。
   // 手段：SettingsStore 增类级广播（listener/版本号），聊天装配按变更

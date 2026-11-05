@@ -513,6 +513,16 @@ class _FlameIcon extends CustomPainter {
       o.fill != fill || o.glow != glow || o.glowBlur != glowBlur;
 }
 
+/// HUD 连胜火焰的公开版（认输页等处复用，替代系统 emoji 🔥 —— docs/50 A14）
+class RefFlamePainter extends _FlameIcon {
+  const RefFlamePainter()
+    : super(
+        fill: const Color(0xFFFF8A3D),
+        glow: const Color(0xFFFF6A00),
+        glowBlur: 4,
+      );
+}
+
 /// .chip.coin svg（DOM L692）：六边晶核，fill:none / stroke 2.2
 class _HexIcon extends CustomPainter {
   const _HexIcon({required this.color, required this.stroke});

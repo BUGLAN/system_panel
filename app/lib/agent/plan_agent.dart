@@ -215,7 +215,7 @@ class PlanAgent {
     );
   }
 
-  /// 拆一整份清单（docs/49 F3）—— 生产路径的唯一入口。
+  /// 拆一整份清单—— 生产路径的唯一入口。
   ///
   /// · 不超过一段（[kPlanSegmentSize]）或首目标：一轮 [generate]，全量校验
   /// · 更长的：按 [planSegmentsFor] 切段，**并行**拆（同时最多 [concurrency] 段），

@@ -14,7 +14,7 @@ import 'package:system_panel/widgets/ask_field.dart';
 ///
 /// ⚠️ 尺寸一律用 `tester.view.physicalSize + devicePixelRatio`（不是
 ///    `setSurfaceSize`）—— 后者只改 surface、**不改 MediaQuery**，于是组件里
-///    读到的还是 800×600（docs/39 H-08 的 clamp 上界就被它坑过 784pt）。
+///    读到的还是 800×600（的 clamp 上界就被它坑过 784pt）。
 void main() {
   const Size kDesign = Size(390, 844);
   const double kKeyboard = 336;
@@ -88,7 +88,7 @@ void main() {
     expect(r.bottom, closeTo(kDesign.height - 34, .5));
   });
 
-  // docs/39 H-17 · 底部安全区：底边取 `math.max(34, MediaQuery.padding.bottom)`
+  // 底部安全区：底边取 `math.max(34, MediaQuery.padding.bottom)`
   // 的**下限**，不是把 34 和安全区叠加（那样有手势条的机器会平白高 34pt，
   // 宿主说的"不改 MuMu 观感"就是这条）。
   group('H-17 底部安全区', () {
@@ -138,7 +138,7 @@ void main() {
     });
   });
 
-  // docs/39 M-24 · 换目标：牌列**不再有取消牌**。
+  // 换目标：牌列**不再有取消牌**。
   //
   // 走查图 04/08：CANCEL 是牌列最右一张、被 430 屏宽裁掉一半；键盘一弹整条牌列
   // 连布局都不占，取消彻底消失。现在取消 = 输入幕左上那颗常驻 44 圆（挂 main.dart），

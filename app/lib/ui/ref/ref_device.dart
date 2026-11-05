@@ -262,7 +262,7 @@ class RefWipeState extends State<RefWipe> with TickerProviderStateMixin {
 
 /// 浮尘氛围层 —— 参考稿 `#bgfx`（JS L974-990，z-index 1：天幕之上、界面之下）。
 ///
-/// docs/49 G：这一层在参考稿里**每一页都在**，App 里组件写了却从没挂上去。
+/// 这一层在参考稿里**每一页都在**，App 里组件写了却从没挂上去。
 /// 逐条对照参考稿（它按 60fps 每帧推进，这里换算成随时间的闭式解）：
 ///   · 46 颗尘：r .5~2、上浮 v .12~.5 px/帧、相位 p 每帧 +s（.01~.04）
 ///     x 每帧 += sin(p)·.25 → 横摆幅度 .25/s（6~25px）

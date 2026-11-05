@@ -16,7 +16,7 @@ import 'ref_text.dart';
 ///  没有 HUD（参考稿 .scene.nohud 的 30 上边距），天幕由外层提供。
 ///
 ///  [loading] 非空 = 正在等 LLM（匹配类别 / 拆解清单）：输入区与访谈卡整块
-///  换成加载卡，按钮全部不可点（docs/49 D1：原来这段几十秒毫无反馈）。
+///  换成加载卡，按钮全部不可点（原来这段几十秒毫无反馈）。
 /// ═══════════════════════════════════════════════════════════
 class RefOnboard extends StatefulWidget {
   const RefOnboard({
@@ -240,7 +240,7 @@ class _RefOnboardState extends State<RefOnboard> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
         if (!interview) ...<Widget>[
-          _fieldLabel('目标 ›'),
+          _fieldLabel('目标'), // A9（docs/50）：不可点的标签不带 ›
           const SizedBox(height: 8),
           RefTextField(
             controller: widget.controller,
@@ -249,6 +249,10 @@ class _RefOnboardState extends State<RefOnboard> {
             textSize: 15,
             height: 52,
             onChanged: (String _) => setState(() {}),
+            // A4（docs/50）：键盘上的 ✓ 直接提交（空输入不提交）
+            onSubmitted: (String v) {
+              if (v.trim().isNotEmpty) widget.onSubmit();
+            },
           ),
           const SizedBox(height: 12),
           Wrap(

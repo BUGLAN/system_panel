@@ -216,7 +216,7 @@ class _AppShellState extends State<AppShell>
   /// 绑定仪式的输入框
   final TextEditingController _ask = TextEditingController();
 
-  /// ── 绑定流多幕（docs/18 §2.1 · t8 装配）────────────────────────
+  /// ── 绑定流多幕（装配）────────────────────────
   ///
   /// 第 0 幕 = 问目标（AskField）；[_interviewCat] 非空 = 第 1 幕访谈卡
   /// （t4 的 InterviewDeck，按目标类型出 3~5 张）；答完 → `_buildGoalWithAgent`
@@ -244,7 +244,7 @@ class _AppShellState extends State<AppShell>
     _swapLineTok++;
   });
 
-  /// ── 拆解加载态（docs/49 D）────────────────────────────────────
+  /// ── 拆解加载态────────────────────────────────────
   ///
   /// 正在等 LLM 的那一件事（null = 没在等）。同一时刻只有一件：绑定页 /
   /// 换目标页 / 收官结算的加载卡都读它；它也是「防连点」的闸门。
@@ -287,7 +287,7 @@ class _AppShellState extends State<AppShell>
   /// 换日游标：上次补发日常的那一天（原型 `S.day`；清晨首次进入补发）
   DateTime? _lastRollDay;
 
-  /// 亮帧：白 16% / 180ms ease-out（docs/08 逐帧里的「亮帧」）
+  /// 亮帧：白 16% / 180ms ease-out（逐帧里的「亮帧」）
   late final AnimationController _flashC = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 180),
@@ -299,7 +299,7 @@ class _AppShellState extends State<AppShell>
   /// 认输按住的进度（原型用它驱动 #veil 的暗度：p × .75）。
   ///
   /// ⚠️ 用 ValueNotifier 而不是 setState：按住期间**每帧**都在变，setState
-  ///    会让整个 AppShell（天幕 / HUD / 执行页…）每帧重建（docs/49 E5）。
+  ///    会让整个 AppShell（天幕 / HUD / 执行页…）每帧重建。
   ///    现在只有暗幕那一小块跟着重建。
   final ValueNotifier<double> _quitP = ValueNotifier<double>(0);
 
@@ -337,7 +337,7 @@ class _AppShellState extends State<AppShell>
   int _asideToken = 0;
   DateTime? _asideUntil;
 
-  // ── 小祥：文案接管 + 对话层（docs/18 §2.5/§2.6/§2.7，t10）────────
+  // ── 小祥：文案接管 + 对话层（t10）────────
   //
   // SystemCopyProvider 四入口接 LLM（LlmGateway 包 t9 的 LlmClient）；
   // 断网/没配 Key 时 CopyLine.source == template → **保留现有原句逐字不动**
@@ -351,7 +351,7 @@ class _AppShellState extends State<AppShell>
   bool _chatOpen = false;
   bool _chatThinking = false;
 
-  /// 本轮对话的场合上下文（「找小祥说说 / 换目标」注入，docs/18 §2.7）
+  /// 本轮对话的场合上下文（「找小祥说说 / 换目标」注入）
   String? _chatScenario;
 
   /// 文案接管后的 LLM 台词（null = 还没接到/回退原句）
@@ -375,7 +375,7 @@ class _AppShellState extends State<AppShell>
   /// LLM 网关 + 文案/聊天服务（initState 异步装配；没配 Key 也能跑，全走兜底）
   SystemCopyProvider? _copy;
 
-  /// 立主线的 agent 循环（docs/34）：她 get_status → set_plan → 解释。
+  /// 立主线的 agent 循环：她 get_status → set_plan → 解释。
   /// 没配 Key / 她没交 / 循环用尽 → **抛**（不再退回类别模板）
   PlanAgent? _planAgent;
   GoalMatchAgent? _matchAgent;
@@ -384,19 +384,19 @@ class _AppShellState extends State<AppShell>
   /// 当前 LLM 客户端（TODO-07 网关热更：设置变更时关旧建新，连接池不泄漏）
   LlmClient? _llmClient;
 
-  /// agent 工具（docs/19 §A3）：真实适配器 + 注册表——聊天 function calling
+  /// agent 工具：真实适配器 + 注册表——聊天 function calling
   /// 与快捷 chip 共用这一份；配了 Key 走 LLM 工具循环，没配 Key 只走 chip。
   AgentToolRegistry? _agentTools;
 
-  /// 对白节奏（docs/22 §R4）：设置页三档（慢 42 / 标准 34 / 快 24）→
+  /// 对白节奏：设置页三档（慢 42 / 标准 34 / 快 24）→
   /// [LineLayer] 字幕与 [ChatPanel] 气泡的打字机共用这一个值。
   int _paceMs = AgentSettings.kDefaultPaceMs;
 
-  /// 小祥的长期记忆（访谈答案写这里 —— 访谈即第一批记忆，docs/18 §2.1③）
+  /// 小祥的长期记忆（访谈答案写这里 —— 访谈即第一批记忆）
   MemoryStore? _memory;
 
   /// 小祥装配：设置 → LLM 网关 → 文案/聊天服务 + 聊天历史读档。
-  /// 装配本身只跑一次，但网关不装死（TODO-07，docs/20 遗留观察①）：
+  /// 装配本身只跑一次，但网关不装死（TODO-07）：
   /// [_onSettingsChanged] 订阅 SettingsStore 类级广播，设置页改
   /// Key/BaseURL/模型名后**当场重建**客户端与两个服务，免重启。
   Future<void> _initAgent() async {
@@ -419,20 +419,20 @@ class _AppShellState extends State<AppShell>
   /// 用一份 [AgentSettings] 装（或重装）LLM 三件套，**并落地非 LLM 设置**。
   ///
   /// ⚠️ 早退守卫只对 LLM 三要素 + 严格模式生效（那些变更才需要重建网关）。
-  /// 音效/震动/思考档位这类**非 LLM 设置必须每次都落地**——docs/22 R3 记着
+  /// 音效/震动/思考档位这类**非 LLM 设置必须每次都落地**——曾经记着
   /// 这个坑：以前 `sound/haptic` 能存能显但没人消费，就是被这个早退吞掉的。
   void _applyAgentSettings(AgentSettings s) {
     _agentSettings = s;
     // ① 非 LLM 设置：先落地（幂等，重复调用无害）
     Sfx.enabled = s.sound;
     Haptics.enabled = s.haptic;
-    // docs/48 §5：画质档 / 界面音量 —— 与 sound/haptic 同理，每次都落地
+    // 画质档 / 界面音量 —— 与 sound/haptic 同理，每次都落地
     Fidelity.lowPower.value = s.fidelity == 'low';
     Sfx.userGain = AgentSettings.gainOf(s.sfxVol);
-    // 对白节奏（docs/22 §R4）与 sound/haptic 同理：**必须在下面的 LLM 早退守卫之前落地**，
+    // 对白节奏与 sound/haptic 同理：**必须在下面的 LLM 早退守卫之前落地**，
     // 否则"只改节奏"会被整段吞掉（正是 R3 记的「能存能显没人消费」那个坑）
     if (_paceMs != s.paceMs) setState(() => _paceMs = s.paceMs);
-    // 底噪跟随「音效」总开关（docs/22 R3 的化简：原型按时刻 duck，本批只做在/不在）
+    // 底噪跟随「音效」总开关（的化简：原型按时刻 duck，本批只做在/不在）
     unawaited(Sfx.ambient(s.sound));
     // ② LLM 设置：没变就不重建（避免打断在途请求）
     final bool strict = _strictOf(s);
@@ -485,11 +485,11 @@ class _AppShellState extends State<AppShell>
     });
   }
 
-  /// 严格模式（docs/22 §2.0，宿主 2026-10-10 拍板）：
+  /// 严格模式（宿主 2026-10-10 拍板）：
   /// - `auto`（默认）：**debug / profile 构建**下失败直接报错、不产假台词；
   ///   release 仍走兜底（无 Key / 断网不得阻塞使用），但会标注原因。
 
-  /// 严格模式（docs/22 §2.0，宿主 2026-10-10 拍板）：
+  /// 严格模式（宿主 2026-10-10 拍板）：
   /// - `auto`（默认）：**debug / profile 构建**下失败直接报错、不产假台词；
   ///   release 仍走兜底（无 Key / 断网不得阻塞使用），但会标注原因。
   /// - `on` / `off`：设置页手动覆盖（便于在 release 上验证严格模式）。
@@ -546,11 +546,11 @@ class _AppShellState extends State<AppShell>
     }
     if (!mounted) return;
     setState(() {});
-    // emotion 标签 → 舞台 mood（docs/18 §2.6 演出联动）
-    // docs/24 #18：情绪强烈的连带一个兜底动作（react），不再只换脸
+    // emotion 标签 → 舞台 mood（演出联动）
+    // 情绪强烈的连带一个兜底动作（react），不再只换脸
   }
 
-  /// 快捷 chip 直调工具（docs/19 §A3）：不经 LLM、全部本地可用；
+  /// 快捷 chip 直调工具：不经 LLM、全部本地可用；
   /// 结果以〔工具〕系统条目写入聊天历史（UI 可见），改动随 onChanged 落档。
   Future<void> _onQuickTool(String tool) async {
     final AgentToolRegistry? reg = _agentTools;
@@ -574,13 +574,13 @@ class _AppShellState extends State<AppShell>
     if (mounted) setState(() {});
   }
 
-  // ── 文案接管：发布 / 结算 / 毒舌 / 追问（docs/18 §2.5 四语气）────────
+  // ── 文案接管：发布 / 结算 / 毒舌 / 追问（四语气）────────
 
   /// 追问：绑定仪式的问目标（LLM 回了才顶掉 LINES.askGoal）
   Future<void> _takeProbeLine(String topic) async {
     final SystemCopyProvider? copy = _copy;
     if (copy == null) return;
-    // docs/24 #2/#13 追问：歪头疑问（question + exp_serious02）
+    // 追问：歪头疑问（question + exp_serious02）
     final CopyLine line = await copy.probeLine(
       CopyContext.fromState(host: _host, goal: _goal),
       topic: topic,
@@ -591,7 +591,7 @@ class _AppShellState extends State<AppShell>
     }
   }
 
-  /// 「换目标」的场合上下文（docs/18 §2.7：旧主线环清空、队列主线单撤下
+  /// 「换目标」的场合上下文（旧主线环清空、队列主线单撤下
   /// 的确认语义由换目标流程负责，这里先让对话带着这个话题开起来）。
   /// 带上当前主线与进度 —— 她追问「为什么换」时要引用真实数据。
   String get _newGoalScenario =>
@@ -612,7 +612,7 @@ class _AppShellState extends State<AppShell>
           _planError = null;
           _goalAsk.clear();
         });
-        // docs/24 #17 换目标：她先琢磨一下
+        // 换目标：她先琢磨一下
         _swapSay('要换？那就说清楚换成什么。[旧的那条]，说换就换。');
       }),
     );
@@ -643,7 +643,7 @@ class _AppShellState extends State<AppShell>
   ///   ④ 规则校验 → `buildGoalFromPlan`（不合格就抛）
   /// 任何一步失败都走 [_failPlan]：**不落库、不改目标**，把原因摆在屏幕上。
   ///
-  /// docs/49 C/D：等待期间换目标页整块换成加载卡（三步进度跟着真实阶段走）；
+  /// 等待期间换目标页整块换成加载卡（三步进度跟着真实阶段走）；
   /// 宿主中途点 × 走掉 → 这一件作废，迟到的回包直接丢弃。
   Future<void> _onGoalChangeSubmitted() async {
     if (_planJob != null) return; // 正在拆：不收第二次
@@ -704,7 +704,7 @@ class _AppShellState extends State<AppShell>
             _mainJustDone = null;
             _moment = Moment.main;
           });
-          // docs/24 #17 换目标落库：正色点头（nod + exp_serious02）
+          // 换目标落库：正色点头（nod + exp_serious02）
           _sayAside(
             '行。旧的撤了，新清单 [[${_goal.plan.length} 单]] 已经在你手上。'
             '「$typed」——别又三天热度。',
@@ -721,7 +721,7 @@ class _AppShellState extends State<AppShell>
     }
   }
 
-  /// 拆解链路上**任何**异常都要落成可见的失败（docs/49 F）。
+  /// 拆解链路上**任何**异常都要落成可见的失败。
   ///
   /// 原来只 `on PlanFailure`：链路里冒出别的异常（StateError / 类型错 / 插件异常）
   /// 时 catch 不住，加载卡会永远挂在屏幕上 —— 看起来就是「拆解一直不结束」。
@@ -753,7 +753,7 @@ class _AppShellState extends State<AppShell>
 
     // ① 匹配：类别 / 天幕短字 / 期限
     //
-    // ⚠️ 2026-10-28（docs/49 F）：两步都**只挂交卷工具**，不再挂 get_status /
+    // ⚠️ 2026-10-28：两步都**只挂交卷工具**，不再挂 get_status /
     //    recall。宿主档案（[status]）与相关记忆（MemoryStore.digest）本来就写进
     //    了系统提示，查询工具只会多出一整轮「先查档案」的往返 —— 推理模型一轮
     //    10~40s，换目标原来至少 4 轮串行，真机实测 2 分钟还没拆完。
@@ -773,7 +773,7 @@ class _AppShellState extends State<AppShell>
     // ⚠️ 2026-10-23 真机事故：原来只按「期限天数」要任务，于是
     // 「两周内骑自行车 10 次」要了 14 张，模型只能写成「第1..14次骑行」，
     // 末张还自相矛盾地写「第14次骑满120分钟并交全部10次轨迹」。
-    // ⚠️ 首目标的期限**由规则定死**（`kFirstGoalDays` = 3，docs/05），不该
+    // ⚠️ 首目标的期限**由规则定死**（`kFirstGoalDays` = 3），不该
     //    跟着模型的 `set_goal_category.days` 走 —— 真机实测模型会给 30 天，
     //    于是提示词里出现自相矛盾的两句话（「期限 30 天，清单要正好 30 张」
     //    与「这是首目标：3 张」），`validatePlan` 必然抛 badPlan。
@@ -781,7 +781,7 @@ class _AppShellState extends State<AppShell>
     final int days = firstGoal ? kFirstGoalDays : m.days;
     final int need = planTaskCountFor(days, quota: m.quota);
     _planStageTo(1);
-    // docs/49 F3：长清单（条数 = 天数，三个月就是 90 张）分段并行拆，
+    // 长清单（条数 = 天数，三个月就是 90 张）分段并行拆，
     // 每段一套独立的 set_plan；拼回后下面的 buildGoalFromPlan 仍全量复核。
     final List<TaskSpec> tasks = await planner0.generateTasks(
       brief: PlanBrief(
@@ -860,7 +860,7 @@ class _AppShellState extends State<AppShell>
     final Quest? head = _flow.head;
     if (head != null) _flow.accept(head);
     // 原型 `App.dispatch()` 接单那一拍：Stage.motion('nod')
-    // （docs/24 #4：nod 现在自带 exp_serious02 正色脸）
+    // （nod 现在自带 exp_serious02 正色脸）
     setState(() {
       _execStart = _flow.active?.startAt ?? DateTime.now();
       _moment = Moment.exec;
@@ -873,7 +873,7 @@ class _AppShellState extends State<AppShell>
       _host = _flow.host;
       _goal = _flow.goal;
     });
-    // docs/24 #5 执行中：落进思考脸一次（低频、不打扰；之后交给待机池）
+    // 执行中：落进思考脸一次（低频、不打扰；之后交给待机池）
     _clock.startFast();
   }
 
@@ -987,7 +987,7 @@ class _AppShellState extends State<AppShell>
 
   void _onSecond() {
     final DateTime now = DateTime.now();
-    // docs/24 #15 打瞌睡：大厅里 80s 没人理 → 睡（`ChatterScheduler.dozeAfter`；
+    // 打瞌睡：大厅里 80s 没人理 → 睡（`ChatterScheduler.dozeAfter`；
     // 原型 `App.doze()`。睡姿 = speed 0 + exp_sys_sleep，任意触碰唤醒）
     if (_asideUntil != null && now.isAfter(_asideUntil!)) {
       setState(() {
@@ -1071,7 +1071,7 @@ class _AppShellState extends State<AppShell>
     // focus+dim：派单与结算都会把 HUD/底栏收走、天幕压暗
     final bool dim = dispatch || result;
 
-    // docs/39 §5.5：减弱动态效果 —— **一次读、两处传**。
+    // 减弱动态效果 —— **一次读、两处传**。
     // 这条读取原先只在牌桌/滑轨/牌屉/ask 层内部各读一遍，FX 两层的
     // `reduceMotion` 形参于是从来没有人喂（组件写好了降级，调用点漏了）。
     // 口径统一用 rail_base 的 railReduceMotion（= maybeDisableAnimationsOf），
@@ -1101,7 +1101,7 @@ class _AppShellState extends State<AppShell>
           child: Stack(
             fit: StackFit.expand,
             children: <Widget>[
-              // ⚠️ 系统返回键 = **逐级返回**（docs/39 M-04；2026-10-17 前全库只有
+              // ⚠️ 系统返回键 = **逐级返回**（2026-10-17 前全库只有
               //    失败页接得住它，其余时候 Android 返回键直接退出 App）。
               //    优先级写死在 [_popScopeTarget]：失败页 > 牌屉 > 主线 > 默认。
               //
@@ -1129,9 +1129,9 @@ class _AppShellState extends State<AppShell>
               ShakeLayer(
                 token: _shake,
                 px: _shakePx,
-                // LLM 设置是不透明整页：盖住时冻结下层全部动画（docs/49 E6）
+                // LLM 设置是不透明整页：盖住时冻结下层全部动画
                 ticking: !_llmPaneOn,
-                // docs/39 §5.5：reduce 时组件内部直接不抖（震屏整个跳过）
+                // reduce 时组件内部直接不抖（震屏整个跳过）
                 reduceMotion: reduce,
                 child: Stack(
                   fit: StackFit.expand,
@@ -1171,7 +1171,7 @@ class _AppShellState extends State<AppShell>
                               animate: !reduce && !_llmPaneOn,
                             ),
                             // 参考稿 #bgfx 浮尘层（46 颗尘上浮 + 偶发流星，z 1：
-                            // 天幕之上、界面之下）。组件早就写了却从没挂上 —— docs/49 G
+                            // 天幕之上、界面之下）。组件早就写了却从没挂上
                             RefAmbient(
                               accent: _sceneAccent,
                               animate: !reduce && !_llmPaneOn,
@@ -1188,9 +1188,9 @@ class _AppShellState extends State<AppShell>
                         behavior: HitTestBehavior.translucent,
                         onPointerDown: (PointerDownEvent _) {
                           // ⚠️ 不进 setState：只有每秒的 `_onSecond` 读它，
-                          //    setState 会让整个 AppShell 跟着每次触屏重建（docs/49 E5）
+                          //    setState 会让整个 AppShell 跟着每次触屏重建
                           _lastAct = DateTime.now();
-                          // docs/24 #15：瞌睡中被戳醒（惊一下 → 回情绪）
+                          // 瞌睡中被戳醒（惊一下 → 回情绪）
                         },
                       ),
                     ),
@@ -1240,7 +1240,7 @@ class _AppShellState extends State<AppShell>
                     // 连击药丸 —— 宿主 2026-10-11：「连击 隐藏」（先不显示，组件留着，
                     // 要接回来把 visible 改回 lobby || exec 即可）
                     StreakPill(streak: _host.streak, visible: false),
-                    // docs/39 H-15 · 主 CTA 三态状态机（P0）：
+                    // 主 CTA 三态状态机（P0）：
                     //   执行中 → 回执行面板（**不是开派单板**，这是"执行中再从大厅接单"的堵口）
                     //   队列空 → 她说一句，不进派单板
                     //   否则   → 派单板
@@ -1270,7 +1270,10 @@ class _AppShellState extends State<AppShell>
                           day: _goal.days <= 0
                               ? 1
                               : (_goal.days - _goal.remainingDays(_clock.now)),
-                          days: _goal.days <= 0 ? 14 : _goal.days,
+                          // A20（docs/50）：没目标就不显示 DAY x / 14
+                          days: _goal.isEmpty
+                              ? 0
+                              : (_goal.days <= 0 ? 14 : _goal.days),
                           mood: _coreMood,
                           poke: _pokeN,
                           skipToken: _tap,
@@ -1337,7 +1340,8 @@ class _AppShellState extends State<AppShell>
                             evidenceThumbs: _evidenceThumbs(),
                             evidenceBusy: _evidenceBusy,
                             onAddEvidence: _addEvidence,
-                            onDemoEvidence: _demoEvidence,
+                            // A17（docs/50）：演示截图是开发验证用，release 不给
+                            onDemoEvidence: kDebugMode ? _demoEvidence : null,
                             onRemoveEvidence: _removeEvidence,
                             onSubmit: () => unawaited(_submitQuest()),
                             onQuit: () {
@@ -1450,7 +1454,7 @@ class _AppShellState extends State<AppShell>
                                             _flashC.value,
                                           ))
                                 : 0,
-                            // docs/39 §5.5：reduce 时亮帧 alpha 砍半（组件内部实现）
+                            // reduce 时亮帧 alpha 砍半（组件内部实现）
                             reduceMotion: reduce,
                           ),
                     ),
@@ -1465,7 +1469,8 @@ class _AppShellState extends State<AppShell>
                             _PlanJobKind.bind => '答案收到。我在排[三天]——别走开。',
                             _ =>
                               _interviewCat != null
-                                  ? '答完这几张，我给你排三天。'
+                                  // A8（docs/50）：别和大标题说同一句
+                                  ? '凭第一反应选。想太久的答案都不准。'
                                   : (_probeLine ?? LINES.askGoal),
                           },
                           probeToken: _tap,
@@ -1597,7 +1602,7 @@ class _AppShellState extends State<AppShell>
                           onSwapGoal: _beginGoalChange,
                         ),
                       ),
-                    // v3 换目标（docs/49 C 重写）：独立场景，斜切转场进出。
+                    // v3 换目标（重写）：独立场景，斜切转场进出。
                     // 旧版 AskField + 左上取消圆是上一代视觉，已撤。
                     if (main && _goalChangeOn)
                       Positioned.fill(
@@ -1652,17 +1657,17 @@ class _AppShellState extends State<AppShell>
                       ),
                     // 「执行中」药丸（`ui.js` L60）：**执行页自己不显示它**，点它回执行页。
                     // 收起执行面板后就靠它回去。
-                    // docs/39 H-16 / M-02：**主线页不再浮这颗药丸** —— 主线页的计时读数
+                    // **主线页不再浮这颗药丸** —— 主线页的计时读数
                     // 归抬头里的 status chip（由 P0-B 在 main_view 里做）。这里是同一个
                     // 计时数据的第二处呈现，两处并存就是走查 §0 里"药丸压着抬头读数"的来源。
-                    // 对话层（docs/18 §2.6）：叠加，不替换；她仍在背景可见
+                    // 对话层：叠加，不替换；她仍在背景可见
                     // ——层序在 、亮帧与横幅之下
                     // v3 系统设置（参考稿 #sheet L481-491 / L837-843）：
                     // 底部抽屉 + 音效开关 + 秘籍 + 彩蛋提示 + 重置存档。
                     // APP 原有的「和她聊聊」「LLM 连接」按同一行样式补在中间。
                     // 它是盖在**当前场景**上的浮层（#sheet 是 .ovl，不是场景）：
                     // 不改 _moment，关掉就回到原处（委托板/补给里点 ☰ 也一样）。
-                    // 常驻挂载、visible 驱动：进出都有滑动（docs/49 B2）
+                    // 常驻挂载、visible 驱动：进出都有滑动
                     Positioned.fill(
                       child: RefSheet(
                         visible: _sysSheetOn,
@@ -1697,9 +1702,9 @@ class _AppShellState extends State<AppShell>
                       onClose: () => setState(() => _chatOpen = false),
                       onVoiceTap: _onVoiceTap,
                       onQuickTool: _onQuickTool,
-                      paceMs: _paceMs, // docs/22 §R4：同一档位喂聊天气泡的打字机
+                      paceMs: _paceMs, // 同一档位喂聊天气泡的打字机
                     ),
-                    // 收官结算在等下一份计划（docs/49 D3）：超过 400ms 才挂，普通结算不闪
+                    // 收官结算在等下一份计划：超过 400ms 才挂，普通结算不闪
                     if (_settleShown && _planJob?.kind == _PlanJobKind.settle)
                       Positioned.fill(
                         child: ColoredBox(
@@ -1770,11 +1775,11 @@ class _AppShellState extends State<AppShell>
                         ),
                       ),
                     // 屏幕空间特效（参考稿 #fx z-index 92：压在结算 / 升级等浮层之上 ——
-                    // 升级的彩带、结算的爆散都要盖在幕上才看得见；docs/49 G）。
+                    // 升级的彩带、结算的爆散都要盖在幕上才看得见）。
                     // GlobalKey 钉身份：挪位置不重建、在飞的粒子不丢。
                     FxField(key: _fxKey, controller: _fx),
                     // v3 确认弹窗（参考稿 #modal L476-480）：重置存档前先问一句
-                    // RefModal 自带渐入暗幕 + 居中；外面不再包一层瞬显的暗幕（docs/49 B3）
+                    // RefModal 自带渐入暗幕 + 居中；外面不再包一层瞬显的暗幕
                     if (_modalOn)
                       Positioned.fill(
                         child: RefModal(
@@ -1793,7 +1798,7 @@ class _AppShellState extends State<AppShell>
               ),
               // v3 LLM 设置（参考稿未覆盖，按「补全缺失组件」要求新增）：
               // Base URL / ApiKey / 模型 / 温度 / 上下文 / 流式 / 测试 / 保存。
-              // 进出走斜切转场（docs/49 B1）；挂在 ShakeLayer **外面**：
+              // 进出走斜切转场；挂在 ShakeLayer **外面**：
               // 它打开时下层整棵树的 Ticker 被冻结（ShakeLayer.ticking），
               // 它自己的显影 / 扫光 / 扫描条不能跟着被冻住。
               if (_llmPaneOn)
@@ -1904,7 +1909,7 @@ class _AppShellState extends State<AppShell>
       );
       return;
     }
-    // docs/49 D1：匹配要等 LLM —— 加载卡顶上（原来这段毫无反馈，像卡死）
+    // 匹配要等 LLM —— 加载卡顶上（原来这段毫无反馈，像卡死）
     final _PlanJob job = _PlanJob(_PlanJobKind.interview, typed);
     setState(() => _planJob = job);
     unawaited(Sfx.cue('ui.open'));
@@ -1966,7 +1971,7 @@ class _AppShellState extends State<AppShell>
     final GoalCategory? cat = _interviewCat;
     if (cat == null || _planJob != null) return;
     final String text = _pendingGoalText;
-    // docs/49 D1：「开始计划」之后要等完整拆解（匹配 + 拆解 + 校验，常见几十秒）
+    // 「开始计划」之后要等完整拆解（匹配 + 拆解 + 校验，常见几十秒）
     final _PlanJob job = _PlanJob(_PlanJobKind.bind, text);
     setState(() {
       _planError = null;
@@ -2060,7 +2065,7 @@ class _AppShellState extends State<AppShell>
     _host = _flow.host;
   }
 
-  /// 当日日常（docs/18 §2.2）：类型池+通用池出候选 4~6 → 按
+  /// 当日日常：类型池+通用池出候选 4~6 → 按
   /// 「最弱维/贴主线」挑 1~2（lv≥5 或连击≥3 为 2）。
   /// 单号经 [_flow.genDaily] 占位分配（合法单号，绝不与队列撞号 ——
   /// 占位单本身丢弃不入队）。
@@ -2123,7 +2128,7 @@ class _AppShellState extends State<AppShell>
     final SaveData d = await _save.wipe(fallback: SaveData.fresh());
     if (!mounted) return;
     unawaited(Sfx.play('fail'));
-    // 斜切进绑定仪式（docs/49 B4：原来是硬切）。数据在被盖住的那一拍换
+    // 斜切进绑定仪式（原来是硬切）。数据在被盖住的那一拍换
     await _goOrNow('onboard', () {
       setState(() {
         _flow = QuestFlow.fromSave(host: d.host, goal: d.goal, queue: d.queue);
@@ -2243,7 +2248,7 @@ class _AppShellState extends State<AppShell>
     if (line == null) return;
     // 演出还在跑就先不打断她
     if (_busy) return;
-    // docs/24 #16 回来：她转头看一眼（look + exp_idle02）
+    // 回来：她转头看一眼（look + exp_idle02）
     // 原型这几句**不给 hold**（flows.js L189）→ 走按字数算的默认值
     _sayAside(line, busy: true);
   }
@@ -2300,7 +2305,7 @@ class _AppShellState extends State<AppShell>
   /// 系统设置抽屉（浮层，不占场景）
   bool _sysSheetOn = false;
 
-  /// 打开**悬浮牌局**（docs/32 §3）—— 牌直接浮在舞台上，不开面板、不开弹层壳。
+  /// 打开**悬浮牌局**—— 牌直接浮在舞台上，不开面板、不开弹层壳。
   ///
   /// 三个场景（补给 / 称号 / 证据）共用 [TableOverlay] 这一层壳，
   /// 但牌面皮肤完全不同（货架 / 名牒 / 取景窗）。
@@ -2370,7 +2375,7 @@ class _AppShellState extends State<AppShell>
     unawaited(Haptics.buzz('fail'));
     // 原型 `_fail()` L529：`Stage.setCam('fail'); Stage.emote('sad'); Stage.motion('down')`
     // —— 原生/WebView 桥已接通（T7），这里恢复当时的"暂时拿掉"：
-    // docs/24 #11：认输垂头（exp_sad01）；**超时**另换惨白脸（exp_pale02）
+    // 认输垂头（exp_sad01）；**超时**另换惨白脸（exp_pale02）
     // 真实判负（store.js fail）：failCount 记账、主线单回队首、生成补救单
     // —— 失败页不再是死局：补救单可接可弃（见 _onChoice）
     final FailOutcome? fo = _flow.fail(how: how);
@@ -2389,7 +2394,7 @@ class _AppShellState extends State<AppShell>
       _failRemedy = r == null
           ? null
           : Remedy(
-              // FailLayer 自己会补「（做一半）」字样，这里给基础名
+              // 认输页自己会补「（简化版）」字样，这里给基础名
               name: fo!.task.name,
               minutes: r.minutes,
               rank: r.rank,
@@ -2407,7 +2412,7 @@ class _AppShellState extends State<AppShell>
   /// 旧版是内联的 `_result = _flow.settle() ?? _result`：settle 返回 null 时
   /// 悄悄沿用上一单的结算数据（看着像结算成功，其实什么都没发生）。
   /// 现在 settle 要么给结果、要么抛，失败走 [_failPlan]（目标/队列都不动）。
-  /// 结算闸门（docs/49 D3）：settle 在途时不收第二次提交
+  /// 结算闸门：settle 在途时不收第二次提交
   bool _settling = false;
 
   /// 结算超过 400ms 还没回来（收官那单在等下一份计划的拆解）才挂加载层 ——
@@ -2436,7 +2441,7 @@ class _AppShellState extends State<AppShell>
     _clock.stopFast();
     _verdictShots = List<EvidenceShot>.of(_flow.active!.evidence);
     _active = false; // 交出去了，药丸该消失
-    // docs/24 #7 提交任务：交单前满意地点个头
+    // 提交任务：交单前满意地点个头
     _pulse(color: const Color(0xFFBFF6FF), a: .24, ms: 280);
     // 钤印那一下：涟漪 + 火花 + 爆散（ui.js L346-347 / L358）
     _fx.ripple(
@@ -2611,7 +2616,7 @@ class _AppShellState extends State<AppShell>
   /// 她不会说「你完成了，再见」—— 叙事没有终点：
   /// 环数变了、题目变了，路还长。
   void _onFinale(QuestResult r) {
-    // docs/24 #19 收官：定格亮相（kime + exp_bsmile02，强制优先级盖过结算动作）
+    // 收官：定格亮相（kime + exp_bsmile02，强制优先级盖过结算动作）
     final FinaleOutcome? o = _flow.lastFinale;
     if (o == null || o.goal == null) {
       _sayAside('这条主线，你走完了。……接下来看你自己的。', holdMs: 2800);
@@ -2634,7 +2639,7 @@ class _AppShellState extends State<AppShell>
     // 队首就是新主线的首环单（settle 里钉的），点「再来一单」直接接得上。
   }
 
-  /// 系统返回键要消费哪一层（docs/39 M-04）。null = 交给系统（退到桌面）。
+  /// 系统返回键要消费哪一层。null = 交给系统（退到桌面）。
   ///
   /// 优先级：**失败页 > 牌屉 > 主线 > 默认**。
   /// 原来只有失败页那一档，所以 Android 返回键在牌屉/主线里都会直接退出 App；
@@ -2737,7 +2742,7 @@ class _AppShellState extends State<AppShell>
     unawaited(_go('exec', () => setState(() => _moment = Moment.exec)));
   }
 
-  /// 大厅主 CTA 的三态分派（docs/39 H-15）—— **唯一主行动状态机**：
+  /// 大厅主 CTA 的三态分派—— **唯一主行动状态机**：
   ///   执行中 → 回执行面板（堵住"执行中再从大厅接单"那条二次接单老坑）
   ///   队列空 → 她说一句，不进派单板（交给 [_enterDispatchOrRest]）
   ///   否则   → 派单板
@@ -2755,7 +2760,11 @@ class _AppShellState extends State<AppShell>
   void _enterDispatchOrRest() {
     if (_busy) return;
     if (_flow.queueEmpty) {
-      _sayAside('今天的单，清干净了。明天再来。', holdMs: 2200);
+      // A2（docs/50）：没目标 ≠ 清干净了
+      _sayAside(
+        _goal.isEmpty ? '还没有目标，哪来的单。先去主线立一个。' : '今天的单，清干净了。明天再来。',
+        holdMs: 2200,
+      );
       return;
     }
     unawaited(Haptics.buzz('publish'));
@@ -2856,10 +2865,18 @@ class _AppShellState extends State<AppShell>
           Text.rich(
             TextSpan(
               children: <InlineSpan>[
-                // 参考稿 failSk：`🔥 <s>旧</s> → <hot>0</hot>`
-                TextSpan(
-                  text: '🔥 ',
-                  style: refText(size: 28, wght: 400, height: 1),
+                // A6/A14（docs/50）：认输**不清连胜**（QuestFlow 从不在认输时写
+                // streak），原来写死的「旧 → 0」与 HUD/档案/聊天对不上；
+                // 改成显示真实连胜。火焰用 HUD 同款自绘图标，不用系统 emoji。
+                WidgetSpan(
+                  alignment: PlaceholderAlignment.middle,
+                  child: Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: CustomPaint(
+                      size: const Size(22, 28),
+                      painter: const RefFlamePainter(),
+                    ),
+                  ),
                 ),
                 TextSpan(
                   text: streak.toString(),
@@ -2868,27 +2885,17 @@ class _AppShellState extends State<AppShell>
                     size: 34,
                     wght: 700,
                     height: 1,
-                    color: Ref.dim2,
-                  ).copyWith(decoration: TextDecoration.lineThrough),
-                ),
-                TextSpan(
-                  text: ' → ',
-                  style: refText(
-                    family: Ref.fd,
-                    size: 34,
-                    wght: 700,
-                    height: 1,
-                    color: Ref.txt,
+                    color: Ref.hot,
                   ),
                 ),
                 TextSpan(
-                  text: '0',
+                  text: streak > 0 ? '  连胜还在' : '',
                   style: refText(
-                    family: Ref.fd,
-                    size: 34,
-                    wght: 700,
+                    family: Ref.fc,
+                    size: 14,
+                    wght: 500,
                     height: 1,
-                    color: Ref.hot,
+                    color: Ref.dim,
                   ),
                 ),
               ],
@@ -2908,8 +2915,9 @@ class _AppShellState extends State<AppShell>
           ),
           const SizedBox(height: 12),
           Text(
-            '补救 · ${remedy.name}（做一半）· ${remedy.minutesText}'
-            ' · 截止 ${remedy.deadline}',
+            // A16（docs/50）：不再写「（做一半）」与「明天 02:02」这种怪截止
+            '补救单 · ${remedy.name}（简化版）· ${remedy.minutesText}'
+            ' · 24 小时内完成',
             textAlign: TextAlign.center,
             style: refText(
               family: Ref.fc,
@@ -2955,7 +2963,7 @@ class _AppShellState extends State<AppShell>
         'exec': ('任务开始', 'MISSION START', Ref.hot),
         'archive': ('档案', 'ARCHIVE', Ref.violet),
         'shop': ('补给站', 'SUPPLY', Ref.mint),
-        // docs/49：原来没走转场的几处，补成同一套斜切
+        // 原来没走转场的几处，补成同一套斜切
         'llm': ('LLM 设置', 'NEURAL LINK', Ref.acid),
         'swap': ('换目标', 'REWRITE', Ref.gold),
         'onboard': ('绑定', 'BINDING', Ref.cyan),
@@ -2973,7 +2981,7 @@ class _AppShellState extends State<AppShell>
     _ => 'home',
   };
 
-  /// LLM 设置：斜切推入（docs/49 B1；原来是瞬间挂上）
+  /// LLM 设置：斜切推入（原来是瞬间挂上）
   void _openLlmPane() {
     if (_llmPaneOn) return;
     FocusScope.of(context).unfocus();
@@ -3148,14 +3156,14 @@ class _AppShellState extends State<AppShell>
     return <Widget>[for (final EvidenceShot s in shots) _evidenceThumb(s)];
   }
 
-  /// 证据图读盘缓存（docs/49 E3）：路径 → 字节。
+  /// 证据图读盘缓存：路径 → 字节。
   /// ⚠️ 原来 `FutureBuilder(future: visionReadBytes(abs))` 在 build 里现建
   ///    Future —— 执行页的时钟 250ms 重建一次，等于每秒 4 次读盘 + 4 张新字节
   ///    （MemoryImage 按字节身份做缓存键 → 每次都是一次全新的原图解码）。
   final Map<String, Future<Uint8List?>> _evidenceBytes =
       <String, Future<Uint8List?>>{};
 
-  /// [decodeW]：按显示尺寸降采样解码（docs/49 E4）。1200 万像素原图全解是
+  /// [decodeW]：按显示尺寸降采样解码。1200 万像素原图全解是
   /// ~48MB 位图，塞进 82pt 的证据槽只需要 ~360px。
   Widget _evidenceThumb(EvidenceShot s, {int decodeW = 360}) {
     if (s.bytes != null) {
@@ -3183,23 +3191,32 @@ class _AppShellState extends State<AppShell>
     );
   }
 
-  /// 正在取图 / 视觉校验（docs/49 D4）：证据槽转圈 + 防连点
+  /// 正在取图 / 视觉校验：证据槽转圈 + 防连点
   bool _evidenceBusy = false;
+
+  /// 相册开着（还没选图）：只用来防连点，不驱动 UI
+  bool _evidencePicking = false;
 
   /// 证据入槽：走内置 VisionService 管线（相册 → 落盘 → 可选校验）。
   /// 参考稿的执行页只有一个「+」上传口（L754），点它直接开相册。
   Future<void> _addEvidence() async {
     final ActiveQuest? a = _flow.active;
-    if (a == null || _evidenceBusy) return;
+    if (a == null || _evidenceBusy || _evidencePicking) return;
     if (a.evidence.length >= QuestFlow.kMaxEvidence) return;
-    setState(() => _evidenceBusy = true);
+    // A15（docs/50）：相册开着时只挡连点，不显示「校验中」；
+    // 选好图（onPicked）之后才转圈。
+    _evidencePicking = true;
     EvidenceShot? shot;
     try {
       shot = await VisionService().capture(
         quest: a.task,
         source: ImageSource.gallery,
+        onPicked: () {
+          if (mounted) setState(() => _evidenceBusy = true);
+        },
       );
     } finally {
+      _evidencePicking = false;
       if (mounted) setState(() => _evidenceBusy = false);
     }
     if (shot == null || !mounted) return;
@@ -3297,6 +3314,14 @@ class _AppShellState extends State<AppShell>
   /// 绑定仪式里的「稍后再立」：**不伪造计划**（拆解没有模板兜底），
   /// 只是先放宿主进大厅看看；目标仍是空的，下次唤醒会回到绑定仪式。
   void _skipLlmAndStart() {
+    // A1（docs/50）：按失败类型说话 —— 503 是上游，不是宿主没配 Key
+    final String line = switch (_planError?.code) {
+      PlanFailureCode.noKey => '先这样。等你把脑子（Key）配好，再谈拆解。',
+      PlanFailureCode.network ||
+      PlanFailureCode.timeout ||
+      PlanFailureCode.httpError => '线路那头卡住了，不是你的错。先进来，回头在主线页立目标。',
+      _ => '这次没拆明白。先进来，回头在主线页再立一次目标。',
+    };
     unawaited(
       _go('home', () {
         setState(() {
@@ -3306,7 +3331,7 @@ class _AppShellState extends State<AppShell>
           _pendingGoalText = '';
           _moment = Moment.lobby;
         });
-        _sayAside('先这样。等你把脑子（Key）配好，再谈拆解。', holdMs: 2800);
+        _sayAside(line, holdMs: 2800);
       }),
     );
   }
@@ -3553,7 +3578,7 @@ class _AppShellState extends State<AppShell>
   }
 }
 
-/// 系统返回键要消费的那一层（docs/39 M-04）。
+/// 系统返回键要消费的那一层。
 ///
 /// 顺序即优先级：失败页 > 牌屉 > 主线；null = 交给系统（退到桌面）。
 enum _BackTarget { fail, drawer, main, sheet, modal, sysSheet, chat, swap }
@@ -3573,7 +3598,7 @@ enum _PlanJobKind {
   settle,
 }
 
-/// 一次拆解等待（docs/49 D）：加载卡的数据源 + 防连点闸门
+/// 一次拆解等待：加载卡的数据源 + 防连点闸门
 class _PlanJob {
   _PlanJob(this.kind, this.goal) : at = DateTime.now();
 

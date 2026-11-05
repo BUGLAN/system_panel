@@ -1,4 +1,4 @@
-/// t3 · 小祥 Agent 核心的全量离线测试（docs/18 §2.5）。
+/// t3 · 小祥 Agent 核心的全量离线测试。
 ///
 /// 纪律：**不打真网**——LLM 用 `_FakeLlm`（实现 copy.dart 的 `CopyLlmGateway`
 /// 最小面，真实现归 t9 的 llm_client.dart）；存档用内存版
@@ -168,7 +168,7 @@ void main() {
       expect(c.text, '先把手头那单做完。');
     });
 
-    test('情绪标签在第二段也要剥掉并取到情绪（docs/22 F-8）', () {
+    test('情绪标签在第二段也要剥掉并取到情绪', () {
       // ① 真实观察到的形状：第一段没有标签，标签在第二段开头（旧实现直接漏进正文）
       final TaggedReply t = Persona.splitTag('先把它做完。\n[focus] 下一步只做一件：上床。');
       expect(t.text, '先把它做完。\n下一步只做一件：上床。');
@@ -348,7 +348,7 @@ void main() {
       expect(actions, contains('swap_quest'));
     });
 
-    test('swap_quest：主线当前那张直接拒绝（docs/18 §2.7 钳制）', () async {
+    test('swap_quest：主线当前那张直接拒绝（钳制）', () async {
       final MockAgentContext ctx = MockAgentContext(
         queue: <Quest>[Quest.demo],
         nextCandidate: () => _q(),
@@ -632,7 +632,7 @@ void main() {
       expect(msgs.first['content'], contains('大小姐')); // 人设随行
     });
 
-    test('相关记忆随 LLM 请求注入（docs/18 §2.5：上下文含相关记忆）', () async {
+    test('相关记忆随 LLM 请求注入（上下文含相关记忆）', () async {
       final MemoryStore memory = MemoryStore();
       await memory.add('宿主怕水，泳卡一直吃灰');
       final _FakeLlm llm = _FakeLlm(reply: '[cold]哦。');
@@ -661,7 +661,7 @@ void main() {
       expect(llm.lastMessages!.first['role'], 'system');
     });
 
-    test('LLM 300 字符钳制（docs/18 §2.5）', () async {
+    test('LLM 300 字符钳制', () async {
       final StringBuffer long = StringBuffer('[cold]');
       for (int i = 0; i < 320; i++) {
         long.write('啰');
@@ -724,7 +724,7 @@ void main() {
     });
   });
 
-  // ═══════════ ⑤ QuestFlowAdapter（docs/19 §A3 真实适配器）═══════════
+  // ═══════════ ⑤ QuestFlowAdapter（真实适配器）═══════════
 
   group('QuestFlowAdapter：QuestFlow 数据源的真实 AgentContext', () {
     QuestFlowAdapter adapterOf(QuestFlow flow, {void Function()? onChanged}) =>
@@ -756,7 +756,7 @@ void main() {
       expect(a.statusSummary()['lv'], 1);
     });
 
-    test('swap_quest：主线当前那张直接拒绝（docs/18 §2.7 钳制在真实流上保持）', () {
+    test('swap_quest：主线当前那张直接拒绝（钳制在真实流上保持）', () {
       final QuestFlow f = QuestFlow.demo(); // 队首 = Quest.demo（C 级主线）
       final ToolOutcome out = adapterOf(f).swapQuest();
       expect(out.ok, isFalse);

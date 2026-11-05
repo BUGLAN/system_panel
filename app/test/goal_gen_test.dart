@@ -15,8 +15,8 @@ import 'package:system_panel/state/save_file.dart';
 
 /// ═══════════════════════════════════════════════════════════
 ///  目标生成（goal_gen.dart）—— 类型识别 · 访谈卡组 · 首目标 3 天 3 张
-///  · 答案三用 · 老存档兼容（docs/18 第 2.1 节 / §2.8，T6-1）
-///  · docs/33：环（Ring）已废除 —— `rings`→`plan`、`GoalRing`→`PlanTask`、
+///  · 答案三用 · 老存档兼容（T6-1）
+///  · 环（Ring）已废除 —— `rings`→`plan`、`GoalRing`→`PlanTask`、
 ///    环数→期限天数（`goalDaysFor`）、`currentIndex`→`firstOpenIndex`
 /// ═══════════════════════════════════════════════════════════
 void main() {
@@ -147,7 +147,7 @@ void main() {
   });
 
   group('访谈卡组 3~5 张（依据等级设定合适内容）', () {
-    test('新宿主 lv1 = 类别 3 张（docs/18 第 2.1 节 示例形态）', () {
+    test('新宿主 lv1 = 类别 3 张（示例形态）', () {
       final List<InterviewCard> cards = interviewCardsFor(goalCats['sleep']!);
       expect(cards.length, 3);
       expect(cards.map((InterviewCard c) => c.id), <String>[
@@ -231,7 +231,7 @@ void main() {
       ),
   ];
 
-  group('计划规则 · 条数 = 次数配额 或 期限天数（docs/34 第 3 节）', () {
+  group('计划规则 · 条数 = 次数配额 或 期限天数', () {
     test('planTaskCountFor 夹在 [kPlanMinTasks, kPlanMaxTasks]', () {
       expect(planTaskCountFor(14), 14);
       expect(planTaskCountFor(180), 180);
@@ -669,7 +669,7 @@ void main() {
     });
   });
 
-  group('触发判定与老存档兼容（docs/18 第 2.8 节 合并式加法）', () {
+  group('触发判定与老存档兼容（合并式加法）', () {
     test('没有主线才要绑', () {
       expect(shouldOnboard(Goal.empty()), isTrue);
       expect(shouldOnboard(Goal.demo()), isFalse); // 老存档已有主线

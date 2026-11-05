@@ -5,7 +5,6 @@
 #  为什么不用 `adb shell wm size`：
 #    `wm size` 是**运行时覆盖**，会让 SurfaceFlinger 从「1:1 直通」变成
 #    「先缩后放」，实测中频清晰度掉 45%。只有改**实例面板**才是零重采样。
-#    （证据与量测见 docs/46-Live2D清晰度-DPR与mipmap.md）
 #
 #  用法：
 #    bash tools/mumu/set-panel-resolution.sh        # 390x844dp @ DPR3（默认，推荐）
@@ -64,7 +63,7 @@ done
 
 # 2) 切 custom 再写 .custom 后缀键
 #    ⚠️ 顺序陷阱：切成 custom 会把三个值清零；且普通键报 key not writable，
-#       必须写 resolution_*.custom（见 docs/46 §2）
+#       必须写 resolution_*.custom
 echo "→ 写面板分辨率"
 "$CLI" setting -v "$VMINDEX" --key resolution_mode          --value custom >/dev/null
 "$CLI" setting -v "$VMINDEX" --key resolution_width.custom  --value "$W"    >/dev/null

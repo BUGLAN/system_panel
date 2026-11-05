@@ -6,7 +6,7 @@ import '../state/quest_flow.dart';
 import 'tools.dart';
 
 /// ═══════════════════════════════════════════════════════════
-///  AgentContext 的真实适配器（docs/19 §A3）—— 把工具接到 QuestFlow 上
+///  AgentContext 的真实适配器—— 把工具接到 QuestFlow 上
 ///
 ///  数据源：`QuestFlow`（队列/接单/结算唯一真源）+ 它持有的 `HostState`/`Goal`。
 ///  main.dart 用 `flowOf: () => _flow` 传**取流回调**而非实例——绑定/读档会把
@@ -66,7 +66,7 @@ class QuestFlowAdapter implements AgentContext {
     }
     final Quest head = f.head!;
     if (head.kind == 'main') {
-      // docs/18 §2.7：主线单不可换——她直接拒绝（原型 store.js:254 语义）
+      // 主线单不可换——她直接拒绝（原型 store.js:254 语义）
       return ToolOutcome.fail('主线上的单不能换。这是你自己选的目标，要么做完，要么认输重来。');
     }
     // D4「换一个」语义：非 F 降一档重刻（单号不变）；F 级还退=换一张别的 F

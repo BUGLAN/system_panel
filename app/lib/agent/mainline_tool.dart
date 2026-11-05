@@ -1,4 +1,4 @@
-/// `set_plan` —— 「她」在 agent 循环里**拆计划**（docs/34 起，不再拆「环」）。
+/// `set_plan` —— 「她」在 agent 循环里**拆计划**（不再拆「环」）。
 ///
 /// ═══════════════════════════════════════════════════════════
 ///  这是目标拆解的**唯一**实现路径
@@ -32,7 +32,7 @@ class PlanDraft {
 ///
 /// **这是任务卡片的唯一 schema 真源**：字段名、类型、枚举、必填项都钉在这里，
 /// 对应 `TaskSpec`（`goal_gen.dart`）与 `PlanTask`（`goal.dart`）。
-/// 改它 = 改存档格式，先改 docs/34 与两个数据类，再改这里。
+/// 改它 = 改存档格式，先改两个数据类，再改这里。
 Map<String, dynamic> setPlanSchema(int taskCount) => <String, dynamic>{
   'type': 'object',
   'properties': <String, dynamic>{
@@ -106,7 +106,7 @@ AgentTool setPlanTool({
   /// 撞在这上面。测试可以传 false，只验形状。
   bool validate = true,
 
-  /// 非空 = 只交整份清单里的一段（docs/49 F3）：[taskCount] 必须等于段长，
+  /// 非空 = 只交整份清单里的一段：[taskCount] 必须等于段长，
   /// 校验换成 [validatePlanSegment]（档位区间 / 段内不倒退 / 末段收 S）
   PlanSegment? segment,
 }) {

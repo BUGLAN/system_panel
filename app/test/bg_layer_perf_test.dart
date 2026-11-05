@@ -3,7 +3,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:system_panel/widgets/bg_layer.dart';
 
-/// docs/39 §5.5 性能收口：`BgLayer` 原来用 **10Hz / 31Hz 的整层 `setState`**
+/// 性能收口：`BgLayer` 原来用 **10Hz / 31Hz 的整层 `setState`**
 /// 推轨道环与地面网格的相位 —— 天幕这一整棵（渐变×3、ComfyUI 底图、大字两层、
 /// 噪点贴图）每 100ms 被重建一次，只为让三个环转一点、网格挪半个像素。
 ///

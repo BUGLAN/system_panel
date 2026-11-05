@@ -10,7 +10,7 @@ import 'ref_orb.dart' show RefLink;
 import 'ref_text.dart';
 
 /// ═══════════════════════════════════════════════════════════
-///  换目标 —— v3 独立场景（docs/49 C，重写）
+///  换目标 —— v3 独立场景（重写）
 ///
 ///  旧版是上一代视觉（`AskField` 底部输入条 + 左上 ← 圆）浮在主线页上，
 ///  与 ref 体系不是一套语言，提交后也只有一句台词、几十秒毫无反馈。
@@ -357,7 +357,9 @@ class _RefGoalSwapState extends State<RefGoalSwap> {
                 ),
                 const SizedBox(height: 5),
                 ConstrainedBox(
-                  constraints: const BoxConstraints(minHeight: 26),
+                  // A19（docs/50）：预留两行高 —— 打字机写到第二行时
+                  // 下方预设词不再整体下移（点击落空）
+                  constraints: const BoxConstraints(minHeight: 50),
                   child: RefTypewriter(
                     key: ValueKey<String>('${widget.lineToken}·$line'),
                     text: line,
@@ -396,13 +398,13 @@ class _RefGoalSwapState extends State<RefGoalSwap> {
         Row(
           children: <Widget>[
             Text(
-              '新目标 ›',
+              '新目标',
               style: refText(size: 13, wght: 500, height: 1.2, color: Ref.dim),
             ),
             const Spacer(),
             RefLink(
               key: const Key('ref.swap.askXiang'),
-              label: '先问小祥 ›',
+              label: '先问问她 ›', // A21（docs/50）：名字还没介绍过
               accent: Ref.cyan,
               onTap: widget.onAskXiang,
             ),

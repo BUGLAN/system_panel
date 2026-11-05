@@ -10,7 +10,7 @@ import 'package:system_panel/agent/settings_store.dart';
 import 'package:system_panel/agent/vision.dart';
 import 'package:system_panel/state/quest.dart';
 
-/// 视觉校验链路单测（docs/18 §2.4 · D9）。
+/// 视觉校验链路单测。
 /// 全部 mock：picker/落盘/LLM 都是注入件，**不打真网、不触真盘**。
 void main() {
   const Quest quest = Quest.demo; // C 级主线第 5 环「跑完 5 公里」
@@ -123,7 +123,7 @@ void main() {
       expect(v.parseVerdict('').status, EvidenceStatus.unverified);
     });
 
-    test('note >40 字按码点钳到 40（docs/18 §2.4）', () {
+    test('note >40 字按码点钳到 40', () {
       final String long = '跑' * 50;
       final VisionVerdict r = v.parseVerdict(
         '{"match": true, "note": "$long"}',
@@ -245,7 +245,7 @@ void main() {
   });
 
   group('capture · 拍照→落盘→校验 管线', () {
-    test('压缩参数照 docs/18 §2.4 传给 picker（≤1280 / JPEG q80）', () async {
+    test('压缩参数传给 picker（≤1280 / JPEG q80）', () async {
       ImageSource? src;
       double? mw;
       double? mh;

@@ -18,7 +18,7 @@ class PlanBrief {
     this.segment,
   });
 
-  /// 同一份简报换成「只拆其中一段」（docs/49 F3：长清单分段并行拆）
+  /// 同一份简报换成「只拆其中一段」（长清单分段并行拆）
   PlanBrief forSegment(PlanSegment? seg) => PlanBrief(
     goalText: goalText,
     days: days,
@@ -49,7 +49,7 @@ class PlanBrief {
   /// 宿主档案一行（等级/连击/最弱维/当前主线）
   final String? statusLine;
 
-  /// 首目标（3 天 3 张 E/D/C，docs/05）
+  /// 首目标（3 天 3 张 E/D/C）
   final bool firstGoal;
 
   /// 非空 = 这一轮只拆整份清单里的一段（段数 > 1 时才会给）

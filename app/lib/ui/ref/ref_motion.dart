@@ -76,7 +76,7 @@ class _RefRevealState extends State<RefReveal>
           offset: Offset(0, 30 * (1 - e)),
           child: child,
         );
-        // 省电档跳过模糊（docs/49 E7）：每次换页 5~7 层同时做整块 blur，
+        // 省电档跳过模糊：每次换页 5~7 层同时做整块 blur，
         // 位移 + 透明已经足够把「显影」讲清楚
         if (blur > .3 && !Fidelity.lowPower.value) {
           w = ImageFiltered(

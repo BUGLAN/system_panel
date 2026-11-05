@@ -7,7 +7,7 @@
 - 烘焙器：`gen_sfx.mjs`（Node ≥ 18，实测 v22.19.0）
 - 实测器：`inspect_wav.mjs`（读回 WAV 头 + 算 peak/RMS/DC/削顶 + 无缝循环接缝 + FFT 主频）
 
-> **2026-10-28 追加（docs/49 A6）**：v3 界面用的是参考稿 `宿主养成系统_重设计.html` 那套音效，
+> **2026-10-28 追加**：v3 界面用的是参考稿 `宿主养成系统_重设计.html` 那套音效，
 > 已逐条转写进本脚本（`REF` 表，master 链按参考稿 gain .55 + 压缩 −14dB/4:1），产出 39 件 `ref_*.wav`：
 > `click soft hover swipe whoosh tick beat success error coin buy stamp crit levelup unlock fail boot scan`
 > + `ref_type_0..3` + `ref_boop_0..8` + `ref_hold_0..7`。`sfx.dart` 直接按参考稿音名取这一套。
@@ -537,6 +537,6 @@ shutter / deny / unhold` 与 `drone()` 两条连续音、`muffle()`（失败时�
 | `ignite` | `audio/ignite_0.wav` … `audio/ignite_7.wav`（8） | ✓ | 批次③ 补件（task-18）：`main.dart` 的 `_igniteRings()` 调 `Sound.play('ignite', i)`（i = 环序号，对应原型 `clamp(x\|0,0,7)`）。**命名与总线已对表**：`sfx.dart:67-76` 的 `'ignite'` 表正好列这 8 条，磁盘 8 件全在（我烘焙侧只读核对，未改 `app/lib/**`） |
 
 总线表在批次②口径下引用 **73** 件，全部实有；另有 **3 件总线暂未使用**：`boot.wav`（R5 预留）、
-`hold.wav`（`docs/22 §10-G-2`：本批「按住」只用震动）、`rank.wav`（**备用留档**，
+`hold.wav`（本批「按住」只用震动）、`rank.wav`（**备用留档**，
 `_pick` 在无 variant 时随机取变体 → 它不会被播，见上面第 5 条更正）。73 + 3 = 76 ✓。
 批次③ 的 8 件 `ignite_*` 另计：76 + 8 = **84** ✓（目录实有 84）。

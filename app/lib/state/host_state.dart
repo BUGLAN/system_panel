@@ -65,7 +65,7 @@ class HostState {
   /// ⚠️ t24 之前这里自己写了一条旧曲线 `60 + lv * 40`（store.js L5 遗留），
   /// 与结算/升级用的 `rewards.dart:36` **双口径并存**：LV7 真实 need = 54，
   /// 档案页经验环却按 /340 画（常年在用户眼里几乎空着），agent 查状态报的
-  /// 经验上限也是旧值（docs/20 §2.2-2 / TODO-15）。现在整条链只有一条曲线，
+  /// 经验上限也是旧值（TODO-15）。现在整条链只有一条曲线，
   /// 这里只剩一个转发，改数值只改 `rewards.dart` 一处。
   static int need(int lv) => Rewards.needFor(lv);
 

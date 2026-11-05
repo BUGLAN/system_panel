@@ -7,7 +7,7 @@ import 'package:http/http.dart' as http;
 import 'llm_telemetry.dart';
 
 /// ═══════════════════════════════════════════════════════════
-///  OpenAI 兼容统一 LLM 客户端（docs/18 §2.4 / §3.1-T4）
+///  OpenAI 兼容统一 LLM 客户端
 ///
 ///  视觉校验、小祥对话、文案接管共用这一层。三条铁律：
 ///   1. **永不抛异常** —— 失败一律折叠成 [LlmReply.failure]（`ok=false`
@@ -105,7 +105,7 @@ class LlmConfig {
 
   /// 推理档位（端点 `/models` 自报支持 low/high/max）。
   /// **默认 low**：端点是推理模型，`max_tokens` 同时算思考与正文——
-  /// 档位越高、正文越容易被思考吃光（docs/22 §2.0 / R1）。空串 = 不带该参数。
+  /// 档位越高、正文越容易被思考吃光。空串 = 不带该参数。
   static const String kDefaultReasoningEffort = 'low';
 
   final String baseUrl;
@@ -115,7 +115,7 @@ class LlmConfig {
   /// 请求带的 `reasoning_effort`（空串＝不传，交端点默认）
   final String reasoningEffort;
 
-  /// 严格模式（docs/22 §2.0）：开发构建下失败**不伪装成正常回复**。
+  /// 严格模式：开发构建下失败**不伪装成正常回复**。
   /// 客户端本身只把它带在配置上（诊断/上层决策用），不改变失败折叠行为。
   final bool strict;
 
@@ -316,15 +316,15 @@ class LlmClient {
   final LlmConfig config;
   final http.Client _http;
 
-  /// 单次请求时限（docs/18 §2.4：12s）
+  /// 单次请求时限（12s）
   final Duration timeout;
 
-  /// 传输层失败的重试次数（docs/18：1 次）
+  /// 传输层失败的重试次数（1 次）
   final int retries;
 
   /// 连通性探测：设置页「测试连接」用。
   ///
-  /// **必须是真实形状**（docs/22 R1）：低思考档 + 足够 `max_tokens` + 一句系统提示。
+  /// **必须是真实形状**：低思考档 + 足够 `max_tokens` + 一句系统提示。
   /// 旧版 `maxTokens: 8` 会永远返回空正文/截断，却因为只看「HTTP 200」而显示成功——
   /// 宿主看到的「测试连接通了、聊天却兜底」就是它造成的错觉。
   Future<LlmReply> ping() => chat(
@@ -344,7 +344,7 @@ class LlmClient {
 
   /// 对话 / 多模态 / function calling 统一入口。**任何失败都不抛异常**。
   ///
-  /// 每次应答都记一笔 [LlmTelemetry]（docs/22 §2.0：兜底不能再「默默发生」）。
+  /// 每次应答都记一笔 [LlmTelemetry]（兜底不能再「默默发生」）。
   Future<LlmReply> chat({
     required List<LlmMessage> messages,
     List<LlmTool>? tools,
@@ -364,7 +364,7 @@ class LlmClient {
     );
     // 思考把预算吃光 → **抬预算重来一次**。
     //
-    // ⚠️ 这不违反 strict 模式的纪律（docs/22 §2.0「开发期不重试、别把偶发失败
+    // ⚠️ 这不违反 strict 模式的纪律（「开发期不重试、别把偶发失败
     //    藏过去」）：那一条管的是**失败**重试。这一发请求是成功的、端点也没报错，
     //    只是她在开口前就被 `max_tokens` 掐断了——不重来就必然静默退回模板，
     //    宿主看到的是「她忽然哑了」，那才是真正被藏起来的问题。真机 2026-10-12
@@ -386,7 +386,7 @@ class LlmClient {
     }
     sw.stop();
     LlmTelemetry.record(r);
-    // docs/22 F-1：聊天路径直连本客户端、**不走网关**，所以日志必须在这里打，
+    // 聊天路径直连本客户端、**不走网关**，所以日志必须在这里打，
     // 否则「logcat 能看到请求与回执」这条验收永远拿不到证据。
     // 只打诊断元信息：不打 Key、不打完整 prompt、不打回复全文。
     if (r.ok) {
@@ -465,7 +465,7 @@ class LlmClient {
       if (config.stream) 'stream': true,
     });
 
-    // 严格模式（docs/22 §2.0 / 验收 F-5）：**开发期不重试** —— 一次就把真因报出来，
+    // 严格模式（验收 F-5）：**开发期不重试** —— 一次就把真因报出来，
     // 别让「重试一次」把偶发失败藏过去（这正是宿主说的"出问题直接报错"）。
     // release（strict=false）保持原样：传输层失败重试 1 次。
     final int attempts = config.strict ? 0 : retries;
@@ -476,7 +476,17 @@ class LlmClient {
         final http.Response resp = await _http
             .post(uri, headers: headers, body: payload)
             .timeout(limit);
-        // HTTP 状态错误不重试：4xx/5xx 重试也不会好
+        // A5（docs/50）：502/503/504 是网关/上游临时不可用（实测 503
+        // `No available channel`，下一发就好了）—— 非严格模式下按传输层失败
+        // 一样重试；严格模式（开发期）照旧一次就报真因。
+        if (const <int>{502, 503, 504}.contains(resp.statusCode) &&
+            attempt < attempts) {
+          lastKind = LlmFailure.httpError;
+          lastDetail = 'HTTP ${resp.statusCode}：${_snippet(resp.body)}';
+          await Future<void>.delayed(const Duration(milliseconds: 800));
+          continue;
+        }
+        // 其余 HTTP 状态错误不重试：4xx/500 重试也不会好
         if (resp.statusCode != 200) {
           return LlmReply.failure(
             LlmFailure.httpError,

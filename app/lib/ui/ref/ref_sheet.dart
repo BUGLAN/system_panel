@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 
 import '../../design/ref.dart';
@@ -16,7 +17,7 @@ import 'ref_kit.dart' show refPressSound;
 ///  参考稿没有覆盖、但 APP 已有的入口（对话 / LLM 连接）按同一行样式补在
 ///  「隐藏彩蛋」之后、「重置存档」之前 —— 只加行，不改版式。
 ///
-///  进出（docs/49 B2）：常驻挂载、由 [visible] 驱动 —— 挂上即 440ms 从底部滑上，
+///  进出：常驻挂载、由 [visible] 驱动 —— 挂上即 440ms 从底部滑上，
 ///  关掉时反向滑下、滑完才摘树。原来首帧直接落终态、build 也不订阅控制器，
 ///  抽屉是「啪」一下出现、「啪」一下消失的。开 `ui.open` / 关 `ui.close`。
 /// ═══════════════════════════════════════════════════════════
@@ -172,33 +173,37 @@ class _RefSheetState extends State<RefSheet>
                   const SizedBox(height: 12),
                   _row(
                     title: '音效',
-                    sub: '点击、切换、暴击、升级……全部合成音',
+                    sub: '点击、切换、暴击、升级……8-bit 音效包', // A10（docs/50）
                     trailing: RefSwitch(
                       on: widget.sound,
                       onChanged: widget.onSound,
                     ),
                     onTap: () => widget.onSound(!widget.sound),
                   ),
-                  _row(
-                    title: '秘籍',
-                    sub: '老玩家都懂（桌面端键盘输入）',
-                    trailing: Text(
-                      '↑↑↓↓←→←→BA',
-                      style: refText(
-                        family: Ref.fm,
-                        size: 13,
-                        wght: 700,
-                        ls: 2,
-                        color: Ref.acid,
+                  // A17（docs/50）：秘籍 / 彩蛋提示 / LLM 连接是开发向入口，
+                  // release 不露（LLM 设置仍可长按 HUD 菜单键进入）
+                  if (kDebugMode)
+                    _row(
+                      title: '秘籍',
+                      sub: '老玩家都懂（桌面端键盘输入）',
+                      trailing: Text(
+                        '↑↑↓↓←→←→BA',
+                        style: refText(
+                          family: Ref.fm,
+                          size: 13,
+                          wght: 700,
+                          ls: 2,
+                          color: Ref.acid,
+                        ),
                       ),
                     ),
-                  ),
-                  _row(
-                    title: '隐藏彩蛋提示',
-                    sub: '戳她 · 长按她 · 连点计时器',
-                    trailing: _arrow(),
-                    onTap: widget.onHint,
-                  ),
+                  if (kDebugMode)
+                    _row(
+                      title: '隐藏彩蛋提示',
+                      sub: '戳她 · 长按她 · 连点计时器',
+                      trailing: _arrow(),
+                      onTap: widget.onHint,
+                    ),
                   if (widget.onChat != null)
                     _row(
                       title: '和她聊聊',
@@ -206,7 +211,7 @@ class _RefSheetState extends State<RefSheet>
                       trailing: _arrow(),
                       onTap: widget.onChat,
                     ),
-                  if (widget.onLlm != null)
+                  if (widget.onLlm != null && kDebugMode)
                     _row(
                       title: 'LLM 连接',
                       sub: '端点 · 模型 · 温度 · 流式',

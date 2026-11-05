@@ -138,24 +138,28 @@ class RefBoard extends StatelessWidget {
   }
 
   Widget _empty() {
+    // A3（docs/50）：只有「全部」为空才庆祝；某一栏空只是「这栏没单」
+    final bool filtered = filter != 'all';
     return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
           Text(
-            emptyTitle,
+            filtered ? 'EMPTY' : emptyTitle,
             style: refText(
               family: Ref.fd,
-              size: 44,
+              size: filtered ? 28 : 44,
               wght: 900,
               height: 1,
-              color: Ref.gold,
-              shadows: <Shadow>[Shadow(color: Ref.gold, blurRadius: 20)],
+              color: filtered ? Ref.dim : Ref.gold,
+              shadows: filtered
+                  ? null
+                  : <Shadow>[Shadow(color: Ref.gold, blurRadius: 20)],
             ),
           ),
           const SizedBox(height: 6),
           Text(
-            emptyBody,
+            filtered ? '这一栏今天没有单。去「全部」看看。' : emptyBody,
             textAlign: TextAlign.center,
             style: refText(
               family: Ref.fc,
@@ -165,7 +169,7 @@ class RefBoard extends StatelessWidget {
               color: Ref.dim,
             ),
           ),
-          if (onRefill != null) ...<Widget>[
+          if (onRefill != null && !filtered) ...<Widget>[
             const SizedBox(height: 22),
             RefButton(
               label: '再要一批委托',
@@ -649,7 +653,7 @@ class _RefTicketCardState extends State<RefTicketCard>
     );
     return <String>[
       'EXP +${p.exp}',
-      '◆ ${p.coin}',
+      '晶核 +${p.coin}', // A12（docs/50）：不再用 ◆，与 HUD「晶核」同名
       for (final MapEntry<String, int> e in q.attrs.entries)
         '${Attr.nameOf(e.key)} +${e.value}',
     ];

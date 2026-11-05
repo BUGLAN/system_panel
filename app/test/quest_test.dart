@@ -58,7 +58,7 @@ void main() {
     });
 
     test('报酬：`EXP n · ◈ m 体+1 力+1`（t15：结算经济口径，与结算同表）', () {
-      // C 级 4 exp / 5 金币（docs/18 §2.3 Rewards）
+      // C 级 4 exp / 5 金币（Rewards）
       expect(q().lootText, 'EXP 4 · ◈ 5体+1 力+1');
     });
 
@@ -72,7 +72,7 @@ void main() {
     });
   });
 
-  group('lootText = 结算经济口径（docs/18 §2.3 Rewards，t8）', () {
+  group('lootText = 结算经济口径（Rewards，t8）', () {
     test('C 级：EXP 4 · ◈ 5 —— 与 QuestFlow.settle 同表（rewardText 是旧表）', () {
       expect(q().lootText, 'EXP 4 · ◈ 5体+1 力+1');
       expect(q().lootText, isNot(q().rewardText));

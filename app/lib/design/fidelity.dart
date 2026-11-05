@@ -1,7 +1,7 @@
 import 'package:flutter/widgets.dart';
 
 /// ═══════════════════════════════════════════════════════════
-///  画质档（docs/48 §5 性能策略）
+///  画质档（性能策略）
 ///
 ///  两个输入，一个出口：
 ///   · [Fidelity.lowPower] —— 设置页「舞台特效：高 / 省电」（AgentSettings.fidelity）

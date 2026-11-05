@@ -7,7 +7,7 @@ import 'llm_client.dart';
 import 'llm_telemetry.dart';
 
 /// ═══════════════════════════════════════════════════════════
-///  CopyLlmGateway 的真实现（docs/18 §3.1-T5 集成件）
+///  CopyLlmGateway 的真实现（集成件）
 ///
 ///  copy.dart 只依赖 [CopyLlmGateway] 这个最小面；本类用几行适配器把
 ///  t9 的 [LlmClient] 插进去。两条铁律与接口一致：
@@ -23,7 +23,7 @@ class LlmGateway implements CopyLlmGateway {
 
   final LlmClient _client;
 
-  /// 最近一次应答（诊断用）。docs/22 §2.0：严格模式要把失败原因摆到宿主面前，
+  /// 最近一次应答（诊断用）。严格模式要把失败原因摆到宿主面前，
   /// 而 [complete] 的契约是「失败返回 null」——原因只能从这里读。
   LlmReply? lastReply;
 

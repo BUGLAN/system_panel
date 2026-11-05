@@ -6,7 +6,7 @@ import 'package:system_panel/state/sfx.dart';
 import 'package:system_panel/ui/ref/ref_goal_swap.dart';
 import 'package:system_panel/ui/ref/ref_loading.dart';
 
-/// docs/49 C/D：换目标页（v3 重写）与拆解加载卡的冒烟网。
+/// 换目标页（v3 重写）与拆解加载卡的冒烟网。
 ///
 /// 钉三件事：两档屏宽不溢出；空输入时主键不可点、有字才可点；
 /// 给了 loading 之后表单整块换成加载卡（这就是「点了像卡死」的修复点）。

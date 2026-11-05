@@ -6,7 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'llm_client.dart';
 
 /// ═══════════════════════════════════════════════════════════
-///  设置存取（docs/18 §2.4 / §2.8）
+///  设置存取
 ///
 ///  key = `opus-v2/settings/v1`。迁移策略沿用 save_file 的惯例：
 ///  **在默认值上合并** —— 老档缺字段自动补默认，永不要求清档。
@@ -22,7 +22,7 @@ class AgentSettings {
   /// 「两套默认值将来会漂」就是这个问题。
   static const String kDefaultStrictMode = 'auto';
 
-  /// ═══ 对白节奏（docs/22 §R4 / 裁决 D-h）═══
+  /// ═══ 对白节奏（裁决 D-h）═══
   ///
   /// **这三个数就是全仓唯一的节奏真源**：慢 / 标准 / 快三档，单位=每字毫秒。
   /// `widgets/type_text.dart` 的默认值、`state/settings.dart` 的选项表、
@@ -59,7 +59,7 @@ class AgentSettings {
     this.stream = kDefaultStream,
   });
 
-  // ── docs/48 §5：舞台特效画质 + 界面音量 ────────────────────────
+  // ── 舞台特效画质 + 界面音量 ────────────────────────
   /// 舞台特效：`high` 全效果 / `low` 省电（静态舞台光、无粒子、无循环扫光）
   static const String kDefaultFidelity = 'high';
 
@@ -134,7 +134,7 @@ class AgentSettings {
   /// 她的声音：blip 电子音 / tts 人声 / mute 静音
   final String voice;
 
-  // ── docs/22 §2.0 / §R1-2：思考档位 + 严格模式 ──
+  // ── 思考档位 + 严格模式 ──
   // 合并语义同其余字段：老档缺 key → 用 fallback（= 下面的默认值）补齐，
   // 永不因为缺字段清档或抛异常。
 
@@ -144,7 +144,7 @@ class AgentSettings {
   /// 严格模式：auto（debug/profile 报错不兜底、release 兜底但标注）/ on / off
   final String strictMode;
 
-  /// 对白节奏：**她说话时每个字显形的毫秒数**（docs/22 §R4）。
+  /// 对白节奏：**她说话时每个字显形的毫秒数**。
   /// 三档取值见 [kPaceSlowMs] / [kPaceStandardMs] / [kPaceFastMs]，默认标准 34。
   /// 消费方：`LineLayer`（字幕）与 `ChatPanel`（聊天气泡）的打字机。
   final int paceMs;
@@ -304,10 +304,10 @@ class AgentSettings {
 class SettingsStore {
   SettingsStore({SharedPreferencesAsync? prefs}) : _injected = prefs;
 
-  /// docs/18 §2.8 的设置 key（LLM/视觉 + 四开关同表）
+  /// 设置的存档 key（LLM/视觉 + 四开关同表）
   static const String key = 'opus-v2/settings/v1';
 
-  // ── 变更通知（TODO-07 聊天网关热更，docs/20 遗留观察①）──────────
+  // ── 变更通知（TODO-07 聊天网关热更）──────────
   //
   // 设置页（sheet）、视觉校验（vision）、聊天装配（main._initAgent）各自
   // `new SettingsStore()`，实例之间互不相识——所以通知必须是**类级广播**：

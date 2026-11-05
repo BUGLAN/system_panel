@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:system_panel/state/sfx.dart';
 
-/// 音效总线的**槽位保持时长**（docs/41 §4.2）。
+/// 音效总线的**槽位保持时长**。
 ///
 /// 这条钉子防的是一类「听不出来、但会引发槽位复用错乱」的缺陷：
 /// 原来 `_busyHold` 是固定 250ms，按逐字音（~60ms）标定的 ——
@@ -29,7 +29,7 @@ void main() {
       // 素材实测时长（gen_sfx 输出）：seal 1.26s / impact 1.29s
       expect(Sfx.holdForTest('seal').inMilliseconds, greaterThan(1260));
       expect(Sfx.holdForTest('impact').inMilliseconds, greaterThan(1290));
-      // docs/49 A6：以下几件换成参考稿版本（ref_*.wav），按新素材时长钉上界
+      // 以下几件换成参考稿版本（ref_*.wav），按新素材时长钉上界
       for (final (String k, int ms) in <(String, int)>[
         ('boot', 1570),
         ('levelup', 1830),

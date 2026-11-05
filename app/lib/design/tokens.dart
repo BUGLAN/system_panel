@@ -104,7 +104,7 @@ const kOut = Cubic(0.16, 1, 0.3, 1);
 const kInOut = Cubic(0.65, 0, 0.35, 1);
 
 /// ═══════════════════════════════════════════════════════════
-///  动效令牌（docs/39 §5.1「令牌先加进 design/tokens.dart，再改组件」）
+///  动效令牌（「令牌先加进 design/tokens.dart，再改组件」）
 ///
 ///  四层：Touch / Respond / Scene / Payoff。改动画前先在这里找档位，
 ///  **不许在组件里再写字面量时长** —— 同一个动作两处不同时长就是「不统一」。
@@ -136,7 +136,7 @@ class Motion {
   static const int drawerCloseMs = 260;
   static const int scrimMs = 200;
 
-  // ── 物理弹簧（docs/39 §5.1）───
+  // ── 物理弹簧───
   static const double cardTableK = 120;
   static const double cardTableZeta = .9;
   static const double cameraK = 70;
@@ -195,7 +195,7 @@ class WordSpec {
 }
 
 /// ═══════════════════════════════════════════════════════════
-///  设计系统 v2「舞台 HUD」—— 2026-10-25 UI 重设计（docs/48）
+///  设计系统 v2「舞台 HUD」—— 2026-10-25 UI 重设计
 ///
 ///  一句话：**她是舞台，界面是 HUD**。所有 v2 令牌都围绕这条展开：
 ///   · 颜色分三层 —— 舞台光（只属于她：青辉/暖边光）、HUD 墨层（界面底）、
@@ -384,7 +384,7 @@ class SoundRule {
   /// 同一 cue 两发之间的最小间隔
   final int minGapMs;
 
-  /// 2026-10-28（docs/49 A6）：全部改指参考稿那套音（`宿主养成系统_重设计.html`
+  /// 2026-10-28：全部改指参考稿那套音（`宿主养成系统_重设计.html`
   /// 的 SFX，已烘进 `ref_*.wav`，参考稿的 master .55 已经烘在素材里 → gain 1）。
   /// 参考稿的规矩：可点元素**按下那一刻**统一 `click`（开/关面板也就是这一声）；
   /// 卡轮播换焦点 `swipe`；点侧卡 / 切分页 / 点节点 `soft`。

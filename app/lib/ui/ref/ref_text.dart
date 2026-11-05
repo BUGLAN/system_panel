@@ -46,7 +46,7 @@ class RefTypewriter extends StatefulWidget {
   final bool softWrap;
 
   /// 逐字出声（参考稿 typeTo：每显形两个字一声 `type`，L1003）。
-  /// 原来 v3 打字机是哑的 —— 她说话没有声音，是「音效不太行」的一大半（docs/49 A7）
+  /// 原来 v3 打字机是哑的 —— 她说话没有声音，是「音效不太行」的一大半
   final bool sound;
 
   @override

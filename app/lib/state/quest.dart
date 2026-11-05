@@ -87,7 +87,7 @@ class Quest {
     return 'EXP ${(rarity.exp * k).round()} · ◈ ${(rarity.coin * k).round()}$at';
   }
 
-  /// 结算经济口径（docs/18 §2.3 Rewards 表）的报酬文案 —— C 级 = `EXP 4 · ◈ 5`。
+  /// 结算经济口径（Rewards 表）的报酬文案 —— C 级 = `EXP 4 · ◈ 5`。
   ///
   /// 这是「这一单**真会**结算出多少」的真源读数（quest_flow.settle 同表）；
   /// 派单板 loot 面板**只能**读它（t24 起 plate.dart 不再自己拼数字）。

@@ -9,7 +9,7 @@ import 'press_scale.dart';
 import 'sys_icons.dart';
 
 /// ═══════════════════════════════════════════════════════════
-///  对话层的两件 UI（docs/18 §2.6）
+///  对话层的两件 UI
 ///
 ///  · [ChatEntryButton]：对话入口。原先钉在大厅左上（HUD 下方）的 34×34 小圆钮；
 ///    宿主 2026-10-11 指定搬到**右下、委托板正上方**，并放大到 56（贴右手拇指）。
@@ -19,7 +19,7 @@ import 'sys_icons.dart';
 
 /// 大厅的对话入口（原型无此物，样式对齐 `#sheet ×`/`.dk` 的玻璃圆钮）
 ///
-/// docs/39 H-13（P2）：直径 56→52（挂载尺寸由 main.dart 传）、底 .70→.62、
+/// 直径 56→52（挂载尺寸由 main.dart 传）、底 .70→.62、
 /// 边框 .12→.16、按下 .94、补 `tap` 音与 [Semantics] 标签 —— 原先纯图标、
 /// 无音效无标签，读屏只会念「按钮」。
 class ChatEntryButton extends StatelessWidget {
@@ -27,7 +27,7 @@ class ChatEntryButton extends StatelessWidget {
 
   final VoidCallback? onTap;
 
-  /// 直径。默认 34（原型那颗）；搬到委托上方后宿主指定 52（docs/39 H-13）。
+  /// 直径。默认 34（原型那颗）；搬到委托上方后宿主指定 52。
   final double size;
 
   @override
@@ -40,7 +40,7 @@ class ChatEntryButton extends StatelessWidget {
         onTap: onTap == null
             ? null
             : () {
-                Sfx.play('tap'); // docs/39 §5.4：对话圆钮归 tap
+                Sfx.play('tap'); // 对话圆钮归 tap
                 onTap!();
               },
         pressedGlow: const <BoxShadow>[
@@ -124,7 +124,7 @@ class _ChatBarState extends State<ChatBar> {
       ),
       child: Row(
         children: <Widget>[
-          // 文本输入（docs/18 §2.6：回车 / 发送都提交）
+          // 文本输入（回车 / 发送都提交）
           Expanded(
             child: Container(
               key: const Key('chat.input.wrap'),

@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// ═══════════════════════════════════════════════════════════
-///  对话历史（docs/18 §2.6）
+///  对话历史
 ///
 ///  key = `opus-v2/chat/v1`（独立于存档，杀进程重启可查）。
 ///  滚动窗口 **200 条**，满删最旧。坏档/读失败 → 空表，永不崩。
@@ -56,7 +56,7 @@ class ChatMessage {
 class ChatHistory {
   ChatHistory({SharedPreferencesAsync? prefs}) : _injected = prefs;
 
-  /// docs/18 §2.8 的聊天 key
+  /// 聊天的存档 key
   static const String key = 'opus-v2/chat/v1';
 
   /// 滚动窗口：满 200 删最旧
@@ -112,7 +112,7 @@ class ChatHistory {
     } catch (_) {}
   }
 
-  /// 时间分组头（docs/18 §2.6：今天/昨天/M月D日）。跨年也给 M月D日（够用）。
+  /// 时间分组头（今天/昨天/M月D日）。跨年也给 M月D日（够用）。
   static String dayLabel(DateTime d) {
     final DateTime now = DateTime.now();
     final DateTime today = DateTime(now.year, now.month, now.day);

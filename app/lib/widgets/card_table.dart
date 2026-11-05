@@ -14,7 +14,7 @@ import 'rail_base.dart';
 export 'card_skins.dart';
 
 /// ═══════════════════════════════════════════════════════════
-///  牌桌 · 抉择场景（docs/32）——「她发牌，你落子」
+///  牌桌 · 抉择场景——「她发牌，你落子」
 ///
 ///  本文件只管**机械**：入场 / 领位 / 拖拽吸附 / 落定压印，
 ///  以及每种皮肤自己的几何。**长什么样**全在 `card_skins.dart`。
@@ -50,7 +50,7 @@ const int kSweepMs = 520;
 const int kStampMs = 200;
 const double kStampFlash = .16;
 
-/// 点**侧牌**时是否顺手落定。默认 false（只送位）—— docs/32 §7.3-1。
+/// 点**侧牌**时是否顺手落定。默认 false（只送位）。
 const bool kCardSideTapCommits = false;
 
 /// 牌桌（皮肤由 [skin] 决定，几何由 `geomOf(skin)` 给出）
@@ -78,7 +78,7 @@ class CardTable extends StatefulWidget {
 
   final int? initialLead;
 
-  /// 领位**无论 enabled 与否**都回调 [onPick]（docs/39 M-10）。
+  /// 领位**无论 enabled 与否**都回调 [onPick]。
   ///
   /// 默认 false = 老行为（`enabled: false` 的牌点了只响一声、不打开）——
   /// 补给 / 称号 / 证据 / 换目标四个场景都走默认值，**行为一行不变**。
@@ -88,7 +88,7 @@ class CardTable extends StatefulWidget {
   /// 「这单现在能不能接」，不再兼任「能不能看」。
   final bool tapLeadAlways;
 
-  /// **受控领位**（docs/39 M-13/M-14）：非 null 时由外部指定当前领位，
+  /// **受控领位**：非 null 时由外部指定当前领位，
   /// 变化就跟着 `moveTo`（刻度轨拖动 → 牌扇领位跟着动，但**不开牌屉**）。
   ///
   /// null = 不接管（默认）：领位仍由牌桌自己的拖拽/点选决定，
@@ -98,7 +98,7 @@ class CardTable extends StatefulWidget {
   /// 领位变化上报（无论来自手势还是受控注入）—— 刻度轨据此画「脚下」。
   final ValueChanged<int>? onLeadReport;
 
-  /// 执行中状态线的光包相位（docs/39 M-09）；`< 0` = 不画。
+  /// 执行中状态线的光包相位；`< 0` = 不画。
   ///
   /// 默认 -1：其余四个场景（补给/称号/证据/换目标）不跑这个动画。
   final double run;
@@ -165,7 +165,7 @@ class _CardTableState extends State<CardTable> with TickerProviderStateMixin {
     super.didUpdateWidget(old);
     _rail.clampTo(_n);
     if (_ids(old.cards) != _ids(widget.cards)) _playEnter();
-    // docs/39 M-13：受控领位 —— 外部（刻度轨拖动/点击）改了 `lead` 就跟着走。
+    // 受控领位 —— 外部（刻度轨拖动/点击）改了 `lead` 就跟着走。
     // 这里**不响 rung**：拖动/点击那一下已经由刻度轨自己 `_detent` 过了。
     final int? want = widget.lead;
     if (want != null && want != _rail.lead) {
@@ -202,7 +202,7 @@ class _CardTableState extends State<CardTable> with TickerProviderStateMixin {
     _enter.duration = Duration(milliseconds: reduce ? 160 : _spanMs.round());
     _enter.forward(from: 0);
     if (!reduce) _sweep.forward(from: 0);
-    // docs/41 §3.1「发牌」：一次发牌**只出 2 声**（首张 + 末张）。
+    //「发牌」：一次发牌**只出 2 声**（首张 + 末张）。
     // 为什么不是逐张：相隔 <20ms 的两声会被听成一个；n=8 时 stagger 只有 11.4ms。
     //
     // ⚠️ 末张那一声走 [_enter] 的进度判断，**不用 `Future.delayed`**：
@@ -232,7 +232,7 @@ class _CardTableState extends State<CardTable> with TickerProviderStateMixin {
 
   /// 换领位：响一声 + 轻震（= 选择器的「档位咬合」），并给新领位扫一次光
   void _onLeadChanged() {
-    // docs/41 §1「牌桌的档位咬合有两处结构性浪费」Bug ②：
+    //「牌桌的档位咬合有两处结构性浪费」Bug ②：
     // 原来这里 `Sfx.play('rung')` **不带 variant** → `_pick` 随机取 5 档之一，
     // 于是每次落定的音高是不受控的（可能低音，破坏「往右走高」的阶梯感）。
     // 改成与 [_onDragProgress] 同一口径：音高跟着领位下标走。
@@ -258,7 +258,7 @@ class _CardTableState extends State<CardTable> with TickerProviderStateMixin {
     if (last == null || detent == last) return;
     if (railReduceMotion(context)) return;
     final int i = detent.round().clamp(0, _n - 1);
-    // docs/41 §3.3：咬合换专用 detent（28ms，与 8ms 震动同量级）。
+    // 咬合换专用 detent（28ms，与 8ms 震动同量级）。
     // rung 是 70ms 方波 —— 手指 8ms 就结束了、耳朵还在响，是「音画不同步」的来源。
     Sfx.play('detent', variant: i % 5);
     Haptics.buzz('choose');
@@ -276,7 +276,7 @@ class _CardTableState extends State<CardTable> with TickerProviderStateMixin {
 
   void _commit(int i) {
     final TableCard c = widget.cards[i];
-    // docs/39 M-10：`tapLeadAlways` 的桌子（主线）把「点开看」与「接单」
+    // `tapLeadAlways` 的桌子（主线）把「点开看」与「接单」
     // 彻底分开 —— 五态都能打开详情，所以这里不看 `enabled`、也不压印；
     // 接单只发生在详情里的按钮上（那里的音效才是 seal）。
     if (widget.tapLeadAlways) {
@@ -300,7 +300,7 @@ class _CardTableState extends State<CardTable> with TickerProviderStateMixin {
     _locked = true;
     // 因果同帧（apple-design §13）：压印、亮闪、声音、震动都在这一下
     //
-    // docs/41 §3.4：落定**不再用 `seal`** —— 那是全场第二重的音（1.26s），
+    // 落定**不再用 `seal`** —— 那是全场第二重的音（1.26s），
     // 却是「我把这一张选定了」这种高频动作；来回选 10 次就是 10 次钤印声叠加。
     // 改用 `stamp`（0.29s / −16.3dBFS），`seal` 保留给接任务/提交。
     Sfx.play('stamp');
@@ -398,7 +398,7 @@ class _CardTableState extends State<CardTable> with TickerProviderStateMixin {
         return a.compareTo(b);
       });
 
-    // docs/48 §3：领位脚下的「悬浮光池」—— 稀有度色的一团椭圆辉光 +
+    // 领位脚下的「悬浮光池」—— 稀有度色的一团椭圆辉光 +
     // 一条台面反光线。它告诉你「这张牌被举起来了」，并把牌和她脚下的
     // 地台光连成同一套光源语言。单个渐变，不做 blur。
     final int leadI = _rail.lead.clamp(0, _n - 1);
@@ -453,7 +453,7 @@ class _CardTableState extends State<CardTable> with TickerProviderStateMixin {
         : a.clamp(-2.0, 2.0) * _g.rot1 * math.pi / 180;
     final double op = _sideOp(ad);
 
-    // ── 入场：**发牌**（docs/41 §3.1）──────────────────────────────
+    // ── 入场：**发牌**──────────────────────────────
     // 原来只有「透明 + 微缩 + 从上方落下」三条同时线性插值 —— 那是「淡入」，
     // 不是「发牌」。真实的发牌有**方向**：牌从右下方被甩出来，落定时才转正。
     //
@@ -482,7 +482,7 @@ class _CardTableState extends State<CardTable> with TickerProviderStateMixin {
     //    按下/抬起各来一次 setState，每次都把整桌 8 张牌重建一遍，
     //    而 8 张牌里只有 1 张的视觉真的变了 —— 白重建的 7 张就是「点一下卡一下」。
 
-    // ── 落定压印（docs/41 §3.4）──────────────────────────────────
+    // ── 落定压印──────────────────────────────────
     // 两段：前 30% **压下去**（1 → 1.02），后 70% **弹回来**（1.02 → 1）。
     //
     // ⚠️ 原来这里是 `pScale * (stamping ? 1.02 : 1)` —— 1.02 是**瞬间乘上去**
@@ -525,7 +525,7 @@ class _CardTableState extends State<CardTable> with TickerProviderStateMixin {
         glareColor: c.accent ?? C.blue,
         child: Transform(
           alignment: Alignment.center,
-          // docs/48 §3：**真 3D 牌扇**。原来侧牌只有平面旋转（rotateZ），读起来
+          // **真 3D 牌扇**。原来侧牌只有平面旋转（rotateZ），读起来
           // 是「贴纸转了个角」；现在侧牌再绕 Y 轴朝内转（像握在手里的一把牌，
           // 牌面朝向持牌人），领位在拖拽时顺着手势轻微偏航 —— 有了透视，
           // 远近关系不再只靠缩放压暗表达。
@@ -550,15 +550,15 @@ class _CardTableState extends State<CardTable> with TickerProviderStateMixin {
                 lean: lean,
                 // 液态玻璃的对角高光跟着手势走
                 dragPhase: reduce ? 0 : (-frac * 2).clamp(-1.0, 1.0),
-                // docs/39 M-07：离领位 ≥1.5 格 = 「±2 位」，只留档位 + 状态线
+                // 离领位 ≥1.5 格 = 「±2 位」，只留档位 + 状态线
                 far: ad >= 1.5,
-                // docs/39 M-06：换领位时外辉 200ms 淡入。`sweep` 就是那 520ms 的
+                // 换领位时外辉 200ms 淡入。`sweep` 就是那 520ms 的
                 // 一次性进度，它的前 200/520 ≈ .38 正好当外辉的淡入段用 ——
                 // 不额外开一个 controller（牌桌已经有三个）。
                 leadT: isLead
                     ? (reduce ? 1.0 : (sweep / .38).clamp(0.0, 1.0))
                     : 1,
-                // docs/39 M-09：只有 duty 的执行中会画光包（其余皮肤不看这个字段）
+                // 只有 duty 的执行中会画光包（其余皮肤不看这个字段）
                 run: widget.run,
                 foilLevel: Fidelity.rich(context) ? 1 : 0,
               ),
@@ -601,7 +601,7 @@ class _PressFeedback extends StatefulWidget {
 
   final Widget child;
 
-  /// 手指跟随倾斜（docs/48 §3）。减弱动态效果时关。
+  /// 手指跟随倾斜。减弱动态效果时关。
   final bool tiltEnabled;
 
   /// 镜面眩光的色温（稀有度色与白混合）

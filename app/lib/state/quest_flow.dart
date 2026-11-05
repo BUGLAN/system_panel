@@ -18,7 +18,7 @@ import 'result.dart';
 ///  队列 / 接单 / 道具 / 暴击率 / 结算 / 认输 / 补救。
 ///
 ///  「提交任务卡死」的修复点：main.dart 的 onSubmit 之前只会切页面，
-///  不做任何结算（docs/18 §1.2 根因①②）——现在全部经这里产出真实
+///  不做任何结算（根因①②）——现在全部经这里产出真实
 ///  QuestResult 并落到档案 / 主线 / 队列，再由 main.dart 持久化。
 ///
 ///  返工卡（t14）增补：换一个 retreat（计数+口头巨人+降档/换单）、
@@ -27,7 +27,7 @@ import 'result.dart';
 ///
 ///  ⚠️ 界面层只读公开 API；数值**只能经结算**进档案（Agent 工具的钳制同样如此）。
 ///
-///  数值表：docs/18-Agent系统升级方案.md §2.3（E~S 奖励 + need=12+lv×6）。
+///  数值表：E~S 奖励 + need=12+lv×6（见 data/rewards.dart）。
 ///  T6 落地 lib/data/rewards.dart 后由其接管数值，此处只留结算规则。
 /// ═══════════════════════════════════════════════════════════
 
@@ -49,7 +49,7 @@ class ActiveQuest {
   bool crit = false;
   bool shield = false;
 
-  /// 本单的证据（docs/18 §2.4：每张带校验状态 ✓/存疑/未校验）。
+  /// 本单的证据（每张带校验状态 ✓/存疑/未校验）。
   /// 原型的 `A.photos` 是纯份数数组；这里升级为 vision.dart 的 EvidenceShot，
   /// 暴击口径按已校验/未校验分别计（`critChance`）。
   final List<vision.EvidenceShot> evidence;
@@ -305,7 +305,7 @@ class QuestFlow {
 
   bool get queueEmpty => queue.isEmpty;
 
-  // ── 数值表（docs/18 §2.3；T6 的 rewards.dart 是它最终的家）──────────
+  // ── 数值表（T6 的 rewards.dart 是它最终的家）──────────
 
   /// 升级曲线：`need(lv) = 12 + lv × 6`（lv1=18 … lv5=42 … lv10=72）
   static int needFor(int lv) => 12 + lv * 6;
@@ -683,7 +683,7 @@ class QuestFlow {
     return true;
   }
 
-  /// 暴击率（store.js `critChance` 的证据联动升级版，docs/18 §2.4）：
+  /// 暴击率（store.js `critChance` 的证据联动升级版）：
   /// 底 6% + **已校验 7%/张 + 未校验 4%/张**（vision.dart `evidenceCritBonus`）
   /// + 连击 1%/天（≤10）+ 暴击芯片 25%，封顶 85%。
   ///
@@ -718,7 +718,7 @@ class QuestFlow {
     );
   }
 
-  // ── 执行中单据的持久化（docs/18 §2.8：active 随档走，t16/B3）──────
+  // ── 执行中单据的持久化（active 随档走，t16/B3）──────
 
   /// 执行中单据的快照（任务/计时起点/道具标记/证据）。
   /// 证据只带存档字段（相对路径+状态；absPath 是会话内渲染用的，不进档）。
@@ -1118,7 +1118,7 @@ class QuestFlow {
       final String rr = rankShift(task.rank, -2);
       remedy = _mk(
         kind: 'remedy',
-        name: '${task.name}（做一半）',
+        name: '${task.name}（简化版）', // A16（docs/50）：「做一半」读不通
         proof: task.proof,
         minutes: math.max(5, (task.minutes / 2).ceil()),
         rank: rr,
@@ -1377,7 +1377,7 @@ class HistoryEntry {
 class HistoryLog {
   HistoryLog({SharedPreferencesAsync? prefs}) : _injected = prefs;
 
-  /// 独立 key（docs/18 §2.8 惯例）
+  /// 独立 key（惯例）
   static const String key = 'opus-v2/history/v1';
 
   /// 滚动上限（满了删最旧）

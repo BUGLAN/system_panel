@@ -1,7 +1,6 @@
 # brand/ · 宿主 SYSTEM 品牌资产
 
-> 规范全文（概念、几何、色值、用法与禁例）在 **`docs/23-品牌标识与图标规范.md`**，
-> 这里只讲"怎么重新生成"。
+> 几何、色值、尺寸以 `build.mjs` 为准；这里只讲"怎么重新生成"。
 
 ## 一条命令全量重生成
 
@@ -32,7 +31,7 @@ npm pack @resvg/resvg-js-darwin-arm64@2.6.2 && tar xzf resvg-resvg-js-darwin-arm
 
 | 路径 | 内容 |
 | --- | --- |
-| `build.mjs` | **唯一真源**。几何、色板、尺寸表全在这里；改标识先改它（以及 docs/23） |
+| `build.mjs` | **唯一真源**。几何、色板、尺寸表全在这里；改标识先改它 |
 | `strip_alpha.py` | iOS 图标去 alpha 通道（App Store 硬要求），build 末尾自动跑 |
 | `logo/*.svg` | 矢量母版：标识（细/粗）、单色剪影、横/竖排组合 |
 | `icon/*.svg` | 图标母版：1024 方形（直角/圆角）、自适应前景/背景/单色层 |
@@ -52,4 +51,4 @@ npm pack @resvg/resvg-js-darwin-arm64@2.6.2 && tar xzf resvg-resvg-js-darwin-arm
 
 `build.mjs` 顶部注释就是设计依据（图形 DNA、弧长、色板）。**不要手改任何生成的
 SVG/PNG**——手改的下一次 `node brand/build.mjs` 就被覆盖；要改就改参数重跑，
-并同步 `docs/23`。
+。

@@ -8,7 +8,7 @@ import 'package:flutter/material.dart';
 ///  `#flash` = 全屏亮帧，`#shake` = 震屏。两者都 `inset:0`、都不吃点击。
 ///
 ///  亮帧的参数是定死的：**白 · 16% · 180ms ease-out**，
-///  结算/发布那一帧踩的就是它（`docs/08` 逐帧编排里写作「亮帧」）。
+///  结算/发布那一帧踩的就是它（逐帧编排里写作「亮帧」）。
 /// ═══════════════════════════════════════════════════════════
 
 /// `#flash` —— 一帧打亮整屏，然后 180ms 淡出。
@@ -127,7 +127,7 @@ class ShakeLayer extends StatefulWidget {
 
   final Widget child;
 
-  /// false = 冻结整棵子树的 Ticker（被不透明整页盖住时用，docs/49 E6）。
+  /// false = 冻结整棵子树的 Ticker（被不透明整页盖住时用）。
   /// 挂在 KeyedSubtree 里面：开关切换不改结构、不重挂子树。
   final bool ticking;
 

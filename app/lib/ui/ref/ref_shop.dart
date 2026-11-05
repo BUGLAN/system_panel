@@ -161,7 +161,7 @@ class _RefShopState extends State<RefShop> with RefTimers<RefShop> {
     final bool bad = lk || short > 0;
     final String buyTxt = lk
         ? 'LV${it.lv} 解锁'
-        : (short > 0 ? '还差 ◆$short' : '购买 · ◆${it.price}');
+        : (short > 0 ? '还差 $short 晶核' : '购买 · ${it.price} 晶核');
     return Padding(
       padding: EdgeInsets.fromLTRB(
         Ref.gutter,
@@ -225,7 +225,7 @@ class _RefShopState extends State<RefShop> with RefTimers<RefShop> {
                           if (mounted) setState(() => _i = i);
                         },
                         onTap: (_) => _buy(),
-                        // 压暗由轮播叠在卡外（拖动时卡面不重栅格化，docs/49 E2）
+                        // 压暗由轮播叠在卡外（拖动时卡面不重栅格化）
                         shadeColor: Colors.black,
                         shadeRadius: const BorderRadius.all(
                           Radius.circular(_kShopCardR),
@@ -547,18 +547,8 @@ class _ShopCardState extends State<_ShopCard> with TickerProviderStateMixin {
                 color: gc,
               ),
             ),
+            // A11（docs/50）：右上角的「持有 ×n」与卡底重复，只留卡底那条
             const Spacer(),
-            Text(
-              '持有 ×${widget.own}',
-              style: refText(
-                family: Ref.fm,
-                size: 11,
-                wght: 700,
-                ls: 1,
-                height: 1.2,
-                color: Ref.dim,
-              ),
-            ),
           ],
         ),
         // .it-ic 96：虚线旋转环 + 实环辉光 + 34 图标
@@ -652,7 +642,7 @@ class _ShopCardState extends State<_ShopCard> with TickerProviderStateMixin {
             ),
             const Spacer(),
             _PriceTag(
-              text: widget.locked ? '🔒 LV${it.lv}' : '◆ ${it.price}',
+              text: widget.locked ? '🔒 LV${it.lv}' : '${it.price} 晶核',
               color: widget.locked ? Ref.dim : gc,
               border: widget.locked ? Ref.dim2 : gc,
             ),

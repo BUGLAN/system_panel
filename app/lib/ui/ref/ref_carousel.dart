@@ -29,11 +29,11 @@ import '../../state/sfx.dart';
 ///  性能：卡面包 RepaintBoundary，拖拽只改 Transform（合成层），
 ///  不重画卡面；物理用一颗 Ticker，静止即停。
 ///   · 卡面按（序号, 焦点, 尺寸）缓存：拖动时每帧 setState 只重建外层变换，
-///     卡面 widget 实例不变 → Flutter 直接跳过整棵卡面子树（docs/49 E2）
+///     卡面 widget 实例不变 → Flutter 直接跳过整棵卡面子树
 ///   · 给了 [RefCarousel.shadeColor] 时压暗由轮播在卡**外**叠一层圆角暗片，
 ///     卡面拿到的 shade 恒为 0 —— 压暗逐帧变化不再让卡面重栅格化
 ///
-///  声音（docs/49 A1）：焦点每跨一格一声 `card.focus`（detent，规则表自带
+///  声音：焦点每跨一格一声 `card.focus`（detent，规则表自带
 ///  45ms 节流）；拖过两端一声 `card.deny`（每次手势只响一次）。
 /// ═══════════════════════════════════════════════════════════
 class RefCarouselController extends ChangeNotifier {

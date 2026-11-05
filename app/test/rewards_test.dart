@@ -7,13 +7,13 @@ import 'package:system_panel/state/goal_gen.dart';
 import 'package:system_panel/state/quest.dart';
 import 'package:system_panel/state/quest_flow.dart';
 
-/// T6-2 的数值契约（docs/18 §2.2/§2.3 + 第四章 T6 验收单）：
+/// T6-2 的数值契约（+ 第四章 T6 验收单）：
 ///  · E~S 奖励表逐档断言（F 兼容档）、升级曲线 need=12+lv×6
 ///  · 结算乘区：暴击 ×2、双倍卡 ×2 可叠 ×4、补救单 ×0.5（金币不吃双倍）
 ///  · 周期生成：候选池 4~6 → 最弱维/贴主线挑 1~2；换日队列手术
 ///    （隔夜作废/主线重钉/补救单留未过期）；日上限 6；主线不占配额
 void main() {
-  group('奖励表逐档（docs/18 §2.3）', () {
+  group('奖励表逐档', () {
     test('经验：F0 / E1 / D2 / C4 / B6 / A8 / S10', () {
       expect(Rewards.expOf('F'), 0);
       expect(Rewards.expOf('E'), 1);
@@ -129,7 +129,7 @@ void main() {
     });
   });
 
-  // ═══ 周期任务生成（docs/18 §2.2 · T6-2）══════════════════════
+  // ═══ 周期任务生成══════════════════════
 
   group('每日单数与候选池', () {
     test('dailyCountFor：lv≥5 或连击≥3 为 2，否则 1', () {

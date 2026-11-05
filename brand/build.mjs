@@ -9,10 +9,10 @@
  *      node brand/build.mjs sheet      # 只出概念对照图 brand/png/_sheet.png
  *      node brand/build.mjs masters    # 只出矢量母版（brand/logo、brand/icon）
  *
- *  设计依据（都不许在这里凭感觉改，改之前先改 docs/23）：
+ *  设计依据（都不许在这里凭感觉改，改之前先想清楚）：
  *    · 图形 = 点顶正六边「核心」＋ 沿六边顺时针走的经验弧 ＋ 弧头亮点 ＋ 中央晶核
  *      —— 六边＝ App 底栏「档案」字形（index.html dock 图标 `M12 3l7.8 4.5v9L12 21…`，
- *         正六边、顶点朝上、外接半径 R）；弧＝等级经验环（原型 #lvArc / docs/10）。
+ *         正六边、顶点朝上、外接半径 R）；弧＝等级经验环（原型 #lvArc）。
  *    · 弧长 4.5/6 边：从顶点 V0 顺时针点亮到左边正中（九点位置）——亮点不压顶点，
  *      上方留 1.5 边暗轨，「进度游标」的意思最清楚，六边轮廓也还数得出来。
  *    · 颜色只取锁定色板：虚空 #03060E / 面板蓝 #0B1A36 / 电光青 #38E1FF / 屏显白 #EAF7FF。
@@ -487,7 +487,7 @@ function buildSheet() {
 
 /**
  * 品牌规格卡：一图看清标识、字标、图标在真机尺寸/圆角掩码/浅底上的表现，
- * 加锁定色板。入库 brand/png/brand-card.png，docs/23 直接引用。
+ * 加锁定色板。入库 brand/png/brand-card.png。
  */
 function buildSpecCard() {
   const W = 1680;
