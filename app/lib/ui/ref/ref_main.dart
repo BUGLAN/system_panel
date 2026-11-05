@@ -7,6 +7,7 @@ import '../../data/attrs.dart';
 import '../../data/rewards.dart';
 import '../../design/ref.dart';
 import '../../state/goal.dart';
+import '../../state/goal_gen.dart' show kPlanWindowSize;
 import '../../state/sfx.dart';
 import '../../widgets/frame_throttle.dart';
 import '../../widgets/fx_particles.dart';
@@ -117,8 +118,19 @@ class _RefMainState extends State<RefMain>
 
   int get _total => widget.goal.plan.length;
 
-  /// 当前单（第一张未完成）—— 卡态 / 节点 / 光台用
-  int get _done => widget.goal.firstOpenIndex.clamp(0, _total);
+  /// 当前单（第一张未完成）—— 卡态 / 节点 / 光台用。
+  /// 全部走完（含滚动生成「这一段走完、下一段还没拆上」）= [_total]。
+  int get _done {
+    final int i = widget.goal.firstOpenIndex;
+    return i < 0 ? _total : i.clamp(0, _total);
+  }
+
+  /// 进度按总天数念（docs/50 C1）：「第 x/总 天」
+  String get _dayText {
+    final Goal g = widget.goal;
+    final int days = g.days <= 0 ? 14 : g.days;
+    return '${g.passedDays(DateTime.now()).clamp(1, days)}/$days';
+  }
 
   /// 已完成张数 —— 读数用（清单可能不按顺序完成，不能拿当前序号顶）
   int get _count => widget.goal.doneCount;
@@ -183,7 +195,8 @@ class _RefMainState extends State<RefMain>
     final String name = Attr.nameOf(k);
     return RefTCardData(
       index: t.index,
-      total: _total,
+      // 牌面序号的分母 = 整条主线张数（滚动生成时清单里只有已拆出来的几段）
+      total: widget.goal.totalTasks,
       rank: t.rank,
       cat: name.characters.first,
       catName: name,
@@ -244,7 +257,7 @@ class _RefMainState extends State<RefMain>
         txt = pool[_rnd.nextInt(pool.length)];
       } else if (i == d) {
         mood = '尚可';
-        txt = '[$_count/$_total] 单。清单不会自己变短。';
+        txt = '第 [$_dayText] 天，完成 [$_count] 单。清单不会自己变短。';
       } else if (t.finalTask) {
         mood = '期待';
         txt = t.timed
@@ -368,7 +381,7 @@ class _RefMainState extends State<RefMain>
       );
       widget.fx?.ripple(c.dx + 60, c.dy - 50, r1: 120, color: Ref.hot, w: 4);
     }
-    _say('盖章。[$_count/$_total]，清单短了一点点。');
+    _say('盖章。第 [$_dayText] 天，完成 [$_count] 单，清单短了一点点。');
     if (_count >= _total || j + 1 >= _total) return;
     await pause(const Duration(milliseconds: 1100));
     if (!mounted) return;
@@ -599,10 +612,18 @@ class _RefMainState extends State<RefMain>
   }
 
   /// #mainRuler（L638-648）：22 圆节点 + 底轨 + 进度光轨
+  ///
+  /// 节点只摆焦点所在的那一段（[kPlanWindowSize] 张一段）：滚动生成后清单会
+  /// 一段段变长，老存档更是一次 180 张（docs/50 B7 的横向溢出）。
   Widget _ruler() {
     if (_total <= 0) return const SizedBox.shrink();
-    // 光轨铺到当前单那一格（参考稿 --pf = done/9）
-    final double pf = _total <= 1 ? 1 : (_done / (_total - 1)).clamp(0.0, 1.0);
+    final int from =
+        (_focus.clamp(0, _total - 1) ~/ kPlanWindowSize) * kPlanWindowSize;
+    final int n = math.min(kPlanWindowSize, _total - from);
+    // 光轨铺到当前单那一格（参考稿 --pf = done/9），按这一段的相对位置
+    final double pf = n <= 1
+        ? (_done > from ? 1 : 0)
+        : ((_done - from) / (n - 1)).clamp(0.0, 1.0);
     return Padding(
       padding: const EdgeInsets.fromLTRB(2, 12, 2, 2),
       child: SizedBox(
@@ -644,7 +665,9 @@ class _RefMainState extends State<RefMain>
                 ),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: <Widget>[for (int i = 0; i < _total; i++) _node(i)],
+                  children: <Widget>[
+                    for (int i = from; i < from + n; i++) _node(i),
+                  ],
                 ),
               ],
             );

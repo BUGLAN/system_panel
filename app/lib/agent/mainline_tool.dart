@@ -118,10 +118,21 @@ AgentTool setPlanTool({
   /// 非空 = 只交整份清单里的一段：[taskCount] 必须等于段长，
   /// 校验换成 [validatePlanSegment]（档位区间 / 段内不倒退 / 末段收 S）
   PlanSegment? segment,
+
+  /// 滚动生成的窗口（非空 = 只交整条主线里的这一段，按 [validatePlanWindow] 校验；
+  /// null = 老口径，[taskCount] 就是整份清单，按 [validatePlan] 校验）
+  PlanWindow? window,
 }) {
+  final PlanWindow? win = window != null && !window.whole ? window : null;
   return AgentTool(
     name: 'set_plan',
-    description: segment == null
+    description: segment == null && win != null
+        ? '交宿主目标「$goalText」（期限 $days 天、共 ${win.total} 张，滚动生成）的'
+              '第 ${win.index + 1}/${win.count} 段：第 ${win.from}~${win.to} 张，'
+              '必须正好 $taskCount 张。档位只能 ${win.lo}~${win.hi}、逐张不许倒退；'
+              '${win.last ? '最后一张是 S 级兑现单。' : '本段没有兑现单。'}'
+              '宿主现状与记忆已在系统提示里，直接据此拆。每张 minutes 必须在该档位上限内。'
+        : segment == null
         ? '把宿主的目标「$goalText」（期限 $days 天）拆成 $taskCount 张任务、交上来当计划。'
               '他的现状（等级/连败/最弱维）与记忆已在系统提示的宿主档案里，'
               '直接据此拆，不必再查。必须正好 $taskCount 张。'
@@ -208,6 +219,8 @@ AgentTool setPlanTool({
       try {
         if (validate && segment != null) {
           validatePlanSegment(segment, out);
+        } else if (validate && window != null) {
+          validatePlanWindow(window, out);
         } else if (validate) {
           validatePlan(
             days: days,

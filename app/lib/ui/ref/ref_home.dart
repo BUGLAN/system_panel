@@ -354,9 +354,15 @@ class _RefHomeState extends State<RefHome> with TickerProviderStateMixin {
     );
   }
 
+  /// 进度按总天数显示（docs/50 C1 滚动生成）：第几天（夹在 1..days）
+  int get _dayNow => widget.day.clamp(1, math.max(1, widget.days));
+
   /// .quest（L144-157）：r20 / 青色渐变 / 右侧 › / pips / 页脚
   Widget _questCard(int done, int total) {
     final int left = math.max(0, widget.days - widget.day);
+    // 滚动生成后总张数可能是 180：pips 只有 ≤12 格，按比例点亮（不再把「0/180 单」摆出来）
+    final int pips = math.min(total, 12);
+    final int lit = total <= 12 ? done : (done * 12) ~/ total;
     return GestureDetector(
       onTap: widget.onQuestTap,
       child: Container(
@@ -443,15 +449,30 @@ class _RefHomeState extends State<RefHome> with TickerProviderStateMixin {
                 const SizedBox(height: 10),
                 Padding(
                   padding: const EdgeInsets.only(right: 24),
-                  child: RefPips(total: math.min(total, 12), done: done),
+                  child: RefPips(total: pips, done: lit),
                 ),
                 const SizedBox(height: 9),
                 Padding(
                   padding: const EdgeInsets.only(right: 24),
                   child: Row(
                     children: <Widget>[
+                      if (widget.days > 0) ...<Widget>[
+                        Text(
+                          '第',
+                          style: refText(
+                            family: Ref.fc,
+                            size: 12,
+                            wght: 500,
+                            height: 1,
+                            color: Ref.dim,
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                      ],
                       Text(
-                        '$done/$total',
+                        widget.days > 0
+                            ? '$_dayNow/${widget.days}'
+                            : '$done/$total',
                         style: refText(
                           family: Ref.fd,
                           size: 13,
@@ -462,7 +483,7 @@ class _RefHomeState extends State<RefHome> with TickerProviderStateMixin {
                       ),
                       const SizedBox(width: 4),
                       Text(
-                        '单',
+                        widget.days > 0 ? '天' : '单',
                         style: refText(
                           family: Ref.fc,
                           size: 12,
@@ -592,7 +613,8 @@ class _RefHomeState extends State<RefHome> with TickerProviderStateMixin {
 
   String _nextHint() {
     final int i = widget.goal.firstOpenIndex;
-    if (i < 0) return '清单走完了';
+    // 滚动生成：这一段走完、下一段还没拆上（续拆失败 / 读档补拆中）
+    if (i < 0) return widget.goal.hasMoreWindows ? '下一段待拆' : '清单走完了';
     final PlanTask? t = widget.goal.taskAt(i);
     if (t == null) return '';
     return '下一单 · ${t.rank} · ${t.title}';
@@ -686,7 +708,9 @@ class _RefHomeState extends State<RefHome> with TickerProviderStateMixin {
                           : widget.goal.doneCount / math.max(1, total),
                       sup: total == 0
                           ? null
-                          : '${widget.goal.doneCount}/$total',
+                          : (widget.days > 0
+                                ? '$_dayNow/${widget.days}'
+                                : '${widget.goal.doneCount}/$total'),
                     ),
                     const SizedBox(width: 10),
                     _navb(index: 1, label: '档案'),

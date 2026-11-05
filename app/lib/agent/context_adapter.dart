@@ -48,7 +48,7 @@ class QuestFlowAdapter implements AgentContext {
       'queue': f.queue.length,
       'goal': g.text,
       'planDone': g.doneCount,
-      'planTotal': g.plan.length,
+      'planTotal': g.totalTasks,
       'weakest': weakest.key,
       'weakestValue': weakest.value,
       'doneCount': h.doneCount,

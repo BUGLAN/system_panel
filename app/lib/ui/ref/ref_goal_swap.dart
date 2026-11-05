@@ -209,7 +209,7 @@ class _RefGoalSwapState extends State<RefGoalSwap> {
   /// 当前主线卡：原文 + 进度。卡右上一枚「将撤下」虚框压印。
   Widget _current() {
     final Goal g = widget.goal;
-    final int total = g.plan.length;
+    final int total = g.totalTasks; // 滚动生成：分母是整条主线
     final int done = g.doneCount;
     final int days = g.days <= 0 ? 14 : g.days;
     final int passed = g.passedDays(DateTime.now()).clamp(1, days);

@@ -665,16 +665,35 @@ void main() {
       expect(b.scenario, contains('14 张'));
     });
 
-    test('首目标额外写明 3 张 E/D/C', () {
+    test('首目标第一段额外写明 E/D/C', () {
       final PlanBrief b = PlanBrief(
         goalText: '一个月早睡早起',
-        days: kFirstGoalDays,
-        taskCount: kFirstGoalDays,
+        days: 3,
+        taskCount: 3,
         cat: goalCats['sleep']!,
         firstGoal: true,
       );
       expect(b.userText, contains('首目标'));
       expect(b.userText, contains('E/D/C'));
+    });
+
+    test('滚动生成：正文写明第几段、第几~几张、总张数与前面的进度', () {
+      final PlanWindow w = planWindowFor(total: 180, planned: 14);
+      final PlanBrief b = PlanBrief(
+        goalText: '半年减重 10 斤',
+        days: 180,
+        taskCount: w.size,
+        cat: goalCats['slim']!,
+        window: w,
+        progress: '已拆 14/180 张，完成 14 张。',
+      );
+      expect(b.userText, contains('共 180 张'));
+      expect(b.userText, contains('滚动生成'));
+      expect(b.userText, contains('第 2/13 段'));
+      expect(b.userText, contains('第 15~28 张'));
+      expect(b.userText, contains('本段不含兑现单'));
+      expect(b.userText, contains('已拆 14/180 张'));
+      expect(b.scenario, contains('第 15~28 张'));
     });
   });
 }

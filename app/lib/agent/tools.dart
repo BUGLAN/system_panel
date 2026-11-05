@@ -174,7 +174,7 @@ class MockAgentContext implements AgentContext {
       'queue': queue.length,
       'goal': g?.text ?? '',
       'planDone': g?.doneCount ?? 0,
-      'planTotal': g?.plan.length ?? 0,
+      'planTotal': g?.totalTasks ?? 0,
       'weakest': weakest.key,
       'weakestValue': weakest.value,
       'doneCount': host.doneCount,

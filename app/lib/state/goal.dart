@@ -194,6 +194,8 @@ class Goal {
     this.days = 0,
     this.interview = const <String, String>{},
     this.uid = '',
+    this.planTotal = 0,
+    this.quota = 0,
   });
 
   final String text;
@@ -219,6 +221,13 @@ class Goal {
   /// 显式身份（演示档等）；一般留空，由 [id] 按立目标时刻推。
   final String uid;
 
+  /// 整条主线**一共**几张（滚动生成：[plan] 里只有已拆出来的窗口）。
+  /// 0 = 老存档（一次拆满的清单），按 `plan.length` 算。
+  final int planTotal;
+
+  /// 目标自带的次数配额（0 = 没有；有就按它定总张数，见 `goal_gen.planTaskCountFor`）
+  final int quota;
+
   /// 目标身份 —— 任务单靠它认领「我是这份清单里的第几张」。
   /// 换目标时会撤掉旧主线单，所以立目标时刻足以区分（`at` 沿用是刻意的）。
   String get id => uid.isNotEmpty ? uid : 'g${at.millisecondsSinceEpoch}';
@@ -226,8 +235,15 @@ class Goal {
   int get doneCount =>
       plan.where((PlanTask t) => t.state == PlanState.done).length;
 
-  /// 清单总条数（进度带的分母）
-  int get totalTasks => plan.length;
+  /// 整条主线总张数（进度带的分母）。滚动生成时 > 已拆出来的 `plan.length`；
+  /// 老存档（[planTotal] = 0）就是清单长度。
+  int get totalTasks => planTotal > plan.length ? planTotal : plan.length;
+
+  /// 还有没拆出来的窗口（滚动生成）
+  bool get hasMoreWindows => planTotal > plan.length;
+
+  /// 已拆出来的这几段全部走完、但整条主线还没完 —— 该续拆下一段了
+  bool get windowExhausted => hasMoreWindows && firstOpenIndex < 0;
 
   /// 清单里第一张还没做完的（null = 全部走完）
   int get firstOpenIndex {
@@ -400,6 +416,9 @@ class Goal {
           : fallback.interview,
       plan: plan,
       uid: json['uid'] is String ? json['uid'] as String : '',
+      // 老存档没有这两个字段 → 0（清单视为一次拆满，原样保留不迁移）
+      planTotal: json['planTotal'] is int ? json['planTotal'] as int : 0,
+      quota: json['quota'] is int ? json['quota'] as int : 0,
     );
   }
 
@@ -411,6 +430,8 @@ class Goal {
     'days': days,
     'interview': interview,
     if (uid.isNotEmpty) 'uid': uid,
+    if (planTotal > 0) 'planTotal': planTotal,
+    if (quota > 0) 'quota': quota,
     'plan': <Map<String, dynamic>>[for (final PlanTask t in plan) t.toJson()],
   };
 
@@ -423,6 +444,8 @@ class Goal {
     int? days,
     Map<String, String>? interview,
     String? uid,
+    int? planTotal,
+    int? quota,
   }) => Goal(
     text: text ?? this.text,
     short: short ?? this.short,
@@ -432,5 +455,7 @@ class Goal {
     days: days ?? this.days,
     interview: interview ?? this.interview,
     uid: uid ?? this.uid,
+    planTotal: planTotal ?? this.planTotal,
+    quota: quota ?? this.quota,
   );
 }
