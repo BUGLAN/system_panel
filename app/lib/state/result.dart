@@ -26,6 +26,7 @@ class QuestResult {
     this.titles = const <String>[],
     this.planClear = -1,
     this.finale = false,
+    this.windowNext = false,
     this.redeemed = false,
     this.empty = false,
     this.tooFast = false,
@@ -86,6 +87,9 @@ class QuestResult {
 
   /// 主线收官（最后一环也清了）
   final bool finale;
+
+  /// 滚动生成：这一单走完了当前窗口，下一段已经续拆上（同一条主线）
+  final bool windowNext;
 
   /// 补救单抵消了那次失败（原型 `res.redeemed`）
   final bool redeemed;

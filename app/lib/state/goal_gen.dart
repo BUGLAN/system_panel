@@ -23,11 +23,9 @@ import 'quest_flow.dart';
 ///
 ///  绑定流：问目标 → Agent 拆解 + `interviewCardsFor` 出 3~5 张访谈卡 →
 ///  答案三用：① 喂给拆解（`PlanBrief.interview`）② 选日常池 ③ 导出记忆。
-///  首次新目标固定 **3 天 3 张（E/D/C）**，验证「能坚持」再展开长计划。
+///  2026-11-05 滚动生成：首目标不再固定 3 天 3 张，与换目标同一套窗口规则
+///  （按真实期限立目标，先拆第一段 ≤ kPlanWindowSize 张；首目标第一段只许 E/D/C）。
 /// ═══════════════════════════════════════════════════════════
-
-/// 首目标周期（天）—— 宿主钦定：首次新目标 = 3 天。
-const int kFirstGoalDays = 3;
 
 /// 绑定仪式的目标预设（原型 flows.js L126 原样六条）
 const List<String> kOnboardPresets = <String>[
@@ -1194,10 +1192,10 @@ int rankCapMinutes(String rank) => switch (rank) {
 /// 兑现单的时限下限（原型 makeGoal 尾部那句 m: 120）
 const int kPlanFinalMinutes = 120;
 
-/// 首目标允许的档位（「前 10 任务必胜」：E/D/C）
+/// 首目标（绑定时立的第一个目标）**第一段**允许的档位（「前 10 任务必胜」：E/D/C）
 const List<String> kFirstGoalRanks = <String>['E', 'D', 'C'];
 
-/// 期限 → 清单条数。
+/// 期限 → 整条主线的**总张数**（滚动生成后它是进度的分母，不是一次要拆的张数）。
 ///
 /// **2026-10-23 修正（真机事故）**：旧口径是「条数 = 期限天数」，于是
 /// 「两周内骑自行车 10 次」被铸成 **14 张「第 N 次骑行」**，末张还写成
@@ -1206,9 +1204,153 @@ const List<String> kFirstGoalRanks = <String>['E', 'D', 'C'];
 ///   · 目标写了次数（[quota] > 0）→ 条数 = 次数（10 次就是 10 张）
 ///   · 没写次数 → 条数 = 期限天数（一天一张）
 /// 两者都夹在 [kPlanMinTasks, kPlanMaxTasks] 内。
+///
+/// 一次拆几张见 [kPlanWindowSize] / [planWindowFor]。
 int planTaskCountFor(int days, {int quota = 0}) {
   final int n = quota > 0 ? quota : days;
   return n.clamp(kPlanMinTasks, kPlanMaxTasks).toInt();
+}
+
+// ═══════════════════════════════════════════════════════════
+//  滚动生成（2026-11-05 宿主定案 · docs/50 C1 / C7）
+// ═══════════════════════════════════════════════════════════
+//
+//  旧口径：换目标一次拆满（半年减重 = 180 张，拆几分钟）；首目标只拆 3 天，
+//  做完再整条重拆。现在**所有路径**都只拆一个窗口：
+//    · 窗口 = [kPlanWindowSize] 张（总数更少就按总数），从第一张没拆的开始
+//    · 总天数 / 总张数照旧存在 [Goal.days] / [Goal.planTotal]，进度按总天数显示
+//    · 窗口里的单全部走完 → 结算时续拆下一个窗口（`QuestFlow.nextWindowHook`），
+//      提示词带上「第几段 + 前面做到了哪里」（[planProgressDigest]）
+//  老存档里一次拆满的清单原样保留（`planTotal` = 0），不迁移。
+
+/// 一次拆几张（滚动生成的窗口大小）
+const int kPlanWindowSize = 14;
+
+/// 档位阶梯（按在整条主线里的位置分档；末张另给 S）
+const List<String> _kSegmentLadder = <String>['E', 'D', 'C', 'B', 'A'];
+
+/// 第 [pos] 张（1 基）在 [total] 张主线里该落在阶梯哪一档
+String _ladderAt(int pos, int total) =>
+    _kSegmentLadder[math.min(
+      _kSegmentLadder.length - 1,
+      ((pos - 1) * _kSegmentLadder.length) ~/ math.max(1, total),
+    )];
+
+String _maxRank(String a, String b) =>
+    Rarity.ranks.indexOf(a) >= Rarity.ranks.indexOf(b) ? a : b;
+
+/// 滚动生成的一个窗口：整条主线里第 [from]~[to] 张。
+class PlanWindow {
+  const PlanWindow({
+    required this.from,
+    required this.size,
+    required this.total,
+    required this.lo,
+    required this.hi,
+    this.firstGoal = false,
+  });
+
+  /// 整份清单一次拆完（老口径 / 测试用）：一个窗口盖住全部
+  factory PlanWindow.whole(int total, {bool firstGoal = false}) =>
+      planWindowFor(total: total, firstGoal: firstGoal, size: total);
+
+  /// 本窗口第一张在整条主线里的序号（1 基）与张数
+  final int from;
+  final int size;
+
+  /// 整条主线总张数
+  final int total;
+
+  /// 本窗口档位区间（含两端）
+  final String lo;
+  final String hi;
+
+  /// 首目标的第一段（档位只许 E/D/C、不摆兑现单）
+  final bool firstGoal;
+
+  int get to => from + size - 1;
+
+  /// 第几段（0 基）/ 一共几段（按 [kPlanWindowSize] 切）
+  int get index => (from - 1) ~/ kPlanWindowSize;
+  int get count => (total / kPlanWindowSize).ceil();
+
+  /// 本窗口收尾那一张就是整条主线的兑现单（必须 S）
+  bool get last => to >= total && !firstGoal;
+
+  /// 一次就拆完了整条主线（不需要续拆）
+  bool get whole => from == 1 && size >= total;
+}
+
+/// 从第 [planned] + 1 张开始的下一个窗口。
+///
+/// 档位区间按**在整条主线里的位置**取阶梯（E→D→C→B→A，末张 S）：
+/// 前一段的上限 = 后一段的下限，所以按阶梯拆的各段之间不会倒退。
+/// 首目标第一段固定 E~C（「前 10 任务必胜」）；它之后**回到阶梯**，
+/// 不跟着顶在 C（否则半年的目标要在 C 档卡两个月）。
+PlanWindow planWindowFor({
+  required int total,
+  int planned = 0,
+  bool firstGoal = false,
+  int size = kPlanWindowSize,
+}) {
+  final int from = planned + 1;
+  final int n = math.max(1, math.min(size, total - planned));
+  final int to = from + n - 1;
+  if (firstGoal) {
+    return PlanWindow(
+      from: from,
+      size: n,
+      total: total,
+      lo: 'E',
+      hi: 'C',
+      firstGoal: true,
+    );
+  }
+  // F 档 0 经验（兼容档）：只有「一次拆完的短目标」沿用老口径放开到 F
+  final String lo = from == 1 && to >= total ? 'F' : _ladderAt(from, total);
+  final String hi = to >= total ? 'S' : _maxRank(_ladderAt(to + 1, total), lo);
+  return PlanWindow(from: from, size: n, total: total, lo: lo, hi: hi);
+}
+
+/// 目标已经拆到哪了 → 下一个窗口（续拆用）
+PlanWindow nextPlanWindow(Goal g) =>
+    planWindowFor(total: g.totalTasks, planned: g.plan.length);
+
+/// 续拆时告诉模型「前面做到了哪里」：进度 + 最近做完的几张 + 上一段收在哪。
+String planProgressDigest(Goal g, {DateTime? now, int recent = 8}) {
+  final DateTime t = now ?? DateTime.now();
+  final int days = g.days <= 0 ? g.totalTasks : g.days;
+  final StringBuffer b = StringBuffer()
+    ..writeln(
+      '现在是第 ${g.passedDays(t).clamp(1, math.max(1, days))}/$days 天；'
+      '已拆 ${g.plan.length}/${g.totalTasks} 张，完成 ${g.doneCount} 张。',
+    );
+  final List<PlanTask> done = <PlanTask>[
+    for (final PlanTask x in g.plan)
+      if (x.done) x,
+  ];
+  if (done.isNotEmpty) {
+    final List<PlanTask> tail = done.length <= recent
+        ? done
+        : done.sublist(done.length - recent);
+    b.writeln(
+      done.length <= recent
+          ? '已完成的单：'
+          : '最近完成的 ${tail.length} 张（共 ${done.length} 张）：',
+    );
+    for (final PlanTask x in tail) {
+      final String held = x.held == null ? '' : '，用时 ${x.held!.inMinutes} 分钟';
+      b.writeln('- 第 ${x.index + 1} 张 [${x.rank}]「${x.title}」$held');
+    }
+  }
+  if (g.plan.isNotEmpty) {
+    final PlanTask last = g.plan.last;
+    b.writeln(
+      '上一段最后一张是第 ${last.index + 1} 张 [${last.rank}]「${last.title}」'
+      '（${last.minutes} 分钟）——强度从这里接着往上走，别重复已经做过的。',
+    );
+  }
+  return b.toString().trim();
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -1219,11 +1361,13 @@ int planTaskCountFor(int days, {int quota = 0}) {
 //  一次 set_plan 要模型吐出几千~上万 token 的 JSON —— 单轮 90s 超时、
 //  或被 max_tokens 截断成残缺数组，然后报错重试，越重试越慢。
 //
-//  解法：长清单按 [kPlanSegmentSize] 切段、**并行**拆（每段一次独立的 set_plan），
-//  按顺序拼回后照旧过 [validatePlan]。档位阶梯由切段时**预先分配**：
-//  每段一个档位区间 [lo, hi]，相邻两段首尾相接（前段 hi = 后段 lo），
-//  段内不倒退 ⇒ 全链不倒退；末段收尾必须是 S 级兑现单。
-//  仍然全部走 LLM，没有模板、没有兜底 —— 只是把一份大活拆成几份小活同时干。
+//  解法：一个窗口超过 [kPlanSegmentSize] 张就再切段、**并行**拆（每段一次独立的
+//  set_plan），按顺序拼回后照旧过 [validatePlanWindow]。档位由切段时**预先分配**：
+//  在窗口的档位区间里插值，相邻两段首尾相接（前段 hi = 后段 lo），
+//  段内不倒退 ⇒ 全段不倒退；窗口是最后一段时末张必须是 S 级兑现单。
+//  2026-11-05 滚动生成后窗口只有 [kPlanWindowSize]（14）张：> 12 仍会切成 2×7 并行；
+//  窗口 ≤ 12 张（短目标 / 最后一段）不切。
+//  仍然全部走 LLM，没有模板、没有兜底 —— 只是把一份活拆成几份同时干。
 
 /// 一段最多几张（12 张 ≈ 1k 出参 token，推理模型一轮 15~30s）
 const int kPlanSegmentSize = 12;
@@ -1231,10 +1375,7 @@ const int kPlanSegmentSize = 12;
 /// 同时最多拆几段（再多端点容易限流）
 const int kPlanSegmentConcurrency = 6;
 
-/// 段间档位阶梯（末段上限另给 S）
-const List<String> _kSegmentLadder = <String>['E', 'D', 'C', 'B', 'A'];
-
-/// 长清单里的一段。
+/// 窗口里的一段（并行拆的单位）。
 class PlanSegment {
   const PlanSegment({
     required this.index,
@@ -1244,9 +1385,10 @@ class PlanSegment {
     required this.total,
     required this.lo,
     required this.hi,
+    this.last = false,
   });
 
-  /// 第几段（0 基）/ 一共几段
+  /// 窗口里第几段（0 基）/ 一共几段
   final int index;
   final int count;
 
@@ -1254,53 +1396,47 @@ class PlanSegment {
   final int from;
   final int size;
 
-  /// 整份清单张数
+  /// 整条主线张数
   final int total;
 
   /// 本段档位区间（含两端）
   final String lo;
   final String hi;
 
+  /// 本段收尾那一张就是整条主线的兑现单（必须 S）
+  final bool last;
+
   int get to => from + size - 1;
 
-  /// 末段：收尾那一张就是整条主线的兑现单
-  bool get last => index == count - 1;
-
-  /// 阶段提示（让各段的强度曲线接得上）
+  /// 阶段提示（让各段的强度曲线接得上；按在整条主线里的位置算）
   String get phase {
     if (last) return '冲刺与兑现：强度拉满，最后一张是兑现单';
-    final double k = index / count;
+    final double k = (from - 1) / math.max(1, total);
     if (k < .25) return '起步期：低强度、先把习惯立住';
     if (k < .6) return '加量期：在前一段的基础上逐步加码';
     return '强化期：逼近目标强度';
   }
 }
 
-/// 清单 → 段。首目标或不超过一段的清单：只有一段（区间 F~S，交给 [validatePlan] 全量校验）。
-List<PlanSegment> planSegmentsFor(int total, {bool firstGoal = false}) {
-  if (firstGoal || total <= kPlanSegmentSize) {
-    return <PlanSegment>[
-      PlanSegment(
-        index: 0,
-        count: 1,
-        from: 1,
-        size: total,
-        total: total,
-        lo: 'F',
-        hi: 'S',
-      ),
-    ];
+/// 窗口 → 段。窗口不超过 [kPlanSegmentSize] 张：只有一段（区间 = 窗口区间）。
+/// 更长的均分成 ⌈size / kPlanSegmentSize⌉ 段，档位在窗口区间里插值（向下取整）、首尾相接。
+List<PlanSegment> planSegmentsFor(PlanWindow w) {
+  final int k = w.size <= kPlanSegmentSize
+      ? 1
+      : (w.size / kPlanSegmentSize).ceil();
+  final int base = w.size ~/ k;
+  final int extra = w.size % k; // 前 extra 段各多一张
+  final int lo = Rarity.ranks.indexOf(w.lo);
+  final int hi = Rarity.ranks.indexOf(w.hi);
+  String bound(int j) {
+    if (j <= 0) return w.lo;
+    if (j >= k) return w.hi;
+    // 向下取整：前面几段压低、最后一段留出往上走（含收尾 S）的余地
+    return Rarity.ranks[lo + ((hi - lo) * j) ~/ k];
   }
-  final int k = (total / kPlanSegmentSize).ceil();
-  final int base = total ~/ k;
-  final int extra = total % k; // 前 extra 段各多一张
-  String bound(int i) =>
-      _kSegmentLadder[math.min(
-        _kSegmentLadder.length - 1,
-        (i * _kSegmentLadder.length) ~/ k,
-      )];
+
   final List<PlanSegment> out = <PlanSegment>[];
-  int from = 1;
+  int from = w.from;
   for (int i = 0; i < k; i++) {
     final int size = base + (i < extra ? 1 : 0);
     out.add(
@@ -1309,9 +1445,10 @@ List<PlanSegment> planSegmentsFor(int total, {bool firstGoal = false}) {
         count: k,
         from: from,
         size: size,
-        total: total,
+        total: w.total,
         lo: bound(i),
-        hi: i == k - 1 ? 'S' : bound(i + 1),
+        hi: bound(i + 1),
+        last: w.last && i == k - 1,
       ),
     );
     from += size;
@@ -1319,27 +1456,31 @@ List<PlanSegment> planSegmentsFor(int total, {bool firstGoal = false}) {
   return out;
 }
 
-/// 一段的规则校验（与 [validatePlan] 同口径，只看本段）：
-/// 张数、字段非空、档位落在本段区间、时限不越档位上限、段内不倒退；
-/// 末段最后一张必须是 S 级兑现单。不合规就抛 [PlanRuleError]。
-void validatePlanSegment(PlanSegment seg, List<TaskSpec> tasks) {
-  if (tasks.length != seg.size) {
-    throw PlanRuleError(
-      '第 ${seg.index + 1} 段要正好 ${seg.size} 张（第 ${seg.from}~${seg.to} 张），'
-      '模型给了 ${tasks.length} 张',
-    );
-  }
-  final int lo = Rarity.ranks.indexOf(seg.lo);
-  final int hi = Rarity.ranks.indexOf(seg.hi);
+/// 一串任务的规则校验（段 / 窗口共用）：字段非空、档位落在区间、
+/// 时限不越档位上限、逐张不倒退；[last] 时最后一张必须是 S 级兑现单。
+void _validateRange({
+  required List<TaskSpec> tasks,
+  required int from,
+  required String lo,
+  required String hi,
+  required bool last,
+}) {
+  final int l = Rarity.ranks.indexOf(lo);
+  final int h = Rarity.ranks.indexOf(hi);
   for (int i = 0; i < tasks.length; i++) {
     final TaskSpec t = tasks[i];
-    final int n = seg.from + i;
+    final int n = from + i;
     if (t.short.trim().isEmpty) throw PlanRuleError('第 $n 张的 short 是空的');
     if (t.title.trim().isEmpty) throw PlanRuleError('第 $n 张的 title 是空的');
     if (t.proof.trim().isEmpty) throw PlanRuleError('第 $n 张的 proof 是空的');
     final int r = Rarity.ranks.indexOf(t.rank);
-    if (r < lo || r > hi) {
-      throw PlanRuleError('第 $n 张档位 ${t.rank} 不在本段区间 ${seg.lo}~${seg.hi} 里');
+    if (r < 0) {
+      throw PlanRuleError(
+        '第 $n 张的 rank「${t.rank}」不在 ${Rarity.ranks.join('/')} 里',
+      );
+    }
+    if (r < l || r > h) {
+      throw PlanRuleError('第 $n 张档位 ${t.rank} 不在本段区间 $lo~$hi 里');
     }
     final int cap = rankCapMinutes(t.rank);
     if (t.minutes < 5 || t.minutes > cap) {
@@ -1349,26 +1490,57 @@ void validatePlanSegment(PlanSegment seg, List<TaskSpec> tasks) {
     }
     if (i > 0 && r < Rarity.ranks.indexOf(tasks[i - 1].rank)) {
       throw PlanRuleError(
-        '第 $n 张档位倒退了：${tasks[i - 1].rank} → ${t.rank}（段内必须低开高走）',
+        '第 $n 张档位倒退了：${tasks[i - 1].rank} → ${t.rank}（必须低开高走）',
       );
     }
   }
-  if (seg.last && tasks.last.rank != 'S') {
-    throw PlanRuleError('第 ${seg.to} 张是兑现单，必须 S 级，模型给了 ${tasks.last.rank}');
+  // ⚠️ 2026-10-23 真机修正：兑现单原来硬要求 ≥ 120 分钟，「两周骑 10 次」的
+  //    「交全部轨迹」这种轻验证被判不合规。现在只校验 S 档上限（上面已查）。
+  if (last && tasks.isNotEmpty && tasks.last.rank != 'S') {
+    throw PlanRuleError(
+      '第 ${from + tasks.length - 1} 张是兑现单，必须 S 级，模型给了 ${tasks.last.rank}',
+    );
   }
 }
 
-/// 计划规则校验 —— **fail fast**：任何一条不合规都抛 [PlanRuleError]。
+/// 一段的规则校验（与 [validatePlanWindow] 同口径，只看本段）。不合规就抛 [PlanRuleError]。
+void validatePlanSegment(PlanSegment seg, List<TaskSpec> tasks) {
+  if (tasks.length != seg.size) {
+    throw PlanRuleError(
+      '第 ${seg.index + 1} 段要正好 ${seg.size} 张（第 ${seg.from}~${seg.to} 张），'
+      '模型给了 ${tasks.length} 张',
+    );
+  }
+  _validateRange(
+    tasks: tasks,
+    from: seg.from,
+    lo: seg.lo,
+    hi: seg.hi,
+    last: seg.last,
+  );
+}
+
+/// 一个窗口的规则校验 —— **fail fast**：任何一条不合规都抛 [PlanRuleError]。
 ///
-/// 校验项：
-///   · 条数 == 期限天数，且期限落在 [kPlanMinTasks, kPlanMaxTasks]
-///   · 首目标（[firstGoal]）期限固定 [kFirstGoalDays]、档位只能是 E/D/C
-///   · 每张：short / title / proof 非空、minutes 是正整数且不超档位上限、
-///     rank 在 F~S
-///   · 档位全链**不倒退**（低开高走）
-///   · 非首目标的末张必须是 **S 级兑现单**且时限 ≥ [kPlanFinalMinutes]
+/// 校验项：张数 == 窗口张数；每张 short / title / proof 非空、档位落在窗口区间
+/// （首目标第一段 = E~C）、minutes 不超档位上限；逐张**不倒退**（低开高走）；
+/// 窗口是最后一段（且不是首目标第一段）时末张必须是 **S 级兑现单**。
 ///
 /// 注意：这里**只判不合规就抛**，绝不「顺手改一改」——修正会把问题藏起来。
+void validatePlanWindow(PlanWindow w, List<TaskSpec> tasks) {
+  if (tasks.length != w.size) {
+    throw PlanRuleError(
+      w.whole
+          ? '清单条数必须是 ${w.size} 张，模型给了 ${tasks.length} 张'
+          : '这一段要正好 ${w.size} 张（第 ${w.from}~${w.to} 张），'
+                '模型给了 ${tasks.length} 张',
+    );
+  }
+  _validateRange(tasks: tasks, from: w.from, lo: w.lo, hi: w.hi, last: w.last);
+}
+
+/// 新目标**第一个窗口**的规则校验（铸目标时用）：总张数按 [days] / [quota] 算
+/// （[planTaskCountFor]），本次只验前 min([kPlanWindowSize], 总数) 张。
 void validatePlan({
   required int days,
   required List<TaskSpec> tasks,
@@ -1378,92 +1550,46 @@ void validatePlan({
   if (days < kPlanMinTasks || days > kPlanMaxTasks) {
     throw PlanRuleError('期限 $days 天不在 $kPlanMinTasks~$kPlanMaxTasks 之间');
   }
-  if (firstGoal && days != kFirstGoalDays) {
-    throw PlanRuleError('首目标期限必须是 $kFirstGoalDays 天，模型给了 $days 天');
-  }
-  final int want = planTaskCountFor(days, quota: quota);
-  if (tasks.length != want) {
-    final String why = quota > 0 ? '次数 $quota 次' : '期限 $days 天';
-    throw PlanRuleError('清单条数必须是 $want 张（= $why），模型给了 ${tasks.length} 张');
-  }
-  for (int i = 0; i < tasks.length; i++) {
-    final TaskSpec t = tasks[i];
-    final int n = i + 1;
-    if (t.short.trim().isEmpty) throw PlanRuleError('第 $n 张的 short 是空的');
-    if (t.title.trim().isEmpty) throw PlanRuleError('第 $n 张的 title 是空的');
-    if (t.proof.trim().isEmpty) throw PlanRuleError('第 $n 张的 proof 是空的');
-    if (!Rarity.ranks.contains(t.rank)) {
-      throw PlanRuleError(
-        '第 $n 张的 rank「${t.rank}」不在 ${Rarity.ranks.join('/')} 里',
-      );
-    }
-    final int cap = rankCapMinutes(t.rank);
-    if (t.minutes < 5 || t.minutes > cap) {
-      throw PlanRuleError(
-        '第 $n 张「${t.short}」的时限 ${t.minutes} 分钟越界（${t.rank} 档允许 5~$cap）',
-      );
-    }
-    if (firstGoal && !kFirstGoalRanks.contains(t.rank)) {
-      throw PlanRuleError(
-        '首目标第 $n 张档位是 ${t.rank}，首目标只允许 ${kFirstGoalRanks.join('/')}',
-      );
-    }
-    if (i > 0) {
-      final int prev = Rarity.ranks.indexOf(tasks[i - 1].rank);
-      final int cur = Rarity.ranks.indexOf(t.rank);
-      if (cur < prev) {
-        throw PlanRuleError(
-          '第 $n 张档位倒退了：${tasks[i - 1].rank} → ${t.rank}（全链必须低开高走）',
-        );
-      }
-    }
-  }
-  if (!firstGoal) {
-    final TaskSpec last = tasks.last;
-    if (last.rank != 'S') {
-      throw PlanRuleError('末张是兑现单，必须 S 级，模型给了 ${last.rank}');
-    }
-    // ⚠️ 2026-10-23 真机修正：原来这里硬要求「兑现单 ≥ 120 分钟」，
-    //    结果「两周内骑自行车 10 次」的交全部轨迹那一步（模型给 10 分钟）
-    //    被判定不合规，整个目标建不出来。
-    //    兑现单**是不是一次长任务**取决于目标本身：骑车 10 次的兑现动作
-    //    就是「交 10 次轨迹」这种轻验证。所以这里只校验**档位上限**，
-    //    下限交给 S 档自身的 5 分钟底线（与其它张一致）。
-    if (last.minutes > rankCapMinutes('S')) {
-      throw PlanRuleError(
-        '兑现单时限超过 S 档上限 ${rankCapMinutes('S')} 分钟，模型给了 ${last.minutes}',
-      );
-    }
-  }
+  validatePlanWindow(
+    planWindowFor(
+      total: planTaskCountFor(days, quota: quota),
+      firstGoal: firstGoal,
+    ),
+    tasks,
+  );
 }
 
 /// 已校验的任务池 → [PlanTask]（加六维分配、下标、兑现标记）。
 ///
 /// 六维按类别倾向 [GoalCategory.tilt] 与档位点数走 [QuestFlow.splitAttrs]，
-/// 生成时定死，结算只读。
+/// 生成时定死，结算只读。[from] = 这批第一张在整条主线里的序号（0 基），
+/// [total] = 整条主线张数（兑现单 = 第 total 张；默认就是这一批的末张）。
 List<PlanTask> buildPlanTasks({
   required GoalCategory cat,
   required List<TaskSpec> tasks,
   bool firstGoal = false,
+  int from = 0,
+  int? total,
 }) => <PlanTask>[
   for (int i = 0; i < tasks.length; i++)
     PlanTask(
-      index: i,
+      index: from + i,
       short: tasks[i].short,
       title: tasks[i].title,
       proof: tasks[i].proof,
       minutes: tasks[i].minutes,
       rank: tasks[i].rank,
       attrs: QuestFlow.splitAttrs(cat.tilt, Rarity.of(tasks[i].rank).pt),
-      // 首目标不摆兑现门；其余末张 = 兑现单
-      finalTask: !firstGoal && i == tasks.length - 1,
+      // 首目标第一段不摆兑现门；其余整条主线的末张 = 兑现单
+      finalTask: !firstGoal && from + i == (total ?? from + tasks.length) - 1,
     ),
 ];
 
-/// 用**已校验**的任务池铸一个目标。这是计划落库的唯一入口。
+/// 用**已校验**的第一个窗口铸一个目标。这是计划落库的唯一入口。
 ///
 /// 不做任何兜底：调用方必须先拿到 PlanAgent 交上来的任务池，校验失败
 /// （[validatePlan]）会当场抛 —— 这里不会替它编一份清单。
+/// 总张数存进 [Goal.planTotal]，后面的窗口由 [extendGoalWithWindow] 续上。
 Goal buildGoalFromPlan({
   required String text,
   required String short,
@@ -1481,15 +1607,49 @@ Goal buildGoalFromPlan({
   final String clean = text.trim();
   if (clean.isEmpty) throw const PlanRuleError('目标文本是空的');
   validatePlan(days: days, tasks: tasks, quota: quota, firstGoal: firstGoal);
+  final int total = planTaskCountFor(days, quota: quota);
   return Goal(
     text: clean,
     short: short.trim().isEmpty ? clean : short.trim(),
     at: at ?? DateTime.now(),
-    plan: buildPlanTasks(cat: cat, tasks: tasks, firstGoal: firstGoal),
+    plan: buildPlanTasks(
+      cat: cat,
+      tasks: tasks,
+      firstGoal: firstGoal,
+      total: total,
+    ),
     cat: cat.id,
     days: days,
     interview: Map<String, String>.of(answers),
     uid: uid,
+    planTotal: total,
+    quota: quota,
+  );
+}
+
+/// 续拆：把下一个窗口（[nextPlanWindow]）的任务池接到 [g] 的清单后面。
+///
+/// 目标身份（`at` / `uid`）、期限、总张数都不变 —— 只是清单变长。
+/// 校验失败抛 [PlanRuleError]；[g] 已经拆满时抛 [StateError]。
+Goal extendGoalWithWindow(
+  Goal g, {
+  required GoalCategory cat,
+  required List<TaskSpec> tasks,
+}) {
+  if (!g.hasMoreWindows) {
+    throw StateError('目标「${g.text}」已经拆满 ${g.totalTasks} 张，没有下一段');
+  }
+  validatePlanWindow(nextPlanWindow(g), tasks);
+  return g.copyWith(
+    plan: <PlanTask>[
+      ...g.plan,
+      ...buildPlanTasks(
+        cat: cat,
+        tasks: tasks,
+        from: g.plan.length,
+        total: g.totalTasks,
+      ),
+    ],
   );
 }
 
@@ -1545,7 +1705,7 @@ List<String> memoriesFromInterview({
   required GoalCategory cat,
   required Map<String, String> answers,
   required String goalText,
-  int days = kFirstGoalDays,
+  required int days,
 }) {
   final List<String> out = <String>[
     '宿主立了新目标：「${goalText.trim()}」（${cat.label}向，期限 $days 天）。',

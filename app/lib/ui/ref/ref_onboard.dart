@@ -138,7 +138,7 @@ class _RefOnboardState extends State<RefOnboard> {
             ],
           ),
           const SizedBox(height: 10),
-          Text(interview ? '答完这几张，我给你排三天。' : '宿主，说出你的目标。', style: RefType.h1),
+          Text(interview ? '答完这几张，我给你排第一段。' : '宿主，说出你的目标。', style: RefType.h1),
           const SizedBox(height: 18),
           Center(
             child: RefCore(

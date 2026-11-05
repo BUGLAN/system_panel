@@ -399,7 +399,7 @@ void main() {
       );
     });
 
-    test('首目标只许 E/D/C、期限必须是 3 天', () {
+    test('首目标第一段只许 E/D/C（期限不再定死 3 天）', () {
       final List<TaskSpec> tooHard = <TaskSpec>[...firstTasks()];
       tooHard[2] = const TaskSpec(
         short: 'x',
@@ -517,6 +517,40 @@ void main() {
           reason: '${t.short} 六维点数不等于 ${t.rank} 档点数',
         );
       }
+    });
+
+    test('滚动生成：180 天只铸第一段 14 张，总张数存 planTotal（首目标同规则）', () {
+      for (final bool first in <bool>[false, true]) {
+        final PlanWindow w = planWindowFor(total: 180, firstGoal: first);
+        final Goal g = buildGoalFromPlan(
+          text: '半年减重 10 斤',
+          short: '减重',
+          cat: goalCats['slim']!,
+          days: 180,
+          tasks: <TaskSpec>[
+            for (int i = 0; i < w.size; i++)
+              TaskSpec(
+                short: '第${i + 1}天',
+                title: '第 ${i + 1} 天',
+                proof: '截图',
+                minutes: 20,
+                rank: w.lo,
+              ),
+          ],
+          firstGoal: first,
+        );
+        expect(g.plan.length, kPlanWindowSize, reason: 'firstGoal=$first');
+        expect(g.days, 180);
+        expect(g.planTotal, 180);
+        expect(g.totalTasks, 180);
+        expect(g.hasMoreWindows, isTrue);
+        expect(g.plan.any((PlanTask t) => t.finalTask), isFalse);
+      }
+      // 一次交满 180 张是旧口径 → 条数不对，抛
+      expect(
+        () => validatePlan(days: 180, tasks: longTasks(180)),
+        throwsA(isA<PlanRuleError>()),
+      );
     });
 
     test('空目标文本 → 抛（不铸空计划）', () {
@@ -649,10 +683,11 @@ void main() {
           // sleep.persist 未答 → 跳过
         },
         goalText: '一个月早睡早起',
+        days: 30,
       );
       expect(mem.length, 3);
       expect(mem.first, contains('一个月早睡早起'));
-      expect(mem.first, contains('3 天'));
+      expect(mem.first, contains('30 天'));
       expect(mem[1], contains('现在几点起、几点睡？'));
       expect(mem[1], contains('1-2 点睡 9 点后起'));
       expect(mem[2], contains('天天熬夜'));

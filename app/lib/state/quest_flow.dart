@@ -171,6 +171,11 @@ typedef NextGoalHook = Future<Goal> Function(
   int level,
 );
 
+/// 滚动生成的续拆钩子（2026-11-05 · docs/50 C1）：已拆出来的窗口全部走完、
+/// 整条主线还没完时调用，交回**同一个目标**（身份不变）、清单接上下一段。
+/// 失败一律抛（与 [NextGoalHook] 同口径，不吞、不降级）。
+typedef NextWindowHook = Future<Goal> Function(Goal current);
+
 class QuestFlow {
   QuestFlow({
     required this.host,
@@ -294,6 +299,10 @@ class QuestFlow {
   /// 不接 = 叙事停在终点（队列真的会空）；接上 = 自动续主线。
   /// 钩子抛异常 = 拆解失败，**原样往上抛**（不吞、不降级）。
   NextGoalHook? nextGoalHook;
+
+  /// 续拆钩子（滚动生成）：窗口走完时拆下一段。不接 = 窗口走完就停在那
+  /// （读档时 [applyFinaleOutcome] 会再补一次）。
+  NextWindowHook? nextWindowHook;
 
   /// 最近一次收官的结果（界面据此说「下一条主线已经钉好了」）。
   /// 读一次不清空 —— 结算面板可能重建多次。
@@ -570,7 +579,7 @@ class QuestFlow {
     return _mk(
       kind: 'main',
       planIndex: i,
-      planTotal: goal.plan.length,
+      planTotal: goal.totalTasks,
       goalId: goal.id,
       name: t.title,
       proof: t.proof,
@@ -844,6 +853,7 @@ class QuestFlow {
     // 然后补下一张到手上。兑现单交掉 = 这个目标完成（里程碑结算）。
     int planClear = -1;
     bool finale = false;
+    bool windowEnd = false;
     if (task.kind == 'main' &&
         task.planIndex >= 0 &&
         task.goalId == goal.id &&
@@ -858,11 +868,19 @@ class QuestFlow {
         );
         goal = goal.copyWith(plan: plan);
         planClear = task.planIndex;
+        // 滚动生成：已拆出来的都做完了、但整条主线还有没拆的段 → 不是收官，是续拆
+        final bool allDone = plan.every(
+          (PlanTask x) => x.state == PlanState.done,
+        );
         finale =
-            plan[task.planIndex].finalTask ||
-            plan.every((PlanTask x) => x.state == PlanState.done);
+            plan[task.planIndex].finalTask || (allDone && !goal.hasMoreWindows);
+        windowEnd = !finale && goal.windowExhausted;
       }
     }
+
+    // 窗口走完 → 续拆下一段（复用收官同一条「结算里 await 拆解」的路）。
+    // ⚠️ 拆解失败同样从这里抛：结算已经落账，下一段没拆出来要让调用方看见。
+    final bool windowNext = windowEnd && await extendWindow();
 
     // 收官 → 第二目标闭环（TODO-01）：铸下一条主线、撤旧主线单、首环钉队首。
     // 结算**当场落库**（不是等界面点一下）——否则结算页读到的 `empty` 是错的，
@@ -945,6 +963,7 @@ class QuestFlow {
       titles: titles,
       planClear: planClear,
       finale: finale,
+      windowNext: windowNext,
       redeemed: redeemed,
       empty: empty,
       tooFast: held.inMilliseconds < 60000,
@@ -1005,6 +1024,28 @@ class QuestFlow {
     return out;
   }
 
+  /// 滚动生成 · 续拆下一段：已拆出来的窗口全部走完（[Goal.windowExhausted]）时
+  /// 调 [nextWindowHook] 拆下一段，接到清单后面并补发到手上。
+  ///
+  /// 返回这次是否真的续上了（没接钩子 / 还不到续拆的时候 = false）。
+  /// 钩子抛什么就往上抛什么；交回的目标身份不对或清单没变长 → 抛 [StateError]。
+  Future<bool> extendWindow() async {
+    final NextWindowHook? hook = nextWindowHook;
+    if (hook == null || !goal.windowExhausted) return false;
+    final Goal prev = goal;
+    final Goal next = await hook(prev);
+    if (next.id != prev.id || next.plan.length <= prev.plan.length) {
+      throw StateError(
+        '续拆钩子交回的目标不对：身份 ${next.id}（应为 ${prev.id}），'
+        '清单 ${next.plan.length} 张（原 ${prev.plan.length} 张）',
+      );
+    }
+    goal = next;
+    publishPlanTasks();
+    _syncQueueCount();
+    return true;
+  }
+
   /// 幂等补投：把最近一次收官铸好的新主线首环**再确认一次**钉在队首。
   ///
   /// 结算时已经投过一次（[_applyFinale]），这里只兜两种边角：
@@ -1039,6 +1080,8 @@ class QuestFlow {
     // ② 读档时这条主线**已经走完了**（收官发生在本功能之前的老存档）——
     //    叙事不该停在终点，补一次「铸下一条 + 钉队首」。
     //    ⚠️ 空目标（未绑定）不在此列：`Goal.empty()` 没有环，不进这个分支。
+    // ③ 滚动生成：窗口走完了但上次续拆没成（拆解失败 / 杀进程）→ 读档时补拆下一段
+    if (goal.windowExhausted) return extendWindow();
     if (nextGoalHook != null &&
         goal.plan.isNotEmpty &&
         goal.firstOpenIndex < 0) {

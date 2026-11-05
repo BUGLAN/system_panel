@@ -16,6 +16,8 @@ class PlanBrief {
     this.statusLine,
     this.firstGoal = false,
     this.segment,
+    this.window,
+    this.progress,
   });
 
   /// 同一份简报换成「只拆其中一段」（长清单分段并行拆）
@@ -28,16 +30,18 @@ class PlanBrief {
     statusLine: statusLine,
     firstGoal: firstGoal,
     segment: seg,
+    window: window,
+    progress: progress,
   );
 
   /// 宿主那句话（原样，不裁剪）
   final String goalText;
 
   /// 期限（天）—— 由 `GoalMatchAgent` 交的 `set_goal_category.days` 决定，
-  /// **条数跟着它走**（`planTaskCountFor(days)`）
+  /// **总张数跟着它走**（`planTaskCountFor(days)`）
   final int days;
 
-  /// 要交几张（= `planTaskCountFor(days)`；由调用方算好，Agent 不猜）
+  /// 这一轮要交几张（滚动生成 = 窗口张数；由调用方算好，Agent 不猜）
   final int taskCount;
 
   /// 目标类别（决定六维倾向与访谈卡）
@@ -49,26 +53,57 @@ class PlanBrief {
   /// 宿主档案一行（等级/连击/最弱维/当前主线）
   final String? statusLine;
 
-  /// 首目标（3 天 3 张 E/D/C）
+  /// 首目标第一段（档位只许 E/D/C）
   final bool firstGoal;
 
-  /// 非空 = 这一轮只拆整份清单里的一段（段数 > 1 时才会给）
+  /// 非空 = 这一轮只拆窗口里的一段（段数 > 1 时才会给）
   final PlanSegment? segment;
+
+  /// 滚动生成的窗口（整条主线里第几段、第几~几张）。
+  /// null = 老口径：[taskCount] 就是整份清单，一次拆完。
+  final PlanWindow? window;
+
+  /// 续拆时「前面做到了哪里」（`goal_gen.planProgressDigest`）；首段为 null
+  final String? progress;
+
+  /// 实际生效的窗口（null 时按整份清单一个窗口算）
+  PlanWindow get win =>
+      window ?? PlanWindow.whole(taskCount, firstGoal: firstGoal);
 
   /// 交给模型的「这一单要拆什么」正文（**期限与条数必须写进来**，
   /// 旧实现漏了它们，模型只能按「有进阶关系」的通用口径瞎编）。
   String get userText {
     final PlanSegment? seg = segment;
-    final StringBuffer b = StringBuffer()
-      ..writeln('宿主立了目标：「$goalText」。')
-      ..writeln(
-        '期限 $days 天，清单要正好 $taskCount 张（= 期限天数），'
-        '第 $taskCount 张是兑现单。',
+    final PlanWindow w = win;
+    final StringBuffer b = StringBuffer()..writeln('宿主立了目标：「$goalText」。');
+    if (w.whole) {
+      b.writeln(
+        '期限 $days 天，清单要正好 ${w.total} 张（= 期限天数），'
+        '${w.last ? '第 ${w.total} 张是兑现单。' : '这一份不摆兑现单。'}',
       );
+    } else {
+      // 滚动生成：每次只拆一段，做完再拆下一段（docs/50 C1 定案）
+      b
+        ..writeln(
+          '期限 $days 天，整条主线共 ${w.total} 张。清单**滚动生成**：'
+          '每次只拆一段，他做完这一段再拆下一段。',
+        )
+        ..writeln(
+          '**这一轮是第 ${w.index + 1}/${w.count} 段：第 ${w.from}~${w.to} 张，'
+          '共 ${w.size} 张**。档位只能在 ${w.lo}~${w.hi} 之间，逐张不许倒退。'
+          '${w.last ? '本段最后一张（第 ${w.total} 张）就是整条主线的兑现单，必须 S 级。' : '本段不含兑现单（兑现单在最后一段），不要提前收尾。'}',
+        );
+    }
+    final String? done = progress;
+    if (done != null && done.trim().isNotEmpty) {
+      b
+        ..writeln('前面做到了哪里（接着往下排，别重复）：')
+        ..writeln(done.trim());
+    }
     if (seg != null) {
       b
         ..writeln(
-          '清单太长，分 ${seg.count} 段同时拆。**你只负责第 ${seg.index + 1} 段：'
+          '这一段分 ${seg.count} 份同时拆。**你只负责第 ${seg.index + 1} 份：'
           '第 ${seg.from}~${seg.to} 张，共 ${seg.size} 张**。',
         )
         ..writeln('本段阶段：${seg.phase}。')
@@ -85,7 +120,7 @@ class PlanBrief {
       }
     }
     if (firstGoal) {
-      b.writeln('这是**首目标**：3 张，档位只能 E/D/C，一张一天，先验证他能坚持。');
+      b.writeln('这是**首目标的第一段**：档位只能 E/D/C，一张一天，先验证他能坚持。');
     }
     // ⚠️ 档位时限上限必须写进提示词。真机实测：模型不知道这条阶梯，
     //    给了「D 档 45 分钟」，`validatePlan` 直接抛
@@ -99,13 +134,16 @@ class PlanBrief {
         ].join(' · '),
       )
       ..writeln(
-        seg == null || seg.last ? '兑现单（最后一张）时限必须 ≥ $kPlanFinalMinutes 分钟。' : '',
+        (seg == null ? w.last : seg.last)
+            ? '兑现单（最后一张）时限必须 ≥ $kPlanFinalMinutes 分钟。'
+            : '',
       );
     b
       ..writeln()
       ..writeln(
         seg == null
-            ? '用 set_plan 把这 $taskCount 张交上来。'
+            ? '用 set_plan 把这 ${w.size} 张交上来'
+                  '${w.whole ? '' : '（第 ${w.from}~${w.to} 张，不要交别的段）'}。'
             : '用 set_plan 只把本段这 ${seg.size} 张交上来（第 ${seg.from}~${seg.to} 张，不要交别的段）。',
       );
     return b.toString().trim();
@@ -125,9 +163,9 @@ class PlanBrief {
 
   /// 她这一轮的场合（system prompt 的【当前场合】位）
   String get scenario =>
-      '拆计划：把宿主刚说的目标「$goalText」拆成 $taskCount 张单次可执行的任务，'
-      '期限 $days 天'
-      '${segment == null ? '' : '（这一轮只拆第 ${segment!.from}~${segment!.to} 张）'}。'
+      '拆计划：把宿主的目标「$goalText」拆成单次可执行的任务，'
+      '期限 $days 天、整条主线共 ${win.total} 张'
+      '${segment != null ? '（这一轮只拆第 ${segment!.from}~${segment!.to} 张）' : (win.whole ? '' : '（滚动生成：这一轮只拆第 ${win.from}~${win.to} 张）')}。'
       '他现在的状态（等级/连败/最弱维）与相关记忆已经写在上面的'
       '宿主档案里，直接据此拆，用 set_plan 一次交上来。';
 }

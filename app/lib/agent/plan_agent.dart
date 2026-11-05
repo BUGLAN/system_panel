@@ -215,14 +215,15 @@ class PlanAgent {
     );
   }
 
-  /// 拆一整份清单—— 生产路径的唯一入口。
+  /// 拆一个窗口（[PlanBrief.win]，滚动生成）—— 生产路径的唯一入口。
   ///
-  /// · 不超过一段（[kPlanSegmentSize]）或首目标：一轮 [generate]，全量校验
-  /// · 更长的：按 [planSegmentsFor] 切段，**并行**拆（同时最多 [concurrency] 段），
-  ///   每段一套独立的 `set_plan`（按段校验），按顺序拼回
+  /// · 窗口不超过一段（[kPlanSegmentSize]）：一轮 [generate]，按窗口校验
+  /// · 更长的（默认窗口 14 > 12 会切成 2×7）：按 [planSegmentsFor] 切段，
+  ///   **并行**拆（同时最多 [concurrency] 段），每段一套独立的 `set_plan`
+  ///   （按段校验），按顺序拼回
   ///
-  /// 任何一段失败都整体抛（不拼半份计划、不补模板）。拼回的整份仍由调用方
-  /// 走 `buildGoalFromPlan` → [validatePlan] 全量复核。
+  /// 任何一段失败都整体抛（不拼半份计划、不补模板）。拼回的整段仍由调用方
+  /// 走 `buildGoalFromPlan` / `extendGoalWithWindow` → [validatePlanWindow] 复核。
   /// [onProgress]：(已完成段数, 总段数)，加载卡读它显示「2/8 段」。
   Future<List<TaskSpec>> generateTasks({
     required PlanBrief brief,
@@ -230,10 +231,8 @@ class PlanAgent {
     int concurrency = kPlanSegmentConcurrency,
     void Function(int done, int total)? onProgress,
   }) async {
-    final List<PlanSegment> segs = planSegmentsFor(
-      brief.taskCount,
-      firstGoal: brief.firstGoal,
-    );
+    final PlanWindow win = brief.win;
+    final List<PlanSegment> segs = planSegmentsFor(win);
     final bool whole = segs.length == 1;
     final List<List<TaskSpec>?> parts = List<List<TaskSpec>?>.filled(
       segs.length,
@@ -249,12 +248,13 @@ class PlanAgent {
         ..register(
           setPlanTool(
             goalText: brief.goalText,
-            taskCount: seg?.size ?? brief.taskCount,
+            taskCount: seg?.size ?? win.size,
             days: brief.days,
             draft: draft,
             firstGoal: brief.firstGoal,
             quota: quota,
             segment: seg,
+            window: win,
           ),
         );
       final PlanResult r = await generate(

@@ -118,7 +118,7 @@ class CopyContext {
     bestStreak: host.bestStreak,
     queue: host.queue,
     doneIndex: goal?.doneCount ?? host.doneIndex,
-    planTotal: goal?.plan.length ?? host.planTotal,
+    planTotal: goal?.totalTasks ?? host.planTotal,
     goalShort: goal?.short ?? '',
     weakestAttr: host.weakest.key,
     failCount: host.failCount,

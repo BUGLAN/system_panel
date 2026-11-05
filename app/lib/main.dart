@@ -202,6 +202,8 @@ class _AppShellState extends State<AppShell>
           at: prev.at,
           answers: prev.interview,
         );
+    // 滚动生成（docs/50 C1）：当前窗口走完 → 结算里续拆下一段（同一条主线）
+    f.nextWindowHook = _extendGoalWithAgent;
   }
 
   /// 存档（store.js L34-52）
@@ -220,7 +222,7 @@ class _AppShellState extends State<AppShell>
   ///
   /// 第 0 幕 = 问目标（AskField）；[_interviewCat] 非空 = 第 1 幕访谈卡
   /// （t4 的 InterviewDeck，按目标类型出 3~5 张）；答完 → `_buildGoalWithAgent`
-  /// 落 3 天 3 环 E/D/C + 见面礼双倍卡 → 大厅（首单已在队列）。
+  /// 落第一段（滚动生成，≤ kPlanWindowSize 张 E/D/C）+ 见面礼双倍卡 → 大厅（首单已在队列）。
   GoalCategory? _interviewCat;
 
   /// 访谈要定的那句话（第 0 幕收进来的目标原文）
@@ -536,7 +538,7 @@ class _AppShellState extends State<AppShell>
         goalShort: _goal.short,
         // 环进度喂给她（验收 F-3）：不喂她会从旧工具回执里捡过期数字
         planDone: _goal.doneCount,
-        planTotal: _goal.plan.length,
+        planTotal: _goal.totalTasks,
       ),
     );
     if (!mounted) return;
@@ -596,7 +598,7 @@ class _AppShellState extends State<AppShell>
   /// 带上当前主线与进度 —— 她追问「为什么换」时要引用真实数据。
   String get _newGoalScenario =>
       '换目标：宿主在主线页按了「换目标」。他现在的目标是「${_goal.text}」'
-      '（${_goal.doneCount}/${_goal.plan.length} 单）。先追问为什么换、'
+      '（${_goal.doneCount}/${_goal.totalTasks} 单）。先追问为什么换、'
       '新目标是什么；提醒他：旧主线环会清空、队列里的主线单会撤下，想清楚再动。';
 
   /// ── 换目标（TODO-01 · 主线页入口）──────────────────────────────
@@ -706,8 +708,11 @@ class _AppShellState extends State<AppShell>
           });
           // 换目标落库：正色点头（nod + exp_serious02）
           _sayAside(
-            '行。旧的撤了，新清单 [[${_goal.plan.length} 单]] 已经在你手上。'
-            '「$typed」——别又三天热度。',
+            _goal.hasMoreWindows
+                ? '行。旧的撤了。${_goal.days} 天的路，先排了 [[${_goal.plan.length} 单]]，'
+                      '做完我再往下拆。「$typed」——别又三天热度。'
+                : '行。旧的撤了，新清单 [[${_goal.plan.length} 单]] 已经在你手上。'
+                      '「$typed」——别又三天热度。',
             holdMs: 3000,
           );
         }),
@@ -773,25 +778,27 @@ class _AppShellState extends State<AppShell>
     // ⚠️ 2026-10-23 真机事故：原来只按「期限天数」要任务，于是
     // 「两周内骑自行车 10 次」要了 14 张，模型只能写成「第1..14次骑行」，
     // 末张还自相矛盾地写「第14次骑满120分钟并交全部10次轨迹」。
-    // ⚠️ 首目标的期限**由规则定死**（`kFirstGoalDays` = 3），不该
-    //    跟着模型的 `set_goal_category.days` 走 —— 真机实测模型会给 30 天，
-    //    于是提示词里出现自相矛盾的两句话（「期限 30 天，清单要正好 30 张」
-    //    与「这是首目标：3 张」），`validatePlan` 必然抛 badPlan。
-    //    非首目标仍按模型给的期限/配额。
-    final int days = firstGoal ? kFirstGoalDays : m.days;
-    final int need = planTaskCountFor(days, quota: m.quota);
+    // 2026-11-05 滚动生成（docs/50 C1 定案）：首目标不再定死 3 天，与换目标
+    //    同一套规则 —— 期限/配额照模型给的存（总张数 = 进度分母），**这一次只拆
+    //    第一个窗口**（≤ kPlanWindowSize 张），做完在结算里续拆下一段。
+    final int days = m.days;
+    final PlanWindow window = planWindowFor(
+      total: planTaskCountFor(days, quota: m.quota),
+      firstGoal: firstGoal,
+    );
     _planStageTo(1);
-    // 长清单（条数 = 天数，三个月就是 90 张）分段并行拆，
-    // 每段一套独立的 set_plan；拼回后下面的 buildGoalFromPlan 仍全量复核。
+    // 窗口超过 kPlanSegmentSize 时再分段并行拆，
+    // 每段一套独立的 set_plan；拼回后下面的 buildGoalFromPlan 仍按窗口复核。
     final List<TaskSpec> tasks = await planner0.generateTasks(
       brief: PlanBrief(
         goalText: text,
         days: days,
-        taskCount: need,
+        taskCount: window.size,
         cat: m.cat,
         interview: answers,
         statusLine: status,
         firstGoal: firstGoal,
+        window: window,
       ),
       quota: m.quota,
       onProgress: _planSegTo,
@@ -810,6 +817,43 @@ class _AppShellState extends State<AppShell>
       at: at,
       firstGoal: firstGoal,
     );
+  }
+
+  /// 滚动生成 · 续拆下一段（`QuestFlow.nextWindowHook`）：同一条主线，
+  /// 不再匹配类别/期限（都已存在目标上），只拆 [nextPlanWindow] 那一段。
+  /// 提示词带上「第几段 + 前面做到了哪里」（[planProgressDigest]）。
+  /// **失败一律抛 [PlanFailure]**（由 settle 的调用方 [_submitQuest] 报到屏幕上）。
+  Future<Goal> _extendGoalWithAgent(Goal g) async {
+    try {
+      final PlanAgent? planner0 = _planAgent;
+      if (planner0 == null) {
+        throw const PlanGenerationError(
+          PlanFailureCode.noKey,
+          'Agent 还没装配好（_initAgent 未完成 / 没配 Key）',
+        );
+      }
+      final GoalCategory cat = goalCats[g.cat] ?? goalCats['gen']!;
+      final PlanWindow window = nextPlanWindow(g);
+      _planStageTo(1);
+      final List<TaskSpec> tasks = await planner0.generateTasks(
+        brief: PlanBrief(
+          goalText: g.text,
+          days: g.days,
+          taskCount: window.size,
+          cat: cat,
+          interview: g.interview,
+          statusLine: _statusLineForAgent(),
+          window: window,
+          progress: planProgressDigest(g),
+        ),
+        quota: g.quota,
+        onProgress: _planSegTo,
+      );
+      _planStageTo(2);
+      return extendGoalWithWindow(g, cat: cat, tasks: tasks);
+    } catch (e) {
+      throw _asPlanFailure(e);
+    }
   }
 
   /// 拆解失败的**唯一出口**：不落库、不改目标，把原因直接摆到屏幕上。
@@ -1466,7 +1510,7 @@ class _AppShellState extends State<AppShell>
                           controller: _ask,
                           probe: switch (_planJob?.kind) {
                             _PlanJobKind.interview => '先让我读懂这句。……[别催]。',
-                            _PlanJobKind.bind => '答案收到。我在排[三天]——别走开。',
+                            _PlanJobKind.bind => '答案收到。我在排[第一段]——别走开。',
                             _ =>
                               _interviewCat != null
                                   // A8（docs/50）：别和大标题说同一句
@@ -1705,7 +1749,9 @@ class _AppShellState extends State<AppShell>
                       paceMs: _paceMs, // 同一档位喂聊天气泡的打字机
                     ),
                     // 收官结算在等下一份计划：超过 400ms 才挂，普通结算不闪
-                    if (_settleShown && _planJob?.kind == _PlanJobKind.settle)
+                    if (_settleShown &&
+                        (_planJob?.kind == _PlanJobKind.settle ||
+                            _planJob?.kind == _PlanJobKind.window))
                       Positioned.fill(
                         child: ColoredBox(
                           key: const Key('ref.settleLoading'),
@@ -1720,6 +1766,7 @@ class _AppShellState extends State<AppShell>
                                 base: 0,
                                 child: _planLoadingFor(const <_PlanJobKind>{
                                   _PlanJobKind.settle,
+                                  _PlanJobKind.window,
                                 }, accent: Ref.mint)!,
                               ),
                             ),
@@ -1952,11 +1999,11 @@ class _AppShellState extends State<AppShell>
     return '${_host.name} · LV${_host.lv} · 连击 ${_host.streak}（最好 ${_host.bestStreak}）· '
         '◈${_host.coins} · 完成 ${_host.doneCount} · 战败 ${_host.failCount} · '
         '最弱维 ${_host.weakest.key}${_host.weakest.value}\n'
-        '现主线：${g.text.isEmpty ? '（无）' : '「${g.text}」完成 ${g.doneCount}/${g.plan.length} 单'}';
+        '现主线：${g.text.isEmpty ? '（无）' : '「${g.text}」完成 ${g.doneCount}/${g.totalTasks} 单'}';
   }
 
   /// 绑定 · 第 1 幕收卷（原型 `Store.bind(name, plan)` 的新政版）：
-  /// 访谈答案 → 3 天 3 张 E/D/C 落档 → 队列 = 计划前几张 + 当日日常 1~2
+  /// 访谈答案 → 第一段（≤ kPlanWindowSize 张 E/D/C）落档 → 队列 = 计划前几张 + 当日日常 1~2
   /// → 见面礼双倍卡 ×1 → 大厅（首单已在队列）。
   void _completeOnboarding(Map<String, String> answers) {
     unawaited(_bindWithPlan(answers));
@@ -2019,7 +2066,10 @@ class _AppShellState extends State<AppShell>
             _interviewCat = null;
             _moment = Moment.lobby;
           });
-          _sayAside('排好了。三天，一天一张。', holdMs: 2200);
+          _sayAside(
+            '排好了。先排 ${_goal.plan.length} 张，一天一张；做完我再往下拆。',
+            holdMs: 2200,
+          );
           _toast('${kBindGiftKicker}：${kBindGiftText}');
         }),
       );
@@ -2420,6 +2470,16 @@ class _AppShellState extends State<AppShell>
   Timer? _settleSlow;
   bool _settleShown = false;
 
+  /// 这一单交掉就会把当前窗口走完（滚动生成）→ 结算里要续拆下一段。
+  /// 只决定加载卡写「拆下一段」还是「收官」，真正的判定在 `QuestFlow.settle`。
+  bool get _settleWillExtend {
+    final Quest? t = _flow.active?.task;
+    final Goal g = _flow.goal;
+    if (t == null || t.kind != 'main' || t.goalId != g.id) return false;
+    if (!g.hasMoreWindows) return false;
+    return g.plan.every((PlanTask p) => p.done || p.index == t.planIndex);
+  }
+
   Future<void> _submitQuest() async {
     if (_busy || _settling) return; // 原型 `App.submit()` → `run()`
     // 参考稿 JS L1469-1471：**没有证据她不收**。原来这里直接进结算，
@@ -2432,7 +2492,10 @@ class _AppShellState extends State<AppShell>
       return;
     }
     _settling = true;
-    final _PlanJob job = _PlanJob(_PlanJobKind.settle, _goal.text);
+    final _PlanJob job = _PlanJob(
+      _settleWillExtend ? _PlanJobKind.window : _PlanJobKind.settle,
+      _goal.text,
+    );
     _planJob ??= job; // 收官拆解的分步进度要从第一拍就记上（显示另由 _settleShown 管）
     _settleSlow?.cancel();
     _settleSlow = Timer(const Duration(milliseconds: 400), () {
@@ -2520,6 +2583,15 @@ class _AppShellState extends State<AppShell>
     final QuestResult r = _result;
     final int idx = r.planClear;
     if (r.finale) _onFinale(r);
+    if (r.windowNext) {
+      // 新拆出来的那一段全是没做的；旧的几段都已经做完
+      final int fresh = _goal.plan.where((PlanTask t) => t.open).length;
+      _sayAside(
+        '这一段走完了。下一段 [[$fresh 单]] 已经接上——'
+        '${_goal.doneCount}/${_goal.totalTasks}，路还长。',
+        holdMs: 3000,
+      );
+    }
     setState(() {
       _levelUpFrom = null;
       _levelUpTo = null;
@@ -3596,6 +3668,9 @@ enum _PlanJobKind {
 
   /// 收官结算：拆下一条主线
   settle,
+
+  /// 结算时当前窗口走完：续拆同一条主线的下一段（滚动生成）
+  window,
 }
 
 /// 一次拆解等待：加载卡的数据源 + 防连点闸门
@@ -3615,6 +3690,11 @@ class _PlanJob {
 
   List<String> get steps => switch (kind) {
     _PlanJobKind.interview => const <String>['读懂你的目标', '挑出访谈卡'],
+    _PlanJobKind.window => <String>[
+      '读档：前面做到了哪里',
+      segTotal > 1 ? '拆下一段任务 · $segDone/$segTotal 份并行' : '拆下一段任务',
+      '规则校验',
+    ],
     _ => <String>[
       '匹配类别与期限',
       segTotal > 1 ? '拆解任务清单 · $segDone/$segTotal 段并行' : '拆解任务清单',
@@ -3624,9 +3704,10 @@ class _PlanJob {
 
   String get title => switch (kind) {
     _PlanJobKind.interview => 'SYSTEM 正在读你的目标',
-    _PlanJobKind.bind => 'SYSTEM 正在排你的三天',
+    _PlanJobKind.bind => 'SYSTEM 正在排你的第一段',
     _PlanJobKind.swap => 'SYSTEM 正在拆新主线',
     _PlanJobKind.settle => '收官 · 正在拆下一条主线',
+    _PlanJobKind.window => '这一段走完了 · 正在拆下一段',
   };
 }
 

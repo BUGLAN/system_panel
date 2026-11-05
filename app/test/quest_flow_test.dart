@@ -1013,6 +1013,163 @@ void main() {
     });
   });
 
+  group('滚动生成（docs/50 C1：一次只拆一个窗口，做完续拆）', () {
+    /// 按窗口规则造一段合规任务（模拟模型交上来的那一段）
+    List<TaskSpec> windowTasks(PlanWindow w) => <TaskSpec>[
+      for (int i = 0; i < w.size; i++)
+        TaskSpec(
+          short: '第${w.from + i}天',
+          title: '第 ${w.from + i} 天：少吃一口',
+          proof: '体重秤截图',
+          minutes: 20,
+          rank: w.last && i == w.size - 1 ? 'S' : w.lo,
+        ),
+    ];
+
+    Goal halfYear() {
+      final PlanWindow w = planWindowFor(total: planTaskCountFor(180));
+      return buildGoalFromPlan(
+        text: '半年减重 10 斤',
+        short: '减重',
+        cat: goalCats['slim']!,
+        days: 180,
+        tasks: windowTasks(w),
+        at: DateTime(2030, 6, 1),
+      );
+    }
+
+    /// 把手上这一单主线接了并交掉
+    Future<QuestResult> clearMain(QuestFlow f, int i, {int day = 0}) async {
+      final Quest q = f.queue.firstWhere(
+        (Quest x) => x.kind == 'main' && x.planIndex == i,
+      );
+      f.accept(q, now: DateTime(2030, 6, 1 + day, 10));
+      return f.settle(
+        now: DateTime(2030, 6, 1 + day, 10, 30),
+        forceCrit: false,
+      );
+    }
+
+    test('180 天目标只拆 14 张、做完续拆下一段（同一条主线，进度分母 180）', () async {
+      final Goal g = halfYear();
+      expect(g.plan.length, kPlanWindowSize);
+      expect(g.totalTasks, 180);
+      expect(g.days, 180);
+      expect(g.hasMoreWindows, isTrue);
+      expect(
+        g.plan.any((PlanTask t) => t.finalTask),
+        isFalse,
+        reason: '兑现单在最后一段',
+      );
+
+      final QuestFlow f = freshFlow(goal: g);
+      f.newGoal(g);
+      expect(f.head?.planTotal, 180, reason: '单子上的分母是整条主线');
+      int calls = 0;
+      f.nextGoalHook = (Goal prev, int c, int t, int l) async =>
+          throw StateError('还没到收官，不该铸新主线');
+      f.nextWindowHook = (Goal cur) async {
+        calls++;
+        // 续拆时进度摘要里有「第几段之前做到了哪里」
+        expect(planProgressDigest(cur), contains('完成 14 张'));
+        return extendGoalWithWindow(
+          cur,
+          cat: goalCats['slim']!,
+          tasks: windowTasks(nextPlanWindow(cur)),
+        );
+      };
+      for (int i = 0; i < kPlanWindowSize; i++) {
+        final QuestResult r = await clearMain(f, i, day: i);
+        expect(r.finale, isFalse, reason: '第 $i 张');
+        expect(r.windowNext, i == kPlanWindowSize - 1, reason: '第 $i 张');
+        expect(r.empty, isFalse);
+      }
+      expect(calls, 1, reason: '窗口走完才续拆，且只拆一次');
+      expect(f.goal.id, g.id, reason: '续拆不换目标身份');
+      expect(f.goal.plan.length, kPlanWindowSize * 2);
+      expect(f.goal.plan[kPlanWindowSize].index, kPlanWindowSize);
+      expect(f.goal.firstOpenIndex, kPlanWindowSize);
+      final List<Quest> mains = f.queue
+          .where((Quest q) => q.kind == 'main')
+          .toList();
+      expect(mains.map((Quest q) => q.planIndex).toList(), <int>[14, 15, 16]);
+    });
+
+    test('最后一段收 S 兑现单 → 收官（finale），中间不会误判', () async {
+      // 30 天：14 + 14 + 2
+      final PlanWindow w0 = planWindowFor(total: 30);
+      Goal g = buildGoalFromPlan(
+        text: '一个月早睡',
+        short: '早睡',
+        cat: goalCats['sleep']!,
+        days: 30,
+        tasks: windowTasks(w0),
+        at: DateTime(2030, 7, 1),
+      );
+      while (g.hasMoreWindows) {
+        final PlanWindow w = nextPlanWindow(g);
+        g = extendGoalWithWindow(
+          g,
+          cat: goalCats['sleep']!,
+          tasks: windowTasks(w),
+        );
+      }
+      expect(g.plan.length, 30);
+      expect(g.plan.last.finalTask, isTrue);
+      expect(g.plan.last.rank, 'S');
+      expect(g.plan.where((PlanTask t) => t.finalTask).length, 1);
+      expect(
+        () => extendGoalWithWindow(
+          g,
+          cat: goalCats['sleep']!,
+          tasks: const <TaskSpec>[],
+        ),
+        throwsStateError,
+      );
+    });
+
+    test('续拆失败原样抛；读档时 applyFinaleOutcome 补拆', () async {
+      final Goal g = halfYear();
+      final QuestFlow f = freshFlow(goal: g);
+      f.newGoal(g);
+      f.nextWindowHook = (Goal cur) async => throw StateError('拆不动');
+      for (int i = 0; i < kPlanWindowSize - 1; i++) {
+        await clearMain(f, i, day: i);
+      }
+      await expectLater(clearMain(f, kPlanWindowSize - 1), throwsStateError);
+      expect(f.goal.windowExhausted, isTrue);
+      expect(f.queue.where((Quest q) => q.kind == 'main'), isEmpty);
+
+      // 重启后接上能用的钩子 → 补拆下一段并补发到手上
+      f.nextWindowHook = (Goal cur) async => extendGoalWithWindow(
+        cur,
+        cat: goalCats['slim']!,
+        tasks: windowTasks(nextPlanWindow(cur)),
+      );
+      expect(await f.applyFinaleOutcome(), isTrue);
+      expect(f.goal.plan.length, kPlanWindowSize * 2);
+      expect(f.head?.planIndex, kPlanWindowSize);
+    });
+
+    test('老存档（一次拆满、没有 planTotal）原样保留：不续拆、进度分母 = 清单长度', () {
+      final Goal old = fakeGoal('半年减重 10 斤', days: 180);
+      final Goal back = Goal.fromJson(old.toJson(), fallback: Goal.empty());
+      expect(back.planTotal, 0);
+      expect(back.totalTasks, 180);
+      expect(back.hasMoreWindows, isFalse);
+      expect(back.plan.length, 180);
+    });
+
+    test('planTotal / quota 随存档往返', () {
+      final Goal g = halfYear();
+      final Goal back = Goal.fromJson(g.toJson(), fallback: Goal.empty());
+      expect(back.planTotal, 180);
+      expect(back.totalTasks, 180);
+      expect(back.plan.length, kPlanWindowSize);
+      expect(back.hasMoreWindows, isTrue);
+    });
+  });
+
   group('认输与补救（失败页不再是死局）', () {
     test('fail：failCount 记账、主线回队首、生成补救单（降两档/做一半/24h）', () {
       final QuestFlow f = QuestFlow.demo();
