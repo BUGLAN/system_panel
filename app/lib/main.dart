@@ -1294,6 +1294,11 @@ class _AppShellState extends State<AppShell>
                           onCoreTap: _poke,
                           onActivePill: _resumeExec,
                           onOrb: _enterLobbyCta,
+                          // C5：没主线、记着没拆成的目标 → 主线卡位换成「重试拆解」
+                          pendingGoal: _flow.canRetryPlan
+                              ? _flow.pendingGoal
+                              : '',
+                          onRetryPlan: () => unawaited(_retryPlan()),
                           onSide: (int i) {
                             if (i == 0) {
                               _go(
@@ -1609,6 +1614,11 @@ class _AppShellState extends State<AppShell>
                             }),
                           ),
                           onSwapGoal: _beginGoalChange,
+                          // C5：无清单空态的主按钮 → 「重试拆解」
+                          pendingGoal: _flow.canRetryPlan
+                              ? _flow.pendingGoal
+                              : '',
+                          onRetryPlan: () => unawaited(_retryPlan()),
                         ),
                       ),
                     // v3 换目标（重写）：独立场景，斜切转场进出。
@@ -1730,6 +1740,28 @@ class _AppShellState extends State<AppShell>
                                 child: _planLoadingFor(const <_PlanJobKind>{
                                   _PlanJobKind.settle,
                                 }, accent: Ref.mint)!,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    // C5：「重试拆解」在等 LLM —— 整屏加载卡（也挡住期间的其它点按）
+                    if (_planJob?.kind == _PlanJobKind.retry)
+                      Positioned.fill(
+                        child: ColoredBox(
+                          key: const Key('ref.retryLoading'),
+                          color: Ref.a(Ref.bg, .82),
+                          child: Center(
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: Ref.gutter,
+                              ),
+                              child: RefReveal(
+                                index: 0,
+                                base: 0,
+                                child: _planLoadingFor(const <_PlanJobKind>{
+                                  _PlanJobKind.retry,
+                                })!,
                               ),
                             ),
                           ),
@@ -2107,7 +2139,8 @@ class _AppShellState extends State<AppShell>
     final DateTime t0 = now ?? DateTime.now();
     final DateTime? anchor = _lastRollDay ?? fromSeen;
     if (anchor != null && isSameCalendarDay(anchor, t0)) return;
-    if (_goal.isEmpty) {
+    // C5（docs/50）：跳过拆解、记着目标的宿主也照发日常（主线拆成之前不至于空着）
+    if (_goal.isEmpty && !_flow.canRetryPlan) {
       _lastRollDay = startOfDay(t0); // 没绑定就没日常可补
       return;
     }
@@ -2790,9 +2823,14 @@ class _AppShellState extends State<AppShell>
     if (_busy) return;
     if (_flow.queueEmpty) {
       // A2（docs/50）：没目标 ≠ 清干净了
+      // C5（docs/50）：记着一句没拆成的目标 → 指给他「重试拆解」，别让他再立一遍
       _sayAside(
-        _goal.isEmpty ? '还没有目标，哪来的单。先去主线立一个。' : '今天的单，清干净了。明天再来。',
-        holdMs: 2200,
+        _flow.canRetryPlan
+            ? '日常清完了。主线还空着——点「重试拆解」，「${_clip(_flow.pendingGoal, 14)}」我再拆一次。'
+            : _goal.isEmpty
+            ? '还没有目标，哪来的单。先去主线立一个。'
+            : '今天的单，清干净了。明天再来。',
+        holdMs: _flow.canRetryPlan ? 2800 : 2200,
       );
       return;
     }
@@ -3376,39 +3414,97 @@ class _AppShellState extends State<AppShell>
         .replaceAll('[OK]', '✓');
   }
 
-  /// 「暂时跳过，先用模板」—— 引导态没配 Key 时的唯一出口。
+  /// 「暂时跳过」—— 拆解失败（没配 Key / 上游不可用）时的出口。
   ///
-  /// 语义不是「假装拆解成功」：目标老老实实留空，人先进大厅。这样
-  ///   · 大厅会显示「还没有目标」，不骗人；
-  ///   · 长按 HUD 菜单键就能补 LLM 设置（大厅有 HUD）；
-  ///   · 配好 Key 后点委托球/立目标，正常走 Agent 拆解。
+  /// 语义不是「假装拆解成功」：主线老老实实留空，人先进大厅。
+  /// C5（docs/50 · 2026-11-05 定案）在此之上补三件事：
+  ///   · 输入过的目标**记进存档**（`QuestFlow.pendingGoal`，杀进程后还在）；
+  ///   · 大厅 / 主线页的主按钮变成「重试拆解」（[_retryPlan]，同一句目标重走拆解）；
+  ///   · **先发当天的日常单**，新用户第一天有事可做。
   ///
   /// ⚠️ 为什么不做「类别模板兜底」：`goal_gen.dart:13` 写明目标拆解只有
   ///    LLM 一条路，旧的模板兜底是刻意删掉的（首目标 100% 走模板的坑）。
-  ///    这里不把它请回来。
-  /// 绑定仪式里的「稍后再立」：**不伪造计划**（拆解没有模板兜底），
-  /// 只是先放宿主进大厅看看；目标仍是空的，下次唤醒会回到绑定仪式。
+  ///    这里不把它请回来 —— 日常池是产品内容，不是拆解兜底。
   void _skipLlmAndStart() {
+    // 失败可能在访谈前（匹配类别）或访谈后（拆解）：前者还没收进 _pendingGoalText
+    final String keep =
+        (_pendingGoalText.isNotEmpty ? _pendingGoalText : _ask.text).trim();
     // A1（docs/50）：按失败类型说话 —— 503 是上游，不是宿主没配 Key
     final String line = switch (_planError?.code) {
-      PlanFailureCode.noKey => '先这样。等你把脑子（Key）配好，再谈拆解。',
+      PlanFailureCode.noKey => '先这样。目标我记着，日常先做着——等你把脑子（Key）配好，点「重试拆解」。',
       PlanFailureCode.network ||
       PlanFailureCode.timeout ||
-      PlanFailureCode.httpError => '线路那头卡住了，不是你的错。先进来，回头在主线页立目标。',
-      _ => '这次没拆明白。先进来，回头在主线页再立一次目标。',
+      PlanFailureCode.httpError => '线路那头卡住了，不是你的错。目标我记着，先把今天的日常做了。',
+      _ => '这次没拆明白。目标我记着，日常先给你——回头点「重试拆解」。',
     };
     unawaited(
       _go('home', () {
+        // 重置存档后存储是冻结的（见 [_bindWithPlan]）：这次要真落盘
+        _save.unfreeze();
         setState(() {
           _planError = null;
           _planJob = null;
           _interviewCat = null;
           _pendingGoalText = '';
+          _flow.skipPlan(keep, dailies: _genTodaysDailies());
+          _resyncQueueCount();
+          _lastRollDay = startOfDay(DateTime.now()); // 今天的日常已发，同日不重发
           _moment = Moment.lobby;
         });
-        _sayAside(line, holdMs: 2800);
+        _persist();
+        _sayAside(line, holdMs: 3200);
       }),
     );
+  }
+
+  /// C5（docs/50）：大厅 / 主线页「重试拆解」—— 用跳过时记下的那句目标，
+  /// 重走首目标拆解（与绑定收卷同一条 [_buildGoalWithAgent]，首目标三天）。
+  ///
+  /// [_planJob] 就是防连点闸门；等待期间整屏挂 [RefPlanLoading]。
+  /// 成功 → `QuestFlow.newGoal` 落库（顺手清掉记着的目标）+ 见面礼；
+  /// 失败 → 走 [_failPlan] 摆原因，记着的目标**原样保留**，下次还能点。
+  Future<void> _retryPlan() async {
+    if (_busy || _planJob != null || !_flow.canRetryPlan) return;
+    final String text = _flow.pendingGoal;
+    final Goal prev = _flow.goal;
+    final _PlanJob job = _PlanJob(_PlanJobKind.retry, text);
+    setState(() {
+      _planError = null;
+      _planJob = job;
+    });
+    unawaited(Sfx.cue('ui.open'));
+    try {
+      final Goal next = await _buildGoalWithAgent(
+        text: text,
+        at: DateTime.now(),
+        firstGoal: true,
+      );
+      // 等待期间重置了存档 / 换了目标 —— 对不上就整件事作废
+      if (!mounted ||
+          !identical(_planJob, job) ||
+          !identical(_flow.goal, prev)) {
+        return;
+      }
+      _flow.newGoal(next); // 主线钉队首，记着的目标清空
+      // 见面礼：跳过拆解的宿主绑定时没拿到，这一刻补上（同 [_bindWithPlan]）
+      _flow.host = _flow.host.copyWith(items: applyBindGift(_flow.host.items));
+      setState(() {
+        _planJob = null;
+        _resyncQueueCount();
+        _host = _flow.host;
+        _goal = _flow.goal;
+        _pickedTask = null;
+      });
+      _persist();
+      unawaited(Sfx.play('unlock'));
+      _sayAside('拆好了。「${_clip(text, 14)}」，三天，一天一张——这回别让我白等。', holdMs: 3000);
+      _toast('$kBindGiftKicker：$kBindGiftText');
+    } catch (e) {
+      if (!mounted || !identical(_planJob, job)) return;
+      setState(() => _planJob = null);
+      unawaited(Sfx.play('error'));
+      _failPlan(_asPlanFailure(e), goalText: text);
+    }
   }
 
   /// 重置存档的确认弹窗（参考稿 #modal L476-480：340 宽 / r22 / 两键 52）。
@@ -3533,7 +3629,8 @@ class _AppShellState extends State<AppShell>
     // 这里对应地再补一拍青蓝过渡，盖住「开机屏 → 大厅」的换页。
     _pulse(color: const Color(0xFF9FF0FF), a: .14, ms: 320, shakePx: 0);
 
-    if (_goal.isEmpty && !_resumedExec) {
+    // C5（docs/50）：跳过过拆解、记着目标的宿主不回绑定仪式 —— 进大厅点「重试拆解」
+    if (_goal.isEmpty && !_resumedExec && !_flow.canRetryPlan) {
       setState(() => _moment = Moment.onboard);
       return; // 绑定仪式的问话走 LineLayer（askGoal），不叠离开问候
     }
@@ -3569,7 +3666,12 @@ class _AppShellState extends State<AppShell>
     // 老档没有队列 → QuestFlow 按现状补种子（合并式迁移，不清档）
     final bool seeded = d.queue.isEmpty;
     setState(() {
-      _flow = QuestFlow.fromSave(host: d.host, goal: d.goal, queue: d.queue);
+      _flow = QuestFlow.fromSave(
+        host: d.host,
+        goal: d.goal,
+        queue: d.queue,
+        pendingGoal: d.pendingGoal, // C5：跳过时记下的目标随档恢复
+      );
       _wireFlow(_flow);
       // t16/B3：执行中单据随档恢复（任务/计时起点/道具标记/证据）——
       // 杀进程重启后回到执行页，计时按 startAt 推导不归零
@@ -3617,6 +3719,7 @@ class _AppShellState extends State<AppShell>
         goal: _goal,
         queue: _flow.queue,
         activeJson: _flow.activeToSaveJson(),
+        pendingGoal: _flow.pendingGoal,
       ),
     );
     final String? raw = await _save.rawRead();
@@ -3671,6 +3774,9 @@ enum _PlanJobKind {
 
   /// 收官结算：拆下一条主线
   settle,
+
+  /// C5：跳过拆解后，大厅 / 主线页「重试拆解」
+  retry,
 }
 
 /// 一次拆解等待：加载卡的数据源 + 防连点闸门
@@ -3702,6 +3808,7 @@ class _PlanJob {
     _PlanJobKind.bind => 'SYSTEM 正在排你的三天',
     _PlanJobKind.swap => 'SYSTEM 正在拆新主线',
     _PlanJobKind.settle => '收官 · 正在拆下一条主线',
+    _PlanJobKind.retry => 'SYSTEM 正在重拆你的目标',
   };
 }
 

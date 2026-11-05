@@ -48,6 +48,8 @@ class RefMain extends StatefulWidget {
     this.onTake,
     this.onDispatch,
     this.onSwapGoal,
+    this.pendingGoal = '',
+    this.onRetryPlan,
   });
 
   final Goal goal;
@@ -75,6 +77,14 @@ class RefMain extends StatefulWidget {
   final ValueChanged<int>? onTake;
   final VoidCallback? onDispatch;
   final VoidCallback? onSwapGoal;
+
+  /// C5（docs/50）：拆解失败「暂时跳过」时记下的目标（空串 = 没有）。
+  /// 无清单且有它 → 空态说明它，主按钮「去委托板」换成「重试拆解」。
+  final String pendingGoal;
+  final VoidCallback? onRetryPlan;
+
+  /// 无清单、记着一句没拆成的目标
+  bool get canRetry => goal.plan.isEmpty && pendingGoal.isNotEmpty;
 
   @override
   State<RefMain> createState() => _RefMainState();
@@ -527,7 +537,10 @@ class _RefMainState extends State<RefMain>
     if (_total == 0) {
       return Center(
         child: Text(
-          '还没有清单。先去立一个目标。',
+          widget.canRetry
+              ? '「${widget.pendingGoal}」上次没拆成。\n目标我记着，点下面重试。'
+              : '还没有清单。先去立一个目标。',
+          textAlign: TextAlign.center,
           style: refText(size: 14, wght: 500, height: 1.8, color: Ref.dim),
         ),
       );
@@ -814,12 +827,20 @@ class _RefMainState extends State<RefMain>
     return Row(
       children: <Widget>[
         Expanded(
-          child: RefButton(
-            key: const Key('ref.main.toBoard'),
-            label: '去委托板',
-            trailingTriangle: true,
-            onTap: widget.onDispatch,
-          ),
+          child: widget.canRetry
+              // C5：无清单空态的主按钮（按下声由 RefButton 自带）
+              ? RefButton(
+                  key: const Key('ref.main.retryPlan'),
+                  label: '重试拆解',
+                  trailingTriangle: true,
+                  onTap: widget.onRetryPlan,
+                )
+              : RefButton(
+                  key: const Key('ref.main.toBoard'),
+                  label: '去委托板',
+                  trailingTriangle: true,
+                  onTap: widget.onDispatch,
+                ),
         ),
         const SizedBox(width: 12),
         RefButton(
