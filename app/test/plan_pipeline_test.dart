@@ -115,6 +115,60 @@ void main() {
     expect(g.plan.last.rank, 'S');
   });
 
+  test('E2E: 三个月学会弹吉他 → skill（练技能），访谈出练习向题目', () async {
+    const String goal = '三个月学会弹吉他';
+    final List<String> bodies = <String>[];
+    final http.Client httpClient = MockClient((http.Request req) async {
+      bodies.add(req.body);
+      return http.Response(
+        _wrap(
+          'set_goal_category',
+          '{"id":"skill","short":"吉他","days":90,"quota":0}',
+        ),
+        200,
+        headers: <String, String>{'content-type': 'application/json'},
+      );
+    });
+    final GoalMatchDraft md = GoalMatchDraft();
+    final StrictAgentToolRegistry mt = StrictAgentToolRegistry();
+    mt.register(setGoalCategoryTool(goalText: goal, draft: md));
+    final GoalMatch m = await GoalMatchAgent(
+      client: LlmClient(
+        config: const LlmConfig(apiKey: 'sk-test'),
+        httpClient: httpClient,
+      ),
+    ).match(goalText: goal, tools: mt, draft: md);
+    expect(m.cat.id, 'skill');
+    expect(m.days, 90);
+
+    // 发给模型的类别 schema：enum 里有 skill，说明里点名吉他/画画归 skill
+    expect(bodies, isNotEmpty);
+    final String body = bodies.first;
+    expect(body, contains('"skill"'));
+    for (final String kw in <String>[
+      '吉他',
+      '钢琴',
+      '尤克里里',
+      '画画',
+      '素描',
+      '舞蹈',
+      '书法',
+    ]) {
+      expect(body, contains(kw), reason: '类别说明缺关键词：$kw');
+    }
+
+    // 访谈卡按「练」来问，不再是 make 的「创作 / 有作品」
+    final List<InterviewCard> cards = interviewCardsFor(m.cat);
+    expect(cards.map((InterviewCard c) => c.question), <String>[
+      '现在什么水平？',
+      '一周能练几次？',
+      '想先练会什么？',
+    ]);
+    for (final InterviewCard c in cards) {
+      expect(c.options.join(), isNot(contains('作品')), reason: c.id);
+    }
+  });
+
   test('E2E: 目标 10 次，模型交 14 张（按天数算的旧口径）→ 直接抛，不截断', () async {
     const String goal = '两周内骑自行车10次';
     final http.Client httpClient = MockClient((http.Request req) async {

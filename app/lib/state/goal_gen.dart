@@ -94,7 +94,7 @@ class DailyTemplate {
   final String rank;
 }
 
-/// 目标类型（原型 `CATS` 十类）。
+/// 目标类型（原型 `CATS` 十类 + 2026-11-05 新增「练技能」skill）。
 class GoalCategory {
   const GoalCategory({
     required this.id,
@@ -606,6 +606,90 @@ final GoalCategory _catSleep = GoalCategory(
   ],
 );
 
+/// 练技能（2026-11-05 定案 C2）：乐器 / 绘画 / 舞蹈 / 书法 / 摄影这类
+/// 靠反复练习学会的手艺。原来被归进 make，学吉他会被问「一周能创作几次」。
+/// 六维倾向：灵巧（敏）为主、智识（智）为辅。
+final GoalCategory _catSkill = GoalCategory(
+  id: 'skill',
+  label: '练技能',
+  tilt: const <String, int>{'敏': 2, '智': 1},
+  cards: const <InterviewCard>[
+    InterviewCard(
+      id: 'skill.level',
+      question: '现在什么水平？',
+      options: <String>['零基础', '学过一点又放下了', '能独立练完一段'],
+    ),
+    InterviewCard(
+      id: 'skill.freq',
+      question: '一周能练几次？',
+      options: <String>['1~2 次', '3~4 次', '几乎每天'],
+    ),
+    InterviewCard(
+      id: 'skill.first',
+      question: '想先练会什么？',
+      options: <String>['把基本功练扎实', '完整练会一首 / 一段', '能当众露一手'],
+    ),
+  ],
+  daily: const <DailyTemplate>[
+    DailyTemplate(
+      title: '基本功慢练 15 分钟，宁慢别错',
+      proof: '练习照片或录像截图',
+      minutes: 18,
+      attrs: <String, int>{'敏': 1, '智': 1},
+      rank: 'E',
+    ),
+    DailyTemplate(
+      title: '开练前热身 5 分钟，手指手腕先活动开',
+      proof: '照片',
+      minutes: 8,
+      attrs: <String, int>{'敏': 1},
+      rank: 'F',
+    ),
+    DailyTemplate(
+      title: '录 1 分钟练习，回放挑出一个毛病',
+      proof: '录音或录像截图',
+      minutes: 15,
+      attrs: <String, int>{'智': 1, '敏': 1},
+      rank: 'F',
+    ),
+    DailyTemplate(
+      title: '只练最卡的那一小段，重复 10 遍',
+      proof: '计数截图',
+      minutes: 20,
+      attrs: <String, int>{'敏': 2},
+      rank: 'E',
+    ),
+    DailyTemplate(
+      title: '跟一节教学视频练完，别只看不动手',
+      proof: '视频进度截图',
+      minutes: 25,
+      attrs: <String, int>{'智': 1, '敏': 1},
+      rank: 'E',
+    ),
+    DailyTemplate(
+      title: '不看谱不看参考，把昨天练的再来一遍',
+      proof: '录像截图或成品照片',
+      minutes: 15,
+      attrs: <String, int>{'智': 1, '敏': 1},
+      rank: 'F',
+    ),
+    DailyTemplate(
+      title: '专心练 25 分钟不碰手机，练完记一句收获',
+      proof: '计时截图',
+      minutes: 30,
+      attrs: <String, int>{'敏': 1, '知': 1},
+      rank: 'D',
+    ),
+    DailyTemplate(
+      title: '挑一首 / 一幅你想学会的，拆出第一步',
+      proof: '笔记照片',
+      minutes: 10,
+      attrs: <String, int>{'智': 1, '知': 1},
+      rank: 'F',
+    ),
+  ],
+);
+
 final GoalCategory _catMake = GoalCategory(
   id: 'make',
   label: '作品',
@@ -938,6 +1022,7 @@ final List<GoalCategory> kGoalCatOrder = <GoalCategory>[
   _catLang,
   _catExam,
   _catSleep,
+  _catSkill,
   _catMake,
   _catCode,
   _catBold,
