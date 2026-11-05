@@ -57,15 +57,29 @@ class ActiveQuest {
   /// 已交证据份数（旧口径：结算页/战报还读这个数）
   int get photos => evidence.length;
 
-  /// 已校验份数（LLM 判真）；存疑与未校验一律按未校验计（exec_panel 同口径）
-  int get verifiedCount => evidence
-      .where(
-        (vision.EvidenceShot s) => s.status == vision.EvidenceStatus.verified,
-      )
-      .length;
+  int _count(vision.EvidenceStatus st) =>
+      evidence.where((vision.EvidenceShot s) => s.status == st).length;
 
-  /// 未校验份数 = 总数 - 已校验
-  int get unverifiedCount => evidence.length - verifiedCount;
+  /// 已校验份数（LLM 判真，暴击 7%/张）
+  int get verifiedCount => _count(vision.EvidenceStatus.verified);
+
+  /// 拿不准份数（LLM unsure，照收，暴击按未校验 4%/张计）
+  int get unsureCount => _count(vision.EvidenceStatus.unsure);
+
+  /// 没校验成的份数（无 Key/断网/超时/校验还在途，照收，4%/张）
+  int get unverifiedCount => _count(vision.EvidenceStatus.unverified);
+}
+
+/// 后台校验结论落到槽上的结果（[QuestFlow.applyVerdict]）
+enum EvidenceApply {
+  /// 照收（已校验 / 拿不准 / 没校验成），状态已就地更新
+  kept,
+
+  /// 判定不符，已从槽里撤掉 —— 她要说明原因、要求重传
+  rejected,
+
+  /// 槽里已经没有这张（被宿主撤掉 / 那单已结算或认输），什么都没动
+  gone,
 }
 
 /// 认输 / 超时的产出（原型 `Store.fail()` 的返回值，T2 消费补救单与时长）
@@ -692,12 +706,13 @@ class QuestFlow {
   /// ⚠️ 演示档（streak 6、0 证据、无芯片）= .12 —— 与原写死值一致，实测不回归。
   ///
   /// [verified]/[unverified] 只给测试与预览用（缺省读执行中那单的真实证据）。
-  double critChance({int? verified, int? unverified}) {
+  double critChance({int? verified, int? unverified, int? unsure}) {
     final ActiveQuest? a = _active;
     if (a == null) return 0;
     return vision.critChance(
       verified: verified ?? a.verifiedCount,
       unverified: unverified ?? a.unverifiedCount,
+      unsure: unsure ?? a.unsureCount,
       streak: host.streak,
       critItem: a.crit,
     );
@@ -1173,12 +1188,31 @@ class QuestFlow {
 
   /// 挂证据：接到执行中那单上（拍照接线归 t4）。最多 [kMaxEvidence] 张
   /// （原型 flows.js `snap()` 拦在 3）；没接单/已满 → false。
+  /// C4 定案：判定「不符」的证据不入槽 → false。
   bool addEvidence(vision.EvidenceShot shot) {
     final ActiveQuest? a = _active;
     if (a == null) return false;
+    if (!shot.status.accepted) return false;
     if (a.evidence.length >= kMaxEvidence) return false;
     a.evidence.add(shot);
     return true;
+  }
+
+  /// C4 + C7：后台校验回来，按 [id] 找槽里那张证据落结论 ——
+  ///  · 不符 → 从槽里撤掉（[EvidenceApply.rejected]，调用方让她说明原因）；
+  ///  · 拿不准 / 已校验 / 没校验成 → 换上新状态照收（[EvidenceApply.kept]）；
+  ///  · 找不到（宿主已撤掉那张 / 那单已结算或认输）→ [EvidenceApply.gone]，什么都不动。
+  EvidenceApply applyVerdict(String id, vision.VisionVerdict v) {
+    final ActiveQuest? a = _active;
+    if (a == null) return EvidenceApply.gone;
+    final int i = a.evidence.indexWhere((vision.EvidenceShot s) => s.id == id);
+    if (i < 0) return EvidenceApply.gone;
+    if (!v.status.accepted) {
+      a.evidence.removeAt(i);
+      return EvidenceApply.rejected;
+    }
+    a.evidence[i] = a.evidence[i].withVerdict(v);
+    return EvidenceApply.kept;
   }
 
   /// 撤一张证据（执行页长按删除，按 [id] 找）。没找到/没接单 → false。

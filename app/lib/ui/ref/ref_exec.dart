@@ -23,6 +23,8 @@ class RefExec extends StatelessWidget {
     this.critChance = 0,
     this.evidenceThumbs = const <Widget>[],
     this.evidenceBusy = false,
+    this.evidenceChecking = const <bool>[],
+    this.submitWaiting = false,
     this.onAddEvidence,
     this.onDemoEvidence,
     this.onRemoveEvidence,
@@ -46,8 +48,15 @@ class RefExec extends StatelessWidget {
   /// 已上传的证据缩略图（0~3 张）
   final List<Widget> evidenceThumbs;
 
-  /// 正在取图 / 视觉校验（下一个空槽转圈、全部槽位不可点）
+  /// 正在取图（选好图 → 入槽之间那一下：下一个空槽转圈、全部槽位不可点）
   final bool evidenceBusy;
+
+  /// 按槽的「校验中」（与 [evidenceThumbs] 对齐；C7：图已入槽、校验在后台跑）。
+  /// 短于缩略图数的部分按「不在校验」算。
+  final List<bool> evidenceChecking;
+
+  /// 点了「提交任务」、正在等在途校验出结果（主键转圈不可点、槽位不可点）
+  final bool submitWaiting;
   final VoidCallback? onAddEvidence;
 
   /// 参考稿 .link『⚡ 用演示截图 ›』（L755 / JS L1440）：没相机时也能验证流程
@@ -324,16 +333,23 @@ class RefExec extends StatelessWidget {
   /// .evi（L289-303）
   Widget _evi() {
     final List<Widget> slots = <Widget>[];
+    final bool locked = evidenceBusy || submitWaiting;
     for (int i = 0; i < 3; i++) {
       final bool filled = i < evidenceThumbs.length;
       final bool pending = evidenceBusy && i == evidenceThumbs.length;
+      final bool checking =
+          filled && i < evidenceChecking.length && evidenceChecking[i];
       slots.add(
         Padding(
           padding: EdgeInsets.only(right: i == 2 ? 0 : 10),
           child: RefEvidenceSlot(
             key: Key('ref.exec.slot.$i'),
             size: 82,
-            image: filled ? evidenceThumbs[i] : null,
+            image: filled
+                ? (checking
+                      ? _checkingOverlay(i, evidenceThumbs[i])
+                      : evidenceThumbs[i])
+                : null,
             placeholder: pending
                 ? const RefSpinner(
                     key: Key('ref.exec.slot.pending'),
@@ -341,7 +357,7 @@ class RefExec extends StatelessWidget {
                     color: Ref.cyan,
                   )
                 : null,
-            onTap: evidenceBusy
+            onTap: locked
                 ? null
                 : filled
                 ? (onRemoveEvidence == null ? null : () => onRemoveEvidence!(i))
@@ -350,6 +366,10 @@ class RefExec extends StatelessWidget {
         ),
       );
     }
+    // 取图中 / 有槽在校验 / 交单在等校验 —— 说明文字都换成「她在看」
+    final bool looking =
+        locked ||
+        evidenceChecking.take(evidenceThumbs.length).any((bool c) => c);
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
@@ -398,7 +418,7 @@ class RefExec extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 children: <Widget>[
                   Text(
-                    evidenceBusy
+                    looking
                         ? '校验中……她在看。'
                         : evidenceThumbs.isEmpty
                         ? '上传照片或截图。没有证据，她不认账。'
@@ -408,7 +428,7 @@ class RefExec extends StatelessWidget {
                       size: 14,
                       wght: 500,
                       height: 1.5,
-                      color: evidenceBusy
+                      color: looking
                           ? Ref.cyan
                           : evidenceThumbs.isEmpty
                           ? Ref.txt
@@ -418,7 +438,7 @@ class RefExec extends StatelessWidget {
                   const SizedBox(height: 4),
                   if (evidenceThumbs.isEmpty &&
                       onDemoEvidence != null &&
-                      !evidenceBusy)
+                      !locked)
                     Padding(
                       padding: const EdgeInsets.only(bottom: 6),
                       child: GestureDetector(
@@ -485,6 +505,37 @@ class RefExec extends StatelessWidget {
     );
   }
 
+  /// C7：已入槽、后台还在校验的那张 —— 缩略图压暗 + 转圈 +「校验中」
+  Widget _checkingOverlay(int i, Widget thumb) {
+    return Stack(
+      fit: StackFit.expand,
+      children: <Widget>[
+        thumb,
+        DecoratedBox(
+          key: Key('ref.exec.slot.checking.$i'),
+          decoration: BoxDecoration(color: Ref.a(Ref.bg, .62)),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: <Widget>[
+              const RefSpinner(size: 20, color: Ref.cyan),
+              const SizedBox(height: 6),
+              Text(
+                '校验中',
+                style: refText(
+                  family: Ref.fc,
+                  size: 11,
+                  wght: 700,
+                  height: 1,
+                  color: Ref.cyan,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
   /// 动作区：actions（L235-236）第一排 + .ex-act .row2（L306）
   Widget _actions() {
     return Column(
@@ -525,9 +576,20 @@ class RefExec extends StatelessWidget {
             ),
             const SizedBox(width: 12),
             Expanded(
+              // C7：交单时还有证据在校验 → 主键转圈、不可点（防连点），等她看完
               child: RefButton(
                 key: const Key('ref.exec.submit'),
-                label: '提交任务', // A7（docs/50）：AGENTS 锁定用词
+                label: submitWaiting
+                    ? '她在验证据…'
+                    : '提交任务', // A7（docs/50）：AGENTS 锁定用词
+                leading: submitWaiting
+                    ? const RefSpinner(
+                        key: Key('ref.exec.submit.waiting'),
+                        size: 16,
+                        color: Ref.cyan,
+                      )
+                    : null,
+                enabled: !submitWaiting,
                 onTap: onSubmit,
               ),
             ),

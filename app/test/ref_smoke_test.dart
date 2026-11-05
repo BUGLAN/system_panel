@@ -130,6 +130,36 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
+  testWidgets('RefExec（C7）：按槽「校验中」+ 交单等校验时主键转圈不可点', (
+    WidgetTester tester,
+  ) async {
+    int submits = 0;
+    await mountAt(
+      tester,
+      const Size(390, 844),
+      RefExec(
+        quest: Quest.demo,
+        elapsed: const Duration(minutes: 3),
+        evidenceThumbs: const <Widget>[
+          ColoredBox(color: Colors.red),
+          ColoredBox(color: Colors.blue),
+        ],
+        evidenceChecking: const <bool>[false, true],
+        submitWaiting: true,
+        onSubmit: () => submits++,
+      ),
+    );
+    expect(tester.takeException(), isNull);
+    expect(find.byKey(const Key('ref.exec.slot.checking.0')), findsNothing);
+    expect(find.byKey(const Key('ref.exec.slot.checking.1')), findsOneWidget);
+    expect(find.text('校验中'), findsOneWidget);
+    expect(find.byKey(const Key('ref.exec.submit.waiting')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('ref.exec.submit')));
+    await tester.pump();
+    expect(submits, 0, reason: '等校验时防连点');
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets('LLM 设置：八项都在', (WidgetTester tester) async {
     await mountAt(
       tester,

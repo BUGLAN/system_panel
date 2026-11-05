@@ -62,6 +62,14 @@ void main() {
       expect(evidenceCritBonus(verified: 1, unverified: 2), closeTo(.15, 1e-9));
     });
 
+    test('拿不准（unsure）照收、按未校验 4%/张计', () {
+      expect(
+        evidenceCritBonus(verified: 1, unverified: 1, unsure: 1),
+        closeTo(.07 + .04 + .04, 1e-9),
+      );
+      expect(critChance(unsure: 2), closeTo(.06 + .08, 1e-9));
+    });
+
     test('critChance 完整公式（对照原型：base .06 + 连击 1%×min(10) + 芯片 .25）', () {
       expect(critChance(), closeTo(.06, 1e-9));
       expect(
@@ -99,22 +107,34 @@ void main() {
       final VisionVerdict r = v.parseVerdict(
         '好的，结论如下：\n```json\n{"match": false, "note": "看不出在跑步"}\n```\n以上。',
       );
-      expect(r.status, EvidenceStatus.suspect);
+      expect(r.status, EvidenceStatus.mismatch);
       expect(r.note, '看不出在跑步');
     });
 
-    test('unsure → 存疑', () {
+    test('unsure → 存疑（照收）', () {
       final VisionVerdict r = v.parseVerdict(
         '{"match": "unsure", "note": "太糊"}',
       );
-      expect(r.status, EvidenceStatus.suspect);
+      expect(r.status, EvidenceStatus.unsure);
+      expect(r.status.accepted, isTrue);
       expect(r.note, '太糊');
     });
 
-    test('false 且无 note → 存疑兜底文案', () {
-      final VisionVerdict r = v.parseVerdict('{"match": false}');
-      expect(r.status, EvidenceStatus.suspect);
+    test('unsure 且无 note → 存疑兜底文案', () {
+      final VisionVerdict r = v.parseVerdict('{"match": "unsure"}');
+      expect(r.status, EvidenceStatus.unsure);
       expect(r.note, '证据存疑');
+    });
+
+    test('false → 不符（C4：拒收），无 note 给兜底原因', () {
+      final VisionVerdict r = v.parseVerdict('{"match": false}');
+      expect(r.status, EvidenceStatus.mismatch);
+      expect(r.status.accepted, isFalse);
+      expect(r.note, '证据和任务对不上');
+      expect(
+        v.parseVerdict('{"match": "false", "note": "这是花"}').status,
+        EvidenceStatus.mismatch,
+      );
     });
 
     test('坏输出一律「未校验」：纯文本 / 数字 match / 空串', () {
@@ -357,7 +377,7 @@ void main() {
       id: 'q41-1',
       path: 'evidence/q41/1.jpg',
       absPath: 'Z:/docs/evidence/q41/1.jpg',
-      status: EvidenceStatus.suspect,
+      status: EvidenceStatus.unsure,
       note: '存疑一下',
       takenAt: DateTime.parse('2026-01-02T03:04:05'),
     );
@@ -366,9 +386,137 @@ void main() {
     final EvidenceShot back = EvidenceShot.fromJson(json);
     expect(back.id, shot.id);
     expect(back.path, shot.path);
-    expect(back.status, EvidenceStatus.suspect);
+    expect(back.status, EvidenceStatus.unsure);
     expect(back.note, shot.note);
     expect(back.takenAt, shot.takenAt);
+  });
+
+  test('老存档兼容：拆分前的 suspect → unsure（照收，暴击口径不变）', () {
+    final EvidenceShot back = EvidenceShot.fromJson(<String, dynamic>{
+      'id': 'q41-old',
+      'path': 'evidence/q41/old.jpg',
+      'status': 'suspect',
+      'note': '看不出在跑步',
+      'takenAt': '2026-01-02T03:04:05',
+    });
+    expect(back.status, EvidenceStatus.unsure);
+    expect(back.status.accepted, isTrue);
+    expect(back.note, '看不出在跑步');
+    // 认不出的名字 → 未校验（照收）
+    expect(
+      EvidenceShot.fromJson(<String, dynamic>{'status': '???'}).status,
+      EvidenceStatus.unverified,
+    );
+    expect(
+      EvidenceShot.fromJson(<String, dynamic>{'status': 'mismatch'}).status,
+      EvidenceStatus.mismatch,
+    );
+  });
+
+  group('C7 · 先入槽后校验（pick + verifyShot）', () {
+    XFile fakePick(
+      ImageSource s, {
+      double? maxWidth,
+      double? maxHeight,
+      int? imageQuality,
+    }) => XFile.fromData(utf8.encode('fake-jpeg'), name: 'a.jpg');
+
+    test('pick 不等 LLM：直接给一张「未校验」证据，一个请求都不发', () async {
+      int calls = 0;
+      final VisionService v = VisionService(
+        pickImage: (
+          ImageSource s, {
+          double? maxWidth,
+          double? maxHeight,
+          int? imageQuality,
+        }) async => fakePick(s),
+        docsPath: () async => '',
+        clientFactory: (LlmConfig c) => LlmClient(
+          config: c,
+          httpClient: MockClient((http.Request r) async {
+            calls++;
+            return http.Response('{}', 200);
+          }),
+        ),
+      );
+      bool picked = false;
+      final EvidenceShot? shot = await v.pick(
+        quest: quest,
+        onPicked: () => picked = true,
+      );
+      expect(picked, isTrue);
+      expect(shot, isNotNull);
+      expect(shot!.status, EvidenceStatus.unverified);
+      expect(shot.bytes, isNotNull);
+      expect(calls, 0);
+    });
+
+    test('verifyShot：match=false → mismatch（带原因）', () async {
+      final VisionService v = VisionService(
+        pickImage: (
+          ImageSource s, {
+          double? maxWidth,
+          double? maxHeight,
+          int? imageQuality,
+        }) async => fakePick(s),
+        docsPath: () async => '',
+        clientFactory: (LlmConfig c) =>
+            fakeLlm(c, content: '{"match": false, "note": "这是一束花，不是体重秤"}'),
+      );
+      final EvidenceShot shot = (await v.pick(quest: quest))!;
+      final VisionVerdict r = await v.verifyShot(
+        quest: quest,
+        shot: shot,
+        settings: const AgentSettings(apiKey: 'k'),
+      );
+      expect(r.status, EvidenceStatus.mismatch);
+      expect(r.note, '这是一束花，不是体重秤');
+      final EvidenceShot after = shot.withVerdict(r);
+      expect(after.id, shot.id); // 槽位按 id 找它
+      expect(after.status, EvidenceStatus.mismatch);
+    });
+
+    test('verifyShot：断网 → unverified（照收）', () async {
+      final VisionService v = VisionService(
+        pickImage: (
+          ImageSource s, {
+          double? maxWidth,
+          double? maxHeight,
+          int? imageQuality,
+        }) async => fakePick(s),
+        docsPath: () async => '',
+        clientFactory: (LlmConfig c) => LlmClient(
+          config: c,
+          retries: 0,
+          httpClient: MockClient((http.Request r) async {
+            throw http.ClientException('断网');
+          }),
+        ),
+      );
+      final EvidenceShot shot = (await v.pick(quest: quest))!;
+      final VisionVerdict r = await v.verifyShot(
+        quest: quest,
+        shot: shot,
+        settings: const AgentSettings(apiKey: 'k'),
+      );
+      expect(r.status, EvidenceStatus.unverified);
+      expect(r.status.accepted, isTrue);
+    });
+
+    test('verifyShot：会话里没字节 → unverified，不发请求', () async {
+      final VisionService v = VisionService();
+      final VisionVerdict r = await v.verifyShot(
+        quest: quest,
+        shot: EvidenceShot(
+          id: 'x',
+          path: '',
+          status: EvidenceStatus.unverified,
+          takenAt: DateTime(2026),
+        ),
+        settings: const AgentSettings(apiKey: 'k'),
+      );
+      expect(r.status, EvidenceStatus.unverified);
+    });
   });
 
   // ── D9 · 执行面板证据槽（widget 级，注入件全 mock） ──────────────
