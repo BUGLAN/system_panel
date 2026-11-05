@@ -203,7 +203,7 @@ void main() {
           '知': 8,
           '魅': 4,
         },
-        goalCatId: 'run', // tilt = 体2/敏1/力1
+        goalCatId: 'run', // tilt = 力2/敏1/体1
         n: 2,
         rnd: math.Random(11),
       );

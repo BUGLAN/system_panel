@@ -364,7 +364,7 @@ class RefExec extends StatelessWidget {
             TextSpan(
               children: <InlineSpan>[
                 TextSpan(
-                  text: '证据 · ',
+                  text: '快照记录 · ',
                   style: refText(
                     family: Ref.fc,
                     size: 13,
