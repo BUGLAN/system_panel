@@ -7,6 +7,7 @@
 ///    · 拆解必须是 Agent 的一个 tool，由 Agent 调，不是单独写死的流程；
 ///    · 工具入参**沿用既有 schema**（short/title/proof/minutes/rank），
 ///      字段、类型、输出结构一个字都不许漂 —— 下游 `PlanTask` 直接吃它；
+///      （2026-11-05 宿主定案 C3：唯一新增可选字段 `mode` = timed | checkin）
 ///    · 形状不对**不许**回填给模型「让它再试」：那是把失败藏进多轮循环。
 ///      一律抛 [PlanShapeError]，让调用方当场看到哪一张哪个字段坏了。
 ///
@@ -74,6 +75,14 @@ Map<String, dynamic> setPlanSchema(int taskCount) => <String, dynamic>{
             'type': 'string',
             'enum': Rarity.ranks,
             'description': '难度档位 F~S（F 最轻、S 最重）',
+          },
+          'mode': <String, dynamic>{
+            'type': 'string',
+            'enum': kTaskModes,
+            'description':
+                '计时 timed / 打卡 checkin。一天内分散完成、或瞬间就能完成的动作'
+                '（称重、拍三餐、量腰围、早睡打卡）标 checkin：不计时、随时交证据；'
+                '需要连续投入一段时间的（跑步、练琴、刷题）标 timed。缺省按 timed',
           },
         },
         'required': <String>['short', 'title', 'proof', 'minutes', 'rank'],
@@ -155,6 +164,8 @@ AgentTool setPlanTool({
         final String title = _str(item['title']);
         final String proof = _str(item['proof']);
         final String rank = _str(item['rank']).toUpperCase();
+        // mode 缺省 / 非法值一律按计时单（不抛：这是可选字段）
+        final bool timed = parseTaskMode(item['mode']);
         final Object? minutesRaw = item['minutes'];
         final int? minutes = minutesRaw is num
             ? minutesRaw.toInt()
@@ -186,6 +197,7 @@ AgentTool setPlanTool({
             proof: proof,
             minutes: minutes,
             rank: rank,
+            timed: timed,
           ),
         );
       }
@@ -222,6 +234,7 @@ AgentTool setPlanTool({
                 'proof': t.proof,
                 'minutes': t.minutes,
                 'rank': t.rank,
+                'mode': t.timed ? 'timed' : 'checkin',
               },
           ],
         },
@@ -231,6 +244,13 @@ AgentTool setPlanTool({
 }
 
 String _str(Object? v) => v is String ? v.trim() : (v == null ? '' : '$v');
+
+/// `set_plan` 每张任务的 `mode` 枚举：计时 / 打卡
+const List<String> kTaskModes = <String>['timed', 'checkin'];
+
+/// 解析 `mode`：只有明确的 "checkin" 才是打卡单，缺省 / 非法值都按计时单。
+/// 返回 timed（true = 计时单）。
+bool parseTaskMode(Object? raw) => _str(raw).toLowerCase() != 'checkin';
 
 // ═══════════════════════════════════════════════════════════
 //  目标匹配（类别 / 天幕短字 / 期限）—— 也走 Agent 的 tool

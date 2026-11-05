@@ -97,6 +97,7 @@ class CopyContext {
     this.questName = '',
     this.questRank = '',
     this.questMinutes = 0,
+    this.questCheckin = false,
     this.questProof = '',
     this.exp = 0,
     this.coin = 0,
@@ -125,6 +126,7 @@ class CopyContext {
     questName: result?.quest.name ?? quest?.name ?? '',
     questRank: result?.quest.rank ?? quest?.rank ?? '',
     questMinutes: result?.quest.minutes ?? quest?.minutes ?? 0,
+    questCheckin: (result?.quest ?? quest)?.checkin ?? false,
     questProof: result?.quest.proof ?? quest?.proof ?? '',
     exp: result?.exp ?? 0,
     coin: result?.coin ?? 0,
@@ -147,6 +149,9 @@ class CopyContext {
   final String questName;
   final String questRank;
   final int questMinutes;
+
+  /// 本单是打卡单（不计时，随时交）—— 时长读数换成「打卡单」
+  final bool questCheckin;
   final String questProof;
   final int exp;
   final int coin;
@@ -167,6 +172,7 @@ class CopyContext {
     String? questName,
     String? questRank,
     int? questMinutes,
+    bool? questCheckin,
     String? questProof,
     int? exp,
     int? coin,
@@ -186,6 +192,7 @@ class CopyContext {
     questName: questName ?? this.questName,
     questRank: questRank ?? this.questRank,
     questMinutes: questMinutes ?? this.questMinutes,
+    questCheckin: questCheckin ?? this.questCheckin,
     questProof: questProof ?? this.questProof,
     exp: exp ?? this.exp,
     coin: coin ?? this.coin,
@@ -412,7 +419,8 @@ class SystemCopyProvider {
   String _userBrief(String toneKey, CopyContext ctx, String extraFacts) {
     final String quest = ctx.questName.isEmpty
         ? ''
-        : '本单「${ctx.questName}」（${ctx.questRank} 级 · ${ctx.questMinutes} 分钟'
+        : '本单「${ctx.questName}」（${ctx.questRank} 级 · '
+              '${ctx.questCheckin ? '打卡单，不计时' : '${ctx.questMinutes} 分钟'}'
               '${ctx.questProof.isEmpty ? '' : ' · 证据：${ctx.questProof}'}）。';
     final String goal = ctx.goalShort.isEmpty ? '未立目标' : '主线「${ctx.goalShort}」';
     return '现场事实：宿主 LV${ctx.lv}，连击 ${ctx.streak}（最好 ${ctx.bestStreak}），'
@@ -426,7 +434,9 @@ class SystemCopyProvider {
   /// 填空。模板里出现的 `{key}` 都在喂值表内；喂不出来的（比如空字段给默认）
   /// 也不会残留 `{xx}`——由测试盯住这一点。
   static String _fill(String template, CopyContext ctx) {
-    final String minutes = ctx.questMinutes <= 0
+    final String minutes = ctx.questCheckin
+        ? '打卡单，随时交'
+        : ctx.questMinutes <= 0
         ? ''
         : ctx.questMinutes < 60
         ? '${ctx.questMinutes} 分钟'

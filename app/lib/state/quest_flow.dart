@@ -217,6 +217,8 @@ class QuestFlow {
     'reason': q.reason,
     'proof': q.proof,
     'minutes': q.minutes,
+    // 打卡单才写；老存档缺这个键 = 计时单（questFromJson 同口径）
+    if (!q.timed) 'mode': 'checkin',
     'rank': q.rank,
     'attrs': q.attrs,
     if (q.hinted) 'hinted': true,
@@ -248,6 +250,7 @@ class QuestFlow {
           }
         : const <String, int>{},
     hinted: j['hinted'] == true,
+    timed: j['mode'] != 'checkin',
   );
 
   /// 宿主档案（结算/认输的唯一入账口）
@@ -571,6 +574,7 @@ class QuestFlow {
     required Map<String, int> attrs,
     String reason = '',
     bool hinted = false,
+    bool timed = true,
   }) => Quest(
     serial: _serial++,
     kind: kind,
@@ -584,6 +588,7 @@ class QuestFlow {
     rank: rank,
     attrs: attrs,
     hinted: hinted,
+    timed: timed,
   );
 
   /// 六维点数分配（store.js `splitAttrs`：按基准权重分，余数补给第一维）
@@ -630,6 +635,7 @@ class QuestFlow {
           ? splitAttrs(const <String, int>{'体': 1}, Rarity.of(t.rank).pt)
           : t.attrs,
       reason: reasonForMain(i),
+      timed: t.timed,
     );
   }
 
@@ -990,6 +996,7 @@ class QuestFlow {
       crit: crit,
       dbl: a.dbl,
       photos: a.photos,
+      verified: a.verifiedCount,
       chance: chance,
       near: near,
       ups: ups,
@@ -998,7 +1005,8 @@ class QuestFlow {
       finale: finale,
       redeemed: redeemed,
       empty: empty,
-      tooFast: held.inMilliseconds < 60000,
+      // 打卡单本来就可能瞬间做完（称重/拍照），不拆穿「太快」
+      tooFast: task.timed && held.inMilliseconds < 60000,
       held: held,
       afterLv: lv,
       afterNeed: needFor(lv),
@@ -1152,9 +1160,13 @@ class QuestFlow {
 
   // ── 认输 / 超时（store.js `fail`）────────────────────────────
 
+  ///
+  /// 打卡单（`Quest.timed == false`）**不判超时**：`how == 'timeout'` 时
+  /// 原样返回 null、什么都不动（认输照常）。
   FailOutcome? fail({DateTime? now, String how = 'quit'}) {
     final ActiveQuest? a = _active;
     if (a == null) return null;
+    if (how == 'timeout' && !a.task.timed) return null;
     final DateTime t0 = now ?? DateTime.now();
     final Quest task = a.task;
     final Duration held = t0.difference(a.startAt);
@@ -1177,6 +1189,7 @@ class QuestFlow {
         // 用原单的分配结果当权重再分一次（原单基准维没落库，见 planTask 注）
         attrs: splitAttrs(task.attrs, Rarity.of(rr).pt),
         reason: reasonForRemedy(),
+        timed: task.timed, // 打卡单的补救单也是打卡单
       );
       deadline = t0.add(const Duration(hours: 24));
       _remedyOffer = remedy;
@@ -1371,6 +1384,7 @@ class QuestFlow {
     rank: rank,
     attrs: splitAttrs(q.attrs, Rarity.of(rank).pt),
     hinted: q.hinted,
+    timed: q.timed,
   );
 
   static bool _isSameDay(DateTime a, DateTime b) =>

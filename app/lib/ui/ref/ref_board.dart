@@ -601,7 +601,7 @@ class _RefTicketCardState extends State<RefTicketCard>
           Text(
             <String>[
               if (q.attrs.isNotEmpty) Attr.nameOf(q.attrs.keys.first),
-              q.minutesText,
+              q.timeLabel, // 打卡单显示「打卡」而不是「N 分钟」
               q.proof,
             ].join(' · '),
             maxLines: 1,

@@ -280,6 +280,7 @@ Quest _questWith(Quest q, {int? minutes, String? rank}) => Quest(
   rank: rank ?? q.rank,
   attrs: q.attrs,
   hinted: q.hinted,
+  timed: q.timed,
 );
 
 // ═══════════════════════════════════════════════════════════
