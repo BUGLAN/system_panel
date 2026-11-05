@@ -1,21 +1,22 @@
 # AGENTS.md — 宿主 SYSTEM 项目指南
 
 > 本文件供 AI Agent 阅读：任何 Agent 在本项目工作前必读。产品是「网文系统流自我提升 App」——用户是宿主，App 是毒舌但靠谱的系统。
-> 最后更新：2026-10-23（整体重写，只保留与当前 Flutter 工程一致的内容）
+> 最后更新：2026-11-05（清理 `docs/` 只留 45 与 50；按当前代码核对并改掉过时内容：Live2D 已移除、`app/lib` 结构、v3 视觉令牌、双机环境）
 
 ---
 
 ## 仓库与运行（先看这里）
 
-- **仓库根目录：`E:\repo\system_panel`**（git 仓库，主分支 master）。规则文档在 `docs/`，Flutter 工程在 `app/`。
+- **仓库根目录 = 本文件所在目录**（git 仓库，主分支 master）。两台开发机：Windows（`E:\repo\system_panel`，跑 MuMu）与 Mac（`/Users/lansheng/repo/system_panel`，跑 iOS 模拟器/真机）。Flutter 工程在 `app/`；`docs/` 只留两篇（见下方「文档」）。
 - **Flutter 工程在 `app/`**：applicationId 与 iOS bundle id 均为 `com.systempanel.app`。
   ```bash
-  cd app && flutter run          # Android（MuMu 模拟器）
+  cd app && flutter run          # Android（Windows 机上的 MuMu 模拟器）
+  cd app && flutter run -d 93FBEE17-17E2-4515-B66D-4DA3AD365C19   # Mac：iOS 27 模拟器
   cd app && flutter run -d 00008130-001169D830A1401C   # 真机 iPhone 15 Pro Max
   cd app && flutter analyze && flutter test
   ```
 - **原型（历史参考，勿改动）**：`prototype/opus-v2-dir` 是宿主最终选定的那一版全息舞台原型，跑 `cd prototype/opus-v2-dir && node server.mjs` → http://localhost:4925。**它是历史参考，不是实现真源**——实现与验证一律落在 `app/`。
-- **原型归档**：`prototype/` 下只留中选的 `opus-v2-dir` 与跨原型真源/证据（`.stitch`、`motion-demo`、`references`、`screens`、`stitch-bridge`）。另外 7 版历史原型在 `E:\repo\archive\`（不在本仓库内），索引见 `E:\repo\archive\README.md`。
+- **原型归档**：`prototype/` 下只留中选的 `opus-v2-dir` 与跨原型真源/证据（`.stitch`、`motion-demo`、`references`、`screens`、`stitch-bridge`）。另外 7 版历史原型在 Windows 机的 `E:\repo\archive\`（不在本仓库内），索引见该目录 `README.md`。
 - **动效样机**：`prototype/motion-demo/index.html`，静态服务挂 4920 端口即可。
 - 未入库：`.env`（含 Stitch API Key）、`node_modules/`、`prototype/stitch-bridge/results/`
 
@@ -23,15 +24,16 @@
 
 | 目录 | 职责 |
 |---|---|
-| `main.dart` | 应用入口、状态机（`Moment`：boot / lobby / onboard / dispatch / exec / result / fail / sheet / main） |
-| `agent/` | LLM 接入层：`llm_client`、`llm_gateway`、`llm_telemetry`、`mainline_agent`、`mainline_tool`、`persona`、`copy`、`memory`、`context_adapter`、`vision`、`settings_store`、`tools` |
-| `state/` | 状态与数据：`host_state`、`goal`、`goal_gen`、`quest`、`quest_flow`、`result`、`save_file`、`settings`、`sfx`、`haptics`、`voice`、`app_clock`、`away` |
-| `widgets/` | 35 个 UI 组件：`card_skins` / `card_table`（卡牌）、`hud` / `dock`（HUD 与底栏）、`main_view`（主线页）、`exec_panel` / `exec_pill`（执行面板）、`result_panel`、`plate`（派单板）、`radar`、`sheet`、`chat_bar`、`line_layer`（台词）等 |
-| `design/tokens.dart` | 视觉与动效令牌唯一真源（颜色 `C`、字体 `F`、`Motion`、`StageAnchors`） |
+| `main.dart` | 应用入口 + 主壳（3600+ 行）：状态机 `Moment`（boot / lobby / onboard / dispatch / exec / result / fail / sheet / main）、场景切换、拆解任务 `_planJob`、结算与认输编排 |
+| `ui/ref/` | **v3 界面（当前在用）**，按参考稿 `宿主养成系统_重设计.html`（仓库根目录）逐页实现：`ref_home`（大厅）、`ref_onboard`（绑定仪式/访谈）、`ref_main`（主线）、`ref_board`（委托板）、`ref_exec`（执行面板）、`ref_verdict`（结算）、`ref_archive`（档案）、`ref_shop`（补给）、`ref_sheet`（系统设置抽屉）、`ref_goal_swap`（换目标）、`ref_loading`（拆解加载卡）、`ref_llm_settings`、`ref_hud`、`ref_tcard`（任务卡）、`ref_kit`/`ref_inputs`（RefButton/RefXButton/RefTextField 等基础件）等 |
+| `widgets/` | 18 个共享组件：`card_skins`/`card_table`（卡牌）、`ask_field`、`bg_layer`、`fx_layer`/`fx_particles`、`fail_layer`、`hud`、`line_layer`（台词）、`chat_bar`、`type_text`、`voice_bars`、`rail_base` 等 |
+| `agent/` | LLM 接入层：`llm_client`、`llm_gateway`、`llm_telemetry`、`plan_agent`/`plan_brief`/`goal_match_agent`/`mainline_tool`（目标拆解）、`persona`、`copy`、`memory`、`context_adapter`、`tools`、`vision_core`（证据视觉校验）、`settings_store` |
+| `state/` | 状态与数据：`quest_flow`（队列/接单/结算唯一真源）、`host_state`、`goal`、`goal_gen`、`quest`、`result`、`plan_failure`、`save_file`、`settings`、`sfx`、`haptics`、`voice`、`app_clock`、`away` |
+| `design/` | `ref.dart` = **v3 表现层令牌唯一真源**（`Ref` 色板/字体/缓动，新界面只许读它）；`tokens.dart` = 旧令牌（`C`/`F`/`Motion`/`StageAnchors`/`Pal`，旧组件与历史测试还在用，逐步迁移）；`fidelity`（画质档）、`spring` |
 | `data/` | 静态数据表：`rarity`、`attrs`、`items`、`titles`、`rewards`、`content`、`format` |
-| `stage/` | Live2D 舞台 |
+| `chat/` | 对话面板（`chat_panel`/`chat_service`/`chat_history`） |
 | `screens/` | `boot_screen` |
-| `chat/` | 对话面板 |
+| `dev/` | `agent_bridge`（仅 debug 启用，见下文） |
 
 ---
 
@@ -43,9 +45,9 @@
 - **不要找 MCP**。MuMu 官方 `mumu-control` skill 已装并跑通（`C:/Users/buglan/.agents/skills/mumu-control`，9 文件，MIT，Windows only）。`mumu-cli.exe` 与 `MuMuManager.exe` 是同一二进制（实测同尺寸同时间戳）
 - **为什么不用裸 adb**：旧方案 64 次工具调用里至少 40 次在跟「没有 UI 元素模型」搏斗——`uiautomator dump` 出 size:0、Git Bash 改写 `/sdcard` 路径、中文乱码、只能截图猜坐标。改用 skill 后同类任务 2 条命令
 - **环境**：设备 `127.0.0.1:16512`（端口用 `"E:/MuMu Player 12/nx_main/MuMuManager.exe" info -v all` 查）｜包名 `com.systempanel.app`｜屏幕 **1170×2532 @480dpi = 390×844dp（DPR 3）**
-  - **2026-10-23 起：逻辑尺寸不变（390×844dp），物理面板提到 1170×2532@480 ⇒ DPR 从 2 升到 3**，Live2D 中频清晰度 **+110%**（详见 [`docs/46-Live2D清晰度-DPR与mipmap.md`](docs/46-Live2D清晰度-DPR与mipmap.md)）
+  - **2026-10-23 起：逻辑尺寸不变（390×844dp），物理面板提到 1170×2532@480 ⇒ DPR 从 2 升到 3**（画面中频清晰度明显提升）
   - ⚠️ **不要再 `wm size`/`wm density` 覆盖**：覆盖会把 SurfaceFlinger 从「1:1」变成「缩放」，实测中频掉 45%。当前 `display_size_forced = null` 就是正确状态
-  - MuMu 实例 API 写分辨率的**顺序陷阱**：`resolution_mode` 设成 `custom` 会把三个值清零，且普通键 `key not writable` —— 必须写 `.custom` 后缀键（见 docs/46 §2）
+  - MuMu 实例 API 写分辨率的**顺序陷阱**：`resolution_mode` 设成 `custom` 会把三个值清零，且普通键 `key not writable` —— 必须写 `.custom` 后缀键
 - **三条命令覆盖 80% 场景**：
   ```bash
   SKILL="C:/Users/buglan/.agents/skills/mumu-control"
@@ -67,61 +69,34 @@
 - **Flutter 跨平台框架**（Dart），目标 iOS + Android 双端高效运行
 - 选型理由：Impeller 渲染引擎对大量动画友好（着色器预编译、无 jank），单代码库双端
 - 动画实现约定：优先 `Transform`/`Opacity`（对应 web 端 transform/opacity 铁律）；弹簧用 `SpringSimulation(stiffness: 100, damping: 20)`；数字滚动用 count-up 补间；禁用线性匀速
-- 状态管理建议 Riverpod；动效库建议 flutter_animate + 自定义弹簧
-- **本机 Flutter 工具链**：Flutter `3.47.6` stable（Dart 3.13.5）装在 `D:\flutter`（已入 PATH），JDK 用 Android Studio 自带 JBR，Android SDK 在 `%LOCALAPPDATA%\Android\Sdk`，`flutter doctor` 全绿
+- 状态管理：没有用 Riverpod，状态集中在 `main.dart` 主壳 + `state/quest_flow.dart`；也没有 flutter_animate，动效是手写 `AnimationController` + `design/spring.dart`。依赖以 `app/pubspec.yaml` 为准（现为 flutter_svg / shared_preferences / http / image_picker / path_provider / audioplayers / vibration）
+- **Flutter 工具链**：两台机都是 Flutter `3.47.6` stable（Dart 3.13.5）。Windows：装在 `D:\flutter`（已入 PATH），JDK 用 Android Studio 自带 JBR，Android SDK 在 `%LOCALAPPDATA%\Android\Sdk`；Mac：`~/development/flutter`
 - **全程国内源、不走代理（硬要求）**：`PUB_HOSTED_URL=https://pub.flutter-io.cn`、`FLUTTER_STORAGE_BASE_URL=https://storage.flutter-io.cn`（已写入用户环境变量）；Gradle 走腾讯云镜像（`app/android/gradle/wrapper/gradle-wrapper.properties`），AGP/Kotlin 走阿里云镜像（`app/android/settings.gradle.kts`、`app/android/build.gradle.kts`）；字体取自 jsDelivr 的 `google/fonts`
-- **iOS 测试路线**：本机跑 Android 模拟器；iOS 模拟器在 Mac Air（配置脚本 `tools/setup-macos-ios.sh`）。真机 UDID `00008130-001169D830A1401C`
+- **测试路线**：Windows 机跑 Android 模拟器（MuMu）；Mac 跑 iOS 模拟器与真机（配置脚本 `tools/setup-macos-ios.sh`）。真机 UDID `00008130-001169D830A1401C`
 - **iOS 模拟器要用 iOS 27 运行时（2026-10-28 实测）**：本机 Xcode 27 的触摸/按键注入**不支持 iOS 17.5 运行时**——旧的「iPhone 15 Pro Max（iOS 17.5）」上点击、HOME 键都会被静默丢弃（工具还报成功）。用 `iPhone 15 Pro Max (iOS 27)`（UDID `93FBEE17-17E2-4515-B66D-4DA3AD365C19`，与真机同为 430×932pt）；刚开机要等 ~10s 输入通道才就绪
-- **iOS 帧率上限 60Hz（2026-10-28 定案，docs/49 E1）**：`ios/Runner/Info.plist` 的 `CADisableMinimumFrameDurationOnPhone` 为 `false`。常驻循环动画多，开 120Hz 时任何一个 Ticker 都会让引擎每秒合成 120 帧整屏 —— 15 Pro Max 上的卡顿与发热主因之一。别改回 `true`
-- **Live2D 舞台几何**：平台视图的**布局尺寸按「族」固定**（`Live2DStage.kViewFamilies = [1.55, 1.70]`；2026-10-24 小族由 1.05 提到 1.55 = **超采样**（大厅 1.68×，已在 ~1.7× 饱和：再大只是 LOD 撞 mip0 烧显存），见 [`docs/46`](docs/46-Live2D清晰度-DPR与mipmap.md) §3.9/§3.10 —— 别再改回 1.05，那是「软」的根因），缩放/平移交给 `Transform.scale(cam.s / 族尺寸)` —— 逐帧改布局尺寸会让插件 iOS 侧 `layoutSubviews()` 每帧重建 FBO。换景走 `CamSpring.glideTo(..., ms: 1400)` 的 easeInOutCubic 慢推。**`Opacity` 禁套平台视图**（saveLayer），`Transform` 可以。细节：`app/STAGE-OPTIONS.md` 坑 4、`docs/18` §1.5.3
-- **原生 Live2D shader 打包（2026-10-12 定案，勿删）**：产品路线是**原生**（WebView 降级路线已删除）。`app/android/app/build.gradle.kts` 里的 `syncLive2dShaders` 任务把 `flutter_live2d` 自带的 `Shaders/StandardES/*` 同步进 APK 的 `assets/FrameworkShaders/` —— **插件自己不打包这些文件，漏了就不上屏，且每帧刷 `GL error 0x501`**。排查全文 `docs/35-MuMu原生Live2D排查.md`
+- **iOS 帧率上限 60Hz（2026-10-28 定案）**：`ios/Runner/Info.plist` 的 `CADisableMinimumFrameDurationOnPhone` 为 `false`。常驻循环动画多，开 120Hz 时任何一个 Ticker 都会让引擎每秒合成 120 帧整屏 —— 15 Pro Max 上的卡顿与发热主因之一。别改回 `true`
+- **Live2D 已移除（2026-10-27，commit `6f10de1`）**：`flutter_live2d` 依赖、舞台组件、`syncLive2dShaders` 任务、`app/STAGE-OPTIONS.md` 都已删掉，大厅中心现在是眼睛徽标。旧的 Live2D 定案（族尺寸 1.55 超采样、shader 打包等）全部作废；要重新接入先和宿主确认
 - **输入态（`#ask` / 换目标）布局纪律**：主 Scaffold 必须 `resizeToAvoidBottomInset: false`，输入框自己用 `AskField.bottomInset: MediaQuery.viewInsetsOf(context).bottom` 抬到键盘之上；「换目标」时主线全景整层退场、字幕让到屏幕中段，输入框/预设词不许和 CTA 或字幕重叠
 
 ---
 
 ## 已锁定的设计决策
 
-- 主题色（已锁定，勿再改）：深蓝虚空 `#0A0E1A` + 电光青 `#38E1FF`（主强调）+ 稀有度色谱（F灰 `#9AA3B2` / E绿 `#4ADE80` / D蓝 `#38BDF8` / C紫 `#A78BFA` / B金 `#FBBF24` / A橙 `#FB923C` / S红 `#FF4D5E`）
-- 字体：Rajdhani（标题/大数字）+ Noto Sans SC（中文正文）+ JetBrains Mono（等宽数值/系统日志）；禁止 Inter/衬线；数字禁止用正文字体
-- 字体已落位 `app/assets/fonts/` 并在 `pubspec.yaml` 声明：Rajdhani 四档静态字重（400/500/600/700）；NotoSansSC 与 JetBrainsMono 是**可变字重字体**，粗体要在代码里写 `fontVariations: [FontVariation('wght', 700)]`，别只靠 `fontWeight`
-- 视觉基准唯一来源：`.stitch/DESIGN.md`（GAME HUD EDITION v2）——玻璃面板、辉光、斜切角、网格+扫描线
-- 产品机制唯一来源：`docs/` 下 `00~17` 编号规则文档（自然语言，一次定一事的工作方式，修改规则先改文档）
+- **视觉基准（2026-11-05 宿主定案：以当前 v3 为准，勿再改回旧版）**：参考稿 `宿主养成系统_重设计.html`（仓库根目录）→ `app/lib/design/ref.dart` 的 `Ref`：底 `#06050C`、主强调 acid `#D6FF3D`（荧光黄绿）、cyan `#3BE8FF`、hot `#FF3B7A`、violet `#8F6BFF`、gold `#FFCC4D`、mint `#3DFFA8`；稀有度色谱 `Ref.rank`
+- **字体（已锁定，以 `app/pubspec.yaml` 为准）**：显示/数字 `ChakraPetch`（`Ref.fd`）、中文正文 `NotoSansSC`（`Ref.fc`）、等宽 `JetBrainsMono`（`Ref.fm`），另有 FangYuan / ShuHei / Tektur / KodeMono。NotoSansSC 与 JetBrainsMono 是**可变字重字体**，粗体要写 `fontVariations: [FontVariation('wght', 700)]`，别只靠 `fontWeight`（`refText(wght: …)` 已封装）
+- 产品机制以 `app/` 当前代码为准（00~17 编号规则文档不在仓库里，别找）；尚未定案的规则问题记在 `docs/50` 的 C 类
 - **动作区用词固定**：【快照记录】【提交任务】【认输】（顶部面板与执行面板同款，勿再用旧黑话）
 
 ---
 
-## 规则文档索引
+## 文档
+
+`docs/` 只保留两篇，18~49 号历次方案、复盘与提示词文档已于 2026-11-05 删除（需要时从 git 历史找回，**不要据此推断现状**）。旧版本文件引用过的 00~17 编号规则 txt 在本仓库里并不存在：
 
 | 文件 | 内容 |
 |---|---|
-| `00-核心规则.txt` | 宿主/系统关系、核心循环、任务只由系统发布 |
-| `01-任务规则.txt` | 四种任务、F~S 难度、日上限 6、等级越高任务越多 |
-| `02-面板与奖励规则.txt` | 单字六维（**力/敏/体/智/知/魅**）、三种奖励、无血条 |
-| `03-惩罚规则.txt` | 毒舌即惩罚、连击/称号/评价、永远有补救 |
-| `04-验证规则.txt` | 截图统一验证（可多张+文本备注），信任不查岗 |
-| `05-新手开局规则.txt` | 【v3 激活流】六幕绑定仪式、开局三件套已删除、前 10 任务必胜 |
-| `06-目标拆解规则.txt` | 一句话目标 → 5~8 环主线链、长期/短期轨道分离 |
-| `07-文案规则.txt` | 毒舌但靠谱人格、四种固定语气（发布/结算/毒舌/追问） |
-| `08-核心动效规则.txt` | 六大时刻逐帧编排 |
-| `09-动效场景全集.txt` | 19 场景 S/A/B 分级 + ComfyUI 素材分工 |
-| `10-无处不在游戏化清单.txt` | 四层包裹（常驻/微交互/环境/声音）+ 主题色锁定 |
-| `11-精力系统规则.txt` | 【已冻结 · v3】精力随执行流删除，仅存档 |
-| `12-毒舌升级规则.txt` | 连败计数三档毒舌（引用真实数据）、金牌豁免嘴不豁免记录 |
-| `13-LLM拆解接入方案.txt` | 本地代理 /api/plan、OpenAI 兼容、客户端钳制、关键词模板兜底 |
-| `14-系统形象与表演规则.txt` | 系统拟人化（全息系统体·冷感少女）、12 个表演预算 |
-| `15-今日场景与手感规则.txt` | 今日页=全息委托板、三动词（拔单/撕单/轻点）、主线卷轴、金币拾取 |
-| `16-执行与时间轴规则.txt` | 专注执行流：AI 访谈立主线、周期计划、唯一执行中、证据时间轴、认输 |
-| `17-主线时间轴与执行轴规则.txt` | 主线=左右交错时间轴、状态零文字纯样式、节点点击=顶部面板三态 |
-| `24-待机与动作表情绑定清单.md` | 待机动作 + 各指令的动作/表情绑定 |
-| `25-表情动作预设总表.md` | **预设 = 动作 × 表情**：预设 47 条、动作组 18、表情 32 的总表 |
-| `39-首页与主线UIUX真机走查与组件修改方案.md` | 真机走查出的 4 组结构性缺陷与 P0/P1/P2 三批施工方案 |
-| `40-卡牌视觉系统重设计.md` | 卡牌从玻璃组件重做成「系统铸造的委托契据」 |
-| `41-卡牌手感与音效设计.md` | 卡牌手感三拍、音效组、触觉波形 |
-| `45-安卓模拟器Agent操作方案.md` | **模拟器 Agent 操作方案**（mumu-control / MCP 评估 / 落地步骤） |
-| `46-Live2D清晰度-DPR与mipmap.md` | **清晰度四维量测法**；MuMu 面板 1170×2532@480（DPR3，中频 +110%）；**iOS 定案 = 超采样 1.68×**（族 1.55）+ 贴图预锐化（中频 +64~69%、无锯齿，§3.10）；`关 mipmap`（锯齿）与 shader LOD bias（模型不渲染）都已实测证否 |
-| `47-Live2D清晰度修复全过程.md` | **同类问题的过程复盘**：五个阶段（MuMu 提 DPR → 关 mipmap 被证否 → 贴图密度量死 → 查开源定超采样 → 拉满+预锐化）、量测五条纪律、踩过的坑与死路、下一步清单。遇到「糊/锯齿」先看这篇 |
-| `48-UI重设计-舞台与卡片v2.md` | **UI v2**：Live2D 舞台光（StageAura）、设计 token v2（Pal/Space/Radii/Elev/Ease/SpringSpec/SoundRule）、卡片材质 v2 + 3D 牌扇、GameButton、画质档（rich/lite/still）与音效规则表 |
-| `49-全面优化-音效动效加载与性能.md` | **2026-10-28 全面优化**：基础组件统一按下声、卡轮播滑动声；LLM 设置/系统抽屉/重置补转场；「换目标」重写为 v3 场景 `RefGoalSwap`；拆解加载卡 `RefPlanLoading`；iOS 帧率上限 60Hz、卡轮播缓存、证据图降采样等性能项 |
+| `45-安卓模拟器Agent操作方案.md` | **模拟器 Agent 操作方案**（mumu-control / MCP 评估 / 落地步骤），`.claude/skills/android-agent` 引用它 |
+| `50-新用户走查问题清单.md` | 2026-11-05 iOS 模拟器新用户走查问题单：A 简单（已修，A23 待复现）/ B 需新 UI / C 困难或需拍板，带修复状态 |
 
 ---
 
@@ -135,8 +110,8 @@
 - 经验条上涨：不跨级＝520ms ease-out；跨级＝涨满 360ms → 白闪 + 升级动效 → 归零 → 再涨到余额 420ms
 - 结算总时长 ≤1.6s；升级 ≤2s（同日重复只播简版）；发布 ≤800ms
 - 失败：更短更暗更安静（成功亮度 1/3）；打字机节奏 **标准 34ms/字**（唯一真源 `AgentSettings.kPaceStandardMs`）
-- 8-bit 音效走**离线烘焙音效包**（`tools/audio/` → `app/assets/audio/`，84 件）：播放总线在 `app/lib/state/sfx.dart`（池化、永不抛、开关真正生效）
-- **按下声由基础组件负责**（docs/49）：`RefButton` / `RefXButton` / `RefSwitch` / tabs / `RefLink` 自带按下声，走 `refPressSound(cue)` → `Sfx.cue`（`SoundRule.cues` 规则表：音量分档 + 防连发）；业务回调只出**结果声**（成功/失败/购买），不要再在调用点补一声 tap
+- 8-bit 音效走**离线烘焙音效包**（`tools/audio/` → `app/assets/audio/`，现 135 个 wav）：播放总线在 `app/lib/state/sfx.dart`（池化、永不抛、开关真正生效）
+- **按下声由基础组件负责**：`RefButton` / `RefXButton` / `RefSwitch` / tabs / `RefLink` 自带按下声，走 `refPressSound(cue)` → `Sfx.cue`（`SoundRule.cues` 规则表：音量分档 + 防连发）；业务回调只出**结果声**（成功/失败/购买），不要再在调用点补一声 tap
 - **等 LLM 的地方必须有加载态**：用 `RefPlanLoading`（分步进度跟着 `_planStageTo` 走），主壳的 `_planJob` 同时是防连点闸门
 - **动效令牌**：`app/lib/design/tokens.dart` 的 `Motion` 类（Touch 0/120 · Respond 140 · Scene 320/520 · Payoff 600/280/780 · heartMs 2400 · 弹簧 120/ζ.9 与 70/ζ.95 · 过冲 ≤1.08 · 退场 60%）—— 组件里不许再写裸时长
 
@@ -157,7 +132,7 @@
 
 ## ComfyUI 素材管线
 
-- 端点 `127.0.0.1:8188`（本机 ComfyUI-aki-v2 在线，RTX 5090 32G）；素材需求清单见 `09-动效场景全集.txt` 底部
+- 端点 `127.0.0.1:8188`（本机 ComfyUI-aki-v2 在线，RTX 5090 32G）
 - **工作流在 `tools/comfyui/`**：Qwen-Image 2.1 文生图 + 2x-AnimeSharpV4 放大——`qwen21-game-bg.workflow.json` 可直接拖进 GUI，`gen_game_bg.mjs` 一键重生成（`--seed` 抽卡），参数与坑见该目录 README
 - 首件产出：`prototype/opus-v2-dir/img/bg-void.jpg`（垫在 `#bg .sky` 底层）
 - 生图：辉光 burst、稀有度框、粒子 sprite、印章纹章、glitch 帧
@@ -169,13 +144,13 @@
 ## 品牌标识
 
 - LOGO＝「六边核心 + 经验弧」，唯一真源 `brand/build.mjs`（一条命令重生成全部 SVG 母版 + Android/iOS 图标 + 原型 favicon + 规格卡，产物入库）
-- **禁手改任何生成的 SVG/PNG**，要改就改参数重跑并同步 `docs/23`；细节与落点见 `brand/README.md`
+- **禁手改任何生成的 SVG/PNG**，要改就改参数重跑；细节与落点见 `brand/README.md`
 
 ---
 
 ## 工作约定
 
-- 先文档后代码；规则改动先改编号 txt，代码跟随文档
+- 规则改动先和宿主确认再动代码；发现的问题与修复状态记进 `docs/50-新用户走查问题清单.md`（或新开一篇同类清单），不要再堆方案长文
 - 每次只推进一件事，不超过 500 字的决策粒度
 - **【宿主指定】不要参考、也不要在 `prototype/` 下的 HTML 原型上做验证或改动**：原型早已过时，只作历史参考；实现与验证都落在 Flutter 工程 `app/`。旧约定「动效/视觉改动必须先在样机验证手感，再移植 Flutter」**作废**
 - **【宿主指定 · 2026-10-11】非必要不要自己测试，宿主就在屏幕前，他就是测试员**：
@@ -195,10 +170,16 @@
   - **验收标准**：截图确认新界面真的上来了（改了什么就看什么），再交给宿主
   - ⚠️ 若这次改动涉及**已落到存档里的数据**（任务清单、目标文本等），要主动说明
     "旧存档不会自动重生"，并给出重生路径（换目标 / 重置存档）
+  - **在 Mac 上（没有 MuMu）**：改为装到 iOS 27 模拟器，同样截图确认：
+    ```bash
+    cd app && flutter build ios --simulator --debug
+    xcrun simctl install 93FBEE17-17E2-4515-B66D-4DA3AD365C19 build/ios/iphonesimulator/Runner.app
+    xcrun simctl launch 93FBEE17-17E2-4515-B66D-4DA3AD365C19 com.systempanel.app
+    ```
   - 宿主明确说"不要装了/我自己来"时才跳过
 - **【宿主指定 · 2026-10-11】iOS 真机**（按需，不与上条冲突）：
   - 真机 UDID：`00008130-001169D830A1401C`（iPhone 15 Pro Max）；`cd app && flutter run -d 00008130-001169D830A1401C`
   - iOS 14+ 的 debug 包**不能从桌面图标启动**，必须由 Flutter 工具链拉起
   - 真机常走无线调试：掉线/unavailable 是常态，先 `xcrun devicectl list devices` 确认 connected 再跑
-- **⚠️ 大文件写入纪律**：`app/lib/main.dart`、`app/lib/widgets/main_view.dart`（1700+ 行）**只许 `edit` 靶向替换，永不整体 `write`**——本仓库发生过一次整体 write 导致文件被截断、由 Lead 重建的事故
+- **⚠️ 大文件写入纪律**：`app/lib/main.dart`（3600+ 行）**只许 `edit` 靶向替换，永不整体 `write`**——本仓库发生过一次整体 write 导致文件被截断、由 Lead 重建的事故
 - `.env`、`results/`、`node_modules/` 永不入库
