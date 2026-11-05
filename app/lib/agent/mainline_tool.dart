@@ -273,7 +273,7 @@ class GoalMatchDraft {
   int attempts = 0;
 }
 
-/// 类别 id 的枚举（schema 用）——**模型只能从这十个里选**。
+/// 类别 id 的枚举（schema 用）——**模型只能从 [kGoalCatOrder] 这十一个里选**。
 List<String> get goalCategoryIds => <String>[
   for (final GoalCategory c in kGoalCatOrder) c.id,
 ];
@@ -288,7 +288,10 @@ Map<String, dynamic> setGoalCategorySchema() => <String, dynamic>{
       'description':
           '目标类型。按目标**真正的动作**选，不要因为词表里没有就选 gen：'
           '骑行/游泳/爬山都算 run（耐力运动）；球类/格斗算 fit；'
-          '读书/写作/学习算 exam 或 make；只有确实无法归类才用 gen。',
+          '学乐器（吉他/钢琴/尤克里里/架子鼓）、画画/素描/水彩、舞蹈、书法、摄影'
+          '这类**靠反复练习学会的手艺**算 skill（「三个月学会弹吉他」「学会画画」都是 skill）；'
+          'make 只留「做出一个东西」（写完一篇小说、剪一支视频、做一套作品集）；'
+          '读书/学习算 exam；只有确实无法归类才用 gen。',
     },
     'short': <String, dynamic>{
       'type': 'string',

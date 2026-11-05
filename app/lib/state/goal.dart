@@ -197,7 +197,7 @@ class Goal {
   /// 期限内的任务清单 —— 计划里几张单就是它
   final List<PlanTask> plan;
 
-  /// 目标类型 id（`run/slim/fit/lang/exam/sleep/make/code/bold/gen`）
+  /// 目标类型 id（`run/slim/fit/lang/exam/sleep/skill/make/code/bold/gen`）
   final String cat;
 
   /// 期限（天）。任务数由它算（`goal_gen.planTaskCountFor`）。

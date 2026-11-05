@@ -106,13 +106,14 @@ void main() {
           'lang',
           'exam',
           'sleep',
+          'skill',
           'make',
           'code',
           'bold',
           'gen',
         ],
       );
-      expect(goalCats.length, 10);
+      expect(goalCats.length, 11);
       expect(goalCategoryIds, <String>[
         for (final GoalCategory c in kGoalCatOrder) c.id,
       ]);
@@ -186,6 +187,44 @@ void main() {
       ]);
       expect(cards[0].question, '现在几点起、几点睡？');
       expect(cards[0].options, contains('1-2 点睡 9 点后起'));
+    });
+
+    test('C2 练技能：学吉他问的是「练」，不再问「创作 / 有作品」', () {
+      final GoalCategory skill = goalCats['skill']!;
+      expect(skill.label, '练技能');
+      // 六维倾向：灵巧（敏）+ 智识（智）
+      expect(skill.tilt.keys.toSet(), <String>{'敏', '智'});
+      final List<InterviewCard> cards = interviewCardsFor(skill);
+      expect(cards.map((InterviewCard c) => c.id), <String>[
+        'skill.level',
+        'skill.freq',
+        'skill.first',
+      ]);
+      expect(cards.map((InterviewCard c) => c.question), <String>[
+        '现在什么水平？',
+        '一周能练几次？',
+        '想先练会什么？',
+      ]);
+      final String all = <String>[
+        for (final InterviewCard c in cards) ...<String>[
+          c.question,
+          ...c.options,
+        ],
+      ].join('|');
+      expect(all, isNot(contains('创作')));
+      expect(all, isNot(contains('作品')));
+      expect(skill.daily.length, greaterThanOrEqualTo(8));
+    });
+
+    test('C2 不回归：make 的三张访谈卡原样保留', () {
+      final List<InterviewCard> cards = interviewCardsFor(goalCats['make']!);
+      expect(cards.map((InterviewCard c) => c.id), <String>[
+        'make.level',
+        'make.freq',
+        'make.first',
+      ]);
+      expect(cards[1].question, '一周能创作几次？');
+      expect(cards[2].options, contains('一件完整小作品'));
     });
 
     test('lv2~3 追加投入时段，lv4+ 再追加复盘卡', () {
