@@ -108,6 +108,10 @@ class GoalCategory {
   final String label;
 
   /// 六维倾向（v4 换血后的 力/敏/体/智/知/魅）
+  ///
+  /// 写键前先看 `data/attrs.dart` 的显示名：「力」显示**体质**、「体」显示
+  /// **意志**。2026-11-05 定案（docs/50 C1）：运动类（run/slim/fit）主属性
+  /// 是「力」；早起/饮食这类习惯单才给「体」。
   final Map<String, int> tilt;
 
   /// 类别专属访谈卡（3 张；等级更高时 `interviewCardsFor` 会追加通用卡）
@@ -122,7 +126,7 @@ class GoalCategory {
 final GoalCategory _catRun = GoalCategory(
   id: 'run',
   label: '奔跑',
-  tilt: const <String, int>{'体': 2, '敏': 1, '力': 1},
+  tilt: const <String, int>{'力': 2, '敏': 1, '体': 1},
   cards: const <InterviewCard>[
     InterviewCard(
       id: 'run.now',
@@ -145,14 +149,14 @@ final GoalCategory _catRun = GoalCategory(
       title: '原地高抬腿 3 组，每组 40 秒',
       proof: '计时截图',
       minutes: 8,
-      attrs: <String, int>{'敏': 1, '体': 1},
+      attrs: <String, int>{'敏': 1, '力': 1},
       rank: 'F',
     ),
     DailyTemplate(
       title: '慢跑 1.5 公里',
       proof: '跑步 App 截图',
       minutes: 20,
-      attrs: <String, int>{'体': 1, '敏': 1},
+      attrs: <String, int>{'力': 1, '敏': 1},
       rank: 'E',
     ),
     DailyTemplate(
@@ -166,21 +170,21 @@ final GoalCategory _catRun = GoalCategory(
       title: '间歇跑：快 1 分钟 + 慢 2 分钟，五轮',
       proof: '跑步 App 截图',
       minutes: 20,
-      attrs: <String, int>{'体': 1, '敏': 1},
+      attrs: <String, int>{'力': 1, '敏': 1},
       rank: 'D',
     ),
     DailyTemplate(
       title: '跑前热身 8 分钟，一个动作都别省',
       proof: '拉伸照片',
       minutes: 8,
-      attrs: <String, int>{'敏': 1, '体': 1},
+      attrs: <String, int>{'敏': 1, '力': 1},
       rank: 'F',
     ),
     DailyTemplate(
       title: '匀速跑 3 公里，配速别忽快忽慢',
       proof: '跑步 App 截图',
       minutes: 25,
-      attrs: <String, int>{'体': 2},
+      attrs: <String, int>{'力': 2},
       rank: 'D',
     ),
     DailyTemplate(
@@ -194,7 +198,7 @@ final GoalCategory _catRun = GoalCategory(
       title: '走满 6000 步，就当放松跑',
       proof: '步数截图',
       minutes: 45,
-      attrs: <String, int>{'体': 1, '敏': 1},
+      attrs: <String, int>{'力': 1, '敏': 1},
       rank: 'E',
     ),
   ],
@@ -203,7 +207,7 @@ final GoalCategory _catRun = GoalCategory(
 final GoalCategory _catSlim = GoalCategory(
   id: 'slim',
   label: '轻盈',
-  tilt: const <String, int>{'体': 2, '知': 1, '力': 1},
+  tilt: const <String, int>{'力': 2, '知': 1, '体': 1},
   cards: const <InterviewCard>[
     InterviewCard(
       id: 'slim.target',
@@ -233,7 +237,7 @@ final GoalCategory _catSlim = GoalCategory(
       title: '饭后散步 20 分钟',
       proof: '步数截图',
       minutes: 25,
-      attrs: <String, int>{'体': 1, '敏': 1},
+      attrs: <String, int>{'力': 1, '敏': 1},
       rank: 'E',
     ),
     DailyTemplate(
@@ -247,7 +251,7 @@ final GoalCategory _catSlim = GoalCategory(
       title: '跳绳 800 下',
       proof: '计数截图',
       minutes: 15,
-      attrs: <String, int>{'体': 1, '敏': 1},
+      attrs: <String, int>{'力': 1, '敏': 1},
       rank: 'D',
     ),
     DailyTemplate(
@@ -268,7 +272,7 @@ final GoalCategory _catSlim = GoalCategory(
       title: '走满 8000 步',
       proof: '步数截图',
       minutes: 50,
-      attrs: <String, int>{'体': 2},
+      attrs: <String, int>{'力': 2},
       rank: 'D',
     ),
     DailyTemplate(

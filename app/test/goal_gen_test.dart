@@ -125,6 +125,35 @@ void main() {
         expect(cat.label.trim(), isNotEmpty, reason: cat.id);
       }
     });
+
+    // docs/50 C1：「半年减重」奖励全是「意志」——运动类主属性该是「力」（显示体质）
+    test('运动类（跑步 / 减重 / 力量）首属性是「力」=体质，早起类留「体」=意志', () {
+      String firstOf(Map<String, int> m) =>
+          (m.entries.toList()..sort(
+                (MapEntry<String, int> a, MapEntry<String, int> b) =>
+                    b.value.compareTo(a.value),
+              ))
+              .first
+              .key;
+      for (final String id in <String>['run', 'slim', 'fit']) {
+        final GoalCategory cat = goalCats[id]!;
+        expect(firstOf(cat.tilt), '力', reason: id);
+        expect(Attr.nameOf(firstOf(cat.tilt)), '体质', reason: id);
+        // 拆出来的主线单，六维首位同样落在「力」
+        final List<PlanTask> plan = buildPlanTasks(
+          cat: cat,
+          tasks: <TaskSpec>[
+            for (final String r in <String>['E', 'D', 'C'])
+              TaskSpec(short: r, title: r, proof: '截图', minutes: 10, rank: r),
+          ],
+        );
+        for (final PlanTask t in plan) {
+          expect(firstOf(t.attrs), '力', reason: '$id · ${t.short}');
+        }
+      }
+      expect(firstOf(goalCats['sleep']!.tilt), '体');
+      expect(Attr.nameOf('体'), '意志');
+    });
   });
 
   group('空泛判定（原型 VAGUE，追问到具体为止）', () {
