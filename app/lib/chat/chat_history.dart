@@ -112,6 +112,14 @@ class ChatHistory {
     } catch (_) {}
   }
 
+  /// 清空（重置存档用，E1.2）：内存与落盘一起清。失败不抛。
+  Future<void> clear() async {
+    messages = <ChatMessage>[];
+    try {
+      await _p().remove(key);
+    } catch (_) {}
+  }
+
   /// 时间分组头（今天/昨天/M月D日）。跨年也给 M月D日（够用）。
   static String dayLabel(DateTime d) {
     final DateTime now = DateTime.now();

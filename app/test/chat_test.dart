@@ -331,7 +331,7 @@ void main() {
       // t26/P2-3：静态「思考中…」换成「思考中」+ 三点呼吸（600ms 循环、
       // 相位差 200ms，参数钉在 fx_test）。chat_test 不在本卡 inScope，
       // 这里只随文案口径改这一个字（越界但必要，照 t24 惯例申报）。
-      expect(find.text('思考中'), findsOneWidget);
+      expect(find.text('她在组织语言'), findsOneWidget); // B8
     });
 
     testWidgets('收起时断命中（IgnorePointer）', (WidgetTester tester) async {
@@ -835,10 +835,13 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('chat.toolentry.1')), findsOneWidget);
+      // B8（docs/50）：不再原样贴回执 —— 卡头是工具中文名，正文去掉前缀
       expect(
         find.text('${ChatService.toolTag}get_status：LV7 · ◈340'),
-        findsOneWidget,
+        findsNothing,
       );
+      expect(find.text('TOOL · 状态快照'), findsOneWidget);
+      expect(find.text('LV7 · ◈340'), findsOneWidget);
       expect(find.byType(TypeText), findsNothing); // 系统条目不打字机
       await tester.pumpWidget(
         panel(<ChatMessage>[

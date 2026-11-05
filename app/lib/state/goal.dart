@@ -49,6 +49,7 @@ class PlanTask {
     this.held,
     this.doneAt,
     this.timed = true,
+    this.grade,
   });
 
   /// 计划内序号（0 基）—— 只用于显示「第几张」，不是执行顺序
@@ -85,6 +86,9 @@ class PlanTask {
   final Duration? held;
   final DateTime? doneAt;
 
+  /// E2.2：结算时落库的评级（S/A/B/C，与结算页同一口径）；老存档没有 = null
+  final String? grade;
+
   bool get done => state == PlanState.done;
   bool get open => state == PlanState.todo || state == PlanState.active;
 
@@ -119,6 +123,7 @@ class PlanTask {
     Duration? held,
     DateTime? doneAt,
     bool? timed,
+    String? grade,
   }) => PlanTask(
     index: index ?? this.index,
     short: short ?? this.short,
@@ -132,6 +137,7 @@ class PlanTask {
     held: held ?? this.held,
     doneAt: doneAt ?? this.doneAt,
     timed: timed ?? this.timed,
+    grade: grade ?? this.grade,
   );
 
   // ── 存档 ──────────────────────────────────────────────────
@@ -161,6 +167,7 @@ class PlanTask {
             ? DateTime.tryParse(j['doneAt'] as String)
             : null,
         timed: j['mode'] != 'checkin',
+        grade: j['grade'] is String ? j['grade'] as String : null,
       );
 
   Map<String, dynamic> toJson() => <String, dynamic>{
@@ -176,6 +183,7 @@ class PlanTask {
     'final': finalTask,
     if (held != null) 'heldMs': held!.inMilliseconds,
     if (doneAt != null) 'doneAt': doneAt!.toIso8601String(),
+    if (grade != null) 'grade': grade,
   };
 }
 

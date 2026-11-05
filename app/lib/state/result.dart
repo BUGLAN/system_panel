@@ -135,18 +135,40 @@ class QuestResult {
 
   /// 验收评级（参考稿 JS L1490）。
   ///
-  ///  · 计时单：时长比 ≥1 = A，≥.5 = B，否则 C
-  ///  · 打卡单：不看用时，看**证据是否齐全** —— 有判真的证据 = A，
-  ///    只有未校验/存疑的 = B，没有证据 = C
+  ///  见 [gradeOf]（E2.2：计时单也改成证据为主，原来按「用时 ÷ 目标时长」，
+  ///  20 分钟的单 1 分 38 秒带证据交差就是 C）
+  String get grade => gradeOf(
+    timed: quest.timed,
+    minutes: quest.minutes,
+    held: held,
+    verified: verified,
+    photos: photos,
+    crit: crit,
+  );
+
+  /// 评级口径唯一真源（E2.2 · docs/50 宿主定案：**证据为主、用时为辅**）。
+  ///
+  ///  · 有判真的证据 = A；只有拿不准 / 未校验的 = B；没有证据 = C
+  ///  · 计时单用时不到目标的 1/4 → 降一档（防秒交刷单）；打卡单不看用时
   ///  · 暴击且 A → S
-  String get grade {
-    String g;
-    if (quest.timed) {
-      final int limit = quest.minutes * 60;
-      final double ratio = limit <= 0 ? 1 : held.inSeconds / limit;
-      g = ratio >= 1 ? 'A' : (ratio >= .5 ? 'B' : 'C');
-    } else {
-      g = verified > 0 ? 'A' : (photos > 0 ? 'B' : 'C');
+  ///
+  /// 纯函数：结算页与主线卡「战报」共用（`PlanTask.grade` 在结算时落库）。
+  static String gradeOf({
+    required bool timed,
+    required int minutes,
+    required Duration held,
+    required int verified,
+    required int photos,
+    required bool crit,
+  }) {
+    String g = verified > 0 ? 'A' : (photos > 0 ? 'B' : 'C');
+    final int limit = minutes * 60;
+    if (timed && limit > 0 && held.inSeconds * 4 < limit) {
+      g = switch (g) {
+        'A' => 'B',
+        'B' => 'C',
+        _ => 'C',
+      };
     }
     if (crit && g == 'A') g = 'S';
     return g;

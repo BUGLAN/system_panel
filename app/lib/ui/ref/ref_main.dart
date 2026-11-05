@@ -51,6 +51,7 @@ class RefMain extends StatefulWidget {
     this.onSwapGoal,
     this.pendingGoal = '',
     this.onRetryPlan,
+    this.onSetGoal,
   });
 
   final Goal goal;
@@ -83,6 +84,12 @@ class RefMain extends StatefulWidget {
   /// 无清单且有它 → 空态说明它，主按钮「去委托板」换成「重试拆解」。
   final String pendingGoal;
   final VoidCallback? onRetryPlan;
+
+  /// B2（docs/50）：没主线、也没记着的目标 → 主按钮【立目标】
+  final VoidCallback? onSetGoal;
+
+  bool get noGoal =>
+      goal.plan.isEmpty && pendingGoal.isEmpty && onSetGoal != null;
 
   /// 无清单、记着一句没拆成的目标
   bool get canRetry => goal.plan.isEmpty && pendingGoal.isNotEmpty;
@@ -214,10 +221,10 @@ class _RefMainState extends State<RefMain>
   RefTCardRecord _recordOf(PlanTask t) {
     final Duration held = t.held ?? Duration(minutes: t.minutes);
     final double ratio = t.minutes <= 0 ? 1 : held.inSeconds / (t.minutes * 60);
-    // 打卡单不看用时：交得上来 = 证据齐了（提交必须带证据），战报记 A
-    final String r = !t.timed
-        ? 'A'
-        : (ratio >= 1 ? 'A' : (ratio >= .5 ? 'B' : 'C'));
+    // E2.2：结算时落库的评级优先（与结算页同口径）；老存档没有才按旧口径推
+    final String r =
+        t.grade ??
+        (!t.timed ? 'A' : (ratio >= 1 ? 'A' : (ratio >= .5 ? 'B' : 'C')));
     return RefTCardRecord(
       rank: r,
       time: held,
@@ -624,8 +631,97 @@ class _RefMainState extends State<RefMain>
     final double pf = n <= 1
         ? (_done > from ? 1 : 0)
         : ((_done - from) / (n - 1)).clamp(0.0, 1.0);
+    // B7（docs/50）：分段标识 —— 整条主线超过一段才显示（宿主定案：不做翻段）
+    final int all = widget.goal.totalTasks;
+    final int segs = (all + kPlanWindowSize - 1) ~/ kPlanWindowSize;
+    final int seg = from ~/ kPlanWindowSize;
     return Padding(
       padding: const EdgeInsets.fromLTRB(2, 12, 2, 2),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          if (segs > 1) ...<Widget>[
+            _segmentBar(seg: seg, segs: segs, from: from, n: n),
+            const SizedBox(height: 8),
+          ],
+          _rail(from: from, n: n, pf: pf),
+        ],
+      ),
+    );
+  }
+
+  /// B7：「第 k 段 · 01–14」+ 段进度格（段多于 16 时改读数，免得挤）
+  Widget _segmentBar({
+    required int seg,
+    required int segs,
+    required int from,
+    required int n,
+  }) {
+    return Row(
+      key: const Key('ref.main.segment'),
+      children: <Widget>[
+        Text.rich(
+          TextSpan(
+            children: <InlineSpan>[
+              TextSpan(
+                text: '第 ${seg + 1} 段',
+                style: refText(
+                  family: Ref.fc,
+                  size: 13,
+                  wght: 900,
+                  color: Ref.txt,
+                ),
+              ),
+              TextSpan(
+                text: ' · ${_pad(from + 1)}–${_pad(from + n)}',
+                style: refText(
+                  family: Ref.fm,
+                  size: 11,
+                  wght: 500,
+                  color: Ref.dim,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const Spacer(),
+        if (segs <= 16)
+          for (int i = 0; i < segs; i++)
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 320), // Motion.Scene
+              curve: Ref.ease,
+              width: i == seg ? 16 : 6,
+              height: 4,
+              margin: const EdgeInsets.only(left: 3),
+              decoration: BoxDecoration(
+                color: i < seg
+                    ? Ref.a(Ref.cyan, .7)
+                    : (i == seg ? Ref.acid : const Color(0x24FFFFFF)),
+                borderRadius: BorderRadius.circular(2),
+                boxShadow: i == seg
+                    ? <BoxShadow>[
+                        BoxShadow(color: Ref.a(Ref.acid, .7), blurRadius: 6),
+                      ]
+                    : null,
+              ),
+            )
+        else
+          Text(
+            '${seg + 1} / $segs 段',
+            style: refText(
+              family: Ref.fm,
+              size: 11,
+              wght: 500,
+              color: Ref.dim,
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _rail({required int from, required int n, required double pf}) {
+    return SizedBox(
       child: SizedBox(
         height: 30,
         child: LayoutBuilder(
@@ -853,6 +949,15 @@ class _RefMainState extends State<RefMain>
 
   /// .actions：去委托板（pri，flex 1）+ 换目标（ghost）
   Widget _actions() {
+    // B2：没有目标时只有一个出口【立目标】（没东西可「换」）
+    if (widget.noGoal) {
+      return RefButton(
+        key: const Key('ref.main.setGoal'),
+        label: '立目标',
+        trailingTriangle: true,
+        onTap: widget.onSetGoal,
+      );
+    }
     return Row(
       children: <Widget>[
         Expanded(

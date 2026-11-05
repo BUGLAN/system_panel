@@ -73,7 +73,11 @@ class _RefGoalSwapState extends State<RefGoalSwap> {
 
   bool get _busy => widget.loading != null;
 
-  bool get _ready => widget.controller.text.trim().isNotEmpty && !_busy;
+  // E2.6：只认已上屏的文字；拼音组字中不给提交
+  bool get _ready =>
+      !refIsComposing(widget.controller.value) &&
+      refCommittedText(widget.controller.value).trim().isNotEmpty &&
+      !_busy;
 
   @override
   void initState() {
@@ -123,7 +127,8 @@ class _RefGoalSwapState extends State<RefGoalSwap> {
         children: <Widget>[
           RefReveal(index: 0, child: _head()),
           RefReveal(index: 1, child: _meta()),
-          RefReveal(index: 2, child: _current()),
+          // B2（docs/50）：首次立目标没有「当前主线 · 将撤下」
+          if (!_first) RefReveal(index: 2, child: _current()),
           RefReveal(index: 3, child: _sysbox()),
           RefReveal(
             index: 4,
@@ -172,9 +177,12 @@ class _RefGoalSwapState extends State<RefGoalSwap> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
-              const RefEyebrow(text: 'REWRITE · 换目标', accent: _acc),
+              RefEyebrow(
+                text: _first ? 'FIRST GOAL · 立目标' : 'REWRITE · 换目标',
+                accent: _first ? Ref.acid : _acc,
+              ),
               const SizedBox(height: 8),
-              Text('换一条主线', style: RefType.h1),
+              Text(_first ? '先立第一条主线' : '换一条主线', style: RefType.h1),
             ],
           ),
         ),
@@ -188,7 +196,19 @@ class _RefGoalSwapState extends State<RefGoalSwap> {
     );
   }
 
+  /// B2（docs/50）：还没有目标 = 首次立目标模式（不撤旧清单、要走访谈）
+  bool get _first => widget.goal.isEmpty;
+
   Widget _meta() {
+    if (_first) {
+      return Padding(
+        padding: const EdgeInsets.only(top: 10),
+        child: Text(
+          '第一次立目标 · 没有旧清单要撤 · 下一步答 3 张访谈卡',
+          style: RefType.meta,
+        ),
+      );
+    }
     return Padding(
       padding: const EdgeInsets.only(top: 10),
       child: Text.rich(
@@ -318,7 +338,9 @@ class _RefGoalSwapState extends State<RefGoalSwap> {
   /// .sysbox（与主线页同款，左边金线）
   Widget _sysbox() {
     final String line = (widget.line ?? '').trim().isEmpty
-        ? '要换？那就说清楚换成什么。[旧的那条]，说换就换。'
+        ? (_first
+              ? '一句话说清你想变成什么样。我先问三个问题，再排[第一段]。'
+              : '要换？那就说清楚换成什么。[旧的那条]，说换就换。')
         : widget.line!;
     return Container(
       margin: const EdgeInsets.only(top: 16, bottom: 18),
@@ -494,8 +516,8 @@ class _RefGoalSwapState extends State<RefGoalSwap> {
         Expanded(
           child: RefButton(
             key: const Key('ref.swap.submit'),
-            label: _busy ? '拆解中…' : '确认换线',
-            accent: _acc,
+            label: _busy ? '拆解中…' : (_first ? '下一步 · 访谈' : '确认换线'),
+            accent: _first ? Ref.acid : _acc,
             trailingTriangle: !_busy,
             onTap: _ready ? _submit : null,
           ),

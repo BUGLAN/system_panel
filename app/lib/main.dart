@@ -66,6 +66,7 @@ import 'ui/ref/ref_sheet.dart';
 import 'ui/ref/ref_shop.dart';
 import 'ui/ref/ref_tray.dart';
 import 'ui/ref/ref_overlays.dart';
+import 'ui/ref/ref_panels.dart';
 import 'ui/ref/ref_verdict.dart';
 import 'widgets/fail_layer.dart';
 import 'widgets/fx_layer.dart';
@@ -177,9 +178,7 @@ class _AppShellState extends State<AppShell>
   bool _resultChoicesOn = false;
 
   /// 失败页的记录（原型 `hhmm(Clock.now())` 与 `info.remedy`）
-  DateTime _failAt = DateTime.now();
   bool _failTimeout = false;
-  Remedy? _failRemedy;
 
   Moment _moment = Moment.boot;
 
@@ -662,6 +661,11 @@ class _AppShellState extends State<AppShell>
       _swapSay('太空了。说点具体的——[一句话]。');
       return;
     }
+    // B2（docs/50）：还没有目标 = 首次立目标 —— 不走换线，走访谈 + 绑定收卷
+    if (_goal.isEmpty) {
+      _startFirstGoal(typed);
+      return;
+    }
     final Goal prev = _flow.goal;
     final _PlanJob job = _PlanJob(_PlanJobKind.swap, typed);
     // 新的尝试开始 → 上一次的失败读数清掉（成功时不至于挂着旧错误）
@@ -861,6 +865,63 @@ class _AppShellState extends State<AppShell>
   ///
   /// 旧版这里什么都不做（`return null` → 走模板），于是失败不可见。
   /// 现在：横幅（开发者一眼看到 code）+ 字幕（人可读原因）+ debugPrint。
+  /// B2（docs/50）：首次立目标 —— 进绑定仪式（同一套输入 + 3 张访谈卡 + 拆第一段）。
+  /// 带着一句目标进来（换目标页的首次模式）就直接开始读这句、进访谈。
+  void _startFirstGoal([String text = '']) {
+    if (_planJob != null || _flow.active != null) return;
+    final String t = text.trim();
+    FocusScope.of(context).unfocus();
+    unawaited(
+      _goOrNow('onboard', () {
+        setState(() {
+          _goalChangeOn = false;
+          _goalAsk.clear();
+          _boardOn = false;
+          _planError = null;
+          _interviewCat = null;
+          _probeLine = null;
+          _ask.text = t;
+          _ask.selection = TextSelection.collapsed(offset: t.length);
+          _moment = Moment.onboard;
+        });
+        if (t.isNotEmpty) _onGoalSubmitted();
+      }),
+    );
+  }
+
+  /// B1（docs/50）：错误卡标题（按失败类型）
+  static String _planFailTitle(PlanFailureCode c) => switch (c) {
+    PlanFailureCode.noKey => '还没配 Key',
+    PlanFailureCode.network => '网络断了',
+    PlanFailureCode.timeout => '等太久了',
+    PlanFailureCode.httpError => '上游不可用',
+    _ => '这次没拆明白',
+  };
+
+  /// B1：失败时绑定页她那句（答案都在 —— 重试不用重答）
+  static String _planFailLine(PlanFailureCode c) => switch (c) {
+    PlanFailureCode.noKey => '脑子（Key）还没装上。先跳过也行，目标我记着。',
+    PlanFailureCode.network ||
+    PlanFailureCode.timeout ||
+    PlanFailureCode.httpError => '不是你的锅，是上游掉线。答案我都记着，点[重试]就行。',
+    _ => '这次没拆明白。答案我都记着——[重试]，或者换个说法。',
+  };
+
+  /// B1【换个说法】：回第 0 幕、原文预填；访谈答案留在绑定页里，
+  /// 同一类目的卡组回来时直接停在复核态（不用重答）
+  void _rephraseGoal() {
+    if (_planJob != null) return;
+    final String text = _pendingGoalText;
+    setState(() {
+      _planError = null;
+      _interviewCat = null;
+      if (text.isNotEmpty) {
+        _ask.text = text;
+        _ask.selection = TextSelection.collapsed(offset: text.length);
+      }
+    });
+  }
+
   void _failPlan(PlanFailure e, {String goalText = ''}) {
     debugPrint(
       '[plan] ❌ ${e.code.name} · ${e.detail}'
@@ -914,12 +975,17 @@ class _AppShellState extends State<AppShell>
       _drawerOn = false;
       _usedItems.clear();
       _resultChoicesOn = false;
+      _evRejectNote = null; // E2.1：换了一单，上一单的拒收原因不带过来
       _active = true; // 原型 `S.active` —— 收起后它仍然为真
       _host = _flow.host;
       _goal = _flow.goal;
     });
     // 执行中：落进思考脸一次（低频、不打扰；之后交给待机池）
     _clock.startFast();
+    // E1.1（docs/50）：接单这一刻就落盘（active + startAt + 出队后的队列）。
+    // 原来要等下一次 _persist（加证据 / 切后台）才写 —— 而杀进程、划掉 App
+    // 不一定走 paused 生命周期，于是重开回大厅、那一单退回队列、计时归零。
+    _persist();
   }
 
   /// 用掉一个执行类道具（原型 `Store.useItem(k)`）
@@ -1347,6 +1413,7 @@ class _AppShellState extends State<AppShell>
                               ? _flow.pendingGoal
                               : '',
                           onRetryPlan: () => unawaited(_retryPlan()),
+                          onSetGoal: _flow.active == null ? _startFirstGoal : null,
                           onSide: (int i) {
                             if (i == 0) {
                               _go(
@@ -1399,9 +1466,11 @@ class _AppShellState extends State<AppShell>
                             evidenceBusy: _evidenceBusy,
                             evidenceChecking: _evidenceChecking(),
                             submitWaiting: _evidenceWaiting,
-                            onAddEvidence: _addEvidence,
-                            // A17（docs/50）：演示截图是开发验证用，release 不给
-                            onDemoEvidence: kDebugMode ? _demoEvidence : null,
+                            rejectNote: _evRejectNote,
+                            // B4（docs/50）：「+」先弹来源底板（拍照 / 相册）；
+                            // 演示截图挪进底板（A17：仍只在 debug 包给）
+                            onAddEvidence: _openEvidenceSource,
+                            onDemoEvidence: null,
                             onRemoveEvidence: _removeEvidence,
                             onSubmit: () => unawaited(_submitQuest()),
                             onQuit: () {
@@ -1468,6 +1537,21 @@ class _AppShellState extends State<AppShell>
                           sub: 'MISSION FAILED',
                           onBack: _backToLobbyFromFail,
                           box: _failBox(),
+                          // B5（docs/50）：补救单做成可接的票（原来只有一行字、接不了）
+                          remedy: _failRemedyQuest == null
+                              ? null
+                              : RefTicketCard(
+                                  key: const Key('ref.fail.remedy'),
+                                  quest: _failRemedyQuest!,
+                                  stampOnTap: false,
+                                  onTap: _takeRemedyNow,
+                                ),
+                          onTakeRemedy: _failRemedyQuest == null
+                              ? null
+                              : _takeRemedyNow,
+                          backLabel: _failRemedyQuest == null
+                              ? '回到大厅'
+                              : '先放委托板，回大厅',
                         ),
                       ),
                     // 参考稿 coinFly：结算收下后晶核从屏心飞向 HUD 晶核
@@ -1497,11 +1581,14 @@ class _AppShellState extends State<AppShell>
                         ),
                       ),
                     ),
-                    // 认输按住时屏幕跟着暗下去（最多 75%），认输后停在 60%
+                    // 认输按住时屏幕跟着暗下去（最多 75%）。
+                    // E2.3（docs/50）：原来认输后停在 60% —— 失败页排在暗幕下面，
+                    // 【接下补救单】被压成灰的、像不能点。失败页自带深色径向底，
+                    // 进页后暗幕按 900ms 过渡退掉。
                     ValueListenableBuilder<double>(
                       valueListenable: _quitP,
                       builder: (BuildContext _, double q, Widget? _) => Veil(
-                        opacity: fail ? .6 : q * .75,
+                        opacity: fail ? 0 : q * .75,
                         instant: q > 0, // 按住期间跟手，松手才回到 900ms 过渡
                       ),
                     ),
@@ -1533,6 +1620,10 @@ class _AppShellState extends State<AppShell>
                           probe: switch (_planJob?.kind) {
                             _PlanJobKind.interview => '先让我读懂这句。……[别催]。',
                             _PlanJobKind.bind => '答案收到。我在排[第一段]——别走开。',
+                            // B1（docs/50）：失败时她按失败类型说一句（别装没事）
+                            _ when _planError != null => _planFailLine(
+                              _planError!.code,
+                            ),
                             _ =>
                               _interviewCat != null
                                   // A8（docs/50）：别和大标题说同一句
@@ -1557,6 +1648,12 @@ class _AppShellState extends State<AppShell>
                                 ),
                           onDone: _completeOnboarding,
                           onSkip: _planError == null ? null : _skipLlmAndStart,
+                          // B1：错误卡标题 + 复核态的「目标」行 +【换个说法】
+                          planErrorTitle: _planError == null
+                              ? null
+                              : _planFailTitle(_planError!.code),
+                          goalText: _pendingGoalText,
+                          onRephrase: _rephraseGoal,
                           loading: _planLoadingFor(const <_PlanJobKind>{
                             _PlanJobKind.interview,
                             _PlanJobKind.bind,
@@ -1671,6 +1768,7 @@ class _AppShellState extends State<AppShell>
                               ? _flow.pendingGoal
                               : '',
                           onRetryPlan: () => unawaited(_retryPlan()),
+                          onSetGoal: _flow.active == null ? _startFirstGoal : null,
                         ),
                       ),
                     // v3 换目标（重写）：独立场景，斜切转场进出。
@@ -1724,8 +1822,45 @@ class _AppShellState extends State<AppShell>
                           ),
                           onTap: _onBoardTap,
                           onRefill: _refillBoard,
+                          isLocked: _mainLocked,
                         ),
                       ),
+                    // B4 / B6 底板：压在所有页面（大厅 / 主线 / 委托板 / 执行）之上、
+                    // toast 与亮帧之下
+                    // B4（docs/50）：证据来源底板（拍照 / 相册 / debug 演示截图）
+                    Positioned.fill(
+                      child: RefBottomPanel(
+                        visible: _evSourceOn && exec,
+                        onClose: () => setState(() => _evSourceOn = false),
+                        child: RefEvidenceSource(
+                          proof: _flow.active?.task.proof ?? '',
+                          slotsLeft:
+                              QuestFlow.kMaxEvidence -
+                              (_flow.active?.evidence.length ?? 0),
+                          onCamera: () => _pickEvidenceFrom(ImageSource.camera),
+                          onGallery: () =>
+                              _pickEvidenceFrom(ImageSource.gallery),
+                          onDemo: kDebugMode
+                              ? () => _pickEvidenceFrom(null)
+                              : null,
+                          onCancel: () => setState(() => _evSourceOn = false),
+                        ),
+                      ),
+                    ),
+                    // B6（docs/50）：接单前简报 —— 点【开始计时】才进执行面板
+                    Positioned.fill(
+                      child: RefBottomPanel(
+                        visible: _briefQuest != null,
+                        onClose: _cancelBrief,
+                        child: _briefQuest == null
+                            ? const SizedBox.shrink()
+                            : RefBrief(
+                                quest: _briefQuest!,
+                                onStart: _startFromBrief,
+                                onCancel: _cancelBrief,
+                              ),
+                      ),
+                    ),
                     // 「执行中」药丸（`ui.js` L60）：**执行页自己不显示它**，点它回执行页。
                     // 收起执行面板后就靠它回去。
                     // **主线页不再浮这颗药丸** —— 主线页的计时读数
@@ -2086,14 +2221,22 @@ class _AppShellState extends State<AppShell>
       // ⚠️ 重置存档会冻结存储（原型靠随后的 location.reload() 解冻，我们没有重载），
       //    所以重新绑定这一刻要显式解冻，否则这次存盘会被静默跳过。
       _save.unfreeze();
+      // B2（docs/50）：已经在用的档（手上有日常 / 记着跳过的目标）里首次立目标 ——
+      // 主线落进现有队列（QuestFlow.newGoal），不重建整个 flow，免得冲掉当天日常
+      final bool live = _flow.queue.isNotEmpty || _flow.pendingGoal.isNotEmpty;
       setState(() {
-        _goal = goal;
-        _flow = QuestFlow(host: _host, goal: _goal);
-        _wireFlow(_flow);
-        // 绑定即建队列：计划前几张 + 当日日常（store.js bind() 的 L165-167；
-        // 每日 1~2 个走 §2.2 新政，不再用 seedForCurrentGoal 的固定 3 张）
-        _flow.publishPlanTasks(); // 计划前几张（在手窗口）
-        _flow.queue.addAll(_genTodaysDailies());
+        if (live) {
+          _flow.newGoal(goal);
+          _goal = _flow.goal;
+        } else {
+          _goal = goal;
+          _flow = QuestFlow(host: _host, goal: _goal);
+          _wireFlow(_flow);
+          // 绑定即建队列：计划前几张 + 当日日常（store.js bind() 的 L165-167；
+          // 每日 1~2 个走 §2.2 新政，不再用 seedForCurrentGoal 的固定 3 张）
+          _flow.publishPlanTasks(); // 计划前几张（在手窗口）
+          _flow.queue.addAll(_genTodaysDailies());
+        }
         _resyncQueueCount();
         // 见面礼：双倍卡 ×1（原型 bind() 的 `S.items.dbl += 1`，
         // 数值语义钉在 kBindGift*；Banner 演出在 build 里挂着）
@@ -2226,6 +2369,15 @@ class _AppShellState extends State<AppShell>
   /// （t19/A1：wipe 落**空白档**——重置后是真·新宿主，不是 demo 老宿主还魂）
   Future<void> _wipe() async {
     final SaveData d = await _save.wipe(fallback: SaveData.fresh());
+    // E1.2（docs/50）：确认框写着「她记住的你 —— 全部清空」，可原来只删了主存档：
+    // 聊天记录（旧状态卡）、长期记忆（访谈答案）、档案的历史日志都留着。一并清。
+    await _chat.clear();
+    await _flow.historyLog.clear();
+    try {
+      await (_memory ?? MemoryStore()).clear();
+    } catch (e) {
+      debugPrint('[wipe] ⚠️ 记忆清空失败：$e');
+    }
     if (!mounted) return;
     unawaited(Sfx.play('fail'));
     // 斜切进绑定仪式（原来是硬切）。数据在被盖住的那一拍换
@@ -2488,21 +2640,15 @@ class _AppShellState extends State<AppShell>
       // 不放的话，宿主在这段窗口里点【……接。】会被闸门挡掉（`_onChoice` 旧版
       // 就是 `if (_busy) return`），2026-10-11 实机死局见 `_onChoice` 的注释。
       _busy = false;
-      _failAt = DateTime.now();
       _failTimeout = how == 'timeout';
-      final Quest? r = fo?.remedy;
-      _failRemedy = r == null
-          ? null
-          : Remedy(
-              // 认输页自己会补「（简化版）」字样，这里给基础名
-              name: fo!.task.name,
-              minutes: r.minutes,
-              rank: r.rank,
-              deadline: '明天 ${_hhmm(fo.remedyDeadline ?? _failAt)}',
-            );
+      // B5：补救单本体直接交给失败页那张票（旧版文字卡的 Remedy 读数不再需要）
+      _failRemedyQuest = fo?.remedy;
       _host = _flow.host;
       _goal = _flow.goal;
     });
+    // E1.1 / E1.4：认输这一刻就落盘（active 清掉、补救单入队）——否则停在失败页
+    // 时杀进程，重开会回到已经认输的那一单
+    _persist();
   }
 
   // ── 结算页 / 失败页的出口（「提交卡死」根因③④的修复）──────────────
@@ -2741,7 +2887,10 @@ class _AppShellState extends State<AppShell>
     }
     Quest? q;
     for (final Quest x in _flow.queue) {
-      if (x.kind == 'main' && x.goalId == _goal.id && x.planIndex == i) {
+      // E1.4：这一环被补救单顶着时，接的就是补救单（不另造一张原单）
+      if ((x.kind == 'main' || _flow.isPlanRemedy(x)) &&
+          x.goalId == _goal.id &&
+          x.planIndex == i) {
         q = x;
         break;
       }
@@ -2795,6 +2944,8 @@ class _AppShellState extends State<AppShell>
     if (_modalOn) return _BackTarget.modal;
     if (_sysSheetOn) return _BackTarget.sysSheet;
     if (_chatOpen) return _BackTarget.chat;
+    // B4 / B6 底板：返回键先收底板（与点遮罩同语义）
+    if (_evSourceOn || _briefQuest != null) return _BackTarget.panel;
     if (_moment == Moment.fail) return _BackTarget.fail;
     if (_moment == Moment.main && _goalChangeOn) return _BackTarget.swap;
     if (_moment == Moment.main && _pickedTask != null) {
@@ -2828,6 +2979,11 @@ class _AppShellState extends State<AppShell>
         setState(() => _sysSheetOn = false);
       case _BackTarget.chat:
         setState(() => _chatOpen = false);
+      case _BackTarget.panel:
+        setState(() {
+          _evSourceOn = false;
+          _briefQuest = null;
+        });
       case null:
         break;
     }
@@ -2940,10 +3096,6 @@ class _AppShellState extends State<AppShell>
     return '$m:$ss';
   }
 
-  /// 原型 `hhmm(Clock.now())`
-  static String _hhmm(DateTime d) =>
-      '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
-
   /// 当前场景的主强调色 —— 参考稿 L1177 的 --accent（SC[name].acc）。
   /// 每个页面一个色：home acid / main cyan / board gold / exec hot /
   /// archive violet / shop mint。
@@ -3000,7 +3152,6 @@ class _AppShellState extends State<AppShell>
 
   /// .fail-box（参考稿 L470-473）：连胜损失 + 一句 + 补救单
   Widget _failBox() {
-    final Remedy remedy = _failRemedy ?? Remedy.demo;
     final int streak = _host.streak;
     return Container(
       width: double.infinity,
@@ -3064,11 +3215,13 @@ class _AppShellState extends State<AppShell>
               color: const Color(0xFFE9DBE3),
             ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 10),
           Text(
-            // A16（docs/50）：不再写「（做一半）」与「明天 02:02」这种怪截止
-            '补救单 · ${remedy.name}（简化版）· ${remedy.minutesText}'
-            ' · 24 小时内完成',
+            // C6 定案：认输不断连胜；只有一整天一单都没完成才断。
+            // B5：补救单不再写在这一行里，挪到下面那张可接的票上。
+            streak > 0
+                ? '认输记一笔，连胜不断。今天再交一单才算数。'
+                : '今天还没交过一单。交一单，连胜就从这里开始。',
             textAlign: TextAlign.center,
             style: refText(
               family: Ref.fc,
@@ -3083,13 +3236,41 @@ class _AppShellState extends State<AppShell>
     );
   }
 
+  /// B5：失败页那张补救单（Quest 本体；可接取的票据卡读它）
+  Quest? _failRemedyQuest;
+
   /// 失败页「回到大厅」（参考稿 L1558 的 failOk）
+  /// B5：有补救单时 =「先放委托板」—— 补救单置顶摆上委托板（原来没人领，
+  /// `takeRemedy` 从没被调过，补救单出了失败页就没了）
   void _backToLobbyFromFail() {
+    _flow.takeRemedy(now: true);
     unawaited(
       _go('home', () {
         setState(() {
-          _failRemedy = null;
+          _failRemedyQuest = null;
+          _resyncQueueCount();
           _moment = Moment.lobby;
+        });
+      }, back: true),
+    );
+    _persist();
+  }
+
+  /// B5【接下补救单 · 现在做】：补救单钉到队首 → 回大厅 → 直接弹 B6 简报
+  void _takeRemedyNow() {
+    final Quest? r = _flow.takeRemedy(now: true);
+    if (r == null) {
+      _backToLobbyFromFail();
+      return;
+    }
+    unawaited(Sfx.play('stamp'));
+    unawaited(
+      _go('home', () {
+        setState(() {
+          _failRemedyQuest = null;
+          _resyncQueueCount();
+          _moment = Moment.lobby;
+          _briefQuest = r;
         });
       }, back: true),
     );
@@ -3255,8 +3436,9 @@ class _AppShellState extends State<AppShell>
     return switch (_verdictRank(r)) {
       'S' => '……我无话可说。这次算你狠。',
       'A' => '……行吧，挑不出毛病。[我没有在夸你]。',
-      'B' => '差一口气，下次把那口气骑完。',
-      _ => '这叫「到此一游」。勉强收下。',
+      // E2.2：B / C 现在是「证据没核上」或「快得不像话」，台词跟着改
+      'B' => '差一口气：证据我没核上，或者快得不像话。下次稳一点。',
+      _ => '证据没核上，还快得离谱。这叫「到此一游」，勉强收下。',
     };
   }
 
@@ -3357,9 +3539,31 @@ class _AppShellState extends State<AppShell>
     ];
   }
 
-  /// 证据入槽：走内置 VisionService 管线（相册 → 落盘 → 入槽 → 后台校验）。
-  /// 参考稿的执行页只有一个「+」上传口（L754），点它直接开相册。
-  Future<void> _addEvidence() async {
+  /// B4（docs/50）：证据来源底板开着（拍照 / 相册 / debug 演示截图）
+  bool _evSourceOn = false;
+
+  /// E2.1：上一张被拒的原因（下一张入槽 / 换一单时清掉）
+  String? _evRejectNote;
+
+  /// 点证据槽「+」：先弹来源底板（满 3 张 / 正在取图 / 等校验时不弹）
+  void _openEvidenceSource() {
+    final ActiveQuest? a = _flow.active;
+    if (a == null || _evidenceBusy || _evidencePicking || _evidenceWaiting) {
+      return;
+    }
+    if (a.evidence.length >= QuestFlow.kMaxEvidence) return;
+    setState(() => _evSourceOn = true);
+  }
+
+  /// 底板选了一项：先收底板（滑下与系统相机 / 相册同时起），再取图
+  void _pickEvidenceFrom(ImageSource? source) {
+    setState(() => _evSourceOn = false);
+    unawaited(source == null ? _demoEvidence() : _addEvidence(source: source));
+  }
+
+  /// 证据入槽：走内置 VisionService 管线（相机/相册 → 落盘 → 入槽 → 后台校验）。
+  /// B4：来源由底板选（原来「+」直接开相册，拍不了照）。
+  Future<void> _addEvidence({ImageSource source = ImageSource.gallery}) async {
     final ActiveQuest? a = _flow.active;
     if (a == null || _evidenceBusy || _evidencePicking || _evidenceWaiting) {
       return;
@@ -3372,9 +3576,20 @@ class _AppShellState extends State<AppShell>
     try {
       shot = await VisionService().pick(
         quest: a.task,
-        source: ImageSource.gallery,
+        source: source,
         onPicked: () {
           if (mounted) setState(() => _evidenceBusy = true);
+        },
+        // 相机打不开（模拟器没有相机 / 权限被拒）：别当成「取消了」静默吞掉
+        onFailed: () {
+          if (!mounted) return;
+          unawaited(Sfx.play('error'));
+          _toast(
+            source == ImageSource.camera
+                ? '相机打不开。去设置里给相机权限，或者从相册选。'
+                : '相册打不开。再试一次。',
+            bad: true,
+          );
         },
       );
     } finally {
@@ -3414,6 +3629,7 @@ class _AppShellState extends State<AppShell>
     // 取图期间那单可能已经没了（认输 / 超时）或被换掉
     if (!identical(_flow.active, a)) return;
     if (!_flow.addEvidence(shot)) return; // 满 3 张
+    _evRejectNote = null; // E2.1：新的一张进来了，旧的拒收原因撤下
     _evChecks.start(
       shot.id,
       VisionService().verifyShot(quest: a.task, shot: shot),
@@ -3436,6 +3652,7 @@ class _AppShellState extends State<AppShell>
       unawaited(Sfx.play('fail'));
       unawaited(Haptics.buzz('fail'));
       final String why = v.note.isEmpty ? '这张和任务对不上' : v.note;
+      setState(() => _evRejectNote = why);
       _toast('这张我不收：$why。重传一张。', bad: true);
       _sayAside('拿这个糊弄我？$why。[重传]。', holdMs: 3200);
     }
@@ -3663,13 +3880,49 @@ class _AppShellState extends State<AppShell>
       _sayAside('手上还有一张没交。先把它了了。', holdMs: 1800);
       return;
     }
+    // E1.3（docs/50）：主线按顺序做 —— 后面的单没解封（与主线页「完成上一单解封」同口径）
+    if (_mainLocked(q)) {
+      unawaited(Sfx.play('error'));
+      final int next = _goal.firstOpenIndex + 1;
+      _toast('主线第 ${q.planIndex + 1} 单还没解封：先做第 $next 单。', bad: true);
+      _sayAside('跳着做？先把[第 $next 单]了了。', holdMs: 1800);
+      return;
+    }
+    // B6（docs/50）：先看简报（时长 / 证据 / 奖励 / 判负），点【开始计时】才接单。
+    // 原来点「接取」就直接开计时，来不及看清要交什么。
+    if (_briefQuest != null) return; // 简报开着：防连点
+    setState(() => _briefQuest = q);
+  }
+
+  /// E1.3：这张主线单还没解封（只有清单里第一张没做完的能接；补救 / 日常不锁）
+  bool _mainLocked(Quest q) {
+    if (q.kind != 'main' || q.goalId != _goal.id) return false;
+    final int open = _goal.firstOpenIndex;
+    return open >= 0 && q.planIndex > open;
+  }
+
+  /// B6：接单前简报里的那一单（非空 = 简报开着）
+  Quest? _briefQuest;
+
+  /// 简报【开始计时】：这一单钉到队首 → 原来的接单链路（斜切转场 + 记 startAt）
+  void _startFromBrief() {
+    final Quest? q = _briefQuest;
+    if (q == null || _busy || _flow.active != null) return;
     _flow.queue.removeWhere((Quest t) => t.serial == q.serial);
     _flow.queue.insert(0, q);
     setState(() {
+      _briefQuest = null;
       _host = _flow.host;
       _goal = _flow.goal;
     });
+    unawaited(Sfx.play('stamp'));
     _beginExec();
+  }
+
+  /// 简报【再想想】/ 点遮罩 / 返回键：收起，单子原地不动
+  void _cancelBrief() {
+    if (_briefQuest == null) return;
+    setState(() => _briefQuest = null);
   }
 
   /// 什么时候被切到后台的（原型 `App.hiddenAt`）
@@ -3840,7 +4093,7 @@ class _AppShellState extends State<AppShell>
 /// 系统返回键要消费的那一层。
 ///
 /// 顺序即优先级：失败页 > 牌屉 > 主线；null = 交给系统（退到桌面）。
-enum _BackTarget { fail, drawer, main, sheet, modal, sysSheet, chat, swap }
+enum _BackTarget { fail, drawer, main, sheet, modal, sysSheet, chat, swap, panel }
 
 /// 正在等 LLM 的那一件事属于哪一页（加载卡按它分发）
 enum _PlanJobKind {

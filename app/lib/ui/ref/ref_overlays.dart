@@ -450,7 +450,19 @@ class RefFail extends StatefulWidget {
     required this.box,
     required this.onBack,
     this.visible = true,
+    this.remedy,
+    this.onTakeRemedy,
+    this.backLabel = '回到大厅',
   });
+
+  /// B5（docs/50）：可接取的补救票（委托板同款 [RefTicketCard]）；null = 没有补救单
+  final Widget? remedy;
+
+  /// B5：【接下补救单 · 现在做】；null = 不给这个主键
+  final VoidCallback? onTakeRemedy;
+
+  /// 次键文案（有补救单时是「先放委托板，回大厅」）
+  final String backLabel;
 
   /// .gl-t 的正文（CSS 用 data-t 复制同一段文字做错位）
   final String title;
@@ -547,6 +559,10 @@ class _RefFailState extends State<RefFail> with TickerProviderStateMixin {
         final double bk = Curves.easeOut.transform(
           ((ms - 300) / 500).clamp(0.0, 1.0),
         );
+        // B5：补救票再错峰 150ms 进场（仍在 800ms 编排内收完）
+        final double rk = Curves.easeOut.transform(
+          ((ms - 450) / 350).clamp(0.0, 1.0),
+        );
 
         return _OverlayScreen(
           onTap: null,
@@ -610,14 +626,60 @@ class _RefFailState extends State<RefFail> with TickerProviderStateMixin {
                   ),
                 ),
               ),
+              if (widget.remedy != null) ...<Widget>[
+                const SizedBox(height: 22),
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 320),
+                  child: Opacity(
+                    opacity: rk,
+                    child: Transform.translate(
+                      offset: Offset(0, 30 * (1 - rk)),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: <Widget>[
+                          Text(
+                            'REMEDY · 补救单已备好',
+                            style: refText(
+                              family: Ref.fm,
+                              size: 11,
+                              wght: 700,
+                              ls: 4,
+                              color: Ref.gold,
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          widget.remedy!,
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
               const SizedBox(height: 22), // #fail .btn{margin-top:22}（L474）
+              if (widget.onTakeRemedy != null) ...<Widget>[
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 320),
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: RefButton(
+                      key: const Key('ref.fail.takeRemedy'),
+                      label: '接下补救单 · 现在做',
+                      trailingTriangle: true,
+                      onTap: widget.onTakeRemedy,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+              ],
               ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 320),
                 child: SizedBox(
                   width: double.infinity,
                   child: RefButton(
-                    label: '回到大厅',
+                    label: widget.backLabel,
                     primary: false, // DOM L832 是 .btn.ghost
+                    small: widget.onTakeRemedy != null,
+                    animateSheen: widget.onTakeRemedy == null,
                     onTap: widget.onBack,
                   ),
                 ),

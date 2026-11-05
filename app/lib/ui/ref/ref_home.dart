@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:ui' show PathMetric;
 
 import 'package:flutter/material.dart';
 
@@ -41,6 +42,7 @@ class RefHome extends StatefulWidget {
     this.onOrb,
     this.pendingGoal = '',
     this.onRetryPlan,
+    this.onSetGoal,
   });
 
   final HostState host;
@@ -78,6 +80,9 @@ class RefHome extends StatefulWidget {
   /// 没主线且有它 → 主线卡位换成待拆卡，主按钮是「重试拆解」。
   final String pendingGoal;
   final VoidCallback? onRetryPlan;
+
+  /// B2（docs/50）：没主线、也没记着的目标 → 主线卡位「未立目标」的【立目标】
+  final VoidCallback? onSetGoal;
 
   @override
   State<RefHome> createState() => _RefHomeState();
@@ -176,6 +181,12 @@ class _RefHomeState extends State<RefHome> with TickerProviderStateMixin {
                 _pendingCard(),
               if (widget.goal.plan.isEmpty && widget.pendingGoal.isNotEmpty)
                 const SizedBox(height: 16),
+              if (widget.goal.plan.isEmpty &&
+                  widget.pendingGoal.isEmpty &&
+                  widget.onSetGoal != null) ...<Widget>[
+                _noGoalCard(),
+                const SizedBox(height: 16),
+              ],
               _dock(),
               const SizedBox(height: 4),
               _orbCap(),
@@ -538,6 +549,80 @@ class _RefHomeState extends State<RefHome> with TickerProviderStateMixin {
 
   /// C5（docs/50）：没拆成的目标 —— 与主线卡同一套外框，主按钮「重试拆解」。
   /// 按下声由 RefButton 自带；加载态由主壳整屏挂 RefPlanLoading。
+  /// B2：「未立目标」卡 —— acid 虚线框（与 C5 待拆卡区分：那张是记着一句没拆成的）
+  Widget _noGoalCard() {
+    return CustomPaint(
+      key: const Key('ref.home.noGoal'),
+      painter: _DashedRRectPainter(color: Ref.a(Ref.acid, .5), radius: 20),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: <Color>[
+              Ref.a(Ref.acid, .08),
+              Ref.a(Ref.violet, .05),
+              const Color(0x05FFFFFF),
+            ],
+            stops: const <double>[0, .55, 1],
+          ),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Text(
+              'MAINLINE · 未立目标',
+              maxLines: 1,
+              softWrap: false,
+              overflow: TextOverflow.clip,
+              style: refText(
+                family: Ref.fm,
+                size: 10,
+                wght: 500,
+                ls: 3,
+                height: 1,
+                color: Ref.acid,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              '主线还空着',
+              style: refText(
+                family: Ref.fc,
+                size: 19,
+                wght: 900,
+                height: 1.3,
+                color: Ref.txt,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '立了目标才有主线单和兑现单；日常单照常发。',
+              style: refText(
+                family: Ref.fc,
+                size: 12,
+                wght: 500,
+                height: 1.4,
+                color: Ref.dim,
+              ),
+            ),
+            const SizedBox(height: 12),
+            RefButton(
+              key: const Key('ref.home.setGoal'),
+              label: '立目标',
+              small: true,
+              trailingTriangle: true,
+              onTap: widget.onSetGoal,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _pendingCard() {
     return Container(
       key: const Key('ref.home.pendingGoal'),
@@ -1057,4 +1142,38 @@ class _NavIconPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_NavIconPainter o) => o.kind != kind;
+}
+
+/// B2：虚线圆角框（参考稿 `border: 1.5px dashed`；Flutter 的 Border 没有虚线）
+class _DashedRRectPainter extends CustomPainter {
+  const _DashedRRectPainter({required this.color, required this.radius});
+
+  final Color color;
+  final double radius;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final Path path = Path()
+      ..addRRect(
+        RRect.fromRectAndRadius(
+          Offset.zero & size,
+          Radius.circular(radius),
+        ),
+      );
+    final Paint paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.5;
+    for (final PathMetric m in path.computeMetrics()) {
+      double d = 0;
+      while (d < m.length) {
+        canvas.drawPath(m.extractPath(d, d + 7), paint);
+        d += 12;
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(_DashedRRectPainter o) =>
+      o.color != color || o.radius != radius;
 }

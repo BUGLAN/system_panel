@@ -73,6 +73,10 @@ class Quest {
   /// ui.js L196 的 kind 文案 —— **四档**，不是三档
   String get kindLabel {
     if (kind == 'main') return '主线 · 第 ${planIndex + 1} 单 / $planTotal';
+    // E1.4：顶替主线某一环的补救单 —— 交了就算这一环过关
+    if (kind == 'remedy' && planIndex >= 0) {
+      return '补救 · 顶替主线第 ${planIndex + 1} 单';
+    }
     if (kind == 'remedy') return '补救 · 24 小时内有效';
     if (hinted) return '日常 · 她替你留的';
     return '日常委托';

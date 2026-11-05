@@ -67,7 +67,9 @@ class Rewards {
     bool remedy = false,
   }) {
     final double k = remedy ? kRemedyFactor : 1.0;
-    final int baseExp = (expOf(rank) * k).round();
+    // E2.4（docs/50 宿主定案）：补救单经验保底 1 —— F 级减半后原来是 0
+    final int raw = (expOf(rank) * k).round();
+    final int baseExp = remedy && raw < 1 ? 1 : raw;
     final int exp =
         baseExp * (crit ? kCritMultiplier : 1) * (dbl ? kDblMultiplier : 1);
     final int coin = (coinOf(rank) * k).round() * (crit ? kCritMultiplier : 1);

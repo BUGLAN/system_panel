@@ -1171,7 +1171,7 @@ void main() {
   });
 
   group('认输与补救（失败页不再是死局）', () {
-    test('fail：failCount 记账、主线回队首、生成补救单（降两档/做一半/24h）', () {
+    test('fail：failCount 记账、补救单顶替这一环、生成补救单（降两档/做一半/24h）', () {
       final QuestFlow f = QuestFlow.demo();
       final Quest head = f.head!;
       f.accept(head, now: DateTime(2026, 1, 1, 10));
@@ -1183,8 +1183,17 @@ void main() {
       expect(fo!.held, const Duration(minutes: 10));
       expect(f.host.failCount, HostState.demo.failCount + 1); // demo 档本身 4 次
       expect(f.active, isNull);
-      // 主线不判死：回队首
-      expect(f.head?.serial, head.serial);
+      // 主线不判死 —— E1.4（docs/50 宿主定案）：补救单顶替这一环钉队首，原单不回板
+      expect(f.head?.serial, fo.remedy?.serial);
+      expect(fo.remedy?.planIndex, head.planIndex);
+      expect(fo.remedy?.goalId, head.goalId);
+      expect(f.queue.where((Quest q) => q.serial == head.serial), isEmpty);
+      expect(
+        f.queue.where(
+          (Quest q) => q.kind == 'main' && q.planIndex == head.planIndex,
+        ),
+        isEmpty,
+      );
       // 补救单：C 降两档 = E；时限 = max(5, ⌈45/2⌉)
       expect(fo.remedy?.rank, 'E');
       expect(fo.remedy?.minutes, 23);
@@ -1206,6 +1215,51 @@ void main() {
       expect(f.head?.serial, taken?.serial);
       expect(f.remedyOffer, isNull);
       expect(f.host.queue, f.queue.length);
+    });
+
+    test('E1.4：takeRemedy 不会把已入队的补救单再塞一张', () {
+      final QuestFlow f = QuestFlow.demo();
+      f.accept(f.head!);
+      final FailOutcome? fo = f.fail();
+      f.takeRemedy(now: true);
+      expect(
+        f.queue.where((Quest q) => q.serial == fo!.remedy!.serial).length,
+        1,
+      );
+    });
+
+    test('E1.4：交掉顶替主线的补救单 = 这一环过关，并补下一张到手上', () async {
+      final QuestFlow f = QuestFlow.demo();
+      final Quest head = f.head!;
+      final int i = head.planIndex;
+      f.accept(head);
+      final FailOutcome? fo = f.fail();
+      expect(f.goal.plan[i].state, isNot(PlanState.done));
+      f.accept(f.head!);
+      expect(f.active?.task.serial, fo!.remedy?.serial);
+      await f.settle(forceCrit: false);
+      expect(f.goal.plan[i].state, PlanState.done);
+      // 原单不会被补位逻辑再发回来
+      expect(
+        f.queue.where((Quest q) => q.kind == 'main' && q.planIndex == i),
+        isEmpty,
+      );
+    });
+
+    test('E1.4：顶替主线的补救单又认输 → 原单补回手上，不再生成补救单', () {
+      final QuestFlow f = QuestFlow.demo();
+      final Quest head = f.head!;
+      f.accept(head);
+      f.fail();
+      f.accept(f.head!); // 补救单
+      final FailOutcome? fo2 = f.fail();
+      expect(fo2?.remedy, isNull);
+      expect(
+        f.queue.where(
+          (Quest q) => q.kind == 'main' && q.planIndex == head.planIndex,
+        ),
+        hasLength(1),
+      );
     });
 
     test('takeRemedy：没 offer 时返回 null；超时判负 also 走 fail', () {

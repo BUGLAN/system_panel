@@ -28,6 +28,7 @@ class RefExec extends StatelessWidget {
     this.evidenceBusy = false,
     this.evidenceChecking = const <bool>[],
     this.submitWaiting = false,
+    this.rejectNote,
     this.onAddEvidence,
     this.onDemoEvidence,
     this.onRemoveEvidence,
@@ -60,6 +61,10 @@ class RefExec extends StatelessWidget {
 
   /// 点了「提交任务」、正在等在途校验出结果（主键转圈不可点、槽位不可点）
   final bool submitWaiting;
+
+  /// E2.1（docs/50）：上一张被判「不符」撤掉的原因 —— 留在槽下直到下一张入槽
+  /// （原来只在 2.6s 的 toast 和字幕里，晚看一眼就只剩空槽）
+  final String? rejectNote;
   final VoidCallback? onAddEvidence;
 
   /// 参考稿 .link『⚡ 用演示截图 ›』（L755 / JS L1440）：没相机时也能验证流程
@@ -170,7 +175,8 @@ class RefExec extends StatelessWidget {
   /// .ex-h（L266-270）
   Widget _head(Color gc) {
     final String code = quest.kind == 'main'
-        ? 'MAIN ${quest.planIndex + 1}/${quest.planTotal}'
+        // E2.8（docs/50）：与任务卡 / 简报同口径，序号补零（MAIN 01/60）
+        ? 'MAIN ${(quest.planIndex + 1).toString().padLeft(2, '0')}/${quest.planTotal}'
         : (quest.kind == 'remedy'
               ? 'REMEDY · ${quest.serial}'
               : 'DAILY · ${quest.serial}');
@@ -474,7 +480,7 @@ class RefExec extends StatelessWidget {
                     looking
                         ? '校验中……她在看。'
                         : evidenceThumbs.isEmpty
-                        ? '上传照片或截图。没有证据，她不认账。'
+                        ? '拍一张或从相册选。没有证据，她不认账。'
                         : '收下了。她会盯着看。',
                     style: refText(
                       family: Ref.fc,
@@ -488,6 +494,20 @@ class RefExec extends StatelessWidget {
                           : Ref.acid,
                     ),
                   ),
+                  if (rejectNote != null && !looking) ...<Widget>[
+                    const SizedBox(height: 4),
+                    Text(
+                      '上一张被拒：$rejectNote',
+                      key: const Key('ref.exec.rejectNote'),
+                      style: refText(
+                        family: Ref.fc,
+                        size: 13,
+                        wght: 500,
+                        height: 1.45,
+                        color: Ref.hot,
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 4),
                   if (evidenceThumbs.isEmpty &&
                       onDemoEvidence != null &&

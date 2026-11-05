@@ -33,6 +33,7 @@ class RefBoard extends StatelessWidget {
     this.active,
     this.onBack,
     this.onRefill,
+    this.isLocked,
     this.emptyTitle = 'CLEAR!',
     this.emptyBody = '今日委托清空。她勉强承认：你今天不算太废。',
   });
@@ -50,6 +51,9 @@ class RefBoard extends StatelessWidget {
 
   /// 正在执行的那张（右上角会写「继续」）
   final Quest? active;
+
+  /// E1.3（docs/50）：这张还没解封（主线只许按顺序做 —— 与主线页同口径）
+  final bool Function(Quest q)? isLocked;
 
   final VoidCallback? onBack;
   final String emptyTitle;
@@ -106,7 +110,10 @@ class RefBoard extends StatelessWidget {
                           quest: quests[i],
                           running: active?.serial == quests[i].serial,
                           index: i,
-                          stampOnTap: active == null,
+                          locked: isLocked?.call(quests[i]) ?? false,
+                          stampOnTap:
+                              active == null &&
+                              !(isLocked?.call(quests[i]) ?? false),
                           onTap: () => onTap(quests[i]),
                         ),
                       ),
@@ -294,10 +301,14 @@ class RefTicketCard extends StatefulWidget {
     this.running = false,
     this.index = 0,
     this.stampOnTap = true,
+    this.locked = false,
   });
 
   /// 点了先盖「已接单」再回调（手上有单时调用方会拦，传 false）
   final bool stampOnTap;
+
+  /// E1.3：未解封 —— 整张压暗、右侧写「锁定」（点了由调用方拦下并说明）
+  final bool locked;
 
   final Quest quest;
   final VoidCallback? onTap;
@@ -411,8 +422,17 @@ class _RefTicketCardState extends State<RefTicketCard>
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: <Widget>[
-                      _grade(q, gc),
-                      Expanded(child: _body(q, gc, main)),
+                      // E1.3：锁住的单，档位与正文压暗（「锁定」口保持清楚）
+                      Opacity(
+                        opacity: widget.locked ? .45 : 1,
+                        child: _grade(q, gc),
+                      ),
+                      Expanded(
+                        child: Opacity(
+                          opacity: widget.locked ? .45 : 1,
+                          child: _body(q, gc, main),
+                        ),
+                      ),
                       _go(gc),
                     ],
                   ),
@@ -541,6 +561,9 @@ class _RefTicketCardState extends State<RefTicketCard>
   Widget _body(Quest q, Color gc, bool main) {
     final String kindLabel = switch (q.kind) {
       'main' => '主线',
+      // E1.4：顶替主线某一环的补救单，标签写明顶的是哪一单
+      'remedy' when q.planIndex >= 0 =>
+        '补救 · 主线 ${(q.planIndex + 1).toString().padLeft(2, '0')}',
       'remedy' => '补救',
       _ => '日常',
     };
@@ -665,7 +688,8 @@ class _RefTicketCardState extends State<RefTicketCard>
       width: 52,
       alignment: Alignment.center,
       decoration: BoxDecoration(
-        color: gc,
+        // E1.3：锁住的单不给档位色的「接单」口，换成暗底
+        color: widget.locked ? const Color(0x1FFFFFFF) : gc,
         borderRadius: const BorderRadius.only(
           topRight: Radius.circular(17),
           bottomRight: Radius.circular(17),
@@ -677,7 +701,9 @@ class _RefTicketCardState extends State<RefTicketCard>
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
-          for (final String ch in (widget.running ? '继续' : '接单').split(''))
+          for (final String ch
+              in (widget.running ? '继续' : (widget.locked ? '锁定' : '接单'))
+                  .split(''))
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 4),
               child: Text(
@@ -689,7 +715,7 @@ class _RefTicketCardState extends State<RefTicketCard>
                   size: 16,
                   wght: 900,
                   height: 1,
-                  color: Ref.onAccent,
+                  color: widget.locked ? Ref.dim : Ref.onAccent,
                 ),
               ),
             ),

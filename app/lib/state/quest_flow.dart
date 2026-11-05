@@ -302,6 +302,10 @@ class QuestFlow {
 
   ActiveQuest? get active => _active;
   Quest? get remedyOffer => _remedyOffer;
+
+  /// E1.4：顶替当前主线某一环的补救单（交掉 = 这一环过关；认输 = 原单补回）
+  bool isPlanRemedy(Quest q) =>
+      q.kind == 'remedy' && q.goalId == goal.id && q.planIndex >= 0;
   DateTime? get remedyDeadline => _remedyDeadline;
   int get failStreak => _failStreak;
 
@@ -476,18 +480,19 @@ class QuestFlow {
   List<Quest> publishPlanTasks({int window = kPlanPublishWindow}) {
     // ⚠️ 只数**当前这份清单**的单：换过目标的老单不算在手（否则收官补发会少一张）
     final List<Quest> out = <Quest>[];
-    int inHand = queue
-        .where((Quest q) => q.kind == 'main' && q.goalId == goal.id)
-        .length;
+    // E1.4（docs/50）：顶替某一环的补救单也算「在手」、也占着那一格
+    bool holds(Quest q) =>
+        (q.kind == 'main' && q.goalId == goal.id) || isPlanRemedy(q);
+    int inHand = queue.where(holds).length;
     final Quest? act = _active?.task;
-    if (act != null && act.kind == 'main' && act.goalId == goal.id) inHand++;
+    if (act != null && holds(act)) inHand++;
     for (final PlanTask t in goal.plan) {
       if (inHand >= window) break;
-      if (t.state != PlanState.todo) continue;
-      if (queue.any(
-        (Quest q) =>
-            q.kind == 'main' && q.goalId == goal.id && q.planIndex == t.index,
-      )) {
+      // E1.4：「当前那一格」是 active 不是 todo —— 补救单顶过又认输后，
+      // 原单要能补回来（已在队列 / 正在执行的照旧跳过，不会重发）
+      if (!t.open) continue;
+      if (queue.any((Quest q) => holds(q) && q.planIndex == t.index) ||
+          (act != null && holds(act) && act.planIndex == t.index)) {
         continue;
       }
       final Quest q = planTask(t.index);
@@ -514,9 +519,11 @@ class QuestFlow {
   /// 已经在队列里就返回那一张（不重发、不撞号）。
   Quest? publishPlanTask(int i) {
     final PlanTask? t = goal.taskAt(i);
-    if (t == null || t.state != PlanState.todo) return null;
+    if (t == null || !t.open) return null;
     for (final Quest q in queue) {
       if (q.kind == 'main' && q.goalId == goal.id && q.planIndex == i) return q;
+      // E1.4：这一环正被补救单顶着 —— 接的就是补救单
+      if (isPlanRemedy(q) && q.planIndex == i) return q;
     }
     final Quest q = planTask(i);
     queue.add(q);
@@ -860,7 +867,9 @@ class QuestFlow {
 
     // 补救单半价（store.js L281-283：暴击×2、双倍×2、可叠×4）
     final double k = task.kind == 'remedy' ? .5 : 1.0;
-    final int baseExp = (expOf(task.rank) * k).round();
+    // E2.4：补救单经验保底 1（与 Rewards.payout 同口径，展示 = 入账）
+    final int rawExp = (expOf(task.rank) * k).round();
+    final int baseExp = task.kind == 'remedy' ? math.max(1, rawExp) : rawExp;
     final int exp = baseExp * (crit ? 2 : 1) * (a.dbl ? 2 : 1);
     final int coin = (coinOf(task.rank) * k).round() * (crit ? 2 : 1);
 
@@ -911,7 +920,9 @@ class QuestFlow {
     int planClear = -1;
     bool finale = false;
     bool windowEnd = false;
-    if (task.kind == 'main' &&
+    // E1.4：顶替某一环的补救单交掉 = 这一环过关（奖励仍按补救单降档出账）
+    final bool planSlot = task.kind == 'main' || isPlanRemedy(task);
+    if (planSlot &&
         task.planIndex >= 0 &&
         task.goalId == goal.id &&
         goal.taskAt(task.planIndex) != null) {
@@ -922,6 +933,15 @@ class QuestFlow {
           state: PlanState.done,
           held: held,
           doneAt: t0,
+          // E2.2：战报评级与结算页同一口径（主线卡直接读，不再按用时自己算）
+          grade: QuestResult.gradeOf(
+            timed: task.timed,
+            minutes: task.minutes,
+            held: held,
+            verified: a.verifiedCount,
+            photos: a.photos,
+            crit: crit,
+          ),
         );
         goal = goal.copyWith(plan: plan);
         planClear = task.planIndex;
@@ -984,7 +1004,7 @@ class QuestFlow {
 
     // 交掉一张就补一张（保持在手窗口）。⚠️ 必须放在 `_active = null` **之后**：
     // 窗口把"正在执行的那张"也算在内，早一步补发就会每交一张少一格。
-    if (!finale && task.kind == 'main') publishPlanTasks();
+    if (!finale && planSlot) publishPlanTasks();
 
     // A6：写入执行历史（fire-and-forget——写盘失败不阻塞结算演出）
     historyLog.append(
@@ -1216,8 +1236,9 @@ class QuestFlow {
     if (!a.shield) _failStreak++;
     host = host.copyWith(failCount: host.failCount + 1);
 
-    // 主线不判死：这一环回到队首（store.js L359）
-    if (task.kind == 'main') queue.insert(0, task);
+    // 主线不判死（store.js L359）。E1.4（docs/50 宿主定案）：原单不再回队首，
+    // 由补救单**顶替这一环**（继承 goalId / planIndex）—— 委托板上不再两张并存。
+    final bool mainSlot = task.kind == 'main' && task.goalId == goal.id;
 
     Quest? remedy;
     DateTime? deadline;
@@ -1225,6 +1246,9 @@ class QuestFlow {
       final String rr = rankShift(task.rank, -2);
       remedy = _mk(
         kind: 'remedy',
+        planIndex: mainSlot ? task.planIndex : -1,
+        planTotal: mainSlot ? task.planTotal : 0,
+        goalId: mainSlot ? task.goalId : '',
         name: '${task.name}（简化版）', // A16（docs/50）：「做一半」读不通
         proof: task.proof,
         minutes: math.max(5, (task.minutes / 2).ceil()),
@@ -1237,8 +1261,15 @@ class QuestFlow {
       deadline = t0.add(const Duration(hours: 24));
       _remedyOffer = remedy;
       _remedyDeadline = deadline;
+      // 顶替主线的补救单当场入队（不只挂在 offer 上）：offer 只活在内存里，
+      // 停在失败页时杀进程，这一环就没了
+      if (mainSlot) queue.insert(0, remedy);
+    } else if (task.kind == 'main') {
+      queue.insert(0, task); // 旧档的其它目标主线单：照旧回队首
     }
     _active = null;
+    // E1.4：顶替某一环的补救单又认输了 → 这一格空出来，原单补回手上
+    if (isPlanRemedy(task)) publishPlanTasks();
     _syncQueueCount();
     // A6：认输/超时也入档（exp/coin 记 0——判负不出账），result 区分两者
     historyLog.append(
@@ -1268,6 +1299,8 @@ class QuestFlow {
     if (r == null) return null;
     _remedyOffer = null;
     _remedyDeadline = null;
+    // E1.4：顶替主线的补救单在 fail() 里已经入队 —— 先摘掉再按 now 放，免得两张
+    queue.removeWhere((Quest q) => q.serial == r.serial);
     if (now) {
       queue.insert(0, r);
     } else {
@@ -1555,6 +1588,17 @@ class HistoryLog {
             for (final HistoryEntry h in all) h.toJson(),
           ]),
         );
+      } catch (_) {}
+    });
+    _tail = next.catchError((Object _) {});
+    return next;
+  }
+
+  /// 清空（重置存档用，E1.2）：排在在途追加之后，免得清完又被旧追加写回。
+  Future<void> clear() {
+    final Future<void> next = _tail.then((_) async {
+      try {
+        await _p.remove(key);
       } catch (_) {}
     });
     _tail = next.catchError((Object _) {});

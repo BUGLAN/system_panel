@@ -11,6 +11,7 @@ import '../widgets/press_scale.dart';
 import '../widgets/type_text.dart';
 import 'chat_history.dart';
 import 'chat_service.dart';
+import 'tool_card.dart';
 
 /// ═══════════════════════════════════════════════════════════
 ///  对话层（快捷工具行）
@@ -394,31 +395,14 @@ class _ChatPanelState extends State<ChatPanel> {
         ),
       );
     }
-    // 〔工具〕系统条目：等宽读数风、不打字机、左侧细框
+    // 〔工具〕系统条目 → B8（docs/50）可读卡片：get_status 渲染成状态卡，
+    // 其它工具是同款外壳的精简卡；不打字机（原来是原始回执的等宽长串）
     if (!host && m.text.startsWith(ChatService.toolTag)) {
-      return Align(
+      return KeyedSubtree(
         key: Key('chat.msg.$i'),
-        alignment: Alignment.centerLeft,
-        child: Container(
-          margin: const EdgeInsets.only(top: 7),
-          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
-          constraints: const BoxConstraints(maxWidth: 320),
-          decoration: BoxDecoration(
-            color: const Color(0x0DFFFFFF),
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: Color(0x1FFFFFFF), width: 1),
-          ),
-          child: Text(
-            m.text,
-            key: Key('chat.toolentry.$i'),
-            style: fs(
-              family: Ref.fm,
-              size: 11,
-              wght: 500,
-              height: 1.5,
-              color: Ref.dim,
-            ),
-          ),
+        child: ChatToolCard(
+          key: Key('chat.toolentry.$i'),
+          text: m.text.substring(ChatService.toolTag.length),
         ),
       );
     }
@@ -506,7 +490,8 @@ class _ChatPanelState extends State<ChatPanel> {
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
               Text(
-                '思考中',
+                // B8（docs/50）：等回复时的「打字中」
+                '她在组织语言',
                 style: fs(
                   family: Ref.fc,
                   size: 12.5,

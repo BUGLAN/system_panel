@@ -127,6 +127,12 @@ class RefIcons {
   static const String patch =
       'M5 4h2V2h2v2h6V2h2v2h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zm0 6v10h14V10zm5.5 8.2l-3.2-3.2 1.4-1.4 1.8 1.8 4.8-4.8 1.4 1.4z';
 
+  /// B4（docs/50）：证据来源底板 —— 相机 / 相册（evenOdd 镂空）
+  static const String camera =
+      'M9 3L7.2 5H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-3.2L15 3zm3 5a5 5 0 1 1 0 10 5 5 0 0 1 0-10zm0 2.2a2.8 2.8 0 1 0 0 5.6 2.8 2.8 0 0 0 0-5.6z';
+  static const String gallery =
+      'M4 3h16a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zm0 2v10.6l4.5-4.5 3.5 3.5 2.5-2.5 5.5 5.5V5zm11 1.5a2 2 0 1 1 0 4 2 2 0 0 1 0-4z';
+
   static List<String> of(String id) => switch (id) {
     'crit' => <String>[spark],
     'dbl' => <String>[x2a, x2b],

@@ -447,6 +447,17 @@ class RefSwitch extends StatelessWidget {
 
 /// 参考稿没有输入控件；按它的语言补一枚：--ink 底 + 1px line、
 /// 聚焦转 accent、圆角 10、高 46。
+/// E2.6（docs/50）：输入法正在组字（拼音还没选字）吗
+bool refIsComposing(TextEditingValue v) =>
+    v.composing.isValid && !v.composing.isCollapsed;
+
+/// E2.6：已上屏的文字（去掉还在组字的拼音）—— 字数统计和「能不能提交」都读它，
+/// 否则「liang yue bei wan…」会被数成 30 字、主键在选字前就亮了
+String refCommittedText(TextEditingValue v) {
+  if (!refIsComposing(v) || v.composing.end > v.text.length) return v.text;
+  return v.composing.textBefore(v.text) + v.composing.textAfter(v.text);
+}
+
 class RefTextField extends StatefulWidget {
   const RefTextField({
     super.key,

@@ -35,7 +35,11 @@ void main() {
     });
 
     test('补救：`补救 · 24 小时内有效`', () {
-      expect(q(kind: 'remedy').kindLabel, '补救 · 24 小时内有效');
+      expect(q(kind: 'remedy', planIndex: -1).kindLabel, '补救 · 24 小时内有效');
+    });
+
+    test('E1.4：顶替主线某一环的补救单写明顶的是哪一单', () {
+      expect(q(kind: 'remedy').kindLabel, '补救 · 顶替主线第 5 单');
     });
 
     test('⚠️ 她替你留的：`日常 · 她替你留的`', () {
@@ -48,7 +52,10 @@ void main() {
 
     test('hinted 只影响日常那一档，不会盖掉主线/补救', () {
       expect(q(kind: 'main', hinted: true).kindLabel, '主线 · 第 5 单 / 8');
-      expect(q(kind: 'remedy', hinted: true).kindLabel, '补救 · 24 小时内有效');
+      expect(
+        q(kind: 'remedy', hinted: true, planIndex: -1).kindLabel,
+        '补救 · 24 小时内有效',
+      );
     });
   });
 

@@ -286,6 +286,10 @@ class VisionService {
 
     /// 宿主真的选好了图（取消则不调）
     void Function()? onPicked,
+
+    /// picker 自己挂了（模拟器没相机 / 权限被拒）—— 与「取消」区分开，
+    /// 让调用方能提示宿主换个来源（B4）
+    void Function()? onFailed,
   }) async {
     final XFile? xf;
     try {
@@ -296,6 +300,7 @@ class VisionService {
         imageQuality: kJpegQuality,
       );
     } catch (_) {
+      onFailed?.call();
       return null; // picker 挂了 = 没拍到
     }
     if (xf == null) return null; // 用户取消

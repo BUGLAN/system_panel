@@ -257,7 +257,7 @@ void main() {
       expect(r2.grade, 'B', reason: '只有未校验证据');
     });
 
-    test('grade：计时单仍按时长比；暴击 A → S', () {
+    test('grade（E2.2 证据为主、用时为辅）：计时单不足 1/4 降一档；暴击 A → S', () {
       QuestResult res(
         Quest q,
         Duration held, {
@@ -281,10 +281,20 @@ void main() {
         chance: .1,
         held: held,
       );
-      final Quest timed = weigh.copyWith(timed: true, minutes: 10);
-      expect(res(timed, const Duration(minutes: 10)).grade, 'A');
-      expect(res(timed, const Duration(minutes: 6)).grade, 'B');
+      final Quest timed = weigh.copyWith(timed: true, minutes: 20);
+      // 有判真证据 = A，不看用时比（原来 1 分 38 秒交 20 分钟的单是 C）
+      expect(res(timed, const Duration(minutes: 6), verified: 1).grade, 'A');
+      expect(res(timed, const Duration(minutes: 20), verified: 1).grade, 'A');
+      // 只有未校验 / 拿不准 = B
+      expect(res(timed, const Duration(minutes: 20)).grade, 'B');
+      // 不到目标 1/4（5 分钟）降一档：A → B、B → C
+      expect(
+        res(timed, const Duration(minutes: 1, seconds: 38), verified: 1).grade,
+        'B',
+      );
       expect(res(timed, const Duration(minutes: 1)).grade, 'C');
+      // 打卡单不看用时
+      expect(res(weigh, Duration.zero, verified: 1).grade, 'A');
       expect(res(weigh, Duration.zero, verified: 1, crit: true).grade, 'S');
       expect(res(weigh, Duration.zero, photos: 0).grade, 'C');
     });

@@ -2,6 +2,10 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>NSCameraUsageDescription</key>
+	<string>拍一张快照记录交给系统核对：任务证据（如体重秤读数、跑步记录）只用于本次验收。</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>从相册选一张照片或截图作为任务证据，只用于本次验收。</string>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<false/>
 	<key>CFBundleDevelopmentRegion</key>
