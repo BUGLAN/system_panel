@@ -3,7 +3,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:system_panel/data/content.dart';
 import 'package:system_panel/design/tokens.dart';
 import 'package:system_panel/screens/boot_screen.dart';
-import 'package:system_panel/widgets/bg_layer.dart';
 
 void main() {
   group('视觉令牌 = 原型 app.css 的 :root', () {
@@ -275,30 +274,6 @@ void main() {
         greaterThan(.98),
         reason: '最后一行落下的那一拍，条已经走满（同一个 _kBarTravel）',
       );
-      await tester.pumpWidget(const SizedBox());
-    });
-  });
-
-  group('天幕', () {
-    testWidgets('能渲染，且大字用 Tektur', (WidgetTester tester) async {
-      await tester.pumpWidget(
-        const MaterialApp(home: Scaffold(body: BgLayer())),
-      );
-      await tester.pump();
-
-      // 大字画两层：渐变填充 + 描边（app.css L60-62）
-      final Finder word = find.text('SYSTEM');
-      expect(word, findsNWidgets(2));
-
-      final Text fill = tester.widget<Text>(word.first);
-      expect(fill.style?.fontFamily, 'Tektur');
-      expect(fill.style?.fontSize, 93);
-      expect(
-        fill.style?.fontVariations,
-        contains(const FontVariation('wdth', 75)),
-      );
-      expect(tester.takeException(), isNull);
-
       await tester.pumpWidget(const SizedBox());
     });
   });

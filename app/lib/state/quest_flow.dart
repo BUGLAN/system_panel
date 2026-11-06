@@ -319,10 +319,18 @@ class QuestFlow {
   /// 某张单（按 serial）被退缩过几次（原型 `T.retreated`）
   int retreatedTimes(int serial) => _retreated[serial] ?? 0;
 
-  /// 存档通知（原型每个宿主回应末尾的 `this.save()`）：equip/buy/retreat
-  /// 改完状态后回调整 —— main.dart 把它接到 `_persist()` 即可（t10 装配）。
+  /// 存档通知（原型每个宿主回应末尾的 `this.save()`）。
+  ///
+  /// **每个改了存档字段（host / goal / queue / active / pendingGoal）的公开方法
+  /// 成功后都会发一次**；main.dart 把它接到合并写盘（`_requestSave`），调用点
+  /// 不用再各自补 `_persist()`（docs/50 E1.1：漏一处 = 杀进程丢单）。
+  /// async 方法（[settle] / [extendWindow] / [applyFinaleOutcome]）只在走完时发，
+  /// 不把中间态写进档。外部直接改字段（`flow.host = …`）后调 [touch]。
   void Function()? onChanged;
   void _notify() => onChanged?.call();
+
+  /// 外部直接改了 [host] / [goal] / [pendingGoal] 字段后调一下，触发存档。
+  void touch() => _notify();
 
   /// 收官钩子（TODO-01）：最后一环 CLEAR 时铸下一条主线。
   /// 不接 = 叙事停在终点（队列真的会空）；接上 = 自动续主线。
@@ -511,6 +519,7 @@ class QuestFlow {
       queue.removeWhere((q) => q.kind == 'main' && q.goalId == goal.id);
       queue.insertAll(0, mains);
       _syncQueueCount();
+      _notify();
     }
     return out;
   }
@@ -528,6 +537,7 @@ class QuestFlow {
     final Quest q = planTask(i);
     queue.add(q);
     _syncQueueCount();
+    _notify();
     return q;
   }
 
@@ -542,6 +552,7 @@ class QuestFlow {
     }
     publishPlanTasks();
     _seedDailies(3);
+    _notify();
   }
 
   /// C5（docs/50）：拆解失败后「暂时跳过」。
@@ -729,6 +740,7 @@ class QuestFlow {
     queue.removeWhere((Quest q) => q.serial == t.serial);
     _active = ActiveQuest(task: t, startAt: now ?? DateTime.now());
     _syncQueueCount();
+    _notify();
   }
 
   /// 用执行类道具：扣库存 + 挂到本单（store.js `useItem`）
@@ -752,6 +764,7 @@ class QuestFlow {
     } else {
       a.shield = true;
     }
+    _notify();
     return true;
   }
 
@@ -1021,6 +1034,7 @@ class QuestFlow {
       ),
     );
 
+    _notify();
     return QuestResult(
       quest: task,
       beforeLv: beforeLv,
@@ -1122,6 +1136,7 @@ class QuestFlow {
     goal = next;
     publishPlanTasks();
     _syncQueueCount();
+    _notify();
     return true;
   }
 
@@ -1154,6 +1169,7 @@ class QuestFlow {
         goal: g,
         insertedPlan: pub.isEmpty ? null : pub.first,
       );
+      _notify();
       return true;
     }
     // ② 读档时这条主线**已经走完了**（收官发生在本功能之前的老存档）——
@@ -1169,6 +1185,7 @@ class QuestFlow {
         total: goal.plan.length,
         level: host.lv,
       );
+      _notify();
       return _finaleOutcome?.goal != null;
     }
     return false;
@@ -1284,6 +1301,7 @@ class QuestFlow {
         result: how == 'timeout' ? 'timeout' : 'quit',
       ),
     );
+    _notify();
     return FailOutcome(
       task: task,
       held: held,
@@ -1307,6 +1325,7 @@ class QuestFlow {
       queue.add(r);
     }
     _syncQueueCount();
+    _notify();
     return r;
   }
 
@@ -1321,6 +1340,7 @@ class QuestFlow {
     if (!shot.status.accepted) return false;
     if (a.evidence.length >= kMaxEvidence) return false;
     a.evidence.add(shot);
+    _notify();
     return true;
   }
 
@@ -1335,9 +1355,11 @@ class QuestFlow {
     if (i < 0) return EvidenceApply.gone;
     if (!v.status.accepted) {
       a.evidence.removeAt(i);
+      _notify();
       return EvidenceApply.rejected;
     }
     a.evidence[i] = a.evidence[i].withVerdict(v);
+    _notify();
     return EvidenceApply.kept;
   }
 
@@ -1347,7 +1369,9 @@ class QuestFlow {
     if (a == null) return false;
     final int n = a.evidence.length;
     a.evidence.removeWhere((vision.EvidenceShot s) => s.id == id);
-    return a.evidence.length != n;
+    if (a.evidence.length == n) return false;
+    _notify();
+    return true;
   }
 
   /// 「换一个」（store.js `retreat` L235-250 的全语义）：

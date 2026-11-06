@@ -68,13 +68,10 @@ import 'ui/ref/ref_tray.dart';
 import 'ui/ref/ref_overlays.dart';
 import 'ui/ref/ref_panels.dart';
 import 'ui/ref/ref_verdict.dart';
-import 'widgets/fail_layer.dart';
 import 'widgets/fx_layer.dart';
 import 'widgets/fx_particles.dart';
-import 'widgets/hud.dart';
-import 'widgets/line_layer.dart';
 import 'widgets/rail_base.dart' show railReduceMotion;
-import 'widgets/table_overlay.dart';
+import 'widgets/veil.dart';
 import 'dev/agent_bridge.dart';
 
 /// 宿主 SYSTEM —— Flutter 客户端。
@@ -204,6 +201,28 @@ class _AppShellState extends State<AppShell>
         );
     // 滚动生成（docs/50 C1）：当前窗口走完 → 结算里续拆下一段（同一条主线）
     f.nextWindowHook = _extendGoalWithAgent;
+    // 自动存档：flow 每次改了存档字段都会发 onChanged，这里合并成一次写盘。
+    // 调用点不用再各自补 `_persist()`（docs/50 E1.1 就是漏了一处丢单）。
+    f.onChanged = _requestSave;
+  }
+
+  /// 读档完成前不许写盘 —— 那时 `_flow` 还是演示档，写下去会冲掉真存档。
+  bool _saveArmed = false;
+
+  /// 同一拍里多次变更只写一次（microtask 合并）
+  bool _saveQueued = false;
+
+  /// 写盘串行：后一次一定落在前一次之后，旧快照不会盖掉新快照
+  Future<void> _saveChain = Future<void>.value();
+
+  /// 请求存档（合并 + 串行）。[QuestFlow.onChanged] 接的就是它。
+  void _requestSave() {
+    if (!_saveArmed || _saveQueued) return;
+    _saveQueued = true;
+    scheduleMicrotask(() {
+      _saveQueued = false;
+      _saveChain = _saveChain.then((_) => _persist());
+    });
   }
 
   /// 存档（store.js L34-52）
@@ -508,7 +527,8 @@ class _AppShellState extends State<AppShell>
       _host = _flow.host;
       _goal = _flow.goal;
     });
-    _persist();
+    // 工具可能直接改了队列 / 计划（不经 flow 的方法）→ 显式标记一次
+    _flow.touch();
   }
 
   /// 打开对话层。[scenario] 传场合上下文（结算复盘 / 换目标），只影响她接下来的回复
@@ -699,7 +719,6 @@ class _AppShellState extends State<AppShell>
         _goal = _flow.goal;
         _pickedTask = null;
       });
-      _persist();
       unawaited(Sfx.play('unlock'));
       // 斜切回主线页：新清单按 goal.id 换 key → 发牌入场
       unawaited(
@@ -982,10 +1001,8 @@ class _AppShellState extends State<AppShell>
     });
     // 执行中：落进思考脸一次（低频、不打扰；之后交给待机池）
     _clock.startFast();
-    // E1.1（docs/50）：接单这一刻就落盘（active + startAt + 出队后的队列）。
-    // 原来要等下一次 _persist（加证据 / 切后台）才写 —— 而杀进程、划掉 App
-    // 不一定走 paused 生命周期，于是重开回大厅、那一单退回队列、计时归零。
-    _persist();
+    // E1.1（docs/50）：接单这一刻就落盘（active + startAt + 出队后的队列）——
+    // 由 `_flow.accept` 的 onChanged 自动触发，不再靠这里手写 _persist()。
   }
 
   /// 用掉一个执行类道具（原型 `Store.useItem(k)`）
@@ -1354,11 +1371,6 @@ class _AppShellState extends State<AppShell>
                         '${_host.streak > 0 ? '今天已打卡。' : '今天还没完成任何一单。'}',
                       ),
                     ),
-                    // 连击药丸（宿主 2026-10-11：从左上角那个小方块里摘出来，
-                    // 贴到顶栏下沿居中 —— 位置落在委托卡上方，不再和称号挤在一起）
-                    // 连击药丸 —— 宿主 2026-10-11：「连击 隐藏」（先不显示，组件留着，
-                    // 要接回来把 visible 改回 lobby || exec 即可）
-                    StreakPill(streak: _host.streak, visible: false),
                     // 主 CTA 三态状态机（P0）：
                     //   执行中 → 回执行面板（**不是开派单板**，这是"执行中再从大厅接单"的堵口）
                     //   队列空 → 她说一句，不进派单板
@@ -1684,7 +1696,6 @@ class _AppShellState extends State<AppShell>
                           onEquip: (String id) {
                             if (!_flow.equip(id)) return false;
                             setState(() => _host = _flow.host);
-                            _persist();
                             return true;
                           },
                         ),
@@ -1706,7 +1717,6 @@ class _AppShellState extends State<AppShell>
                           onBuy: (Item it) {
                             if (!_flow.buy(it.id)) return false;
                             setState(() => _host = _flow.host);
-                            _persist();
                             return true;
                           },
                           onUse: (Item it) {
@@ -1714,7 +1724,6 @@ class _AppShellState extends State<AppShell>
                               return false;
                             }
                             setState(() => _host = _flow.host);
-                            _persist();
                             return true;
                           },
                           onToast: (String m, {bool bad = false}) =>
@@ -2247,7 +2256,7 @@ class _AppShellState extends State<AppShell>
         _lastRollDay = startOfDay(DateTime.now());
         job.stage = 3; // 三步全部打勾，留到转场盖住再撤
       });
-      _persist();
+      _flow.touch(); // 见面礼是直接改 `_flow.host` 的
       _rememberInterview(cat, answers);
       unawaited(Sfx.play('unlock'));
       // 斜切进大厅（原来是硬切）：加载卡留到被盖住那一拍才撤
@@ -2302,9 +2311,11 @@ class _AppShellState extends State<AppShell>
 
   /// 队列读数回同步（HUD 的 `[[{n}]]` 读 host.queue；
   /// main 直接做队列手术时 QuestFlow 的私有计数帮不上，手动对齐）
+  /// 主壳直接动过 `_flow.queue` 之后调它：同步队列计数 + 触发自动存档。
   void _resyncQueueCount() {
     _flow.host = _flow.host.copyWith(queue: _flow.queue.length);
     _host = _flow.host;
+    _flow.touch();
   }
 
   /// 当日日常：类型池+通用池出候选 4~6 → 按
@@ -2362,7 +2373,6 @@ class _AppShellState extends State<AppShell>
       _resyncQueueCount();
       _lastRollDay = startOfDay(t0);
     });
-    _persist();
   }
 
   /// 重置存档（`Store.wipe()`）：删档 + 冻结 + 回绑定仪式
@@ -2442,7 +2452,7 @@ class _AppShellState extends State<AppShell>
   /// companion）—— 想核对某一页的视觉，就得**跳过开机屏、直接停在那一页**，
   ///
   /// 场景值：`lobby` / `main` / `drawer` / `goal` / `deck` / `sheet`
-  ///          `supply` / `titles` / `evidence` / `result` / `onboard`
+  ///          `supply` / `evidence` / `result` / `onboard`
   ///
   /// ⚠️ 只在给了 `SHOT` 时跑；**真机与本机日常开发不给这个 define**，
   /// 行为与这条函数不存在时完全一致。
@@ -2456,7 +2466,7 @@ class _AppShellState extends State<AppShell>
       _moment = switch (shot) {
         'main' || 'drawer' => Moment.main,
         'goal' => Moment.main,
-        'sheet' || 'supply' || 'titles' => Moment.lobby,
+        'sheet' || 'supply' => Moment.lobby,
         'result' => Moment.result,
         'onboard' => Moment.onboard,
         _ => Moment.lobby,
@@ -2465,8 +2475,7 @@ class _AppShellState extends State<AppShell>
       if (shot == 'goal') _goalChangeOn = true;
     });
     if (shot == 'sheet') _openSheet(SheetKind.archive);
-    if (shot == 'supply') _openTable(TableScene.supply);
-    if (shot == 'titles') _openTable(TableScene.titles);
+    if (shot == 'supply') _openSheet(SheetKind.supply);
     debugPrint('[shot] 已摆到 $shot');
   }
 
@@ -2519,14 +2528,6 @@ class _AppShellState extends State<AppShell>
   /// 从执行页开的就得回执行页，不能一律回大厅
   Moment _sheetFrom = Moment.lobby;
 
-  /// 表演调试台开着没（宿主 2026-10-11：调试预设/动作/表情的设施）
-  /// 悬浮牌局开着没（名牒册 / 补给 / 证据来源）。
-  ///
-  /// ⚠️ 2026-10-12 宿主截图④：名牒册整桌牌**盖在六维雷达上**（层级打架）。
-  /// 解法不是改牌，是**让面板退场** —— 牌桌浮起时投影面板与光束一起收掉，
-  /// 关掉牌桌再回来。牌本身一个字都不改。
-  bool _tableOpen = false;
-
   /// 开投影面板（原型 `App.sheet(kind)`）
   void _openSheet(SheetKind kind) {
     FocusScope.of(context).unfocus(); // 键盘别压在面板上（宿主验收）
@@ -2557,68 +2558,6 @@ class _AppShellState extends State<AppShell>
   /// 系统设置抽屉（浮层，不占场景）
   bool _sysSheetOn = false;
 
-  /// 打开**悬浮牌局**—— 牌直接浮在舞台上，不开面板、不开弹层壳。
-  ///
-  /// 三个场景（补给 / 称号 / 证据）共用 [TableOverlay] 这一层壳，
-  /// 但牌面皮肤完全不同（货架 / 名牒 / 取景窗）。
-  /// 收起由 overlay 自己的幕接管（点幕 / 点出口铭牌），所以 barrier 不拦点击。
-  Future<void> _openTable(TableScene scene) async {
-    if (_tableOpen) return;
-    FocusScope.of(context).unfocus();
-    final bool reduce = MediaQuery.maybeDisableAnimationsOf(context) ?? false;
-    setState(() => _tableOpen = true);
-    try {
-      await showGeneralDialog<void>(
-        context: context,
-        barrierDismissible: false,
-        barrierColor: Colors.transparent,
-        transitionDuration: Duration(milliseconds: reduce ? 120 : 280),
-        // 牌桌浮起：淡入 + 轻微上移。退场比进场快（apple-design §7 / §3.2）。
-        transitionBuilder:
-            (
-              BuildContext ctx,
-              Animation<double> a,
-              Animation<double> b,
-              Widget child,
-            ) {
-              final Animation<double> eased = a.drive(CurveTween(curve: kOut));
-              return FadeTransition(
-                opacity: eased,
-                child: SlideTransition(
-                  position: Tween<Offset>(
-                    begin: Offset(0, reduce ? 0 : .02),
-                    end: Offset.zero,
-                  ).animate(eased),
-                  child: child,
-                ),
-              );
-            },
-        pageBuilder:
-            (BuildContext ctx, Animation<double> a, Animation<double> b) =>
-                TableOverlay(
-                  scene: scene,
-                  host: _host,
-                  onClose: () => Navigator.of(ctx).pop(),
-                  onBuy: (String id) {
-                    if (!_flow.buy(id)) return null;
-                    setState(() => _host = _flow.host);
-                    _persist();
-                    return _flow.host;
-                  },
-                  onEquip: (String id) {
-                    if (!_flow.equip(id)) return null;
-                    setState(() => _host = _flow.host);
-                    _persist();
-                    return _flow.host;
-                  },
-                ),
-      );
-    } finally {
-      // 牌桌收起 → 投影面板与光束回来（§2 ④ 的"让位"是双向的）
-      if (mounted) setState(() => _tableOpen = false);
-    }
-  }
-
   /// 进入失败态（认输与超时共用）：原型 `_fail()` 的视觉前几下
   void _beginFail({String how = 'quit'}) {
     _clock.stopFast();
@@ -2646,9 +2585,8 @@ class _AppShellState extends State<AppShell>
       _host = _flow.host;
       _goal = _flow.goal;
     });
-    // E1.1 / E1.4：认输这一刻就落盘（active 清掉、补救单入队）——否则停在失败页
-    // 时杀进程，重开会回到已经认输的那一单
-    _persist();
+    // E1.1 / E1.4：认输这一刻就落盘（active 清掉、补救单入队）—— 由
+    // `_flow.fail` 的 onChanged 自动触发。否则停在失败页时杀进程，重开会回到已认输的那一单
   }
 
   // ── 结算页 / 失败页的出口（「提交卡死」根因③④的修复）──────────────
@@ -2746,8 +2684,7 @@ class _AppShellState extends State<AppShell>
         _host = _flow.host;
         _goal = _flow.goal;
       });
-      // 原型 settle() L372：结算时她专注读单
-      _persist();
+      // 原型 settle() L372：结算时她专注读单（落盘由 settle 的 onChanged 触发）
     } on PlanFailure catch (e) {
       // 收官时拆不出下一份计划：结算已经落账，但计划没拿到 —— 说出来。
       if (!mounted) return;
@@ -2758,7 +2695,9 @@ class _AppShellState extends State<AppShell>
         _moment = Moment.result;
       });
       _failPlan(e, goalText: _goal.text);
-      _persist();
+      // settle 在续拆 / 收官那步抛出时不会发 onChanged，但前面的入账已经改了
+      // host / goal —— 照旧把这个状态落盘（与改造前同口径）
+      _flow.touch();
     } finally {
       _settling = false;
       _settleSlow?.cancel();
@@ -2918,7 +2857,6 @@ class _AppShellState extends State<AppShell>
       _goal = _flow.goal;
       _pickedTask = null;
     });
-    _persist();
     final int n = o.goal!.plan.length;
     _sayAside(
       '${o.total} 单走完了。下一份计划 [[$n 单]]，已经在你手上——'
@@ -3253,7 +3191,6 @@ class _AppShellState extends State<AppShell>
         });
       }, back: true),
     );
-    _persist();
   }
 
   /// B5【接下补救单 · 现在做】：补救单钉到队首 → 回大厅 → 直接弹 B6 简报
@@ -3274,7 +3211,6 @@ class _AppShellState extends State<AppShell>
         });
       }, back: true),
     );
-    _persist();
   }
 
   // ── v3 斜切 wipe 转场（参考稿 L1172-1183）───────────────────────
@@ -3637,7 +3573,6 @@ class _AppShellState extends State<AppShell>
     );
     unawaited(Sfx.play('success'));
     setState(() {});
-    _persist();
   }
 
   /// C4（docs/50 定案）：判定不符 → 撤出槽位 + 她说明原因、要求重传；
@@ -3647,7 +3582,6 @@ class _AppShellState extends State<AppShell>
     final EvidenceApply r = _flow.applyVerdict(id, v);
     if (r == EvidenceApply.gone) return;
     setState(() {});
-    _persist();
     if (r == EvidenceApply.rejected) {
       unawaited(Sfx.play('fail'));
       unawaited(Haptics.buzz('fail'));
@@ -3661,8 +3595,8 @@ class _AppShellState extends State<AppShell>
   void _removeEvidence(int i) {
     final ActiveQuest? a = _flow.active;
     if (a == null || i < 0 || i >= a.evidence.length) return;
-    setState(() => a.evidence.removeAt(i));
-    _persist();
+    final String id = a.evidence[i].id;
+    setState(() => _flow.removeEvidence(id));
   }
 
   // ── v3 开机屏的驱动（参考稿 #boot）──────────────────────────────
@@ -3746,7 +3680,6 @@ class _AppShellState extends State<AppShell>
           _lastRollDay = startOfDay(DateTime.now()); // 今天的日常已发，同日不重发
           _moment = Moment.lobby;
         });
-        _persist();
         _sayAside(line, holdMs: 3200);
       }),
     );
@@ -3790,7 +3723,6 @@ class _AppShellState extends State<AppShell>
         _goal = _flow.goal;
         _pickedTask = null;
       });
-      _persist();
       unawaited(Sfx.play('unlock'));
       _sayAside(
         '拆好了。「${_clip(text, 14)}」先排 ${_goal.plan.length} 张，一天一张——这回别让我白等。',
@@ -3864,7 +3796,6 @@ class _AppShellState extends State<AppShell>
       _resyncQueueCount();
       _host = _flow.host;
     });
-    _persist();
     _toast('她叹了口气，又塞给你几单。', bad: false);
   }
 
@@ -4012,16 +3943,28 @@ class _AppShellState extends State<AppShell>
       _flow.restoreActiveFromJson(d.activeJson);
       _resumedExec = _flow.active != null;
       if (_resumedExec) {
-        _execStart = _flow.active!.startAt;
+        final ActiveQuest a = _flow.active!;
+        _execStart = a.startAt;
         _active = true; // 「执行中」药丸照挂
+        // 已挂的道具随档恢复：数据在 a.dbl/crit/shield 里，界面读的是 _usedItems ——
+        // 不同步的话重开后托盘显示「持有 ×0」而不是「✓ 已装载」，徽标也没了
+        _usedItems
+          ..clear()
+          ..addAll(<String>[
+            if (a.dbl) 'dbl',
+            if (a.crit) 'crit',
+            if (a.shield) 'shield',
+          ]);
       }
       _host = _flow.host;
       _goal = _flow.goal;
       // 原型 `load()` 里的 `S.prevSeen = S.lastSeen` —— 冷启动算"你走了多久"用
       _prevSeen = d.lastSeen;
     });
-    // 补出来的种子要落一次盘，重启后队列还在
-    if (seeded && _flow.queue.isNotEmpty) _persist();
+    // 读档完成，从这一刻起才允许写盘（之前的 _flow 是演示档）
+    _saveArmed = true;
+    // 补出来的种子要落一次盘，重启后队列还在（fromSave 播种时还没接 onChanged）
+    if (seeded && _flow.queue.isNotEmpty) _requestSave();
     // 存档里这条主线**已经走完**（收官发生在「自动续主线」之前的老档）→
     // 补铸下一条并钉队首。⚠️ 现在这一步会真的调 LLM 拆解，失败会抛
     // （旧版是同步模板，永远不会失败）——所以读档时也要接住并报出来。
@@ -4032,7 +3975,6 @@ class _AppShellState extends State<AppShell>
           _host = _flow.host;
           _goal = _flow.goal;
         });
-        _persist();
       }
     } on PlanFailure catch (e) {
       _failPlan(e, goalText: _flow.goal.text);
@@ -4047,23 +3989,27 @@ class _AppShellState extends State<AppShell>
   /// 启动时的自检（`SaveFile.selfTest`）是**通过**的，但这里写完整存档后回读是空的
   /// —— 所以下面多打一行原始串长度，用来区分「没写进去」和「写进去了解析不出来」。
   Future<void> _persist() async {
+    if (!_saveArmed) return;
+    // 读 flow 本身，不读界面副本 `_host/_goal`：合并写盘跑在 microtask 里，
+    // 那时调用方可能还没把副本同步过来（例如 settle 刚返回）
     await _save.save(
       SaveData(
-        host: _host,
-        goal: _goal,
+        host: _flow.host,
+        goal: _flow.goal,
         queue: _flow.queue,
         activeJson: _flow.activeToSaveJson(),
         pendingGoal: _flow.pendingGoal,
       ),
     );
+    if (!kDebugMode) return;
     final String? raw = await _save.rawRead();
     final SaveData back = await _save.load();
-    if (back.goal.text != _goal.text) {
+    if (back.goal.text != _flow.goal.text) {
       final String head = raw == null
           ? 'null'
           : raw.substring(0, raw.length < 70 ? raw.length : 70);
       debugPrint(
-        '[save] ⚠️ 回读不一致：wrote=[${_goal.text}] read=[${back.goal.text}] '
+        '[save] ⚠️ 回读不一致：wrote=[${_flow.goal.text}] read=[${back.goal.text}] '
         'rawLen=${raw?.length} rawHead=$head',
       );
     }

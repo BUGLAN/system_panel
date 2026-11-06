@@ -24,11 +24,11 @@
 
 | 目录 | 职责 |
 |---|---|
-| `main.dart` | 应用入口 + 主壳（3600+ 行）：状态机 `Moment`（boot / lobby / onboard / dispatch / exec / result / fail / sheet / main）、场景切换、拆解任务 `_planJob`、结算与认输编排 |
+| `main.dart` | 应用入口 + 主壳（4100 行）：状态机 `Moment`（boot / lobby / onboard / dispatch / exec / result / fail / sheet / main）、场景切换、拆解任务 `_planJob`、结算与认输编排 |
 | `ui/ref/` | **v3 界面（当前在用）**，按参考稿 `宿主养成系统_重设计.html`（仓库根目录）逐页实现：`ref_home`（大厅）、`ref_onboard`（绑定仪式/访谈）、`ref_main`（主线）、`ref_board`（委托板）、`ref_exec`（执行面板）、`ref_verdict`（结算）、`ref_archive`（档案）、`ref_shop`（补给）、`ref_sheet`（系统设置抽屉）、`ref_goal_swap`（换目标）、`ref_loading`（拆解加载卡）、`ref_llm_settings`、`ref_hud`、`ref_tcard`（任务卡）、`ref_kit`/`ref_inputs`（RefButton/RefXButton/RefTextField 等基础件）等 |
-| `widgets/` | 18 个共享组件：`card_skins`/`card_table`（卡牌）、`ask_field`、`bg_layer`、`fx_layer`/`fx_particles`、`fail_layer`、`hud`、`line_layer`（台词）、`chat_bar`、`type_text`、`voice_bars`、`rail_base` 等 |
+| `widgets/` | 11 个共享组件：`fx_layer`/`fx_particles`（亮帧/震屏/粒子）、`veil`（认输暗幕 + 失败抽色矩阵）、`chat_bar`、`type_text`、`voice_bars`、`rail_base`、`press_scale`、`slow_ticker`、`frame_throttle`、`sys_icons`。旧版牌桌 / HUD / 台词层 / 输入框（`card_skins`、`card_table`、`table_overlay`、`hud`、`line_layer`、`ask_field`、`bg_layer`、`fail_layer`）已于 2026-11-06 删除，v3 对应件都在 `ui/ref/` |
 | `agent/` | LLM 接入层：`llm_client`、`llm_gateway`、`llm_telemetry`、`plan_agent`/`plan_brief`/`goal_match_agent`/`mainline_tool`（目标拆解）、`persona`、`copy`、`memory`、`context_adapter`、`tools`、`vision_core`（证据视觉校验）、`settings_store` |
-| `state/` | 状态与数据：`quest_flow`（队列/接单/结算唯一真源）、`host_state`、`goal`、`goal_gen`、`quest`、`result`、`plan_failure`、`save_file`、`settings`、`sfx`、`haptics`、`voice`、`app_clock`、`away` |
+| `state/` | 状态与数据：`quest_flow`（队列/接单/结算唯一真源，改了存档字段就发 `onChanged` → 主壳自动存档）、`host_state`、`goal`、`goal_gen`、`quest`、`result`、`plan_failure`、`save_file`、`settings`、`sfx`、`haptics`、`voice`、`app_clock`、`away` |
 | `design/` | `ref.dart` = **v3 表现层令牌唯一真源**（`Ref` 色板/字体/缓动，新界面只许读它）；`tokens.dart` = 旧令牌（`C`/`F`/`Motion`/`StageAnchors`/`Pal`，旧组件与历史测试还在用，逐步迁移）；`fidelity`（画质档）、`spring` |
 | `data/` | 静态数据表：`rarity`、`attrs`、`items`、`titles`、`rewards`、`content`、`format` |
 | `chat/` | 对话面板（`chat_panel`/`chat_service`/`chat_history`） |
@@ -70,13 +70,14 @@
 - 选型理由：Impeller 渲染引擎对大量动画友好（着色器预编译、无 jank），单代码库双端
 - 动画实现约定：优先 `Transform`/`Opacity`（对应 web 端 transform/opacity 铁律）；弹簧用 `SpringSimulation(stiffness: 100, damping: 20)`；数字滚动用 count-up 补间；禁用线性匀速
 - 状态管理：没有用 Riverpod，状态集中在 `main.dart` 主壳 + `state/quest_flow.dart`；也没有 flutter_animate，动效是手写 `AnimationController` + `design/spring.dart`。依赖以 `app/pubspec.yaml` 为准（现为 flutter_svg / shared_preferences / http / image_picker / path_provider / audioplayers / vibration）
+- **存档靠自动，不要再手写 `_persist()`（2026-11-06）**：`QuestFlow` 的公开方法改了 host / goal / queue / active / pendingGoal 就发 `onChanged`，主壳 `_requestSave` 合并（microtask）+ 串行写盘，读档完成前（`_saveArmed`）不写。主壳**直接**改 `_flow.queue` / `_flow.host` 后要调 `_resyncQueueCount()` 或 `_flow.touch()`；给 QuestFlow 加新的改数据方法，记得末尾 `_notify()`，并在 `test/autosave_test.dart` 补一条。只有切后台（lifecycle paused）仍直接 `_persist()`
 - **Flutter 工具链**：两台机都是 Flutter `3.47.6` stable（Dart 3.13.5）。Windows：装在 `D:\flutter`（已入 PATH），JDK 用 Android Studio 自带 JBR，Android SDK 在 `%LOCALAPPDATA%\Android\Sdk`；Mac：`~/development/flutter`
 - **全程国内源、不走代理（硬要求）**：`PUB_HOSTED_URL=https://pub.flutter-io.cn`、`FLUTTER_STORAGE_BASE_URL=https://storage.flutter-io.cn`（已写入用户环境变量）；Gradle 走腾讯云镜像（`app/android/gradle/wrapper/gradle-wrapper.properties`），AGP/Kotlin 走阿里云镜像（`app/android/settings.gradle.kts`、`app/android/build.gradle.kts`）；字体取自 jsDelivr 的 `google/fonts`
 - **测试路线**：Windows 机跑 Android 模拟器（MuMu）；Mac 跑 iOS 模拟器与真机（配置脚本 `tools/setup-macos-ios.sh`）。真机 UDID `00008130-001169D830A1401C`
 - **iOS 模拟器要用 iOS 27 运行时（2026-10-28 实测）**：本机 Xcode 27 的触摸/按键注入**不支持 iOS 17.5 运行时**——旧的「iPhone 15 Pro Max（iOS 17.5）」上点击、HOME 键都会被静默丢弃（工具还报成功）。用 `iPhone 15 Pro Max (iOS 27)`（UDID `93FBEE17-17E2-4515-B66D-4DA3AD365C19`，与真机同为 430×932pt）；刚开机要等 ~10s 输入通道才就绪
 - **iOS 帧率上限 60Hz（2026-10-28 定案）**：`ios/Runner/Info.plist` 的 `CADisableMinimumFrameDurationOnPhone` 为 `false`。常驻循环动画多，开 120Hz 时任何一个 Ticker 都会让引擎每秒合成 120 帧整屏 —— 15 Pro Max 上的卡顿与发热主因之一。别改回 `true`
 - **Live2D 已移除（2026-10-27，commit `6f10de1`）**：`flutter_live2d` 依赖、舞台组件、`syncLive2dShaders` 任务、`app/STAGE-OPTIONS.md` 都已删掉，大厅中心现在是眼睛徽标。旧的 Live2D 定案（族尺寸 1.55 超采样、shader 打包等）全部作废；要重新接入先和宿主确认
-- **输入态（`#ask` / 换目标）布局纪律**：主 Scaffold 必须 `resizeToAvoidBottomInset: false`，输入框自己用 `AskField.bottomInset: MediaQuery.viewInsetsOf(context).bottom` 抬到键盘之上；「换目标」时主线全景整层退场、字幕让到屏幕中段，输入框/预设词不许和 CTA 或字幕重叠
+- **输入态（`#ask` / 换目标）布局纪律**：主 Scaffold 必须 `resizeToAvoidBottomInset: false`，输入框所在页面（`ref_onboard` / `ref_goal_swap`）自己读 `MediaQuery.viewInsetsOf(context).bottom` 抬到键盘之上；「换目标」时主线全景整层退场、字幕让到屏幕中段，输入框/预设词不许和 CTA 或字幕重叠
 
 ---
 
@@ -182,5 +183,5 @@
   - 真机 UDID：`00008130-001169D830A1401C`（iPhone 15 Pro Max）；`cd app && flutter run -d 00008130-001169D830A1401C`
   - iOS 14+ 的 debug 包**不能从桌面图标启动**，必须由 Flutter 工具链拉起
   - 真机常走无线调试：掉线/unavailable 是常态，先 `xcrun devicectl list devices` 确认 connected 再跑
-- **⚠️ 大文件写入纪律**：`app/lib/main.dart`（3600+ 行）**只许 `edit` 靶向替换，永不整体 `write`**——本仓库发生过一次整体 write 导致文件被截断、由 Lead 重建的事故
+- **⚠️ 大文件写入纪律**：`app/lib/main.dart`（4000+ 行）**只许 `edit` 靶向替换，永不整体 `write`**——本仓库发生过一次整体 write 导致文件被截断、由 Lead 重建的事故
 - `.env`、`results/`、`node_modules/` 永不入库
