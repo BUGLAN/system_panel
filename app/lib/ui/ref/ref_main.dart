@@ -52,6 +52,7 @@ class RefMain extends StatefulWidget {
     this.pendingGoal = '',
     this.onRetryPlan,
     this.onSetGoal,
+    this.onResumePlan,
   });
 
   final Goal goal;
@@ -87,6 +88,9 @@ class RefMain extends StatefulWidget {
 
   /// B2（docs/50）：没主线、也没记着的目标 → 主按钮【立目标】
   final VoidCallback? onSetGoal;
+
+  /// D3.2（docs/50）：清单走完、下一段 / 下一条主线没拆上 → 主按钮「重试拆解」
+  final VoidCallback? onResumePlan;
 
   bool get noGoal =>
       goal.plan.isEmpty && pendingGoal.isEmpty && onSetGoal != null;
@@ -961,7 +965,15 @@ class _RefMainState extends State<RefMain>
     return Row(
       children: <Widget>[
         Expanded(
-          child: widget.canRetry
+          child: widget.onResumePlan != null
+              // D3.2：这一段走完、下一段没拆上 → 当场补拆
+              ? RefButton(
+                  key: const Key('ref.main.resumePlan'),
+                  label: '重试拆解',
+                  trailingTriangle: true,
+                  onTap: widget.onResumePlan,
+                )
+              : widget.canRetry
               // C5：无清单空态的主按钮（按下声由 RefButton 自带）
               ? RefButton(
                   key: const Key('ref.main.retryPlan'),

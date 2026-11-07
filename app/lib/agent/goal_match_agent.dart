@@ -10,6 +10,7 @@ library;
 
 import '../state/plan_failure.dart';
 import 'copy.dart';
+import 'guardrail.dart';
 import 'llm_client.dart';
 import 'mainline_tool.dart';
 import 'memory.dart';
@@ -52,9 +53,7 @@ class GoalMatchAgent {
     }
     final String digest = await memory?.digest(goalText) ?? '';
     final List<Map<String, dynamic>> msgs = persona.buildConversation(
-      userText:
-          '宿主立了目标：「$goalText」。\n'
-          '用 set_goal_category 告诉我：它属于哪一类、天幕短字写什么、期限多少天。',
+      userText: promptFor(goalText),
       statusLine: statusLine,
       memoryDigest: digest,
       scenario: '识别目标：判断类别/短字/期限，交给 set_goal_category。',
@@ -88,6 +87,15 @@ class GoalMatchAgent {
       }
       if (r.toolCalls.isEmpty) {
         final GoalMatch? got = draft.match;
+        // G2.2：违法 / 伤害他人的目标她按护栏拒接 —— 归到 badGoal（目标本身
+        // 不合格），别和「模型偷懒没交工具」的 noPlan 混成一类
+        final String? refused = got == null ? refusalOf(r.text) : null;
+        if (refused != null) {
+          throw PlanGenerationError(
+            PlanFailureCode.badGoal,
+            '她不接这个目标：${_clip(refused)}',
+          );
+        }
         if (got == null) {
           throw PlanGenerationError(
             PlanFailureCode.noPlan,
@@ -127,12 +135,20 @@ class GoalMatchAgent {
     );
   }
 
+  /// 匹配这一轮交给她的正文（目标 + 要交什么 + 护栏）。
+  /// 单独拎出来是为了测试能直接钉「护栏条款在提示词里」。
+  static String promptFor(String goalText) =>
+      '宿主立了目标：「$goalText」。\n'
+      '用 set_goal_category 告诉我：它属于哪一类、天幕短字写什么、期限多少天。\n'
+      '$kMatchGuard';
+
   static PlanFailureCode _codeOf(LlmFailure? f) => switch (f) {
     LlmFailure.noKey => PlanFailureCode.noKey,
     LlmFailure.network => PlanFailureCode.network,
     LlmFailure.timeout => PlanFailureCode.timeout,
     LlmFailure.httpError => PlanFailureCode.httpError,
     LlmFailure.badResponse => PlanFailureCode.badResponse,
+    LlmFailure.noConsent => PlanFailureCode.noConsent,
     null => PlanFailureCode.badResponse,
   };
 

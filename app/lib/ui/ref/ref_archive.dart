@@ -143,12 +143,20 @@ class _RefArchiveState extends State<RefArchive>
   static String _pad(int n) => n.toString().padLeft(2, '0');
 
   // ── 数据 ────────────────────────────────────────────────
+
+  /// 累计 EXP —— 读档案里的 [HostState.totalExp]（G3.1）。
+  ///
+  /// 以前是流水求和，可流水只留最近 400 条，满了旧的被挤掉，数字会**倒退**。
+  /// 只有老档还没迁移（读档后 `QuestFlow.backfillTotalExp` 会补）时才退回
+  /// 「流水求和 / 等级下界取大」—— 与迁移同一口径，迁移落地后数字不跳。
   int get _totalExp {
+    final HostState h = widget.host;
+    if (h.totalExpKnown) return h.totalExp;
     int s = 0;
     for (final HistoryEntry e in _hist) {
-      s += e.exp;
+      if (e.exp > 0) s += e.exp;
     }
-    return s;
+    return math.max(s, HostState.expFloor(h.lv, h.exp));
   }
 
   /// 近 7 天（周一…今天的顺序以「今天」为最后一格）
@@ -370,7 +378,7 @@ class _RefArchiveState extends State<RefArchive>
     final HostState h = widget.host;
     final List<(String, String)> items = <(String, String)>[
       ('LV${h.lv}', '等级'),
-      ('${_hist.isEmpty ? h.exp : _totalExp}', '累计 EXP'),
+      ('$_totalExp', '累计 EXP'),
       ('${h.streak}', '连胜天'),
       ('${h.doneCount}', '完成单'),
     ];

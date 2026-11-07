@@ -110,6 +110,42 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
+  testWidgets('D3.2：RefHome 清单走完、下一段没拆上 → 待拆卡与「重试拆解」', (
+    WidgetTester tester,
+  ) async {
+    int taps = 0;
+    for (final Size size in <Size>[
+      const Size(320, 640),
+      const Size(390, 844),
+    ]) {
+      await mountAt(
+        tester,
+        size,
+        RefHome(
+          host: HostState.empty,
+          goal: Goal.demo(),
+          queue: 1,
+          onResumePlan: () => taps++,
+        ),
+      );
+      expect(tester.takeException(), isNull);
+      expect(find.byKey(const Key('ref.home.resumePlan')), findsOneWidget);
+      expect(find.text('MAINLINE · 主线'), findsNothing, reason: '主线卡换成待拆卡');
+    }
+    await tester.tap(find.byKey(const Key('ref.home.resumePlanBtn')));
+    await tester.pump();
+    expect(taps, 1);
+    // 没传回调：照常是主线卡
+    await mountAt(
+      tester,
+      const Size(390, 844),
+      RefHome(host: HostState.empty, goal: Goal.demo()),
+    );
+    expect(find.byKey(const Key('ref.home.resumePlan')), findsNothing);
+    expect(find.text('MAINLINE · 主线'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets('RefHud：三颗 chip 与等级环都在', (WidgetTester tester) async {
     await mountAt(
       tester,
@@ -197,7 +233,7 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('LLM 设置：八项都在', (WidgetTester tester) async {
+  testWidgets('LLM 设置：七项都在（G2.3① 删了流式）', (WidgetTester tester) async {
     await mountAt(
       tester,
       const Size(390, 844),
@@ -211,7 +247,11 @@ void main() {
     expect(find.text('保存配置'), findsOneWidget);
     expect(find.text('测试连接'), findsOneWidget);
     // 采样组在下面，滚动到它可见
-    for (final String label in <String>['温度', '流式输出', '证据视觉校验']) {
+    for (final String label in <String>[
+      '温度',
+      '上下文长度（max_tokens 上限）',
+      '证据视觉校验',
+    ]) {
       await tester.scrollUntilVisible(
         find.text(label),
         200,
@@ -224,6 +264,8 @@ void main() {
       );
       expect(find.text(label), findsOneWidget);
     }
+    // 流式开关已删：客户端整包解析，开了测试连接必挂
+    expect(find.text('流式输出'), findsNothing);
     await tester.pumpWidget(const SizedBox());
   });
 }

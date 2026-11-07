@@ -1,10 +1,15 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../design/ref.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../design/tokens.dart';
 import '../state/sfx.dart';
+import '../ui/ref/ref_inputs.dart'
+    show RefCommittedLengthFormatter, kChatInputMaxChars, kRefClipHintHold;
 import 'press_scale.dart';
 import 'sys_icons.dart';
 
@@ -77,6 +82,7 @@ class ChatBar extends StatefulWidget {
     this.onVoiceTap,
     this.enabled = true,
     this.hint = '说点什么…',
+    this.maxChars = kChatInputMaxChars,
   });
 
   /// 外部可注入（测试/受控）；不给就自己管
@@ -90,6 +96,10 @@ class ChatBar extends StatefulWidget {
   final bool enabled;
   final String hint;
 
+  /// G2.2：已上屏字数上限（默认 [kChatInputMaxChars]）。原来没有上限，
+  /// 粘一篇长文进来会整段发给模型；超了截断，框内亮「已截到 N 字」
+  final int maxChars;
+
   @override
   State<ChatBar> createState() => _ChatBarState();
 }
@@ -100,6 +110,31 @@ class _ChatBarState extends State<ChatBar> {
   TextEditingController get _c =>
       widget.controller ?? (_own ??= TextEditingController());
 
+  /// formatter 实例要稳定（每次 build 新建，EditableText 会当成配置变了）
+  late RefCommittedLengthFormatter _limiter = _makeLimiter();
+
+  /// 刚截过一次（轻提示亮着）
+  bool _clipped = false;
+  Timer? _clipTimer;
+
+  RefCommittedLengthFormatter _makeLimiter() =>
+      RefCommittedLengthFormatter(widget.maxChars, onClipped: _onClipped);
+
+  void _onClipped() {
+    if (!mounted) return;
+    _clipTimer?.cancel();
+    setState(() => _clipped = true);
+    _clipTimer = Timer(kRefClipHintHold, () {
+      if (mounted) setState(() => _clipped = false);
+    });
+  }
+
+  @override
+  void didUpdateWidget(ChatBar old) {
+    super.didUpdateWidget(old);
+    if (old.maxChars != widget.maxChars) _limiter = _makeLimiter();
+  }
+
   void _fire() {
     final String text = _c.text.trim();
     if (text.isEmpty || !widget.enabled) return;
@@ -109,6 +144,7 @@ class _ChatBarState extends State<ChatBar> {
 
   @override
   void dispose() {
+    _clipTimer?.cancel();
     _own?.dispose();
     super.dispose();
   }
@@ -133,28 +169,31 @@ class _ChatBarState extends State<ChatBar> {
               decoration: BoxDecoration(
                 color: const Color(0x0DFFFFFF), // rgba(56,225,255,.05)
                 borderRadius: BorderRadius.circular(19),
-                border: Border.all(color: Color(0x1FFFFFFF), width: 1),
+                border: Border.all(
+                  color: _clipped ? Ref.hot : const Color(0x1FFFFFFF),
+                  width: 1,
+                ),
               ),
               alignment: Alignment.center,
-              child: TextField(
-                key: const Key('chat.input'),
-                controller: _c,
-                enabled: canSend,
-                style: fs(family: Ref.fc, size: 13.5, wght: 400, color: Ref.txt),
-                cursorColor: Ref.acid,
-                textAlignVertical: TextAlignVertical.center,
-                decoration: InputDecoration(
-                  isCollapsed: true,
-                  border: InputBorder.none,
-                  hintText: widget.hint,
-                  hintStyle: fs(
-                    family: Ref.fc,
-                    size: 13,
-                    wght: 400,
-                    color: Ref.dim,
-                  ),
-                ),
-                onSubmitted: (String _) => _fire(),
+              child: Row(
+                children: <Widget>[
+                  Expanded(child: _field(canSend)),
+                  // G2.2 轻提示：截断后亮一下，到点自己收
+                  if (_clipped)
+                    Padding(
+                      key: const Key('chat.input.clipHint'),
+                      padding: const EdgeInsets.only(left: 8),
+                      child: Text(
+                        '已截到 ${widget.maxChars} 字',
+                        style: fs(
+                          family: Ref.fc,
+                          size: 11,
+                          wght: 500,
+                          color: Ref.hot,
+                        ),
+                      ),
+                    ),
+                ],
               ),
             ),
           ),
@@ -187,4 +226,21 @@ class _ChatBarState extends State<ChatBar> {
       ),
     );
   }
+
+  Widget _field(bool canSend) => TextField(
+    key: const Key('chat.input'),
+    controller: _c,
+    enabled: canSend,
+    inputFormatters: <TextInputFormatter>[_limiter],
+    style: fs(family: Ref.fc, size: 13.5, wght: 400, color: Ref.txt),
+    cursorColor: Ref.acid,
+    textAlignVertical: TextAlignVertical.center,
+    decoration: InputDecoration(
+      isCollapsed: true,
+      border: InputBorder.none,
+      hintText: widget.hint,
+      hintStyle: fs(family: Ref.fc, size: 13, wght: 400, color: Ref.dim),
+    ),
+    onSubmitted: (String _) => _fire(),
+  );
 }

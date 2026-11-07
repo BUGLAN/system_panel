@@ -293,16 +293,7 @@ class _RefOnboardState extends State<RefOnboard> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: <Widget>[
-                  Text(
-                    '${refCommittedText(widget.controller.value).trim().characters.length} 字',
-                    style: refText(
-                      family: Ref.fm,
-                      size: 11,
-                      wght: 500,
-                      ls: 1,
-                      color: Ref.dim,
-                    ),
-                  ),
+                  _counter(),
                   const SizedBox(height: 8),
                   _submitButton(),
                 ],
@@ -365,6 +356,26 @@ class _RefOnboardState extends State<RefOnboard> {
     );
   }
 
+  /// 键盘上沿那条的字数：G2.2 改成「N/50」—— 上限看得见，顶到了转 hot。
+  /// 只数已上屏的字（E2.6：组字中的拼音不算）
+  Widget _counter() {
+    final int n = refCommittedText(widget.controller.value)
+        .trim()
+        .characters
+        .length;
+    return Text(
+      '$n/$kGoalInputMaxChars',
+      key: const Key('ref.onboard.count'),
+      style: refText(
+        family: Ref.fm,
+        size: 11,
+        wght: 500,
+        ls: 1,
+        color: n >= kGoalInputMaxChars ? Ref.hot : Ref.dim,
+      ),
+    );
+  }
+
   Widget _submitButton() => RefButton(
     key: const Key('ref.onboard.submit'),
     label: '确立目标',
@@ -411,6 +422,7 @@ class _RefOnboardState extends State<RefOnboard> {
             accent: Ref.acid,
             textSize: 15,
             height: 52,
+            maxChars: kGoalInputMaxChars, // G2.2：一句话目标，长文粘进来截断
             onChanged: (String _) => setState(() {}),
             // A4（docs/50）：键盘上的 ✓ 直接提交（空输入不提交）
             onSubmitted: (String v) {
@@ -560,6 +572,8 @@ class _RefOnboardState extends State<RefOnboard> {
                   accent: Ref.acid,
                   textSize: 15,
                   height: 50,
+                  // G2.2：访谈答案原样进拆解提示词，同一个口子，同一个上限
+                  maxChars: kGoalInputMaxChars,
                 ),
                 const SizedBox(height: 10),
                 RefButton(

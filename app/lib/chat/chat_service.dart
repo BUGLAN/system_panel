@@ -136,7 +136,7 @@ class ChatService {
           memoryDigest: digest,
           scenario: scenario,
         ),
-        temperature: 0.8,
+        // 温度不传 = 跟设置页（默认 0.8，G2.3：原来硬编码 0.8，滑杆是摆设）
         // 一次性回复（无工具）：档位跟随设置页，预算给足
         maxTokens: kLineMaxTokens,
         timeout: const Duration(seconds: 12),
@@ -214,7 +214,7 @@ class ChatService {
               LlmMessage('${m['role']}', '${m['content']}'),
           ],
           tools: defs,
-          temperature: 0.8,
+          // 温度不传 = 跟设置页（默认 0.8，与一次性回复同口径）
           // 工具循环**要**思考（挑哪个工具、怎么解释回执）：预算是
           // 「思考 + 工具调用 + 终答」共用的，给足（宿主定调：不用省）。
           // 档位跟随设置页，但**至少 low** —— 别让"她说话快点"的档位把

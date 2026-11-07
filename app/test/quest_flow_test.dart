@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
 
@@ -188,7 +189,45 @@ void main() {
         expect(a.m, b.minutes, reason: '${b.title} 时限不一致');
         expect(a.a, b.attrs, reason: '${b.title} 六维不一致');
         expect(a.r, b.rank, reason: '${b.title} 档位不一致');
+        expect(a.timed, b.timed, reason: '${b.title} 计时 / 打卡不一致');
       }
+    });
+
+    test('D3.3 整天型日常是打卡单，其余照旧计时', () {
+      const List<String> checkin = <String>['喝水 6 杯，拿杯子凑数不算', '今天不喝含糖饮料，一杯都不'];
+      for (final DailyTpl d in QuestFlow.kDailyPool) {
+        expect(d.timed, !checkin.contains(d.t), reason: d.t);
+      }
+      final List<DailyTemplate> all = <DailyTemplate>[
+        ...kDailyCommon,
+        for (final GoalCategory c in goalCats.values) ...c.daily,
+      ];
+      const List<String> catCheckin = <String>[
+        '睡前不吃东西，渴了只喝水',
+        '睡前 30 分钟不碰手机',
+        '今天不喝咖啡和浓茶，晚上才睡得着',
+        '早睡 30 分钟，就今晚',
+      ];
+      for (final String t in <String>[...checkin, ...catCheckin]) {
+        final DailyTemplate d = all.firstWhere(
+          (DailyTemplate x) => x.title == t,
+        );
+        expect(d.timed, isFalse, reason: t);
+        final Quest q = dailyQuestFrom(
+          d,
+          serial: 1,
+          level: 1,
+          rnd: math.Random(1),
+        );
+        expect(q.timed, isFalse, reason: '$t 派出来也是打卡单');
+      }
+      expect(
+        all
+            .where((DailyTemplate d) => !d.timed)
+            .map((DailyTemplate d) => d.title)
+            .toSet(),
+        <String>{...checkin, ...catCheckin},
+      );
     });
 
     test('批二新题确实进了 QuestFlow 的池子（抽查）', () {
@@ -1128,7 +1167,7 @@ void main() {
       );
     });
 
-    test('续拆失败原样抛；读档时 applyFinaleOutcome 补拆', () async {
+    test('续拆失败：带着已入账的结果抛出；读档时 applyFinaleOutcome 补拆', () async {
       final Goal g = halfYear();
       final QuestFlow f = freshFlow(goal: g);
       f.newGoal(g);
@@ -1136,7 +1175,18 @@ void main() {
       for (int i = 0; i < kPlanWindowSize - 1; i++) {
         await clearMain(f, i, day: i);
       }
-      await expectLater(clearMain(f, kPlanWindowSize - 1), throwsStateError);
+      Object? thrown;
+      try {
+        await clearMain(f, kPlanWindowSize - 1);
+      } catch (e) {
+        thrown = e;
+      }
+      expect(thrown, isA<SettleFollowUpFailed>());
+      final SettleFollowUpFailed sf = thrown! as SettleFollowUpFailed;
+      expect(sf.error, isA<StateError>(), reason: '原始错误原样带出来');
+      expect(sf.result.planClear, kPlanWindowSize - 1);
+      expect(sf.result.windowNext, isFalse);
+      expect(f.active, isNull, reason: 'G4.1：拆解失败也不留执行中的单');
       expect(f.goal.windowExhausted, isTrue);
       expect(f.queue.where((Quest q) => q.kind == 'main'), isEmpty);
 
@@ -1149,6 +1199,118 @@ void main() {
       expect(await f.applyFinaleOutcome(), isTrue);
       expect(f.goal.plan.length, kPlanWindowSize * 2);
       expect(f.head?.planIndex, kPlanWindowSize);
+    });
+
+    test('G4.1 续拆失败后同一单不能再结算（存档里也没有执行中的单）', () async {
+      final Goal g = halfYear();
+      final QuestFlow f = freshFlow(goal: g);
+      f.newGoal(g);
+      for (int i = 0; i < kPlanWindowSize - 1; i++) {
+        await clearMain(f, i, day: i);
+      }
+      final Completer<Goal> slow = Completer<Goal>();
+      f.nextWindowHook = (Goal cur) => slow.future;
+      // 每次 onChanged 时记下存档会写进去的执行中单（= 主壳的自动存档读 flow.active）
+      final List<ActiveQuest?> saves = <ActiveQuest?>[];
+      f.onChanged = () => saves.add(f.active);
+
+      final Quest last = f.queue.firstWhere(
+        (Quest x) => x.kind == 'main' && x.planIndex == kPlanWindowSize - 1,
+      );
+      f.accept(last, now: DateTime(2030, 6, 20, 10));
+      final HostState before = f.host;
+      saves.clear();
+      final Future<QuestResult> settling = f.settle(
+        now: DateTime(2030, 6, 20, 10, 30),
+        forceCrit: false,
+      );
+      // await 拆解期间：这一单已经结清，并且已经落过一次盘
+      await Future<void>.delayed(Duration.zero);
+      expect(f.active, isNull);
+      expect(saves, isNotEmpty, reason: '结清那一刻先存档，等拆解时杀进程也不会留单');
+      expect(saves.last, isNull);
+      expect(f.host.doneCount, before.doneCount + 1);
+
+      slow.completeError(StateError('503'));
+      await expectLater(settling, throwsA(isA<SettleFollowUpFailed>()));
+
+      // 同一会话再交一次 → 没有执行中的单，抛 StateError，不再入账
+      final HostState after = f.host;
+      expect(() => f.settle(), throwsStateError);
+      expect(f.host.exp, after.exp);
+      expect(f.host.coins, after.coins);
+      expect(f.host.doneCount, before.doneCount + 1, reason: '只入账一次');
+      expect(f.goal.plan[kPlanWindowSize - 1].done, isTrue);
+      expect(saves.every((ActiveQuest? a) => a == null), isTrue);
+    });
+
+    test('D3.2 续拆失败后会话里当场补拆（resumePlan）', () async {
+      final Goal g = halfYear();
+      final QuestFlow f = freshFlow(goal: g);
+      f.newGoal(g);
+      f.nextWindowHook = (Goal cur) async => throw StateError('503');
+      expect(f.canResumePlan, isFalse, reason: '还没走完');
+      for (int i = 0; i < kPlanWindowSize - 1; i++) {
+        await clearMain(f, i, day: i);
+      }
+      await expectLater(
+        clearMain(f, kPlanWindowSize - 1),
+        throwsA(isA<SettleFollowUpFailed>()),
+      );
+      expect(f.canResumePlan, isTrue);
+      // 再失败一次：照样抛、按钮还在
+      await expectLater(f.resumePlan(), throwsStateError);
+      expect(f.canResumePlan, isTrue);
+      f.nextWindowHook = (Goal cur) async => extendGoalWithWindow(
+        cur,
+        cat: goalCats['slim']!,
+        tasks: windowTasks(nextPlanWindow(cur)),
+      );
+      expect(await f.resumePlan(), isTrue);
+      expect(f.canResumePlan, isFalse);
+      expect(f.goal.plan.length, kPlanWindowSize * 2);
+      expect(f.head?.planIndex, kPlanWindowSize);
+    });
+
+    test('G4.1 收官拆解失败：结果带出、不留单、不读到上一次的收官结论', () async {
+      final Goal oneRing = Goal(
+        text: '一环目标',
+        short: '一环',
+        at: DateTime(2030, 1, 1),
+        plan: const <PlanTask>[
+          PlanTask(
+            index: 0,
+            short: '一环',
+            title: '唯一的一环',
+            proof: '截图',
+            minutes: 15,
+            rank: 'E',
+          ),
+        ],
+      );
+      final QuestFlow f = freshFlow(goal: oneRing);
+      f.newGoal(oneRing);
+      f.nextGoalHook = (Goal prev, int c, int t, int l) async =>
+          throw StateError('收官拆不动');
+      Object? thrown;
+      try {
+        await clearMain(f, 0);
+      } catch (e) {
+        thrown = e;
+      }
+      expect(thrown, isA<SettleFollowUpFailed>());
+      final SettleFollowUpFailed sf = thrown! as SettleFollowUpFailed;
+      expect(sf.result.finale, isTrue);
+      expect(sf.result.exp, greaterThan(0));
+      expect(f.active, isNull);
+      expect(f.lastFinale, isNull);
+      expect(() => f.settle(), throwsStateError);
+
+      // 读档补铸下一条主线
+      f.nextGoalHook = (Goal prev, int c, int t, int l) async =>
+          fakeGoal('下一条');
+      expect(await f.applyFinaleOutcome(), isTrue);
+      expect(f.goal.text, '下一条');
     });
 
     test('老存档（一次拆满、没有 planTotal）原样保留：不续拆、进度分母 = 清单长度', () {

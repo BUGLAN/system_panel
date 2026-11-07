@@ -87,6 +87,7 @@ class DailyTemplate {
     required this.minutes,
     required this.attrs,
     required this.rank,
+    this.timed = true,
   });
 
   final String title;
@@ -94,6 +95,10 @@ class DailyTemplate {
   final int minutes;
   final Map<String, int> attrs;
   final String rank;
+
+  /// D3.3（docs/50）：false = 打卡单（整天型：早睡、喝水、今天不喝某样……
+  /// 不计时、当天内随时交）；其余照旧计时。与 [Quest.timed] 同口径
+  final bool timed;
 }
 
 /// 目标类型（原型 `CATS` 十类 + 2026-11-05 新增「练技能」skill）。
@@ -283,6 +288,7 @@ final GoalCategory _catSlim = GoalCategory(
       minutes: 5,
       attrs: <String, int>{'知': 1, '体': 1},
       rank: 'F',
+      timed: false,
     ),
   ],
 );
@@ -559,6 +565,7 @@ final GoalCategory _catSleep = GoalCategory(
       minutes: 35,
       attrs: <String, int>{'知': 1, '体': 1},
       rank: 'E',
+      timed: false,
     ),
     DailyTemplate(
       title: '起床后立刻叠被子',
@@ -608,6 +615,7 @@ final GoalCategory _catSleep = GoalCategory(
       minutes: 5,
       attrs: <String, int>{'知': 1, '体': 1},
       rank: 'F',
+      timed: false,
     ),
   ],
 );
@@ -1002,6 +1010,7 @@ final GoalCategory _catGen = GoalCategory(
       minutes: 5,
       attrs: <String, int>{'体': 1, '知': 1},
       rank: 'F',
+      timed: false,
     ),
     DailyTemplate(
       title: '做 20 个深蹲 + 20 个开合跳',
@@ -1216,6 +1225,7 @@ const List<DailyTemplate> kDailyCommon = <DailyTemplate>[
     minutes: 5,
     attrs: <String, int>{'体': 1},
     rank: 'F',
+    timed: false,
   ),
   DailyTemplate(
     title: '把昨天没做完的那件事补完',
@@ -1244,6 +1254,7 @@ const List<DailyTemplate> kDailyCommon = <DailyTemplate>[
     minutes: 5,
     attrs: <String, int>{'知': 1, '体': 1},
     rank: 'F',
+    timed: false,
   ),
   DailyTemplate(
     title: '睡前 10 分钟回顾今天，想清楚一件做对的事',
@@ -1942,6 +1953,7 @@ Quest dailyQuestFrom(
     minutes: t.minutes,
     rank: r,
     attrs: QuestFlow.splitAttrs(t.attrs, Rarity.of(r).pt),
+    timed: t.timed,
   );
 }
 

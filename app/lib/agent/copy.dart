@@ -379,7 +379,7 @@ class SystemCopyProvider {
           memoryDigest: digest,
           scenario: '${Persona.tones[toneKey] ?? ''} 只输出一句她的台词本身，不要任何解释。',
         ),
-        temperature: 0.8,
+        // 温度不传 = 跟设置页（默认 0.8，G2.3：原来硬编码 0.8，滑杆是摆设）
         // 预算给足 + 档位跟随设置页（宿主可在设置里把思考关掉换速度）
         maxTokens: kLineMaxTokens,
         timeout: llmTimeout,

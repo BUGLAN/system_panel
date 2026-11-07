@@ -6,17 +6,17 @@ import 'package:http/testing.dart';
 import 'package:system_panel/agent/llm_client.dart';
 import 'package:system_panel/agent/settings_store.dart';
 
-/// 「LLM 设置六项」里**真的接了线**的那三项：温度 / 上下文长度 / 流式。
+/// LLM 设置页的采样两项：温度 / 上下文长度（流式开关 G2.3① 已删）。
 ///
 /// 参考稿没有 LLM 设置这一块（它只有音效/秘籍/彩蛋/重置四行），所以这一组
 /// 是按「补全设计稿缺失组件」新增的。新增功能最怕**能存能显但没人消费**，
 /// 所以这里直接断言**请求体**里出现了对应的字段 —— 设置页改了，请求真的变。
+/// 主链路 / 视觉校验也带上它们的断言在 g_llm_vision_test.dart。
 void main() {
   /// 抓一次请求体
   Future<Map<String, dynamic>> capture({
     double? temperature,
     int contextLen = 0,
-    bool stream = false,
     double? asked,
     int? askedTokens,
   }) async {
@@ -28,7 +28,6 @@ void main() {
         model: 'm',
         temperature: temperature,
         contextLen: contextLen,
-        stream: stream,
       ),
       httpClient: MockClient((http.Request r) async {
         body = jsonDecode(r.body) as Map<String, dynamic>;
@@ -89,28 +88,26 @@ void main() {
     expect(b['max_tokens'], 4096);
   });
 
-  test('流式开关：开会带 stream:true，关会完全不出现', () async {
-    expect((await capture(stream: true))['stream'], isTrue);
-    expect((await capture())['stream'], isNull);
+  test('请求体永不带 stream（G2.3①：客户端整包解析，SSE 必挂）', () async {
+    expect((await capture()).containsKey('stream'), isFalse);
+    expect(
+      (await capture(temperature: 1.2, contextLen: 2048)).containsKey('stream'),
+      isFalse,
+    );
   });
 
-  test('设置页的三个字段走 AgentSettings 往返不丢', () {
+  test('设置页的两个字段走 AgentSettings 往返不丢', () {
     // 这是「保存配置」那一颗键真正做的事：toJson → fromJson
-    const AgentSettings s = AgentSettings(
-      temperature: .35,
-      contextLen: 8192,
-      stream: true,
-    );
+    const AgentSettings s = AgentSettings(temperature: .35, contextLen: 8192);
     final AgentSettings back = AgentSettings.fromJson(
       jsonDecode(jsonEncode(s.toJson())) as Map<String, dynamic>,
       fallback: const AgentSettings(),
     );
     expect(back.temperature, .35);
     expect(back.contextLen, 8192);
-    expect(back.stream, isTrue);
   });
 
-  test('老存档缺这三个 key：落回默认，不清档', () {
+  test('老存档缺这两个 key：落回默认，不清档', () {
     final AgentSettings back = AgentSettings.fromJson(<String, dynamic>{
       'baseUrl': 'https://old.test',
       'apiKey': 'old',
@@ -118,6 +115,5 @@ void main() {
     expect(back.baseUrl, 'https://old.test');
     expect(back.temperature, AgentSettings.kDefaultTemperature);
     expect(back.contextLen, AgentSettings.kDefaultContextLen);
-    expect(back.stream, AgentSettings.kDefaultStream);
   });
 }

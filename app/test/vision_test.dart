@@ -218,7 +218,7 @@ void main() {
       expect(r.note, contains('网络不可达'));
     });
 
-    test('超时（含重试 1 次）→ 未校验', () async {
+    test('超时（G2.4 起不重试）→ 未校验', () async {
       final VisionService v = VisionService(
         clientFactory: (LlmConfig c) => LlmClient(
           config: c,

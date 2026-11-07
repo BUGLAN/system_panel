@@ -200,8 +200,12 @@ class VisionService {
     EvidencePicker? pickImage,
     Future<String> Function()? docsPath,
     EvidenceWriter? writeBytes,
-  }) : _clientFactory =
-           clientFactory ?? ((LlmConfig c) => LlmClient(config: c)),
+
+    /// 校验完要不要 close 工厂给的客户端。缺省：只关自己建的 —— 注入的工厂
+    /// 由注入方管生命周期（测试可能让工厂反复交回同一个客户端，关了就坏）
+    bool? ownsClients,
+  }) : _clientFactory = clientFactory ?? defaultClient,
+       _ownsClients = ownsClients ?? clientFactory == null,
        _settings = settingsStore ?? SettingsStore(),
        _pickImage = pickImage ?? _defaultPick,
        _docsPath = docsPath ?? visionDefaultDocsPath,
@@ -225,12 +229,28 @@ class VisionService {
   static const int kMaxDim = 1280; // ≤1280px
   static const int kJpegQuality = 80; // JPEG q80
 
+  /// 单次视觉校验的时限（G2.4）。
+  ///
+  /// 为什么是 30s：C7 实测一张图校验约 18s，客户端默认的 12s 必超时 →
+  /// 绝大多数照片落到「未校验 · 照收」，C4「不符就拒收」形同虚设。
+  /// 超时不再重试（LlmClient 铁律 2），所以最坏就等这一份。
+  /// 交单那头最多等 20s（`EvidenceChecks.kSubmitWait`，宿主 C7 定案）—— 20~30s
+  /// 才回来的结论落不进已交的单（QuestFlow 交单即封存证据，结论被丢弃）。
+  static const Duration kVerifyTimeout = Duration(seconds: 30);
+
+  /// 生产用的校验客户端：时限 [kVerifyTimeout]（其余同 LlmClient 默认）
+  static LlmClient defaultClient(LlmConfig config) =>
+      LlmClient(config: config, timeout: kVerifyTimeout);
+
   static const String _kSystemPrompt =
       '你是系统「小祥」的验收模块。给你一张任务证据图，判断它是否真实完成了任务。'
       '只输出一个 JSON 对象，格式：{"match": true|false|"unsure","note":"≤40字中文短句"}。'
       'match=true 表示证据可信；看不清、拿不准、像翻拍的一律 "unsure"；明显不符为 false。';
 
   final LlmClient Function(LlmConfig config) _clientFactory;
+
+  /// 客户端是不是本服务自己建的（是 → 每次校验完 close，见 [verify]）
+  final bool _ownsClients;
   final SettingsStore _settings;
   final EvidencePicker _pickImage;
   final Future<String> Function() _docsPath;
@@ -488,32 +508,33 @@ class VisionService {
     if (s.apiKey.trim().isEmpty) {
       return const VisionVerdict.unverified('未配置 Key');
     }
-    final LlmClient client = _clientFactory(
-      LlmConfig(
-        baseUrl: s.baseUrl,
-        apiKey: s.apiKey,
-        model: s.model,
-        // 思考档位跟着设置走（与聊天/文案同一档）：端点是推理模型，
-        // 档位越高，判词越容易被思考挤掉（同根）
-        reasoningEffort: s.reasoningEffort,
-      ),
-    );
-    final LlmReply reply = await client.chat(
-      messages: <LlmMessage>[
-        LlmMessage.system(_kSystemPrompt),
-        LlmMessage.user(
-          '任务《${quest.name}》，证明要求：${quest.proof}。判断下面这些证据图。',
-          images: <String>[
-            for (final String b in base64Images) 'data:image/jpeg;base64,$b',
-          ],
-        ),
-      ],
-      temperature: 0,
-      // 200 → 512：`max_tokens` 同时算 reasoning_content 与正文，
-      // 200 会被思考吃光 → 坏 JSON/空正文 → 永远判「未校验」——它比聊天隐蔽，
-      // 界面上显示的是「未校验」，看起来像"没配 Key"。四情形兜底（不阻塞提交）不变。
-      maxTokens: 512,
-    );
+    // 端点 / Key / 模型 / 思考档位 / 温度 / 上下文都跟着设置走（与主链路同一处
+    // 折算，G2.3）。思考档位：端点是推理模型，档位越高，判词越容易被思考挤掉。
+    final LlmClient client = _clientFactory(s.llmConfig());
+    final LlmReply reply;
+    try {
+      reply = await client.chat(
+        messages: <LlmMessage>[
+          LlmMessage.system(_kSystemPrompt),
+          LlmMessage.user(
+            '任务《${quest.name}》，证明要求：${quest.proof}。判断下面这些证据图。',
+            images: <String>[
+              for (final String b in base64Images) 'data:image/jpeg;base64,$b',
+            ],
+          ),
+        ],
+        // 判词要稳：显式 0，优先于设置页温度
+        temperature: 0,
+        // 200 → 512：`max_tokens` 同时算 reasoning_content 与正文，
+        // 200 会被思考吃光 → 坏 JSON/空正文 → 永远判「未校验」——它比聊天隐蔽，
+        // 界面上显示的是「未校验」，看起来像"没配 Key"。四情形兜底（不阻塞提交）不变。
+        maxTokens: 512,
+      );
+    } finally {
+      // G2.4：每次校验都新建一个客户端，用完不关，连接池就一直挂着；
+      // 超时返回后底层请求还在传图，关掉连同它一起掐断。
+      if (_ownsClients) client.close();
+    }
     if (!reply.ok) {
       return VisionVerdict.unverified('校验失败：${reply.detail ?? '未知原因'}');
     }

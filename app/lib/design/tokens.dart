@@ -34,39 +34,20 @@ class C {
   static const rB = Color(0xFFFBBF24);
   static const rA = Color(0xFFFB923C);
   static const rS = Color(0xFFFF4D5E);
-
-  /// 开机屏专用（app.css L527/531/536）
-  static const bootTop = Color(0xFF4F6584);
-  static const bootLog = Color(0xFF6F86A6);
 }
 
-/// 字体族（app.css L16-19 / L6-9）
-/// 四个都是可变字体，字重必须在代码里用 fontVariations 指定，
-/// 光写 fontWeight 不生效 —— FangYuan 的默认实例是 wght 700。
-class F {
-  const F._();
-  static const cn = 'FangYuan'; // 正文 / 她的话（阿里妈妈方圆体，wght 200-700）
-  static const hd = 'ShuHei'; // 标题（阿里妈妈数黑体）
-  static const num = 'Tektur'; // 数字（wdth 75-100 / wght 400-900）
-  static const mono = 'KodeMono'; // 系统读数（wght 400-700）
-}
+// 2026-11-06 安装包瘦身：旧字体族 `F`（FangYuan 7MB / ShuHei / Tektur /
+// KodeMono）连同只给它们用的 `kNormalLineHeight` 一起删了 —— 当时只剩早已不渲染
+// 的旧开机屏 BootScreen（同批删除，连同开机屏专用色 `C.bootTop/bootLog`）和
+// TypeText 的默认样式在用，却要 9MB 整份打进包里。字体族一律读
+// design/ref.dart 的 `Ref.fd / Ref.fc / Ref.fm`。
 
-/// 各字体的 normal 行高 = (hhea.ascent − hhea.descent + hhea.lineGap) / unitsPerEm。
-///
-/// CSS 里没写 `line-height` 的地方用的就是它。Flutter 的坑：`TextStyle.height` 留空
-/// 会**继承 Material 主题的 1.43**，于是每个文字行框都偏高（底栏标签能差 3px）。
-/// 所以这里按字体把行高钉死，并且用 [TextLeadingDistribution.even] 复刻 CSS 的
-/// 半行距模型（多余空间上下各一半），保证基线位置也一致。
-const Map<String, double> kNormalLineHeight = <String, double>{
-  F.cn: 1.20, // FangYuan  850/150/200
-  F.hd: 1.40, // ShuHei   1050/150/200
-  F.num: 1.30, // Tektur  1000/300/0
-  F.mono: 1.28, // KodeMono 980/300/0
-};
-
-/// CSS `font:` 简写的 Dart 对应物。
+/// CSS `font:` 简写的 Dart 对应物（旧接口，聊天面板还在用；新界面用 `refText`）。
 /// [ls] 是 letter-spacing 的**像素**值；em 值请用 [em] 换算。
-/// [height] 不传就按字体取 normal 行高（见 [kNormalLineHeight]）。
+/// [height] 不传就钉成 1.2：Flutter 的坑是 `TextStyle.height` 留空会**继承
+/// Material 主题的 1.43**，每个文字行框都偏高。配合 [TextLeadingDistribution.even]
+/// 复刻 CSS 的半行距模型（多余空间上下各一半）。
+/// （删旧字体前 Ref 三套字体本来就不在旧的 normal 行高表里，走的也是 1.2，行为不变。）
 TextStyle fs({
   required String family,
   required double size,
@@ -81,7 +62,7 @@ TextStyle fs({
   return TextStyle(
     fontFamily: family,
     fontSize: size,
-    height: height ?? kNormalLineHeight[family] ?? 1.2,
+    height: height ?? 1.2,
     leadingDistribution: TextLeadingDistribution.even,
     letterSpacing: ls,
     color: foreground == null ? color : null,
@@ -204,8 +185,10 @@ class WordSpec {
 ///   · 动效四档沿用 [Motion]；v2 只补**曲线**和**弹簧预设**的名字
 ///   · 音效有**触发规则**（[SoundRule]）：哪些动作出声、多响、多密
 ///
-///  ⚠️ 旧令牌（[C] / [F] / [Motion]）一个不删、数值不改：测试与历史文档
+///  ⚠️ 旧令牌（[C] / [Motion]）一个不删、数值不改：测试与历史文档
 ///     都锚在它们上面。v2 只**新增**，组件逐个迁移。
+///     （例外：旧字体族 `F` 与开机屏专用色 `C.bootTop/bootLog` 已于 2026-11-06
+///      随安装包瘦身删除，见 [fs] 上方说明。）
 /// ═══════════════════════════════════════════════════════════
 
 /// v2 调色板（在 [C] 之上的语义层）

@@ -43,6 +43,7 @@ class RefHome extends StatefulWidget {
     this.pendingGoal = '',
     this.onRetryPlan,
     this.onSetGoal,
+    this.onResumePlan,
   });
 
   final HostState host;
@@ -83,6 +84,10 @@ class RefHome extends StatefulWidget {
 
   /// B2（docs/50）：没主线、也没记着的目标 → 主线卡位「未立目标」的【立目标】
   final VoidCallback? onSetGoal;
+
+  /// D3.2（docs/50）：清单走完、下一段 / 下一条主线没拆上（结算时拆解失败）。
+  /// 非 null → 主线卡位换成待拆卡，按钮「重试拆解」调它。
+  final VoidCallback? onResumePlan;
 
   @override
   State<RefHome> createState() => _RefHomeState();
@@ -174,11 +179,31 @@ class _RefHomeState extends State<RefHome> with TickerProviderStateMixin {
               _homeTag(),
               const SizedBox(height: 10),
               Expanded(child: _coreWrap(screenH)),
-              if (widget.goal.plan.isNotEmpty)
+              if (widget.goal.plan.isNotEmpty && widget.onResumePlan != null)
+                _pendingCard(
+                  key: const Key('ref.home.resumePlan'),
+                  tag: widget.goal.hasMoreWindows
+                      ? 'MAINLINE · 下一段待拆'
+                      : 'MAINLINE · 下一条待拆',
+                  title: widget.goal.text,
+                  note: widget.goal.hasMoreWindows
+                      ? '这一段走完了，下一段没拆成。点下面重试。'
+                      : '这条主线走完了，下一条没拆成。点下面重试。',
+                  buttonKey: const Key('ref.home.resumePlanBtn'),
+                  onTap: widget.onResumePlan,
+                )
+              else if (widget.goal.plan.isNotEmpty)
                 _questCard(done, math.max(total, 1)),
               if (widget.goal.plan.isNotEmpty) const SizedBox(height: 16),
               if (widget.goal.plan.isEmpty && widget.pendingGoal.isNotEmpty)
-                _pendingCard(),
+                _pendingCard(
+                  key: const Key('ref.home.pendingGoal'),
+                  tag: 'MAINLINE · 待拆解',
+                  title: widget.pendingGoal,
+                  note: '上次没拆成。目标我替你记着，先做日常也行。',
+                  buttonKey: const Key('ref.home.retryPlan'),
+                  onTap: widget.onRetryPlan,
+                ),
               if (widget.goal.plan.isEmpty && widget.pendingGoal.isNotEmpty)
                 const SizedBox(height: 16),
               if (widget.goal.plan.isEmpty &&
@@ -623,9 +648,17 @@ class _RefHomeState extends State<RefHome> with TickerProviderStateMixin {
     );
   }
 
-  Widget _pendingCard() {
+  /// 待拆卡：C5「暂时跳过」记着的目标 / D3.2 下一段没拆上，共用同一张
+  Widget _pendingCard({
+    required Key key,
+    required String tag,
+    required String title,
+    required String note,
+    required Key buttonKey,
+    required VoidCallback? onTap,
+  }) {
     return Container(
-      key: const Key('ref.home.pendingGoal'),
+      key: key,
       padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
       decoration: BoxDecoration(
         gradient: LinearGradient(
@@ -646,7 +679,7 @@ class _RefHomeState extends State<RefHome> with TickerProviderStateMixin {
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
           Text(
-            'MAINLINE · 待拆解',
+            tag,
             maxLines: 1,
             softWrap: false,
             overflow: TextOverflow.clip,
@@ -661,7 +694,7 @@ class _RefHomeState extends State<RefHome> with TickerProviderStateMixin {
           ),
           const SizedBox(height: 6),
           Text(
-            widget.pendingGoal,
+            title,
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
             style: refText(
@@ -674,7 +707,7 @@ class _RefHomeState extends State<RefHome> with TickerProviderStateMixin {
           ),
           const SizedBox(height: 4),
           Text(
-            '上次没拆成。目标我替你记着，先做日常也行。',
+            note,
             style: refText(
               family: Ref.fc,
               size: 12,
@@ -685,11 +718,11 @@ class _RefHomeState extends State<RefHome> with TickerProviderStateMixin {
           ),
           const SizedBox(height: 12),
           RefButton(
-            key: const Key('ref.home.retryPlan'),
+            key: buttonKey,
             label: '重试拆解',
             small: true,
             trailingTriangle: true,
-            onTap: widget.onRetryPlan,
+            onTap: onTap,
           ),
         ],
       ),

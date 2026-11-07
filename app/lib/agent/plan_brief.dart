@@ -5,6 +5,7 @@
 library;
 
 import '../state/goal_gen.dart';
+import 'guardrail.dart';
 
 class PlanBrief {
   const PlanBrief({
@@ -146,7 +147,9 @@ class PlanBrief {
         '需要连续投入一段时间的（跑步、练琴、刷题）标 "timed"（计时）。',
       )
       ..writeln('打卡单的 minutes 照样填预计耗时（同样不许超档位上限），只作参考、不倒计时。');
+    // G2.2：健康与安全护栏 —— 首段、分段、续拆都从这里出，一处写进三条路径
     b
+      ..writeln(kPlanGuard)
       ..writeln()
       ..writeln(
         seg == null

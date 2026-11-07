@@ -1,8 +1,25 @@
+import java.io.FileInputStream
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
 }
+
+// ── 正式签名（G1.3，docs/50）────────────────────────────────
+// 读 `android/key.properties`（已 gitignore，keystore 本体 *.jks 也不入库）：
+//   storeFile=<jks 路径，相对 android/app/ 或绝对路径>
+//   storePassword=… / keyAlias=… / keyPassword=…
+// 文件不存在时 release 退回 debug 签名，`flutter run --release` 照样能跑；
+// 但 debug 签名的包**不能上架**，且日后换正式签名后已装用户无法覆盖升级。
+val keystorePropertiesFile = rootProject.file("key.properties")
+val keystoreProperties = Properties().apply {
+    if (keystorePropertiesFile.exists()) {
+        FileInputStream(keystorePropertiesFile).use { load(it) }
+    }
+}
+val hasReleaseKeystore = keystorePropertiesFile.exists()
 
 android {
     namespace = "com.systempanel.app"
@@ -29,11 +46,26 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        if (hasReleaseKeystore) {
+            create("release") {
+                storeFile = keystoreProperties.getProperty("storeFile")?.let { file(it) }
+                storePassword = keystoreProperties.getProperty("storePassword")
+                keyAlias = keystoreProperties.getProperty("keyAlias")
+                keyPassword = keystoreProperties.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            // 有 key.properties 用正式签名；没有就退回 debug 签名（见文件头注释）
+            signingConfig = if (hasReleaseKeystore) {
+                signingConfigs.getByName("release")
+            } else {
+                logger.warn("[signing] 未找到 android/key.properties：release 包使用 debug 签名，不能上架")
+                signingConfigs.getByName("debug")
+            }
         }
     }
 }

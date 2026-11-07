@@ -413,7 +413,7 @@ void main() {
       expect(calls, 2);
     });
 
-    test('超时重试 1 次仍超时 → timeout 兜底（不抛异常）', () async {
+    test('超时不重试（G2.4：重试只会让等待翻倍）→ timeout 兜底（不抛异常）', () async {
       int calls = 0;
       final LlmClient client = LlmClient(
         config: const LlmConfig(apiKey: 'k'),
@@ -429,8 +429,8 @@ void main() {
       );
       expect(r.ok, isFalse);
       expect(r.failure, LlmFailure.timeout);
-      expect(calls, 2);
-      expect(r.detail, contains('已重试 1 次'));
+      expect(calls, 1, reason: '非严格模式也只发一次');
+      expect(r.detail, isNot(contains('已重试')));
     });
 
     test('HTTP 401 不重试（重试也不会好），按 httpError 兜底', () async {

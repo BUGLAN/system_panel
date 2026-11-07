@@ -13,7 +13,15 @@ import '../ref/ref_motion.dart';
 ///
 ///  参考稿的设置面板只有四行（音效 / 秘籍 / 彩蛋 / 重置，L837-843）。
 ///  本组件补的是功能必需的那一组：API Key、Base URL、模型、温度、
-///  上下文长度、流式开关、保存、测试连接。
+///  上下文长度、视觉校验、保存、测试连接。
+///
+///  宿主定案（G2.3）：本页**只在 debug 可达**（系统抽屉那一行与长按 HUD 菜单键
+///  都只在 debug 接线）。「证据视觉校验」另在系统抽屉放了一份、所有构建都露；
+///  两处写的是同一个 `AgentSettings.visionEnabled`。流式开关已删：客户端整包
+///  解析，开了「测试连接」必挂。
+///
+///  温度 / 上下文与主链路同一处折算（`AgentSettings.llmConfig`）：这里测的就是
+///  保存后台词 / 聊天 / 拆解真正用的那份配置。
 ///
 ///  视觉全部走参考稿语言（RefTextField / RefSwitch / RefSectionHeader /
 ///  RefButton），不引入第二套外观：
@@ -58,7 +66,6 @@ class _LlmSettingsPaneState extends State<LlmSettingsPane> {
 
   late double _temp;
   late int _ctx;
-  late bool _stream;
   late bool _vision;
 
   bool _dirty = false;
@@ -77,7 +84,6 @@ class _LlmSettingsPaneState extends State<LlmSettingsPane> {
     _model = TextEditingController(text: s.model);
     _temp = s.temperature;
     _ctx = s.contextLen;
-    _stream = s.stream;
     _vision = s.visionEnabled;
   }
 
@@ -95,7 +101,6 @@ class _LlmSettingsPaneState extends State<LlmSettingsPane> {
     model: _model.text.trim(),
     temperature: _temp,
     contextLen: _ctx,
-    stream: _stream,
     visionEnabled: _vision,
   );
 
@@ -143,15 +148,8 @@ class _LlmSettingsPaneState extends State<LlmSettingsPane> {
       _testMsg = '正在按当前输入发一条与聊天同形状的请求…';
       _revealResult();
     });
-    final LlmConfig config = LlmConfig(
-      baseUrl: s.baseUrl,
-      apiKey: s.apiKey,
-      model: s.model,
-      reasoningEffort: s.reasoningEffort,
-      temperature: s.temperature,
-      contextLen: s.contextLen,
-      stream: s.stream,
-    );
+    // 与主链路同一处折算：测通了 = 保存后真正发出去的就是这份
+    final LlmConfig config = s.llmConfig();
     final LlmClient client = LlmClient(config: config);
     final LlmReply r = await client.ping();
     client.close();
@@ -194,6 +192,8 @@ class _LlmSettingsPaneState extends State<LlmSettingsPane> {
   static String _failureText(LlmFailure? kind, String? detail) =>
       switch (kind) {
         LlmFailure.noKey => '未配置 API Key',
+        // G2.1：撤回同意后测连接会被闸门拦下 —— 说清是哪道门，别让人去查网络
+        LlmFailure.noConsent => '未同意隐私政策，请求没有发出',
         LlmFailure.timeout => detail ?? '请求超时',
         LlmFailure.network => detail ?? '网络不可达',
         LlmFailure.httpError ||
@@ -257,16 +257,6 @@ class _LlmSettingsPaneState extends State<LlmSettingsPane> {
               ),
               RefReveal(index: 6, child: _temperatureRow()),
               RefReveal(index: 7, child: _contextRow()),
-              _switchRow(
-                label: '流式输出',
-                sub: '向端点要 stream:true；客户端仍按整包解析后一次性上屏',
-                value: _stream,
-                keyName: 'ref.llm.stream',
-                onChanged: (bool v) {
-                  _stream = v;
-                  _touch();
-                },
-              ),
               const SizedBox(height: 10),
               _switchRow(
                 label: '证据视觉校验',
@@ -367,7 +357,11 @@ class _LlmSettingsPaneState extends State<LlmSettingsPane> {
             ],
           ),
           const SizedBox(height: 3),
-          Text('越低越稳、越高越野；台词/聊天默认 0.8，拆解另有 0.3 的调用点覆盖', style: RefType.srowSub),
+          Text(
+            '越低越稳、越高越野；台词 / 聊天跟这里（默认 0.8），'
+            '拆解 0.7 / 目标匹配 0.3 / 视觉 0 固定不跟',
+            style: RefType.srowSub,
+          ),
           SliderTheme(
             data: SliderTheme.of(context).copyWith(
               trackHeight: 6,
@@ -406,7 +400,8 @@ class _LlmSettingsPaneState extends State<LlmSettingsPane> {
           Text(
             _ctx == 0
                 ? '跟随调用点：台词 4k / 工具循环 8k / 拆解 8k'
-                : '上限 $_ctx —— 只会钳小、不会顶掉拆解与工具循环的预算',
+                : '上限 $_ctx —— 所有请求都按它钳小（拆解 / 工具循环也是），'
+                      '太小会被思考吃光',
             style: RefType.srowSub,
           ),
           const SizedBox(height: 10),

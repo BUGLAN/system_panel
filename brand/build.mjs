@@ -17,8 +17,10 @@
  *      上方留 1.5 边暗轨，「进度游标」的意思最清楚，六边轮廓也还数得出来。
  *    · 颜色只取锁定色板：虚空 #03060E / 面板蓝 #0B1A36 / 电光青 #38E1FF / 屏显白 #EAF7FF。
  *
- *  字体（只有 lockup 用得到）：app/assets/fonts 里的 ShuHei-Bold（中文标题）
+ *  字体（只有 lockup 用得到）：brand/fonts 里的 ShuHei-Bold（中文标题）
  *  与 Tektur-VF（拉丁读数），与原型 @font-face 同源。
+ *  （2026-11-06 安装包瘦身：App 不再打包这两套，从 app/assets/fonts 挪到这里，
+ *   免得 existsSync 过滤后静默退化成别的字体。）
  */
 import { Resvg } from '@resvg/resvg-js';
 import { execFileSync } from 'node:child_process';
@@ -255,9 +257,10 @@ function adaptiveBackgroundSvg(idp = 'ab') {
 
 /* ───────────────────────── 横排组合（标识 + 字标） ───────────────────────── */
 const FONT_FILES = [
-  join(ROOT, 'app/assets/fonts/ShuHei-Bold.ttf'),
-  join(ROOT, 'app/assets/fonts/Tektur-VF.ttf'),
-  join(ROOT, 'app/assets/fonts/NotoSansSC-VF.ttf'),
+  join(BRAND, 'fonts/ShuHei-Bold.ttf'),
+  join(BRAND, 'fonts/Tektur-VF.ttf'),
+  // 中文后备用原版全字库（App 里那份是子集，见 tools/fonts/README.md）
+  join(ROOT, 'tools/fonts/src/NotoSansSC-VF.ttf'),
 ].filter(existsSync);
 
 function lockupSvg({ vertical = false } = {}) {
@@ -401,6 +404,11 @@ function buildAppIcons() {
 
 function buildFavicon() {
   const dir = join(ROOT, 'prototype/opus-v2-dir');
+  // 2026-11-06：prototype/ 已移出 git，只在有本地副本的机器上写 favicon；没有就跳过
+  if (!existsSync(dir)) {
+    console.log('  · 跳过原型 favicon：本机没有 prototype/opus-v2-dir/');
+    return [];
+  }
   const out = [];
   const tile = (px, idp) => png(
     tileSvg({

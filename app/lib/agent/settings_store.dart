@@ -56,7 +56,6 @@ class AgentSettings {
     this.sfxVol = kDefaultSfxVol,
     this.temperature = kDefaultTemperature,
     this.contextLen = kDefaultContextLen,
-    this.stream = kDefaultStream,
   });
 
   // ── 舞台特效画质 + 界面音量 ────────────────────────
@@ -68,21 +67,23 @@ class AgentSettings {
 
   // ── LLM 采样参数（参考稿没有，按「补全缺失组件」要求新增）────────
   //
-  // 这三项都**真的**接进请求体（见 llm_client.dart 的 _chat）：
-  //   temperature  → `temperature`
-  //   contextLen   → `max_tokens` 的预算上限（0 = 用调用点默认）
-  //   stream       → `stream`（当前客户端按整包解析，开了也只影响服务端分块）
+  // 两项都经 [llmConfig] 进请求体（主链路 / 视觉校验 / 测试连接同一处折算；
+  // G2.3 之前只有页内「测试连接」带上了它们，主链路一直是摆设）：
+  //   temperature  → 调用点没给温度时的 `temperature`（台词 / 聊天 / 工具循环跟它；
+  //                  拆解 0.7 / 目标匹配 0.3 / 视觉 0 由调用点显式覆盖）
+  //   contextLen   → 所有调用点 `max_tokens` 的上限（0 = 不钳制，用调用点默认）
   //
-  // ⚠️ 默认值与 [LlmConfig] 的既有行为保持一致，老档缺字段时行为不变。
+  // 流式开关已删（G2.3①）：客户端整包解析，端点回 SSE 必挂。老档里的
+  // `stream` key 读档时直接忽略、下次存档自然消失 —— 存了 true 也不会再生效。
+  //
+  // ⚠️ 默认值与改造前主链路的行为一致（台词 / 聊天原本就是硬编码 0.8），
+  //    老档缺字段时行为不变。
 
   /// 默认温度：参考旧代码里台词/聊天用的 0.8（拆解另有 0.3 的调用点覆盖）
   static const double kDefaultTemperature = .8;
 
   /// 默认上下文预算：0 = 跟随调用点（kDefaultMaxTokens / kToolLoopMaxTokens）
   static const int kDefaultContextLen = 0;
-
-  /// 流式开关默认关（客户端是整包解析，开了只让端点分块传输）
-  static const bool kDefaultStream = false;
 
   /// 温度可选档（设置页滑杆的刻度）
   static const List<double> kTemperatureStops = <double>[
@@ -155,15 +156,26 @@ class AgentSettings {
   /// 界面音量档（见 [kDefaultSfxVol]）
   final String sfxVol;
 
-  // ── LLM 采样参数（真接进请求体，见 [kDefaultTemperature] 上方注释）──
+  // ── LLM 采样参数（经 [llmConfig] 进请求体，见 [kDefaultTemperature] 上方注释）──
   /// 采样温度（0~1.5）
   final double temperature;
 
-  /// 响应预算（`max_tokens`）；0 = 跟随调用点默认
+  /// 响应预算（`max_tokens`）上限；0 = 跟随调用点默认
   final int contextLen;
 
-  /// 是否向端点请求流式（`stream: true`）
-  final bool stream;
+  /// 这份设置折算成的 LLM 配置 —— **唯一折算点**：主壳装网关、视觉校验、
+  /// 设置页「测试连接」都从这里取，免得再出现「某条链路漏传某个字段」
+  /// （G2.3 的病根：主链路与视觉校验都没传温度 / 上下文）。
+  /// [strict] 由调用方按构建类型折算（主壳 `_strictOf`），设置本身只存 auto/on/off。
+  LlmConfig llmConfig({bool strict = false}) => LlmConfig(
+    baseUrl: baseUrl,
+    apiKey: apiKey,
+    model: model,
+    reasoningEffort: reasoningEffort,
+    strict: strict,
+    temperature: temperature,
+    contextLen: contextLen,
+  );
 
   factory AgentSettings.fromJson(
     Map<String, dynamic>? json, {
@@ -196,12 +208,12 @@ class AgentSettings {
       paceMs: pick<int>('paceMs', fallback.paceMs),
       fidelity: pick<String>('fidelity', fallback.fidelity),
       sfxVol: pick<String>('sfxVol', fallback.sfxVol),
-      // 老档没有这三个 key → 落回 fallback（= 默认），不写迁移代码
+      // 老档没有这两个 key → 落回 fallback（= 默认），不写迁移代码。
+      // 老档里的 `stream`（已删的流式开关）不读：存了 true 也不再生效
       temperature: json['temperature'] is num
           ? (json['temperature'] as num).toDouble()
           : fallback.temperature,
       contextLen: pick<int>('contextLen', fallback.contextLen),
-      stream: pick<bool>('stream', fallback.stream),
     );
   }
 
@@ -221,7 +233,6 @@ class AgentSettings {
     'sfxVol': sfxVol,
     'temperature': temperature,
     'contextLen': contextLen,
-    'stream': stream,
   };
 
   AgentSettings copyWith({
@@ -240,7 +251,6 @@ class AgentSettings {
     String? sfxVol,
     double? temperature,
     int? contextLen,
-    bool? stream,
   }) => AgentSettings(
     visionEnabled: visionEnabled ?? this.visionEnabled,
     baseUrl: baseUrl ?? this.baseUrl,
@@ -257,7 +267,6 @@ class AgentSettings {
     sfxVol: sfxVol ?? this.sfxVol,
     temperature: temperature ?? this.temperature,
     contextLen: contextLen ?? this.contextLen,
-    stream: stream ?? this.stream,
   );
 
   @override
@@ -277,8 +286,7 @@ class AgentSettings {
       other.fidelity == fidelity &&
       other.sfxVol == sfxVol &&
       other.temperature == temperature &&
-      other.contextLen == contextLen &&
-      other.stream == stream;
+      other.contextLen == contextLen;
 
   @override
   int get hashCode => Object.hash(
@@ -297,7 +305,6 @@ class AgentSettings {
     sfxVol,
     temperature,
     contextLen,
-    stream,
   );
 }
 

@@ -27,6 +27,7 @@ import 'chat/chat_panel.dart';
 import 'chat/chat_service.dart';
 import 'data/attrs.dart';
 import 'data/content.dart';
+import 'data/crisis_words.dart';
 import 'data/titles.dart';
 import 'data/format.dart';
 import 'data/items.dart';
@@ -38,7 +39,9 @@ import 'state/plan_failure.dart';
 import 'design/fidelity.dart';
 import 'state/app_clock.dart';
 import 'state/away.dart';
+import 'state/consent.dart';
 import 'state/evidence_checks.dart';
+import 'state/evidence_store.dart';
 import 'state/haptics.dart';
 import 'state/sfx.dart';
 import 'state/voice.dart';
@@ -50,6 +53,7 @@ import 'ui/ref/ref_bg.dart';
 import 'ui/ref/ref_board.dart';
 import 'ui/ref/ref_core.dart';
 import 'ui/ref/ref_boot.dart';
+import 'ui/ref/ref_consent.dart';
 import 'ui/ref/ref_motion.dart';
 import 'ui/ref/ref_exec.dart';
 import 'ui/ref/ref_goal_swap.dart';
@@ -75,7 +79,7 @@ import 'widgets/veil.dart';
 import 'dev/agent_bridge.dart';
 
 /// 宿主 SYSTEM —— Flutter 客户端。
-/// 设计真源：prototype/opus-v2-dir（原型即规格）。
+/// 移植出处：prototype/opus-v2-dir（已移出 git）。现行视觉真源是 `design/ref.dart`。
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
   SystemChrome.setPreferredOrientations(const <DeviceOrientation>[
@@ -98,7 +102,8 @@ class SysApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'SYSTEM · 宿主',
+      // 与桌面图标名一致（G1.3）：Android 最近任务列表显示的就是这个
+      title: '宿主养成系统',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         useMaterial3: true,
@@ -439,8 +444,9 @@ class _AppShellState extends State<AppShell>
 
   /// 用一份 [AgentSettings] 装（或重装）LLM 三件套，**并落地非 LLM 设置**。
   ///
-  /// ⚠️ 早退守卫只对 LLM 三要素 + 严格模式生效（那些变更才需要重建网关）。
-  /// 音效/震动/思考档位这类**非 LLM 设置必须每次都落地**——曾经记着
+  /// ⚠️ 早退守卫只对 LLM 配置（端点 / Key / 模型 / 思考档位 / 温度 / 上下文）
+  /// + 严格模式生效（那些变更才需要重建网关）。
+  /// 音效/震动/节奏这类**非 LLM 设置必须每次都落地**——曾经记着
   /// 这个坑：以前 `sound/haptic` 能存能显但没人消费，就是被这个早退吞掉的。
   void _applyAgentSettings(AgentSettings s) {
     _agentSettings = s;
@@ -455,27 +461,16 @@ class _AppShellState extends State<AppShell>
     if (_paceMs != s.paceMs) setState(() => _paceMs = s.paceMs);
     // 底噪跟随「音效」总开关（的化简：原型按时刻 duck，本批只做在/不在）
     unawaited(Sfx.ambient(s.sound));
-    // ② LLM 设置：没变就不重建（避免打断在途请求）
+    // ② LLM 设置：没变就不重建（避免打断在途请求）。
+    // G2.3：配置由 `AgentSettings.llmConfig` 一处折算（含温度 / 上下文），守卫比
+    // **整份配置** —— 原来手写字段比较漏了温度 / 上下文，设置页改了也不重建。
     final bool strict = _strictOf(s);
+    final LlmConfig config = s.llmConfig(strict: strict);
     final LlmClient? old = _llmClient;
-    if (old != null &&
-        old.config.baseUrl == s.baseUrl &&
-        old.config.apiKey == s.apiKey &&
-        old.config.model == s.model &&
-        old.config.reasoningEffort == s.reasoningEffort &&
-        old.config.strict == strict &&
-        _chatService?.strict == strict) {
+    if (old != null && old.config == config && _chatService?.strict == strict) {
       return;
     }
-    final LlmClient client = LlmClient(
-      config: LlmConfig(
-        baseUrl: s.baseUrl,
-        apiKey: s.apiKey,
-        model: s.model,
-        reasoningEffort: s.reasoningEffort,
-        strict: strict,
-      ),
-    );
+    final LlmClient client = LlmClient(config: config);
     final LlmGateway gw = LlmGateway(client);
     final MemoryStore mem = _memory ?? MemoryStore();
     // 工具读的是「当前那份」QuestFlow——绑定/读档会换实例，必须传取流回调
@@ -545,6 +540,15 @@ class _AppShellState extends State<AppShell>
     final ChatService? svc = _chatService;
     if (svc == null || _chatThinking) return;
     await _chat.append(ChatMessage.host(_chatId(), text));
+    // G4.2：聊天也过自伤闸门（与目标输入同一张词表）——命中不发 LLM，
+    // 不让毒舌人设接这句话；她认真回一句（同 kCrisisCareLine 口吻）
+    if (isCrisisGoal(text)) {
+      await _chat.append(
+        ChatMessage.sys(_chatId(), kCrisisChatLine, emotion: 'neutral'),
+      );
+      if (mounted) setState(() {});
+      return;
+    }
     setState(() => _chatThinking = true);
     final List<ChatMessage> entries = await svc.respond(
       text,
@@ -674,6 +678,13 @@ class _AppShellState extends State<AppShell>
     // 「先问小祥」不是目标，是入口：带场合上下文开对话（D5 的入口保留）
     if (typed == _kAskXiangPreset) {
       _enterAskXiang();
+      return;
+    }
+    // G2.2 本地闸门：自伤 / 自杀类不发请求、不换线（首次立目标也不进绑定）；
+    // 她换认真的语气说一句，停在本页可以改。不放错误音。
+    if (isCrisisGoal(typed)) {
+      setState(() => _planError = null); // 别挂着上一次的失败卡和怒脸
+      _swapSay(kCrisisCareLine);
       return;
     }
     if (isVagueGoal(typed)) {
@@ -1127,7 +1138,7 @@ class _AppShellState extends State<AppShell>
     }
     // ⚠️ 原型这里是 `!$('#line').classList.contains('on')` —— 它的页面字幕
     //    说完就 hide 了，所以大部分时候是「关着的」。我们的演示档让页面字幕常驻，
-    //    所以改成「她没有正在插话」（见 BEHAVIOR-GAPS.md D 组）
+    //    所以改成「她没有正在插话」（原 BEHAVIOR-GAPS.md D 组，该文档已删，见 git 历史）
     // 超时判负（原型 Exec.tick() 末尾： >= lim → App.fail('timeout')）
     // C7：已经点了提交（在等证据校验 / 结算中）—— 交单算在超时之前，不判负
     // C3：打卡单不计时，永不超时
@@ -1356,7 +1367,9 @@ class _AppShellState extends State<AppShell>
                           (main && _boardOn) ||
                           (sheet && _sheetKind == SheetKind.supply),
                       onMenu: () => _openSheet(SheetKind.system),
-                      onMenuLongPress: _openLlmPane,
+                      // 宿主定案（G2.3）：LLM 设置只在 debug 可达 —— release 摘掉
+                      // 这条隐藏入口（A17 时留的），系统抽屉里的那行本来就只在 debug 露
+                      onMenuLongPress: kDebugMode ? _openLlmPane : null,
                       onLevelTap: () => _toast(
                         'EXP ${_host.exp} / ${HostState.need(_host.lv)} · '
                         '距 LV${_host.lv + 1} 还差 '
@@ -1426,6 +1439,10 @@ class _AppShellState extends State<AppShell>
                               : '',
                           onRetryPlan: () => unawaited(_retryPlan()),
                           onSetGoal: _flow.active == null ? _startFirstGoal : null,
+                          // D3.2：这一段走完、下一段没拆上 → 主线卡位换成待拆卡
+                          onResumePlan: _flow.canResumePlan
+                              ? () => unawaited(_resumePlan())
+                              : null,
                           onSide: (int i) {
                             if (i == 0) {
                               _go(
@@ -1778,6 +1795,10 @@ class _AppShellState extends State<AppShell>
                               : '',
                           onRetryPlan: () => unawaited(_retryPlan()),
                           onSetGoal: _flow.active == null ? _startFirstGoal : null,
+                          // D3.2：下一段没拆上 → 主按钮「重试拆解」
+                          onResumePlan: _flow.canResumePlan
+                              ? () => unawaited(_resumePlan())
+                              : null,
                         ),
                       ),
                     // v3 换目标（重写）：独立场景，斜切转场进出。
@@ -1890,6 +1911,23 @@ class _AppShellState extends State<AppShell>
                         onSound: (bool v) {
                           if (v != _agentSettings.sound) _toggleSound();
                         },
+                        // G2.3（宿主定案）：视觉校验开关挪到这里、所有构建可见。
+                        // 与 LLM 设置页同一套存取 / 广播（SettingsStore.save）；
+                        // VisionService 每次校验现读设置，存完下一张就按新值走
+                        vision: _agentSettings.visionEnabled,
+                        onVision: (bool v) {
+                          if (v == _agentSettings.visionEnabled) return;
+                          final AgentSettings next = _agentSettings.copyWith(
+                            visionEnabled: v,
+                          );
+                          setState(() => _agentSettings = next);
+                          unawaited(SettingsStore().save(next));
+                          _toast(
+                            v
+                                ? '视觉校验已开启。证据我会一张张看。'
+                                : '视觉校验已关闭。证据照收，一律按未校验计。',
+                          );
+                        },
                         onClose: () => setState(() => _sysSheetOn = false),
                         onHint: () {
                           setState(() => _sysSheetOn = false);
@@ -1907,6 +1945,12 @@ class _AppShellState extends State<AppShell>
                           setState(() => _sysSheetOn = false);
                           _askWipe();
                         },
+                        // G2.1：协议全文压在抽屉之上（抽屉不收，关掉全文回到这里）
+                        onAgreement: () =>
+                            setState(() => _legalDoc = LegalDoc.agreement),
+                        onPrivacy: () =>
+                            setState(() => _legalDoc = LegalDoc.privacy),
+                        onRevoke: _askRevokeConsent,
                       ),
                     ),
                     ChatPanel(
@@ -2037,7 +2081,7 @@ class _AppShellState extends State<AppShell>
                 ),
               ),
               // v3 LLM 设置（参考稿未覆盖，按「补全缺失组件」要求新增）：
-              // Base URL / ApiKey / 模型 / 温度 / 上下文 / 流式 / 测试 / 保存。
+              // Base URL / ApiKey / 模型 / 温度 / 上下文 / 视觉校验 / 测试 / 保存（仅 debug 可达）。
               // 进出走斜切转场；挂在 ShakeLayer **外面**：
               // 它打开时下层整棵树的 Ticker 被冻结（ShakeLayer.ticking），
               // 它自己的显影 / 扫光 / 扫描条不能跟着被冻住。
@@ -2061,8 +2105,7 @@ class _AppShellState extends State<AppShell>
                 ),
               // 3 · 覆盖层：开机自检（z 20，压在所有东西上面）
               // v3 开机屏（参考稿 #boot L850-857）：170 核心 + HOST//SYSTEM 字标 +
-              // 日志 + 3 高渐变条 + 唤醒键。旧的 BootScreen 保留树（它的 42 条测试
-              // 锚在 `boot.bar` 等 Key 上），视觉由 RefBoot 接管。
+              // 日志 + 3 高渐变条 + 唤醒键。旧的 BootScreen 已于 2026-11-06 删除（G2.5）。
               if (boot)
                 Positioned.fill(
                   child: RefBoot(
@@ -2070,6 +2113,45 @@ class _AppShellState extends State<AppShell>
                     progress: _bootProgress,
                     ready: _bootReady,
                     onWake: _wake,
+                  ),
+                ),
+              // G2.1 隐私同意页：唤醒之后、进绑定 / 大厅之前；撤回同意后也回到这里。
+              // 压在开机屏之上 —— 首启时 _moment 还停在 boot（开机屏在下面垫着），
+              // 同意后 [_agreeConsent] 才跑 _wakeSequence 把场景推进去。
+              if (_consentOn)
+                Positioned.fill(
+                  child: RefConsent(
+                    declined: _consentDeclined,
+                    renew: _consentRenew,
+                    onAgree: _agreeConsent,
+                    onDecline: _declineConsent,
+                    onOpenDoc: (LegalDoc d) => setState(() => _legalDoc = d),
+                  ),
+                ),
+              // 协议全文（同意页与系统设置抽屉共用）：压在两者之上，关掉回原处
+              if (_legalDoc != null)
+                Positioned.fill(
+                  child: RefLegalPage(
+                    doc: _legalDoc!,
+                    onClose: () => setState(() => _legalDoc = null),
+                  ),
+                ),
+              if (_revokeAskOn)
+                Positioned.fill(
+                  child: RefModal(
+                    title: '撤回同意？',
+                    body:
+                        '撤回后，我不会再把你的目标、聊天和证据照片发给 AI 服务 —— '
+                        '拆解、对话、证据校验都会停下，直到你重新同意。存档留在本机，不受影响。',
+                    yes: '确定撤回',
+                    no: '再想想',
+                    onPick: (bool yes) {
+                      if (yes) {
+                        unawaited(_revokeConsent());
+                      } else {
+                        setState(() => _revokeAskOn = false);
+                      }
+                    },
                   ),
                 ),
               // 4 · v3 斜切 wipe 转场（参考稿 L493-499 / L1172-1183）：
@@ -2121,6 +2203,16 @@ class _AppShellState extends State<AppShell>
     if (_planJob != null) return; // 正在读上一句：不收第二次（防连点）
     FocusScope.of(context).unfocus();
     final String typed = _ask.text.trim();
+    // G2.2 本地闸门：自伤 / 自杀类不发任何请求（追问文案 _takeProbeLine 也是
+    // LLM 请求，所以排在它前面）、不立目标；她认真说一句，停在原输入页可以改。
+    // 不放错误音：这时候「嗡」一声是在责怪他。
+    if (isCrisisGoal(typed)) {
+      setState(() {
+        _planError = null; // 上一次的失败卡会让气泡改说失败台词
+        _probeLine = kCrisisCareLine;
+      });
+      return;
+    }
     if (isVagueGoal(typed)) {
       unawaited(Sfx.play('error'));
       _takeProbeLine(typed.isEmpty ? '目标' : typed); // 追问文案接管（兜底=askGoal）
@@ -2388,6 +2480,9 @@ class _AppShellState extends State<AppShell>
     } catch (e) {
       debugPrint('[wipe] ⚠️ 记忆清空失败：$e');
     }
+    // G3.2：证据照片（文档目录 evidence/）原来只写不删 —— 重置一并清掉。
+    // 宿主定案：照片只在这里清（结算/认输后不删）。永不抛，删失败只记日志
+    await wipeEvidence();
     if (!mounted) return;
     unawaited(Sfx.play('fail'));
     // 斜切进绑定仪式（原来是硬切）。数据在被盖住的那一拍换
@@ -2441,6 +2536,9 @@ class _AppShellState extends State<AppShell>
     WidgetsBinding.instance.addObserver(this);
     _clock.startSeconds(_onSecond); // 原型 setInterval(App.second, 1000)
     _runBootScript(); // v3 开机屏的日志节拍（参考稿 #boot）
+    // G2.1：先接隐私同意闸门再读档 —— 读档时就可能要拆解（收官补铸），
+    // 闸门会等同意状态读完再判，未同意的请求一律不发
+    _wireConsentGate();
     _restore();
     _initAgent(); // 小祥：设置→LLM 网关→文案/聊天服务 + 聊天历史读档
     _maybeRunShot();
@@ -2484,6 +2582,9 @@ class _AppShellState extends State<AppShell>
   /// 前台时用 _hiddenAt 算；冷启动用存档里的 lastSeen 算（跨进程也算数）。
   @override
   void didChangeAppLifecycleState(AppLifecycleState s) {
+    // 音频跟随前后台（G1.2）：切后台停底噪，回前台按当时的「音效」设置恢复。
+    // 放在 switch 之前 —— resumed 分支没记到离开时刻会提前 return。
+    unawaited(Sfx.lifecycle(s));
     switch (s) {
       case AppLifecycleState.paused:
       case AppLifecycleState.hidden:
@@ -2604,6 +2705,10 @@ class _AppShellState extends State<AppShell>
   Timer? _settleSlow;
   bool _settleShown = false;
 
+  /// G4.1：上一次结算入账了、但续拆 / 收官拆解失败（结算页演完后不能再说
+  /// 「下一段已经接上 / 下一份计划在你手上」）。每次提交时清掉。
+  PlanFailure? _settleFollowUpFail;
+
   /// 这一单交掉就会把当前窗口走完（滚动生成）→ 结算里要续拆下一段。
   /// 只决定加载卡写「拆下一段」还是「收官」，真正的判定在 `QuestFlow.settle`。
   bool get _settleWillExtend {
@@ -2645,6 +2750,7 @@ class _AppShellState extends State<AppShell>
       return;
     }
     _settling = true;
+    _settleFollowUpFail = null;
     final _PlanJob job = _PlanJob(
       _settleWillExtend ? _PlanJobKind.window : _PlanJobKind.settle,
       _goal.text,
@@ -2685,19 +2791,26 @@ class _AppShellState extends State<AppShell>
         _goal = _flow.goal;
       });
       // 原型 settle() L372：结算时她专注读单（落盘由 settle 的 onChanged 触发）
-    } on PlanFailure catch (e) {
-      // 收官时拆不出下一份计划：结算已经落账，但计划没拿到 —— 说出来。
+    } on SettleFollowUpFailed catch (e) {
+      // G4.1：这一单已经结清（入账 + 执行中清空 + 落盘都在 settle 里做完），
+      // 只是续拆 / 收官拆不出下一份计划 —— 结算页照常演**这一单**的结果
+      // （原来这里没有结果可拿，演的是上一单留下的 `_result`），再把失败说出来。
+      // 下一段 / 下一条主线读档时会补拆（`applyFinaleOutcome`）。
       if (!mounted) return;
+      final Object err = e.error;
+      if (err is! PlanFailure) {
+        Error.throwWithStackTrace(err, e.stackTrace);
+      }
       setState(() {
-        _host = _flow.host;
-        _goal = _flow.goal;
+        _result = e.result;
+        _settleFollowUpFail = err;
+        _hudCoinsHold = _flow.host.coins - e.result.coin;
         _resultChoicesOn = false;
         _moment = Moment.result;
+        _host = _flow.host;
+        _goal = _flow.goal;
       });
-      _failPlan(e, goalText: _goal.text);
-      // settle 在续拆 / 收官那步抛出时不会发 onChanged，但前面的入账已经改了
-      // host / goal —— 照旧把这个状态落盘（与改造前同口径）
-      _flow.touch();
+      _failPlan(err, goalText: _goal.text);
     } finally {
       _settling = false;
       _settleSlow?.cancel();
@@ -2736,7 +2849,18 @@ class _AppShellState extends State<AppShell>
   void _finishVerdict() {
     final QuestResult r = _result;
     final int idx = r.planClear;
-    if (r.finale) _onFinale(r);
+    final PlanFailure? followUp = _settleFollowUpFail;
+    if (followUp != null) {
+      // G4.1：入账了，下一段 / 下一条主线没拆出来 —— 结算演出把那句失败盖掉了，
+      // 落到主线页前再说一次，别让宿主以为路已经接上
+      _sayAside(
+        '这一单记上了。${r.finale ? '下一条主线' : '下一段'}没拆出来'
+        '（${followUp.code.name}）——大厅点「重试拆解」，我再拆一次。',
+        holdMs: 4200,
+      );
+    } else if (r.finale) {
+      _onFinale(r);
+    }
     if (r.windowNext) {
       // 新拆出来的那一段全是没做的；旧的几段都已经做完
       final int fresh = _goal.plan.where((PlanTask t) => t.open).length;
@@ -2877,6 +3001,10 @@ class _AppShellState extends State<AppShell>
   ///    关闭语义还不一样（对话层要落「聊到一半」的上下文），这一轮不动。
   _BackTarget? _popScopeTarget() {
     if (!mounted) return null;
+    // G2.1：协议全文 > 撤回确认 > 同意页 —— 三者压在所有层之上，返回键先消费它们
+    if (_legalDoc != null) return _BackTarget.legal;
+    if (_revokeAskOn) return _BackTarget.revokeAsk;
+    if (_consentOn) return _BackTarget.consent;
     // v3 层优先：LLM 设置是模态，返回键先关它
     if (_llmPaneOn) return _BackTarget.sheet;
     if (_modalOn) return _BackTarget.modal;
@@ -2901,6 +3029,14 @@ class _AppShellState extends State<AppShell>
   /// 返回键真正落地（与 × 同语义）
   void _onSystemBack() {
     switch (_popScopeTarget()) {
+      case _BackTarget.legal:
+        setState(() => _legalDoc = null);
+      case _BackTarget.revokeAsk:
+        setState(() => _revokeAskOn = false);
+      case _BackTarget.consent:
+        // 同意页上按返回 = 「不同意」：不退 App（iOS 不许程序退出；安卓在这里
+        // 退到桌面像闪退），她把话说清楚，宿主想好了再点同意
+        _declineConsent();
       case _BackTarget.sheet:
         _closeLlmPane();
       case _BackTarget.swap:
@@ -3539,7 +3675,9 @@ class _AppShellState extends State<AppShell>
   /// 参考稿 JS L1425-1440 的 `demoShot()`：**不是 mock 数据**，而是把本次
   /// 执行的真实读数（用时 / 目标时长 / 任务名）画成一张「骑行记录」样式的
   /// 证据图，用来在没有相机 / 无法选图的设备上验证整条验收链路。
-  /// C7：与相册同一条路 —— 先入槽、后台校验、不符拒收、交单等结果。
+  /// D3.1（docs/50 · 2026-11-06 宿主定案）：演示图**不送视觉校验**，直接按
+  /// 「未校验」照收（评级 B）—— 它是骑行记录样式，非骑行任务大概率被判不符，
+  /// debug 下就走不通结算。只在 debug 包出现，release 不受影响。
   Future<void> _demoEvidence() async {
     final ActiveQuest? a = _flow.active;
     if (a == null || _evidenceBusy || _evidenceWaiting) return;
@@ -3555,22 +3693,25 @@ class _AppShellState extends State<AppShell>
       if (mounted) setState(() => _evidenceBusy = false);
     }
     if (shot == null || !mounted) return;
-    _admitEvidence(a, shot);
+    _admitEvidence(a, shot, verify: false);
   }
 
   /// C7：图先入槽（缩略图 +「校验中」），校验在后台跑；结论回来交给
   /// [_onEvidenceVerdict]。入槽时状态是「未校验」—— 这时杀进程，存档里
   /// 它就按「没校验成 = 照收」留着，与兜底铁律同口径。
-  void _admitEvidence(ActiveQuest a, EvidenceShot shot) {
+  /// [verify] = false（D3.1 debug 演示图）：不起后台校验，按未校验照收。
+  void _admitEvidence(ActiveQuest a, EvidenceShot shot, {bool verify = true}) {
     // 取图期间那单可能已经没了（认输 / 超时）或被换掉
     if (!identical(_flow.active, a)) return;
     if (!_flow.addEvidence(shot)) return; // 满 3 张
     _evRejectNote = null; // E2.1：新的一张进来了，旧的拒收原因撤下
-    _evChecks.start(
-      shot.id,
-      VisionService().verifyShot(quest: a.task, shot: shot),
-      (VisionVerdict v) => _onEvidenceVerdict(shot.id, v),
-    );
+    if (verify) {
+      _evChecks.start(
+        shot.id,
+        VisionService().verifyShot(quest: a.task, shot: shot),
+        (VisionVerdict v) => _onEvidenceVerdict(shot.id, v),
+      );
+    }
     unawaited(Sfx.play('success'));
     setState(() {});
   }
@@ -3737,6 +3878,59 @@ class _AppShellState extends State<AppShell>
     }
   }
 
+  /// D3.2（docs/50）：结算时续拆 / 收官拆解失败后，大厅待拆卡 / 主线页的
+  /// 「重试拆解」—— 当场补拆，不用等重启读档。
+  ///
+  /// 走 [QuestFlow.resumePlan]（窗口走完 → 续拆下一段；整条走完 → 铸下一条主线）。加载卡复用结算那张（「拆下一段 / 收官」文案），
+  /// [_planJob] 同时是防连点闸门；失败照旧 [_failPlan]，按钮还在、下次还能点。
+  Future<void> _resumePlan() async {
+    if (_busy || _settling || _planJob != null || !_flow.canResumePlan) return;
+    final bool window = _flow.goal.hasMoreWindows;
+    final Goal prev = _flow.goal;
+    final _PlanJob job = _PlanJob(
+      window ? _PlanJobKind.window : _PlanJobKind.settle,
+      prev.text,
+    );
+    setState(() {
+      _planError = null;
+      _planJob = job;
+      _settleShown = true;
+    });
+    unawaited(Sfx.cue('ui.open'));
+    try {
+      final bool done = await _flow.resumePlan();
+      if (!mounted || !identical(_planJob, job)) return;
+      setState(() {
+        _resyncQueueCount();
+        _host = _flow.host;
+        _goal = _flow.goal;
+        _pickedTask = null;
+      });
+      if (!done) return;
+      unawaited(Sfx.play('unlock'));
+      if (window) {
+        final int fresh = _goal.plan.where((PlanTask t) => t.open).length;
+        _sayAside(
+          '接上了。下一段 [[$fresh 单]]——${_goal.doneCount}/${_goal.totalTasks}，路还长。',
+          holdMs: 3000,
+        );
+      } else {
+        _sayAside('下一条主线拆好了：「${_clip(_goal.text, 14)}」。别以为能歇。', holdMs: 3000);
+      }
+    } catch (e) {
+      if (!mounted || !identical(_planJob, job)) return;
+      unawaited(Sfx.play('error'));
+      _failPlan(_asPlanFailure(e), goalText: prev.text);
+    } finally {
+      if (mounted && identical(_planJob, job)) {
+        setState(() {
+          _planJob = null;
+          _settleShown = false;
+        });
+      }
+    }
+  }
+
   /// 重置存档的确认弹窗（参考稿 #modal L476-480：340 宽 / r22 / 两键 52）。
   /// 原来点「重置存档」直接清档 —— 参考稿是「按住 2 秒 → 弹确认 → 确定」。
   void _askWipe() {
@@ -3871,8 +4065,123 @@ class _AppShellState extends State<AppShell>
   /// **冷启动一定会说一句**（`if (fromBoot || away > 6e4)`，默认档就是 back10m）
   /// ⚠️ t16/B3：若存档恢复了执行中单据，唤醒后直接回执行页（不落大厅）
   /// ⚠️ t19/A1：未绑定（空白档/无环）→ 唤醒后进**绑定仪式**，真实新用户由此可达
+  /// ⚠️ G2.1：没同意隐私政策（或协议版本变了）→ 先出同意页，同意后才接着唤醒
   void _wake() {
+    if (_consentOn || _wakeGating) return; // 开机屏是 onTapDown 就唤醒：防连点
+    if (!_consented) {
+      unawaited(_wakeAfterConsentCheck());
+      return;
+    }
     _wakeSequence();
+  }
+
+  // ═══ G2.1 隐私同意 ═══════════════════════════════════════
+  //
+  // 目标原文、聊天、证据照片都会发给第三方 AI 服务，所以：
+  //   · 唤醒之后、进绑定仪式 / 大厅之前先过同意页；
+  //   · 未同意前 LlmClient 的类级闸门一律不放行（[_consentGate]）；
+  //   · 撤回同意后闸门立刻关上，并回到同意页。
+  // 同意状态单独存（ConsentStore，不进主存档）——「重置存档」不清它：
+  // 同意是对 App 的，不是对某一份存档的。
+
+  final ConsentStore _consentStore = ConsentStore();
+
+  /// 当前协议版本是否已同意（读完之前按「未同意」算）
+  bool _consented = false;
+
+  /// 同意状态读完没（闸门与唤醒都先等它）
+  late final Future<void> _consentLoaded;
+
+  /// 同意页盖着没
+  bool _consentOn = false;
+
+  /// 点过「不同意」：她换成「没有这些我没法工作」那句
+  bool _consentDeclined = false;
+
+  /// 同意过旧版本（协议更新了）：同意页改成「重新签」
+  bool _consentRenew = false;
+
+  /// 唤醒正在等同意状态读完（防连点）
+  bool _wakeGating = false;
+
+  /// 正在看的协议全文（同意页与系统设置抽屉共用；null = 没开）
+  LegalDoc? _legalDoc;
+
+  /// 「撤回同意？」确认框
+  bool _revokeAskOn = false;
+
+  /// initState 里调：开始读同意状态，并把 LLM 闸门接到它上面
+  void _wireConsentGate() {
+    _consentLoaded = _loadConsent();
+    LlmClient.consentGate = _consentGate;
+  }
+
+  Future<void> _loadConsent() async {
+    final ConsentRecord? r = await _consentStore.load();
+    _consented = r?.coversVersion(kPolicyVersion) ?? false;
+    _consentRenew = r != null && !_consented;
+  }
+
+  /// LLM 闸门：先等同意状态读完（冷启动读档那一刻就可能要拆解，
+  /// 不等的话已同意的宿主也会被误拦），再看同没同意
+  Future<bool> _consentGate() async {
+    await _consentLoaded;
+    return _consented;
+  }
+
+  /// 唤醒时同意状态还没读完（或没同意）：读完再决定是唤醒还是出同意页
+  Future<void> _wakeAfterConsentCheck() async {
+    _wakeGating = true;
+    await _consentLoaded;
+    _wakeGating = false;
+    if (!mounted) return;
+    if (_consented) {
+      _wakeSequence();
+      return;
+    }
+    setState(() {
+      _consentOn = true;
+      _consentDeclined = false;
+    });
+  }
+
+  /// 【同意并继续】：闸门立刻放行；从开机屏来的接着跑唤醒这一拍
+  void _agreeConsent() {
+    // 先放行再落盘：落盘失败也放行这一次会话（宿主当场点了同意），下次启动再问
+    _consented = true;
+    final bool fromBoot = _moment == Moment.boot;
+    setState(() {
+      _consentOn = false;
+      _consentDeclined = false;
+      _consentRenew = false;
+    });
+    unawaited(_consentStore.accept());
+    if (fromBoot) {
+      _wakeSequence();
+    } else {
+      _toast('签好了。接着干活。');
+    }
+  }
+
+  /// 「不同意」：留在本页，她把话说清楚（不退出 App —— iOS 不允许程序自己退出）
+  void _declineConsent() => setState(() => _consentDeclined = true);
+
+  /// 系统设置 →「撤回同意」：先问一句
+  void _askRevokeConsent() => setState(() {
+    _sysSheetOn = false;
+    _revokeAskOn = true;
+  });
+
+  /// 确认撤回：闸门立刻关上（此后的请求一律不发），删记录，回到同意页
+  Future<void> _revokeConsent() async {
+    _consented = false;
+    setState(() {
+      _revokeAskOn = false;
+      _consentOn = true;
+      _consentDeclined = false;
+      _consentRenew = false;
+    });
+    await _consentStore.revoke();
   }
 
   /// 唤醒这一拍（原型 `flows.js:71-99` 的 `wake()`）：
@@ -3923,7 +4232,16 @@ class _AppShellState extends State<AppShell>
   /// 读档（store.js L34）—— 没有档就用**空白档**（t19/A1：真新档直达绑定仪式，
   /// 不再被 demo 老宿主冒名）；顺带跑一次存储自检：实机曾经静默不落盘，这里让它出声
   Future<void> _restore() async {
-    final SaveData d = await _save.load(fallback: SaveData.fresh());
+    final SaveLoad got = await _save.loadDetailed(fallback: SaveData.fresh());
+    final SaveData d = got.data;
+    // G1.1：主档读坏了要出声（不做新 UI）。原串已另存 .corrupt，不会被下面的
+    // 自动存档覆盖掉；从 .bak 恢复的，读档完成后立刻存一次把好数据写回主档
+    final bool fromBackup = got.source == SaveSource.backup;
+    if (fromBackup) {
+      debugPrint('[save] ⚠️ 主档读坏，已从备份恢复（原串另存 ${SaveFile.corruptKey}）');
+    } else if (got.source == SaveSource.corrupt) {
+      debugPrint('[save] ⚠️ 主档读坏且没有可用备份，按空白档启动（原串另存 ${SaveFile.corruptKey}）');
+    }
     // 存储自检 —— 通过就不吭声，不通过就把原因喊出来（别静默失败）
     final String? err = await _save.selfTest();
     if (err != null) debugPrint('[save] ⚠️ 存储不可用：$err');
@@ -3964,7 +4282,12 @@ class _AppShellState extends State<AppShell>
     // 读档完成，从这一刻起才允许写盘（之前的 _flow 是演示档）
     _saveArmed = true;
     // 补出来的种子要落一次盘，重启后队列还在（fromSave 播种时还没接 onChanged）
-    if (seeded && _flow.queue.isNotEmpty) _requestSave();
+    // 从备份恢复的也立刻落一次：主档还是坏的，别等到下一次改动才修好
+    if ((seeded && _flow.queue.isNotEmpty) || fromBackup) _requestSave();
+    // G3.1：老档缺累计 EXP → 用执行历史流水补一次（补上就经 onChanged 自动落盘）
+    final bool expFilled = await _flow.backfillTotalExp();
+    if (!mounted) return;
+    if (expFilled) setState(() => _host = _flow.host);
     // 存档里这条主线**已经走完**（收官发生在「自动续主线」之前的老档）→
     // 补铸下一条并钉队首。⚠️ 现在这一步会真的调 LLM 拆解，失败会抛
     // （旧版是同步模板，永远不会失败）——所以读档时也要接住并报出来。
@@ -4020,6 +4343,11 @@ class _AppShellState extends State<AppShell>
     _bootTimer?.cancel();
     // TODO-07 网关热更：退订设置广播，State 卸载后不再收回调
     SettingsStore.removeListener(_onSettingsChanged);
+    // G2.1：闸门挂在类上 —— 壳卸载时复原成默认放行（测试里会反复挂壳，
+    // 别让上一个壳的「未同意」拦住同一文件里后面的用例）
+    if (LlmClient.consentGate == _consentGate) {
+      LlmClient.consentGate = LlmClient.allowAll;
+    }
     WidgetsBinding.instance.removeObserver(this);
     _clock.dispose();
     _flashC.dispose();
@@ -4039,7 +4367,21 @@ class _AppShellState extends State<AppShell>
 /// 系统返回键要消费的那一层。
 ///
 /// 顺序即优先级：失败页 > 牌屉 > 主线；null = 交给系统（退到桌面）。
-enum _BackTarget { fail, drawer, main, sheet, modal, sysSheet, chat, swap, panel }
+enum _BackTarget {
+  fail,
+  drawer,
+  main,
+  sheet,
+  modal,
+  sysSheet,
+  chat,
+  swap,
+  panel,
+  // G2.1：协议全文 / 撤回确认 / 同意页
+  legal,
+  revokeAsk,
+  consent,
+}
 
 /// 正在等 LLM 的那一件事属于哪一页（加载卡按它分发）
 enum _PlanJobKind {

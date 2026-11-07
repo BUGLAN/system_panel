@@ -24,6 +24,7 @@ import 'dart:math' as math;
 
 import '../state/goal_gen.dart';
 import '../state/plan_failure.dart';
+import 'guardrail.dart';
 import 'llm_client.dart';
 import 'mainline_tool.dart';
 import 'memory.dart';
@@ -135,6 +136,15 @@ class PlanAgent {
         );
       }
       if (r.toolCalls.isEmpty) {
+        // G2.2：违法 / 伤害他人的目标她按护栏拒拆 —— 归到 badGoal，
+        // 别和「模型只说话没交工具」的 noPlan 混成一类
+        final String? refused = draft.tasks == null ? refusalOf(r.text) : null;
+        if (refused != null) {
+          throw PlanGenerationError(
+            PlanFailureCode.badGoal,
+            '她不拆这个目标：${_clip(refused)}',
+          );
+        }
         if (draft.tasks == null) {
           throw PlanGenerationError(
             PlanFailureCode.noPlan,
@@ -287,6 +297,7 @@ class PlanAgent {
     LlmFailure.timeout => PlanFailureCode.timeout,
     LlmFailure.httpError => PlanFailureCode.httpError,
     LlmFailure.badResponse => PlanFailureCode.badResponse,
+    LlmFailure.noConsent => PlanFailureCode.noConsent,
     null => PlanFailureCode.badResponse,
   };
 

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io' show Platform;
 import 'dart:math';
+import 'dart:ui' show AppLifecycleState;
 
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/foundation.dart';
@@ -256,10 +257,77 @@ class Sfx {
   /// 一发挂住会拖垮整段逐字音）。
   static const Duration _playWatchdog = Duration(milliseconds: 1200);
 
+  // ── 音频会话（G1.2：打开 App 不许停掉用户正在听的歌）──────────────
+  //
+  // audioplayers 6.8 不设上下文时用插件默认值（≈ `AudioContextConfig(focus: gain,
+  // respectSilence: false)`）：
+  //   - Android：**每次起播**都申请 AUDIOFOCUS_GAIN —— 连低延迟的 SoundPool 路径
+  //     也申请（audioplayers_android `WrappedPlayer.play → FocusManager`）。音乐 App
+  //     收到的是永久失焦，直接停播；而我们一点按钮就会起播。
+  //   - iOS：`.playback` 类别 —— 不理静音键，会话一激活就打断别的 App 的音频。
+  // 我们只出按钮声和一层底噪，没资格抢焦点。所以：
+  //   - iOS 用 `.ambient`：跟随静音键 / 锁屏静音、与其它 App **混音**（ambient 自带
+  //     mixWithOthers；平台接口有断言，ambient 不许再显式加这个选项，所以 options 留空）；
+  //   - Android 不申请焦点（`none`）；usage 用 game（走媒体音量，静音模式下照常响，
+  //     与一般游戏一致；sonification 类 usage 会走系统音量、在部分机型被静音档吞掉），
+  //     contentType 用 sonification（短促音效）。
+  // 不用 `AudioContextConfig` 拼：它的 respectSilence 在 Android 上会把 usage
+  // 换成 notificationRingtone（走铃声音量），不是我们要的。
+
+  /// 全部播放器共用的音频上下文（池里每个槽位 + 底噪那一个）
+  static final AudioContext audioContext = AudioContext(
+    iOS: AudioContextIOS(category: AVAudioSessionCategory.ambient),
+    android: const AudioContextAndroid(
+      contentType: AndroidContentType.sonification,
+      usageType: AndroidUsageType.game,
+      audioFocus: AndroidAudioFocus.none,
+    ),
+  );
+
+  /// 全局会话只设一次。所有新建播放器的路径都先 await 它：iOS 的会话在**第一次
+  /// 起播**时激活，那一刻若还是插件默认的 `.playback`，别人的歌已经被打断了。
+  static Future<void>? _session;
+  static Future<void> _ensureSession() => _session ??= _applySession();
+
+  static Future<void> _applySession() async {
+    try {
+      await AudioPlayer.global.setAudioContext(audioContext);
+    } catch (e) {
+      // 设不上也不能拖垮音效（纪律 1）：照旧出声、退回插件默认行为，记账可诊断
+      failCount++;
+      lastError = '音频会话：$e';
+      debugPrint('[sfx] 音频会话设置失败：$e');
+    }
+  }
+
+  /// 给单个播放器绑上下文（只在 Android 做）。
+  ///
+  /// 为什么全局设过了还要逐个设：Android 端的全局上下文只是「**之后**新建的
+  /// 播放器」的默认值（插件在 `create` 时 copy 一份），而 `AudioPlayer()` 的
+  /// 构造是异步自己去发 create 的，和全局那条消息谁先到平台没有保证 —— 逐个设
+  /// 不依赖时序。iOS 没有「播放器级」会话（插件会把逐个设当全局再 apply 一遍
+  /// 并打一行日志），全局那一下就够了。
+  ///
+  /// ⚠️ 必须在 `setPlayerMode` **之前**调：Android 端切模式就会按当时的上下文
+  /// 建 SoundPool（`WrappedPlayer.playerMode` → `initPlayer`），晚了就白建一个默认池。
+  static Future<void> _bind(AudioPlayer p) async {
+    if (defaultTargetPlatform != TargetPlatform.android) return;
+    try {
+      await p.setAudioContext(audioContext);
+    } catch (e) {
+      // 同 [_applySession]：绑不上照样能响，只是可能又去抢焦点 —— 记账别瞒着
+      failCount++;
+      lastError = '音频上下文：$e';
+      debugPrint('[sfx] 播放器绑音频上下文失败：$e');
+    }
+  }
+
   /// 建一个**配置完成**的播放器（短音效用低延迟模式：Android 走 SoundPool，
   /// 打字机逐字 34ms 一发才跟得上）
   static Future<AudioPlayer> _create() async {
+    await _ensureSession();
     final AudioPlayer p = AudioPlayer();
+    await _bind(p); // 先绑上下文再切模式（见 [_bind] 的 ⚠️）
     await p.setPlayerMode(PlayerMode.lowLatency);
     await p.setReleaseMode(ReleaseMode.stop);
     return p;
@@ -378,26 +446,108 @@ class Sfx {
   }
 
   // ── 底噪（循环）─────────────────────────────────────────────
+  //
+  // 底噪是 App 里唯一的循环音（池里的槽位都是 ReleaseMode.stop，播完即停），
+  // 所以「切后台要静音」只需要管它：Android 回桌面后播放器不会自己停，
+  // 不管的话底噪会一直在桌面上响（G1.2）。
+  //
+  // 响不响由三件事共同决定（[ambientShouldPlay]）：
+  //   [enabled] 音效总开关 · [_ambientWanted] 业务想要 · [_foreground] 在前台
   static AudioPlayer? _ambient;
+
+  /// 底噪播放器此刻是否在响（平台侧状态的镜像，只由 [_applyAmbient] 改）
   static bool _ambientOn = false;
 
-  /// 开/关环境底噪（原型 `Sound.ambient(level)`；这里是"在/不在"两态）
-  static Future<void> ambient(bool on) async {
-    if (_underTest) return;
-    if (!enabled || !on) {
-      if (_ambientOn) {
-        _ambientOn = false;
-        try {
-          await _ambient?.stop();
-        } catch (_) {}
-      }
+  /// 业务想不想要底噪（main.dart 按「音效」设置经 [ambient] 写入）
+  static bool _ambientWanted = false;
+
+  /// App 是否在前台（main.dart 的生命周期经 [lifecycle] 写入）
+  static bool _foreground = true;
+
+  /// 底噪的开 / 停**串行**执行。起播要好几次平台往返（建播放器、绑上下文、
+  /// 设循环、play）；若期间来了「切后台」，不串行的话停的那一步会看到
+  /// 「还没开」而跳过，起播完成后底噪就在后台响着 —— 正是要修的那个症状。
+  static Future<void> _ambientOps = Future<void>.value();
+
+  /// 底噪该不该响：音效总开关开 + 业务想要 + 在前台，缺一不可。
+  /// 抽成纯函数是为了能在没有音频插件的 `flutter test` 里钉住判定。
+  static bool ambientShouldPlay({
+    required bool enabled,
+    required bool wanted,
+    required bool foreground,
+  }) => enabled && wanted && foreground;
+
+  /// 生命周期 → 是否在前台；`null` = 这个状态不改变判断。
+  /// - resumed：回到前台
+  /// - hidden / paused：看不见了（Flutter 保证切后台依次经过 inactive → hidden → paused）
+  /// - detached：没有界面了（Android 按返回键退出 Activity 时引擎可能还活着）
+  /// - inactive：来电浮层、下拉控制中心、App 切换器的过渡态 —— 还看得见，
+  ///   不为它打断底噪（真切走了随后一定有 hidden）
+  static bool? foregroundOf(AppLifecycleState s) => switch (s) {
+    AppLifecycleState.resumed => true,
+    AppLifecycleState.hidden ||
+    AppLifecycleState.paused ||
+    AppLifecycleState.detached => false,
+    AppLifecycleState.inactive => null,
+  };
+
+  static bool _ambientShould() => ambientShouldPlay(
+    enabled: enabled,
+    wanted: _ambientWanted,
+    foreground: _foreground,
+  );
+
+  /// 当前状态下底噪该不该响（测试钉 main.dart 的转发用；测试里不碰播放器，
+  /// 但「想要 / 前后台」这两份状态照常记账）
+  @visibleForTesting
+  static bool get ambientShouldPlayNow => _ambientShould();
+
+  /// 开/关环境底噪（原型 `Sound.ambient(level)`；这里是"在/不在"两态）。
+  /// 记下的是「想要」：真响不响还看总开关与前后台 —— 后台里改了设置，
+  /// 这里只记账不起播，等回前台再按当时的设置决定。
+  static Future<void> ambient(bool on) {
+    _ambientWanted = on;
+    return _syncAmbient();
+  }
+
+  /// App 生命周期变化（main.dart `didChangeAppLifecycleState` 转发）：
+  /// 切后台停底噪；回前台按**当时的**「音效」设置决定恢复不恢复。
+  static Future<void> lifecycle(AppLifecycleState s) {
+    final bool? fg = foregroundOf(s);
+    if (fg == null || fg == _foreground) return Future<void>.value();
+    _foreground = fg;
+    return _syncAmbient();
+  }
+
+  /// 把底噪对齐到 [_ambientShould]（排进 [_ambientOps] 串行执行，执行时再读最新状态）
+  static Future<void> _syncAmbient() {
+    if (_underTest) return Future<void>.value(); // 状态照记，播放器不碰
+    final Future<void> op = _ambientOps.then((_) => _applyAmbient());
+    // 链上只留「不会失败」的尾巴：哪一步意外抛了也不能卡死后面的开 / 停
+    _ambientOps = op.catchError((Object _) {});
+    return op;
+  }
+
+  static Future<void> _applyAmbient() async {
+    final bool want = _ambientShould();
+    if (want == _ambientOn) return;
+    if (!want) {
+      _ambientOn = false;
+      try {
+        await _ambient?.stop();
+      } catch (_) {}
       return;
     }
-    if (_ambientOn) return;
     final List<String>? files = table['ambient'];
     if (files == null || files.isEmpty) return;
     try {
-      final AudioPlayer p = _ambient ??= AudioPlayer();
+      await _ensureSession();
+      AudioPlayer? p = _ambient;
+      if (p == null) {
+        p = AudioPlayer();
+        await _bind(p); // 与池里的槽位同一套上下文：底噪也不抢焦点、也跟静音键
+        _ambient = p;
+      }
       await p.setReleaseMode(ReleaseMode.loop);
       await p.play(AssetSource(files.first), volume: volume * 0.5);
       _ambientOn = true;

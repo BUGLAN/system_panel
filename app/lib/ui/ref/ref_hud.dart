@@ -48,7 +48,9 @@ class RefHud extends StatefulWidget {
 
   final VoidCallback? onMenu;
 
-  /// 长按菜单键 = 直达 LLM 设置（参考稿没有这一层，是补全组件的入口）
+  /// 长按菜单键 = 直达 LLM 设置（参考稿没有这一层，是补全组件的入口）。
+  /// 宿主定案（G2.3）：只有 debug 包接这条线，release 传 null —— 长按无反应，
+  /// 读屏也不再念「长按 = LLM 设置」
   final VoidCallback? onMenuLongPress;
 
   final VoidCallback? onLevelTap;
@@ -218,7 +220,9 @@ class _RefHudState extends State<RefHud> with SingleTickerProviderStateMixin {
             onLongPress: widget.onMenuLongPress,
             child: RefIconButton(
               onTap: widget.onMenu,
-              semanticLabel: '菜单（长按 = LLM 设置）',
+              semanticLabel: widget.onMenuLongPress == null
+                  ? '菜单'
+                  : '菜单（长按 = LLM 设置）',
               icon: const CustomPaint(
                 size: Size(20, 20), // L110 width:20px
                 painter: _BarsIcon(color: Ref.txt),

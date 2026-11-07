@@ -64,6 +64,22 @@ void main() {
     expect(find.byKey(const Key('ref.main.toBoard')), findsOneWidget);
   });
 
+  testWidgets('D3.2：下一段没拆上 → 主按钮换成「重试拆解」', (WidgetTester tester) async {
+    int taps = 0;
+    await mountAt(
+      tester,
+      const Size(390, 844),
+      RefMain(goal: Goal.demo(), onResumePlan: () => taps++),
+    );
+    expect(tester.takeException(), isNull);
+    expect(find.byKey(const Key('ref.main.resumePlan')), findsOneWidget);
+    expect(find.byKey(const Key('ref.main.toBoard')), findsNothing);
+    expect(find.byKey(const Key('ref.main.swapGoal')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('ref.main.resumePlan')));
+    await tester.pump();
+    expect(taps, 1);
+  });
+
   testWidgets('RefArchive 四列读数 / 名牒 / 六维都在', (WidgetTester tester) async {
     await mountAt(
       tester,

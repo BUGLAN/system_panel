@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../design/ref.dart';
 import '../design/tokens.dart';
 
 /// ═══════════════════════════════════════════════════════════
@@ -211,8 +212,11 @@ class _TypeTextState extends State<TypeText>
   Widget build(BuildContext context) {
     final TextStyle base =
         widget.style ??
+        // 默认走 v3 中文正文 NotoSansSC（Ref.fc）：旧的方圆体 FangYuan 已撤出
+        // 安装包（7MB，只剩这里和已删的 BootScreen 在用）。它是可变字体，字重
+        // 靠 fs() 写进 fontVariations 才生效。聊天等调用点都显式传 style，不受影响。
         fs(
-          family: F.cn,
+          family: Ref.fc,
           size: 17,
           wght: 500,
           ls: .34,

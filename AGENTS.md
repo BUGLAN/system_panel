@@ -1,13 +1,13 @@
 # AGENTS.md — 宿主 SYSTEM 项目指南
 
 > 本文件供 AI Agent 阅读：任何 Agent 在本项目工作前必读。产品是「网文系统流自我提升 App」——用户是宿主，App 是毒舌但靠谱的系统。
-> 最后更新：2026-11-05（清理 `docs/` 只留 45 与 50；按当前代码核对并改掉过时内容：Live2D 已移除、`app/lib` 结构、v3 视觉令牌、双机环境）
+> 最后更新：2026-11-06（`prototype/` 移出 git 只留本地；删掉过时文档 `app/BEHAVIOR-GAPS|COVERAGE|PORTING-NOTES|REGRESSION.md`、`prompts/`、`tools/ref/`；新增 `docs/51`）
 
 ---
 
 ## 仓库与运行（先看这里）
 
-- **仓库根目录 = 本文件所在目录**（git 仓库，主分支 master）。两台开发机：Windows（`E:\repo\system_panel`，跑 MuMu）与 Mac（`/Users/lansheng/repo/system_panel`，跑 iOS 模拟器/真机）。Flutter 工程在 `app/`；`docs/` 只留两篇（见下方「文档」）。
+- **仓库根目录 = 本文件所在目录**（git 仓库，主分支 master）。两台开发机：Windows（`E:\repo\system_panel`，跑 MuMu）与 Mac（`/Users/lansheng/repo/system_panel`，跑 iOS 模拟器/真机）。Flutter 工程在 `app/`；`docs/` 只留三篇（见下方「文档」）。
 - **Flutter 工程在 `app/`**：applicationId 与 iOS bundle id 均为 `com.systempanel.app`。
   ```bash
   cd app && flutter run          # Android（Windows 机上的 MuMu 模拟器）
@@ -15,10 +15,9 @@
   cd app && flutter run -d 00008130-001169D830A1401C   # 真机 iPhone 15 Pro Max
   cd app && flutter analyze && flutter test
   ```
-- **原型（历史参考，勿改动）**：`prototype/opus-v2-dir` 是宿主最终选定的那一版全息舞台原型，跑 `cd prototype/opus-v2-dir && node server.mjs` → http://localhost:4925。**它是历史参考，不是实现真源**——实现与验证一律落在 `app/`。
-- **原型归档**：`prototype/` 下只留中选的 `opus-v2-dir` 与跨原型真源/证据（`.stitch`、`motion-demo`、`references`、`screens`、`stitch-bridge`）。另外 7 版历史原型在 Windows 机的 `E:\repo\archive\`（不在本仓库内），索引见该目录 `README.md`。
-- **动效样机**：`prototype/motion-demo/index.html`，静态服务挂 4920 端口即可。
-- 未入库：`.env`（含 Stitch API Key）、`node_modules/`、`prototype/stitch-bridge/results/`
+- **原型已移出 git（2026-11-06 宿主定案）**：整个 `prototype/`（`opus-v2-dir` 全息舞台原型、`motion-demo` 动效样机、`.stitch` / `stitch-bridge` / `screens` Stitch 产物、`references` 截图与验证留痕）已 `git rm --cached` 并写进 `.gitignore`，**只留各机本地副本**；要看旧版本从 git 历史取（最后入库的提交是 `6a9060d`）。它只是历史参考，不是实现真源——实现与验证一律落在 `app/`。本地有副本时：`cd prototype/opus-v2-dir && node server.mjs` → http://localhost:4925；动效样机 `prototype/motion-demo/index.html` 静态服务挂 4920。另外 7 版历史原型在 Windows 机的 `E:\repo\archive\`
+- **app 代码注释里的「真源：prototype/opus-v2-dir/…」是移植出处**，不是要你去读的文件；存储 key 前缀 `opus-v2/…`（存档 / 聊天 / 设置 / 记忆 / 流水）是线上数据的键名，**永远不许改**
+- 未入库：`.env`（含 Stitch API Key）、`node_modules/`、`prototype/`、`.verify/`（模拟器截图等临时证据）
 
 ### 当前 `app/lib` 结构
 
@@ -29,10 +28,9 @@
 | `widgets/` | 11 个共享组件：`fx_layer`/`fx_particles`（亮帧/震屏/粒子）、`veil`（认输暗幕 + 失败抽色矩阵）、`chat_bar`、`type_text`、`voice_bars`、`rail_base`、`press_scale`、`slow_ticker`、`frame_throttle`、`sys_icons`。旧版牌桌 / HUD / 台词层 / 输入框（`card_skins`、`card_table`、`table_overlay`、`hud`、`line_layer`、`ask_field`、`bg_layer`、`fail_layer`）已于 2026-11-06 删除，v3 对应件都在 `ui/ref/` |
 | `agent/` | LLM 接入层：`llm_client`、`llm_gateway`、`llm_telemetry`、`plan_agent`/`plan_brief`/`goal_match_agent`/`mainline_tool`（目标拆解）、`persona`、`copy`、`memory`、`context_adapter`、`tools`、`vision_core`（证据视觉校验）、`settings_store` |
 | `state/` | 状态与数据：`quest_flow`（队列/接单/结算唯一真源，改了存档字段就发 `onChanged` → 主壳自动存档）、`host_state`、`goal`、`goal_gen`、`quest`、`result`、`plan_failure`、`save_file`、`settings`、`sfx`、`haptics`、`voice`、`app_clock`、`away` |
-| `design/` | `ref.dart` = **v3 表现层令牌唯一真源**（`Ref` 色板/字体/缓动，新界面只许读它）；`tokens.dart` = 旧令牌（`C`/`F`/`Motion`/`StageAnchors`/`Pal`，旧组件与历史测试还在用，逐步迁移）；`fidelity`（画质档）、`spring` |
+| `design/` | `ref.dart` = **v3 表现层令牌唯一真源**（`Ref` 色板/字体/缓动，新界面只许读它）；`tokens.dart` = 旧令牌（`C`/`Motion`/`StageAnchors`/`Pal`，旧字体族 `F` 已删；旧组件与历史测试还在用，逐步迁移）；`fidelity`（画质档）、`spring` |
 | `data/` | 静态数据表：`rarity`、`attrs`、`items`、`titles`、`rewards`、`content`、`format` |
 | `chat/` | 对话面板（`chat_panel`/`chat_service`/`chat_history`） |
-| `screens/` | `boot_screen` |
 | `dev/` | `agent_bridge`（仅 debug 启用，见下文） |
 
 ---
@@ -84,7 +82,7 @@
 ## 已锁定的设计决策
 
 - **视觉基准（2026-11-05 宿主定案：以当前 v3 为准，勿再改回旧版）**：参考稿 `宿主养成系统_重设计.html`（仓库根目录）→ `app/lib/design/ref.dart` 的 `Ref`：底 `#06050C`、主强调 acid `#D6FF3D`（荧光黄绿）、cyan `#3BE8FF`、hot `#FF3B7A`、violet `#8F6BFF`、gold `#FFCC4D`、mint `#3DFFA8`；稀有度色谱 `Ref.rank`
-- **字体（已锁定，以 `app/pubspec.yaml` 为准）**：显示/数字 `ChakraPetch`（`Ref.fd`）、中文正文 `NotoSansSC`（`Ref.fc`）、等宽 `JetBrainsMono`（`Ref.fm`），另有 FangYuan / ShuHei / Tektur / KodeMono。NotoSansSC 与 JetBrainsMono 是**可变字重字体**，粗体要写 `fontVariations: [FontVariation('wght', 700)]`，别只靠 `fontWeight`（`refText(wght: …)` 已封装）
+- **字体（已锁定，以 `app/pubspec.yaml` 为准）**：显示/数字 `ChakraPetch`（`Ref.fd`）、中文正文 `NotoSansSC`（`Ref.fc`）、等宽 `JetBrainsMono`（`Ref.fm`），App 只打包这三套（旧的 FangYuan / ShuHei / Tektur / KodeMono 与旧开机屏 `BootScreen` 已于 2026-11-06 删除，ShuHei / Tektur 挪到 `brand/fonts/` 只给品牌图标用）。**`NotoSansSC-VF.ttf` 是子集**（GB2312 + ASCII + 常用标点 + `app/lib` 里出现过的所有字符，仍可变），原版在 `tools/fonts/src/`；新增界面文案后跑 `python3 tools/fonts/subset_noto_sc.py --check`，报缺字就去掉 `--check` 重生成（见 `tools/fonts/README.md`），子集外的字由系统字体兜底。NotoSansSC 与 JetBrainsMono 是**可变字重字体**，粗体要写 `fontVariations: [FontVariation('wght', 700)]`，别只靠 `fontWeight`（`refText(wght: …)` 已封装）
 - 产品机制以 `app/` 当前代码为准（00~17 编号规则文档不在仓库里，别找）；尚未定案的规则问题记在 `docs/50` 的 C 类
 - **动作区用词固定**：【快照记录】【提交任务】【认输】（顶部面板与执行面板同款，勿再用旧黑话）
 
@@ -92,18 +90,19 @@
 
 ## 文档
 
-`docs/` 只保留两篇，18~49 号历次方案、复盘与提示词文档已于 2026-11-05 删除（需要时从 git 历史找回，**不要据此推断现状**）。旧版本文件引用过的 00~17 编号规则 txt 在本仓库里并不存在：
+`docs/` 只保留三篇，18~49 号历次方案、复盘与提示词文档已于 2026-11-05 删除（需要时从 git 历史找回，**不要据此推断现状**）。旧版本文件引用过的 00~17 编号规则 txt 在本仓库里并不存在：
 
 | 文件 | 内容 |
 |---|---|
 | `45-安卓模拟器Agent操作方案.md` | **模拟器 Agent 操作方案**（mumu-control / MCP 评估 / 落地步骤），`.claude/skills/android-agent` 引用它 |
 | `50-新用户走查问题清单.md` | 2026-11-05 iOS 模拟器新用户走查问题单：A 简单（已修，A23 待复现）/ B 需新 UI / C 困难或需拍板，带修复状态 |
+| `51-真机验收步骤.md` | 2026-11-06 起：只能人工在真机 / 模拟器上验的项（本轮新修、D2 验收、音频 / 打包 / 冷启动、待复现），按「准备 → 步骤 → 预期」写，**宿主自己执行**；新增需人工验的项往这里加 |
 
 ---
 
 ## 动效参数（样机 = 真机的唯一标准）
 
-动效真源：`prototype/motion-demo/index.html`（纯 CSS/JS 手写，已在浏览器实测）。Flutter 移植时逐时刻对照此文件，参数不许凭感觉改：
+动效参数以**下面这份清单**为准（出自 `prototype/motion-demo/index.html`，该样机已移出 git，只在本机副本 / git 历史里），参数不许凭感觉改：
 
 - 弹簧：stiffness 100 / damping 20；过冲到 1.08 再回弹
 - 亮帧：全屏白 16% 透明度脉冲 180ms，音效踩这一帧
@@ -121,13 +120,14 @@
 ## Stitch 生成管线（屏幕设计稿）
 
 - 官方 CLI：`@google/stitch`（npm，Google LLC 出品）。npmmirror 不同步新包，安装需 `--registry=https://registry.npmjs.org`
-- 认证：`STITCH_API_KEY` 环境变量（key 在 `prototype/stitch-bridge/.env`，已 gitignore，勿提交勿外传）
+- **整条管线的本地文件都在 `prototype/`（已移出 git，见上文），没有本地副本就从 git 历史取**
+- 认证：`STITCH_API_KEY` 环境变量（key 在 `prototype/stitch-bridge/.env`，勿提交勿外传）
 - 项目 ID：`9824844031085818014`（https://stitch.withgoogle.com/projects/9824844031085818014）
 - 设计系统 ID：v1=`5203883926288910671`（弃），v2 GAME HUD=`119134925411475183`
-- 生成：`npx stitch generate screen --project <id> --device MOBILE --title <t> --prompt (Get-Content prompts\Sx.txt -Raw) --json`
+- 生成：`npx stitch generate screen --project <id> --device MOBILE --title <t> --prompt (Get-Content prototype\stitch-bridge\prompts\Sx.txt -Raw) --json`
 - **已知坑：连续生成同类提示词会串台**——必须用 "SCREEN CONTENT LOCK" 式提示词，生成后用 `stitch get screen` 核对 title
 - 本地预览：`npx stitch serve -p <id> --port 8788`
-- v2 屏幕清单与正确 screen ID 见 `prototype/README.md`
+- v2 屏幕清单与正确 screen ID 见 `prototype/README.md`（本地副本）
 
 ---
 
@@ -135,7 +135,7 @@
 
 - 端点 `127.0.0.1:8188`（本机 ComfyUI-aki-v2 在线，RTX 5090 32G）
 - **工作流在 `tools/comfyui/`**：Qwen-Image 2.1 文生图 + 2x-AnimeSharpV4 放大——`qwen21-game-bg.workflow.json` 可直接拖进 GUI，`gen_game_bg.mjs` 一键重生成（`--seed` 抽卡），参数与坑见该目录 README
-- 首件产出：`prototype/opus-v2-dir/img/bg-void.jpg`（垫在 `#bg .sky` 底层）
+- 首件产出：`prototype/opus-v2-dir/img/bg-void.jpg`（垫在原型 `#bg .sky` 底层；随原型移出 git，只在本地副本里）
 - 生图：辉光 burst、稀有度框、粒子 sprite、印章纹章、glitch 帧
 - 生视频（img2vid）：结算光线 loop、升级光环、扫描线氛围、glitch 转场
 - 优先级：纯 CSS/canvas（Flutter 端 CustomPainter）先行，AI 素材只做质感替换
@@ -144,7 +144,7 @@
 
 ## 品牌标识
 
-- LOGO＝「六边核心 + 经验弧」，唯一真源 `brand/build.mjs`（一条命令重生成全部 SVG 母版 + Android/iOS 图标 + 原型 favicon + 规格卡，产物入库）
+- LOGO＝「六边核心 + 经验弧」，唯一真源 `brand/build.mjs`（一条命令重生成全部 SVG 母版 + Android/iOS 图标 + 规格卡，产物入库；原型 favicon 只在本机有 `prototype/opus-v2-dir/` 时才写，不入库）
 - **禁手改任何生成的 SVG/PNG**，要改就改参数重跑；细节与落点见 `brand/README.md`
 
 ---
@@ -154,7 +154,7 @@
 - 规则改动先和宿主确认再动代码；发现的问题与修复状态记进 `docs/50-新用户走查问题清单.md`（或新开一篇同类清单），不要再堆方案长文
 - 每次只推进一件事，不超过 500 字的决策粒度
 - **【宿主定案 · 2026-11-05】连胜规则**：认输不断连胜；只有一整天一单都没完成才断（docs/50 C6）
-- **【宿主指定】不要参考、也不要在 `prototype/` 下的 HTML 原型上做验证或改动**：原型早已过时，只作历史参考；实现与验证都落在 Flutter 工程 `app/`。旧约定「动效/视觉改动必须先在样机验证手感，再移植 Flutter」**作废**
+- **【宿主指定】不要参考、也不要在 `prototype/` 下的 HTML 原型上做验证或改动**：原型早已过时，只作历史参考（2026-11-06 起已移出 git，只有本地副本）；实现与验证都落在 Flutter 工程 `app/`。旧约定「动效/视觉改动必须先在样机验证手感，再移植 Flutter」**作废**
 - **【宿主指定 · 2026-10-11】非必要不要自己测试，宿主就在屏幕前，他就是测试员**：
   - 改完直接交给宿主看，**不要**为了"验证"去跑模拟器 / 真机截图 / 连拍量像素 / 写临时探针 / 反复 build-install 那一套
   - 允许保留的只有**代码级**检查：`flutter analyze` + 与改动直接相关的 `flutter test`（秒级）。**不要**主动扩测

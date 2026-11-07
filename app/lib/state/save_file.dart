@@ -16,6 +16,13 @@ import 'quest_flow.dart';
 ///      这是老存档的迁移方式：新增字段自动拿到默认值，删掉的字段不影响
 ///   2. key 自带版本号（`opus-v2/save/v1`），换结构时改版本号即弃旧档
 ///   3. `wipe()` 之后**冻结**，别再写回去（否则"重置"当场被覆盖）
+///
+///  G1.1 坏档保护（原型没有，是我们补的）：原来读坏 = 静默给空白档，读档完成后
+///  第一次自动存档就把坏档覆盖 —— 全部进度丢失、没有备份。现在：
+///   · 每次存盘前把**上一份好档**滚到 [bakKey]（只滚能解析的：自己写出去的串、
+///     或读档时完整解析过的串；坏档绝不进 bak）
+///   · 主档读坏 → 原串先另存 [corruptKey]（在任何覆盖之前）→ 退回 bak →
+///     bak 也不行才给空白档。[loadDetailed] 告诉调用方走的是哪条路
 /// ═══════════════════════════════════════════════════════════
 class SaveFile {
   SaveFile({SharedPreferencesAsync? prefs}) : _injected = prefs;
@@ -23,48 +30,124 @@ class SaveFile {
   /// `SAVE_KEY`（store.js L4）
   static const String key = 'opus-v2/save/v1';
 
+  /// 上一份好档（每次存盘前滚一次）
+  static const String bakKey = '$key.bak';
+
+  /// 读坏的主档原串（留给人工抢救；重置时一并删）
+  static const String corruptKey = '$key.corrupt';
+
   final SharedPreferencesAsync? _injected;
   SharedPreferencesAsync? _prefs;
   bool _frozen = false;
 
+  /// 已知能解析的最近一份主档串（首次读到的 / 上次成功写出去的）——
+  /// 下次存盘把它写成 bak。记在内存里，免得每次存盘先读一遍盘（写放大）
+  String? _lastGood;
+
+  /// 已知 bak 里现在是什么（相同就不重写）
+  String? _bakMirror;
+
   SharedPreferencesAsync _p() =>
       _prefs ??= _injected ?? SharedPreferencesAsync();
 
-  /// 读档；没有档或读坏了就给一份默认（原型 catch 后 `this.fresh()`）
-  Future<SaveData> load({SaveData? fallback}) async {
+  /// 读档；没有档或读坏了就给一份默认（原型 catch 后 `this.fresh()`）。
+  /// 坏档的备份/退回逻辑见 [loadDetailed]，这里只要数据。
+  Future<SaveData> load({SaveData? fallback}) async =>
+      (await loadDetailed(fallback: fallback)).data;
+
+  /// 读档并说明来源（[SaveSource]）。
+  ///
+  /// ⚠️ **没有主档 = 没有档**，不去翻 bak：主档只有 [wipe] 会删（它先删 bak），
+  /// 主档没了还去翻 bak，就是把「重置」掉的旧档复活。
+  Future<SaveLoad> loadDetailed({SaveData? fallback}) async {
     final SaveData def = fallback ?? SaveData.fresh();
+    final String? raw;
     try {
-      final String? raw = await _p().getString(key);
-      if (raw == null || raw.isEmpty) return def;
+      raw = await _p().getString(key);
+    } catch (e) {
+      // 存储本身读不出来（不是档坏了）—— 不碰 corrupt/bak，照旧给默认
+      debugPrint('[save] 读档抛异常：$e');
+      return SaveLoad(def, SaveSource.none);
+    }
+    if (raw == null) return SaveLoad(def, SaveSource.none);
+
+    final SaveData? main = _parse(raw, def);
+    if (main != null) {
+      _lastGood = raw;
+      return SaveLoad(main, SaveSource.primary);
+    }
+
+    // 主档坏了：先把原串留一份（空串没得留），再退回 bak
+    if (raw.isNotEmpty) {
+      try {
+        await _p().setString(corruptKey, raw);
+      } catch (e) {
+        debugPrint('[save] ⚠️ 坏档另存失败：$e');
+      }
+    }
+    String? bak;
+    try {
+      bak = await _p().getString(bakKey);
+    } catch (_) {
+      bak = null;
+    }
+    final SaveData? restored = bak == null ? null : _parse(bak, def);
+    if (restored != null) {
+      // 下次存盘：bak 已经是这份好档了，不用再滚；主档会被好数据写回
+      _lastGood = bak;
+      _bakMirror = bak;
+      return SaveLoad(restored, SaveSource.backup);
+    }
+    return SaveLoad(def, SaveSource.corrupt);
+  }
+
+  /// 能完整解析成存档就返回，否则 null（JSON 坏 / 不是对象 / fromJson 抛）
+  static SaveData? _parse(String raw, SaveData def) {
+    if (raw.isEmpty) return null;
+    try {
       final Object? decoded = jsonDecode(raw);
-      if (decoded is! Map<String, dynamic>) return def;
+      if (decoded is! Map<String, dynamic>) return null;
       return SaveData.fromJson(decoded, fallback: def);
     } catch (_) {
-      return def;
+      return null;
     }
   }
 
-  /// 存盘（原型会带上 `lastSeen`）
+  /// 存盘（原型会带上 `lastSeen`）。先把上一份好档滚进 bak，再写主档。
   Future<void> save(SaveData data) async {
     if (_frozen) return;
     try {
-      await _p().setString(
-        key,
-        // 原型 `save()` 先 `S.lastSeen = Clock.now()` 再 stringify
-        jsonEncode(data.copyWith(lastSeen: DateTime.now()).toJson()),
+      // 原型 `save()` 先 `S.lastSeen = Clock.now()` 再 stringify
+      final String raw = jsonEncode(
+        data.copyWith(lastSeen: DateTime.now()).toJson(),
       );
+      final String? prev = _lastGood;
+      if (prev != null && prev != _bakMirror) {
+        await _p().setString(bakKey, prev);
+        _bakMirror = prev;
+      }
+      await _p().setString(key, raw);
+      _lastGood = raw; // 自己 jsonEncode 出来的，必然能解析
     } catch (e, st) {
       // 原型这里是配额爆了就把照片扔掉重存；我们暂无照片
       debugPrint('[save] FAILED: $e\n$st');
     }
   }
 
-  /// 重置：删档 + 冻结（原型 `Store.wipe()`）
+  /// 重置：删档 + 冻结（原型 `Store.wipe()`）。
+  ///
+  /// bak / corrupt 一并删、而且**先删它们再删主档**：主档没了读档就当「没有档」，
+  /// 可要是 bak 还留着，哪天主档坏一次就会把重置前的旧档复活。
+  /// 内存里记的上一份好档也清掉 —— 否则重新绑定后第一次存盘会把旧档滚进 bak。
   Future<SaveData> wipe({SaveData? fallback}) async {
     _frozen = true;
-    try {
-      await _p().remove(key);
-    } catch (_) {}
+    _lastGood = null;
+    _bakMirror = null;
+    for (final String k in <String>[bakKey, corruptKey, key]) {
+      try {
+        await _p().remove(k);
+      } catch (_) {}
+    }
     return fallback ?? SaveData.fresh();
   }
 
@@ -105,6 +188,29 @@ class SaveFile {
   }
 
   bool get frozen => _frozen;
+}
+
+/// 读档走的是哪条路（G1.1）
+enum SaveSource {
+  /// 主档读到了
+  primary,
+
+  /// 主档坏了，从 bak 恢复（原串已另存 corrupt；下次存盘把好数据写回主档）
+  backup,
+
+  /// 没有档（新装 / 重置后）—— 空白档
+  none,
+
+  /// 主档坏了、bak 也没有或也坏 —— 空白档（原串已另存 corrupt）
+  corrupt,
+}
+
+/// [SaveFile.loadDetailed] 的结果：数据 + 来源
+class SaveLoad {
+  const SaveLoad(this.data, this.source);
+
+  final SaveData data;
+  final SaveSource source;
 }
 
 /// 存下来的那一坨：宿主档案 + 主线 + 她手里的队列 + 执行中单据。

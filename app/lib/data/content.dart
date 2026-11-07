@@ -5,15 +5,9 @@
 class LINES {
   const LINES._();
 
-  /// 开机 TIPS（content.js L403）
-  static const List<String> tips = <String>[
-    '系统不会等你。但会记得你让她等了多久。',
-    '证据越多，暴击率越高。她信你，暴击不信。',
-    '认输不丢人。丢人的是不敢接。',
-    '退缩三次会解锁一个称号。你不会想要的。',
-    '连击断了也没关系。她会从 1 重新数。',
-    '她的单不会过期。只会在她手里越攥越紧。',
-  ];
+  // 开机 TIPS、旧开机屏品牌字与无存档占位（tips / bootTopLeft / bootSub / bootGo /
+  // hostUnknown）只给旧 BootScreen 用，2026-11-06 随它一起删了；
+  // v3 开机屏（main.dart 的开机序列 + RefBoot）只读下面的日志。
 
   /// 开机日志（content.js L411）；[3] 是模板，host 由存档决定
   static const List<String> bootLog = <String>[
@@ -23,11 +17,6 @@ class LINES {
     '链接宿主档案 …… {host}',
     '唤醒序列就绪',
   ];
-
-  /// 开机屏品牌字
-  static const String bootTopLeft = 'SYS//BOOT · v2';
-  static const String bootSub = '宿 主 · 系 统';
-  static const String bootGo = '触碰屏幕 · 唤醒系统';
 
   // ── 她主动开口（content.js L306-356，flows.js L693-706 调度）──
 
@@ -120,7 +109,4 @@ class LINES {
   static const String itemDbl = '双倍卡，挂上了。最好别浪费。';
   static const String itemCrit = '暴击芯片，插好了。运气这东西，买得到一点。';
   static const String itemShield = '免死金牌，上保险了。……你是不是对自己没信心？';
-
-  /// 无存档时的 host 占位（flows.js L52）
-  static const String hostUnknown = '未找到 · 新宿主';
 }

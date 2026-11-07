@@ -18,6 +18,7 @@ library;
 import '../data/rarity.dart';
 import '../state/goal_gen.dart';
 import '../state/plan_failure.dart';
+import 'guardrail.dart';
 import 'tools.dart';
 
 /// 任务池草案 —— 工具把解析好的任务放这儿，调用方取走。
@@ -49,7 +50,9 @@ Map<String, dynamic> setPlanSchema(int taskCount) => <String, dynamic>{
           '（例：「两周骑 10 次」就要写出骑多久/骑多远，而不是「把目标写在纸上」）。'
           '难度与耗时逐张递增，档位不许倒退；最后一张是**兑现单**：'
           'S 级、一次能证明目标达成的验证动作。'
-          '访谈答案里他亲口说的数字（能跑多远、一周几次、几点睡）必须用进题面。',
+          '访谈答案里他亲口说的数字（能跑多远、一周几次、几点睡）必须用进题面。'
+          // G2.2：工具定义也是提示词 —— 禁区在这里再钉一遍
+          '$kPlanSchemaGuard',
       'items': <String, dynamic>{
         'type': 'object',
         'properties': <String, dynamic>{
@@ -339,7 +342,9 @@ Map<String, dynamic> setGoalCategorySchema() => <String, dynamic>{
       'description':
           '期限天数。按目标里写的周期读：一周 7 / 两周 14 / 一个月 30 / '
           '三个月 90 / 半年 180 / 一年 365；没写周期就按这件事**合理需要多久**给一个，'
-          '不要留空。',
+          '不要留空。'
+          // G2.2：「减 20 斤」没写期限时别给 30 天（那是每周 2.5 公斤）
+          '减重类没写周期时，按每周最多减约 1 公斤（2 斤）推算。',
     },
     'quota': <String, dynamic>{
       'type': 'integer',

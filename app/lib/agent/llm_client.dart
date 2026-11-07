@@ -12,8 +12,10 @@ import 'llm_telemetry.dart';
 ///  视觉校验、小祥对话、文案接管共用这一层。三条铁律：
 ///   1. **永不抛异常** —— 失败一律折叠成 [LlmReply.failure]（`ok=false`
 ///      + 失败类别），上层据此走兜底（模板/逐字回退），App 不因 LLM 卡住
-///   2. 超时 12s、传输层失败（超时/网络异常）**重试 1 次**；
-///      HTTP 4xx/5xx 与坏 JSON 不重试（重试也不会好）
+///   2. 默认时限 12s（调用点可放宽：拆解 90s / 目标匹配 60s / 视觉校验 30s）。
+///      非严格模式下断网类异常与 502/503/504 **重试 1 次**；**超时不重试**
+///      （G2.4：超时说明端点慢，再发一遍只会让等待翻倍 —— 拆解 90s 会变 180s+，
+///      视觉校验还得把整张图再传一遍）。其余 HTTP 错误与坏 JSON 也不重试
 ///   3. 模型名做**别名归一化**（ENV.md round 15 实测：`deepseek-v4.1flash`
 ///      在端点 400，实际可用 `deepseek-flash` / `deepseek-v4-pro`，两者均收
 ///      image_url 多模态输入）——设置页保持宿主钦定的默认名不变，请求前归一
@@ -27,7 +29,7 @@ enum LlmFailure {
   /// 连不上 / DNS / 中途断流
   network,
 
-  /// 超过时限（重试 1 次后仍超时）
+  /// 超过时限（超时不重试，见文件头铁律 2）
   timeout,
 
   /// 端点回了非 200
@@ -35,6 +37,10 @@ enum LlmFailure {
 
   /// 200 但不是预期的 JSON 结构
   badResponse,
+
+  /// 宿主还没同意隐私政策（或撤回了）—— 和 [noKey] 一样连请求都不发。
+  /// 单列一类而不是借用 noKey：上层按类别出台词，「去配 Key」在这里是错的指引。
+  noConsent,
 }
 
 /// 默认补全预算（调用点没指定时用）。
@@ -80,7 +86,6 @@ class LlmConfig {
     this.strict = false,
     this.temperature,
     this.contextLen = 0,
-    this.stream = false,
   }) : baseUrl = baseUrl ?? kDefaultBase,
        model = model ?? kDefaultModel;
 
@@ -121,20 +126,21 @@ class LlmConfig {
 
   // ── 采样参数（设置页可调；参考稿没有，按「补全缺失组件」新增）────
   //
-  // 三条都**真的进请求体**，不是摆设：
-  //   [temperature] null = 调用点自己决定（多数调用点显式传 0.8 / 0.3）
-  //   [contextLen]  0 = 用调用点的 maxTokens；>0 = 作为**上限**钳制它
-  //   [stream]      true 时向端点要 `stream: true`（客户端仍按整包解析）
-  // 为什么 contextLen 是"上限"而不是"覆盖"：拆解/工具循环有自己的预算
-  // （kPlanMaxTokens / kToolLoopMaxTokens），设置页不该把它们压低。
+  // 两条都进请求体（主链路 / 视觉校验 / 测试连接的配置都由
+  // `AgentSettings.llmConfig` 一处折算，G2.3 之前只有测试连接带上了它们）：
+  //   [temperature] 调用点**没给**温度时用它；null = 不带该字段（交端点默认）。
+  //                 台词 / 聊天 / 工具循环不给温度 → 跟设置页；要稳定 JSON 的
+  //                 拆解 0.7 / 目标匹配 0.3 / 视觉 0 仍由调用点显式覆盖
+  //   [contextLen]  0 = 用调用点的 maxTokens；>0 = 作为**上限**钳小它 ——
+  //                 对**所有**调用点生效（拆解 / 工具循环的 8k 预算也会被压下来，
+  //                 调太小推理模型会被思考吃光；「思考吃光就抬预算」的兜底网
+  //                 同样抬不过这个上限）。只钳小、不抬高：调用点要得比上限少的照旧
+  // 流式（`stream`）已删（G2.3①）：客户端整包 `jsonDecode`，端点一回 SSE 就解析失败。
   /// 默认温度（null = 调用点决定）
   final double? temperature;
 
   /// 响应预算上限；0 = 不钳制
   final int contextLen;
-
-  /// 是否请求流式响应
-  final bool stream;
 
   /// 把调用点的温度与配置合并：调用点显式给了就用它，否则用设置页的。
   double? resolveTemperature(double? asked) => asked ?? temperature;
@@ -174,6 +180,31 @@ class LlmConfig {
     if (b.endsWith('/chat/completions')) return b;
     return '$b/chat/completions';
   }
+
+  /// 逐字段相等 —— 主壳「设置没变就不重建客户端」的守卫比的就是它。
+  /// G2.3 的病根是那道守卫手写了一串字段、漏了温度 / 上下文；改成整份配置
+  /// 比较后，以后给配置加字段也不会再漏（加字段记得同步这里与 [hashCode]）。
+  @override
+  bool operator ==(Object other) =>
+      other is LlmConfig &&
+      other.baseUrl == baseUrl &&
+      other.apiKey == apiKey &&
+      other.model == model &&
+      other.reasoningEffort == reasoningEffort &&
+      other.strict == strict &&
+      other.temperature == temperature &&
+      other.contextLen == contextLen;
+
+  @override
+  int get hashCode => Object.hash(
+    baseUrl,
+    apiKey,
+    model,
+    reasoningEffort,
+    strict,
+    temperature,
+    contextLen,
+  );
 }
 
 /// 一条对话消息；[images] 非空时 content 变多模态 parts 数组
@@ -316,10 +347,10 @@ class LlmClient {
   final LlmConfig config;
   final http.Client _http;
 
-  /// 单次请求时限（12s）
+  /// 单次请求时限（默认 12s；[chat] 的 `timeout` 参数按调用覆盖）
   final Duration timeout;
 
-  /// 传输层失败的重试次数（1 次）
+  /// 断网类异常 / 502·503·504 的重试次数（1 次；超时不在此列，严格模式为 0）
   final int retries;
 
   /// 连通性探测：设置页「测试连接」用。
@@ -335,6 +366,28 @@ class LlmClient {
     maxTokens: 512,
     temperature: 0,
   );
+
+  /// 隐私同意闸门（G2.1）：返回 false 时 [chat] 一个字节都不发。
+  ///
+  /// 为什么是**类级静态**而不是构造参数：客户端会随设置热更反复重建
+  /// （TODO-07），目标匹配 / 拆解 / 聊天 / 文案 / 视觉校验各自拿着引用——
+  /// 挂在类上，主壳接一次就覆盖全部现有与将来的实例，不会漏掉某一条路。
+  ///
+  /// 默认放行（[allowAll]）：单测与工具脚本直接 new 客户端时不必关心同意；
+  /// App 启动时由主壳换成真实同意状态。闸门自身抛异常 → 按拦截处理。
+  static FutureOr<bool> Function() consentGate = allowAll;
+
+  /// [consentGate] 的默认值（也供主壳卸载时复原）
+  static bool allowAll() => true;
+
+  static Future<bool> _consentAllows() async {
+    try {
+      return await consentGate();
+    } catch (e) {
+      debugPrint('[llm] 同意闸门异常，按未同意拦截：$e');
+      return false;
+    }
+  }
 
   /// 释放底层 http.Client（TODO-07 网关热更：设置变更重建客户端时**必须**
   /// 关掉旧的，别让连接池一直挂着）。关闭瞬间还在途的请求会收
@@ -353,6 +406,18 @@ class LlmClient {
     String? reasoningEffort,
     Duration? timeout,
   }) async {
+    // G2.1：没同意隐私政策就不出网（目标原文 / 聊天 / 证据照片都从这里过）。
+    // 放在最开头：连下面「抬预算重来」那第二发也一并拦住；照样记一笔遥测，
+    // 免得「她忽然哑了」查不到原因。
+    if (!await _consentAllows()) {
+      const LlmReply blocked = LlmReply.failure(
+        LlmFailure.noConsent,
+        '未同意隐私政策：请求未发出',
+      );
+      LlmTelemetry.record(blocked);
+      debugPrint('[llm] 拦截 kind=noConsent（未同意隐私政策，未发请求）');
+      return blocked;
+    }
     final Stopwatch sw = Stopwatch()..start();
     LlmReply r = await _chat(
       messages: messages,
@@ -370,7 +435,13 @@ class LlmClient {
     //    宿主看到的是「她忽然哑了」，那才是真正被藏起来的问题。真机 2026-10-12
     //    实测 6 次里 2 次命中，比例不低。
     final int? bumped = _escalatedBudget(maxTokens);
-    if (bumped != null && r.starvedByThinking) {
+    // 设置页「上下文」上限会把抬上去的预算再钳回来（G2.3 起它对主链路生效）：
+    // 实际预算抬不动就别重来 —— 同一发请求再等一轮，只会让她哑得更久。
+    int effective(int? asked) =>
+        config.resolveMaxTokens(asked) ?? kDefaultMaxTokens;
+    if (bumped != null &&
+        effective(bumped) > effective(maxTokens) &&
+        r.starvedByThinking) {
       debugPrint(
         '[llm] 空正文（思考吃光 max_tokens=$maxTokens，'
         'reasoning=${r.reasoningTokens}，finish=${r.finishReason}）→ 抬到 $bumped 重来一次',
@@ -462,16 +533,18 @@ class LlmClient {
       if (effort.trim().isNotEmpty) 'reasoning_effort': effort,
       'temperature': ?temp,
       'max_tokens': ?budget,
-      if (config.stream) 'stream': true,
+      // 永不带 `stream`（G2.3①）：下面按整包 jsonDecode，SSE 的 `data:` 行解不了
     });
 
     // 严格模式（验收 F-5）：**开发期不重试** —— 一次就把真因报出来，
     // 别让「重试一次」把偶发失败藏过去（这正是宿主说的"出问题直接报错"）。
-    // release（strict=false）保持原样：传输层失败重试 1 次。
+    // release（strict=false）：断网类异常与 502/503/504 重试 1 次；超时不重试。
     final int attempts = config.strict ? 0 : retries;
     LlmFailure lastKind = LlmFailure.network;
     String lastDetail = '网络错误';
+    int tried = 0; // 实际重试了几次（失败 detail 里如实写）
     for (int attempt = 0; attempt <= attempts; attempt++) {
+      tried = attempt;
       try {
         final http.Response resp = await _http
             .post(uri, headers: headers, body: payload)
@@ -495,19 +568,25 @@ class LlmClient {
         }
         return _parseOk(resp.body, config);
       } on TimeoutException {
-        lastKind = LlmFailure.timeout;
-        lastDetail = '请求超时（>${limit.inMilliseconds}ms）';
+        // G2.4：超时**当场返回、不重试**（所有路径）。超时 = 端点慢，不是偶发
+        // 断线：再发一遍只会把等待翻倍（拆解 90s → 180s+；视觉校验整张图再传
+        // 一遍，于是大多数照片都落到「未校验 · 照收」，拒收规则形同虚设）。
+        return LlmReply.failure(
+          LlmFailure.timeout,
+          _withRetries('请求超时（>${limit.inMilliseconds}ms）', tried),
+        );
       } catch (e) {
         // SocketException / ClientException / 其余传输层异常一律按断网兜底
         lastKind = LlmFailure.network;
         lastDetail = '网络不可达：$e';
       }
     }
-    return LlmReply.failure(
-      lastKind,
-      attempts > 0 ? '$lastDetail（已重试 $attempts 次）' : lastDetail,
-    );
+    return LlmReply.failure(lastKind, _withRetries(lastDetail, tried));
   }
+
+  /// 失败 detail 的「已重试 N 次」后缀（没重试就不加）
+  static String _withRetries(String detail, int tried) =>
+      tried > 0 ? '$detail（已重试 $tried 次）' : detail;
 
   LlmReply _parseOk(String body, LlmConfig config) {
     try {

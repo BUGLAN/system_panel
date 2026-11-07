@@ -28,16 +28,26 @@ class RefSheet extends StatefulWidget {
     required this.sound,
     required this.onSound,
     required this.onClose,
+    this.vision = true,
+    this.onVision,
     this.onHint,
     this.onChat,
     this.onLlm,
     this.onReset,
+    this.onAgreement,
+    this.onPrivacy,
+    this.onRevoke,
   });
 
   final bool visible;
   final bool sound;
   final ValueChanged<bool> onSound;
   final VoidCallback onClose;
+
+  /// 证据视觉校验开关（= `AgentSettings.visionEnabled`，宿主定案 G2.3：从只在
+  /// debug 可达的 LLM 设置页挪到这里，所有构建都露）。[onVision] 为 null 不显示这行
+  final bool vision;
+  final ValueChanged<bool>? onVision;
 
   /// 隐藏彩蛋提示（JS L1655）
   final VoidCallback? onHint;
@@ -50,6 +60,11 @@ class RefSheet extends StatefulWidget {
 
   /// 重置存档（JS L1656）
   final VoidCallback? onReset;
+
+  /// G2.1：查看《用户协议》/《隐私政策》、撤回同意（所有构建都显示）
+  final VoidCallback? onAgreement;
+  final VoidCallback? onPrivacy;
+  final VoidCallback? onRevoke;
 
   @override
   State<RefSheet> createState() => _RefSheetState();
@@ -180,8 +195,20 @@ class _RefSheetState extends State<RefSheet>
                     ),
                     onTap: () => widget.onSound(!widget.sound),
                   ),
+                  // G2.3（宿主定案）：LLM 设置页只在 debug 可达，视觉校验开关不跟着
+                  // 藏起来 —— 挪到这一行，所有构建都露（写的仍是 visionEnabled）
+                  if (widget.onVision case final ValueChanged<bool> onVision)
+                    _row(
+                      title: '证据视觉校验',
+                      sub: '证据图发给 AI 核对，不符的拒收；关掉 = 照收，一律按「未校验」计',
+                      trailing: RefSwitch(
+                        on: widget.vision,
+                        onChanged: onVision,
+                      ),
+                      onTap: () => onVision(!widget.vision),
+                    ),
                   // A17（docs/50）：秘籍 / 彩蛋提示 / LLM 连接是开发向入口，
-                  // release 不露（LLM 设置仍可长按 HUD 菜单键进入）
+                  // release 不露（G2.3 起长按 HUD 菜单键的隐藏入口也只在 debug 接线）
                   if (kDebugMode)
                     _row(
                       title: '秘籍',
@@ -214,10 +241,17 @@ class _RefSheetState extends State<RefSheet>
                   if (widget.onLlm != null && kDebugMode)
                     _row(
                       title: 'LLM 连接',
-                      sub: '端点 · 模型 · 温度 · 流式',
+                      sub: '端点 · 模型 · 温度 · 上下文',
                       trailing: _arrow(),
                       onTap: widget.onLlm,
                     ),
+                  // G2.1 隐私与协议：上架必需，**不**像秘籍 / LLM 连接那样只在 debug 露。
+                  // 三个入口压进一行（三颗小签）：抽屉不可滚，再加三整行，
+                  // debug 构建在 320×640 上会把标题顶出屏幕。
+                  if (widget.onAgreement != null ||
+                      widget.onPrivacy != null ||
+                      widget.onRevoke != null)
+                    _legalRow(),
                   _row(
                     title: '重置存档',
                     sub: '一切从「开机成功」重新开始',
@@ -232,6 +266,77 @@ class _RefSheetState extends State<RefSheet>
           ),
         ),
       ],
+    );
+  }
+
+  /// 「隐私与协议」行：标题 + 三颗小签（撤回同意用危险色）
+  Widget _legalRow() {
+    return Container(
+      key: const Key('ref.sheet.legal'),
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 15),
+      decoration: const BoxDecoration(
+        border: Border(bottom: BorderSide(color: Ref.line)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          // 不配副标题、签上不带书名号：这一行要在 320 宽里一行排下三颗签
+          // （折成两行时整张抽屉高出 ~60，debug 构建的标题会被顶出屏幕）
+          Text(
+            '隐私与协议',
+            style: refText(family: Ref.fc, size: 15, wght: 500, color: Ref.txt),
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: <Widget>[
+              if (widget.onAgreement != null)
+                _legalPill('ref.sheet.agreement', '用户协议', widget.onAgreement!),
+              if (widget.onPrivacy != null)
+                _legalPill('ref.sheet.privacy', '隐私政策', widget.onPrivacy!),
+              if (widget.onRevoke != null)
+                _legalPill(
+                  'ref.sheet.revoke',
+                  '撤回同意',
+                  widget.onRevoke!,
+                  danger: true,
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _legalPill(
+    String key,
+    String label,
+    VoidCallback onTap, {
+    bool danger = false,
+  }) {
+    final Color c = danger ? const Color(0xFFFF8FB3) : Ref.txt;
+    return GestureDetector(
+      key: Key(key),
+      behavior: HitTestBehavior.opaque,
+      onTap: () {
+        refPressSound('ui.tap');
+        onTap();
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+        decoration: BoxDecoration(
+          color: const Color(0x0AFFFFFF),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(
+            color: danger ? Ref.a(c, .45) : const Color(0x26FFFFFF),
+          ),
+        ),
+        child: Text(
+          label,
+          style: refText(family: Ref.fc, size: 13, wght: 500, color: c),
+        ),
+      ),
     );
   }
 

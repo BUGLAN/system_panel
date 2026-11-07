@@ -441,6 +441,7 @@ class _RefGoalSwapState extends State<RefGoalSwap> {
           accent: _acc,
           textSize: 15,
           height: 52,
+          maxChars: kGoalInputMaxChars, // G2.2：与绑定页同一个上限
           onSubmitted: (_) => _submit(),
         ),
         const SizedBox(height: 12),

@@ -54,6 +54,15 @@ class ActiveQuest {
   /// 暴击口径按已校验/未校验分别计（`critChance`）。
   final List<vision.EvidenceShot> evidence;
 
+  /// 交单即封存（G2.4）：[QuestFlow.settle] 一开头置 true，之后迟到的后台
+  /// 校验结论一律丢弃（[QuestFlow.applyVerdict] → gone）。
+  ///
+  /// 为什么不能只靠 `_active = null`：续拆 / 收官那一单的 settle 要 await 一次
+  /// 真 LLM 拆解（最长 90s），这期间 `_active` 还指着这单。交单最多等 20s 校验，
+  /// 校验时限是 30s —— 20~30s 才回来的「不符」会把证据从已入账的单里撤掉，
+  /// 结算页的证据数和暴击率就对不上了，她还会对一张已交掉的单喊「重传」。
+  bool sealed = false;
+
   /// 已交证据份数（旧口径：结算页/战报还读这个数）
   int get photos => evidence.length;
 
@@ -131,12 +140,15 @@ class RetreatOutcome {
 /// 一张日常模板（原型 `DAILY_COMMON`，content.js L224-239）。
 /// 只服务本文件的日常池，字段全部 final。
 class DailyTpl {
-  const DailyTpl(this.t, this.p, this.m, this.a, this.r);
+  const DailyTpl(this.t, this.p, this.m, this.a, this.r, {this.timed = true});
   final String t;
   final String p;
   final int m;
   final Map<String, int> a;
   final String r;
+
+  /// D3.3：false = 打卡单（与 goal_gen `DailyTemplate.timed` 同源同值）
+  final bool timed;
 }
 
 /// 主线收官（finale）的产出 —— TODO-01「第二目标闭环」。
@@ -189,6 +201,27 @@ typedef NextGoalHook = Future<Goal> Function(
 /// 整条主线还没完时调用，交回**同一个目标**（身份不变）、清单接上下一段。
 /// 失败一律抛（与 [NextGoalHook] 同口径，不吞、不降级）。
 typedef NextWindowHook = Future<Goal> Function(Goal current);
+
+/// G4.1：[QuestFlow.settle] 已经把这一单结清（入账、执行中清空、流水、存档），
+/// 但随后的续拆 / 收官拆解失败了。
+///
+/// [result] 是已入账的结算（结算页照常演它，`windowNext` 为 false）；
+/// [error] 是钩子抛出的原始错误（通常是 `PlanFailure`）。下一段 / 下一条主线
+/// 没拆出来，读档时 [QuestFlow.applyFinaleOutcome] 会补拆。
+class SettleFollowUpFailed implements Exception {
+  const SettleFollowUpFailed({
+    required this.result,
+    required this.error,
+    required this.stackTrace,
+  });
+
+  final QuestResult result;
+  final Object error;
+  final StackTrace stackTrace;
+
+  @override
+  String toString() => 'SettleFollowUpFailed：结算已入账，后续拆解失败 → $error';
+}
 
 class QuestFlow {
   QuestFlow({
@@ -274,6 +307,15 @@ class QuestFlow {
   /// 还没有主线、但记着一句没拆成的目标 → 大厅 / 主线页主按钮是「重试拆解」
   bool get canRetryPlan => goal.plan.isEmpty && pendingGoal.isNotEmpty;
 
+  /// D3.2：已拆出来的清单全部走完、下一段 / 下一条主线还没拆上（结算时续拆 /
+  /// 收官拆解失败）→ 大厅 / 主线页给「重试拆解」，调 [resumePlan] 补拆。
+  /// 有执行中的单时不给（那单交掉时结算自己会续拆）。
+  bool get canResumePlan =>
+      _active == null &&
+      goal.plan.isNotEmpty &&
+      goal.firstOpenIndex < 0 &&
+      (goal.hasMoreWindows || nextGoalHook != null);
+
   ActiveQuest? _active;
   Quest? _remedyOffer;
   DateTime? _remedyDeadline;
@@ -324,8 +366,8 @@ class QuestFlow {
   /// **每个改了存档字段（host / goal / queue / active / pendingGoal）的公开方法
   /// 成功后都会发一次**；main.dart 把它接到合并写盘（`_requestSave`），调用点
   /// 不用再各自补 `_persist()`（docs/50 E1.1：漏一处 = 杀进程丢单）。
-  /// async 方法（[settle] / [extendWindow] / [applyFinaleOutcome]）只在走完时发，
-  /// 不把中间态写进档。外部直接改字段（`flow.host = …`）后调 [touch]。
+  /// async 方法（[extendWindow] / [applyFinaleOutcome]）只在走完时发，不把中间态
+  /// 写进档；[settle] 例外：结清那一刻（await 拆解之前）先发一次，拆完再发一次。外部直接改字段（`flow.host = …`）后调 [touch]。
   void Function()? onChanged;
   void _notify() => onChanged?.call();
 
@@ -418,17 +460,28 @@ class QuestFlow {
     DailyTpl('念一段 3 分钟的文字，念出声', '录音截图', 10, <String, int>{'魅': 1, '智': 1}, 'F'),
     DailyTpl('整理一次手机相册，删掉 30 张废片', '相册截图', 15, <String, int>{'知': 1}, 'F'),
     DailyTpl('靠墙站直 10 分钟，别塌肩', '计时截图', 10, <String, int>{'魅': 1, '体': 1}, 'F'),
-    DailyTpl('喝水 6 杯，拿杯子凑数不算', '杯子照片', 5, <String, int>{'体': 1}, 'F'),
+    DailyTpl(
+      '喝水 6 杯，拿杯子凑数不算',
+      '杯子照片',
+      5,
+      <String, int>{'体': 1},
+      'F',
+      timed: false,
+    ),
     DailyTpl('把昨天没做完的那件事补完', '完成截图', 30, <String, int>{'知': 1, '智': 1}, 'D'),
     DailyTpl('快走 20 分钟，不许边刷手机边走', '步数截图', 25, <String, int>{
       '体': 1,
       '敏': 1,
     }, 'E'),
     DailyTpl('手写一页字，慢一点，写整齐', '纸面照片', 15, <String, int>{'敏': 1, '知': 1}, 'F'),
-    DailyTpl('今天不喝含糖饮料，一杯都不', '晚上拍一张今天喝过的东西', 5, <String, int>{
-      '知': 1,
-      '体': 1,
-    }, 'F'),
+    DailyTpl(
+      '今天不喝含糖饮料，一杯都不',
+      '晚上拍一张今天喝过的东西',
+      5,
+      <String, int>{'知': 1, '体': 1},
+      'F',
+      timed: false,
+    ),
     DailyTpl('睡前 10 分钟回顾今天，想清楚一件做对的事', '笔记照片', 12, <String, int>{
       '知': 1,
       '魅': 1,
@@ -692,6 +745,7 @@ class QuestFlow {
           minutes: d.m,
           rank: rank,
           attrs: splitAttrs(d.a, Rarity.of(rank).pt),
+          timed: d.timed,
         ),
       );
       return true;
@@ -853,8 +907,10 @@ class QuestFlow {
   /// 没有执行中的单 → **抛** [StateError]（旧版返回 null，调用方 `?? _result`
   /// 把「没结算」伪装成「结算成功」，正是静默降级）。
   ///
-  /// 收官（最后一单）时会 await [nextGoalHook] 去铸下一份计划 —— 那是一次真
-  /// LLM 调用，失败会**原样抛**给调用方，不会退化成模板。
+  /// 收官（最后一单）时会 await [nextGoalHook] 去铸下一份计划、窗口走完时会 await
+  /// [nextWindowHook] 续拆 —— 那是一次真 LLM 调用。这一单在 await 之前就已结清
+  /// （入账、清掉执行中、记流水、发存档），拆解失败抛 [SettleFollowUpFailed]：
+  /// 带着已入账的结果和原始错误，不会退化成模板，也不会留下一张能再交的单。
   ///
   /// [forceCrit] 只给测试用（demo 也可钉死非暴击：传 false）。
   Future<QuestResult> settle({
@@ -869,6 +925,11 @@ class QuestFlow {
     final DateTime t0 = now ?? DateTime.now();
     final Quest task = a.task;
     final Duration held = t0.difference(a.startAt);
+    // G2.4：交单即封存证据，并在这一刻取证据读数 —— 下面续拆 / 收官会 await
+    // 拆解，结算页的证据数、评级与暴击率必须是同一时刻的口径
+    a.sealed = true;
+    final int photos = a.photos;
+    final int verified = a.verifiedCount;
 
     final double chance = critChance();
     final double roll = (rnd ?? _rnd).nextDouble();
@@ -899,7 +960,14 @@ class QuestFlow {
       lv++;
       ups.add(lv);
     }
-    host = host.copyWith(lv: lv, exp: curExp, coins: host.coins + coin);
+    host = host.copyWith(
+      lv: lv,
+      exp: curExp,
+      coins: host.coins + coin,
+      // G3.1：累计 EXP 与余额同一处入账（升级扣掉的是余额，累计不扣）。
+      // 老档还没迁移（未知）就先不动：这一单会进流水，[backfillTotalExp] 求和时带上
+      totalExp: host.totalExpKnown ? host.totalExp + exp : host.totalExp,
+    );
 
     // 六维加成
     final Map<String, int> grown = <String, int>{...host.attrs};
@@ -951,8 +1019,8 @@ class QuestFlow {
             timed: task.timed,
             minutes: task.minutes,
             held: held,
-            verified: a.verifiedCount,
-            photos: a.photos,
+            verified: verified,
+            photos: photos,
             crit: crit,
           ),
         );
@@ -968,29 +1036,8 @@ class QuestFlow {
       }
     }
 
-    // 窗口走完 → 续拆下一段（复用收官同一条「结算里 await 拆解」的路）。
-    // ⚠️ 拆解失败同样从这里抛：结算已经落账，下一段没拆出来要让调用方看见。
-    final bool windowNext = windowEnd && await extendWindow();
-
-    // 收官 → 第二目标闭环（TODO-01）：铸下一条主线、撤旧主线单、首环钉队首。
-    // 结算**当场落库**（不是等界面点一下）——否则结算页读到的 `empty` 是错的，
-    // 宿主会看到【收工。】而其实新主线已经在手上。
-    if (finale) {
-      // 提档读的是「走过了几张 / 一共几张」——兑现单交掉时就是全部。
-      // ⚠️ 拆解失败会从这里抛出去：结算已经落账，但**下一份计划拿不出来**
-      //    这件事必须让调用方看见（旧版是静默停在终点）。
-      await _applyFinale(
-        cleared: goal.doneCount,
-        total: goal.plan.length,
-        level: host.lv,
-      );
-    }
-
     // 补救单抵消失败（history 的 redeemed 标记随 T5 的 history 落库）
     final bool redeemed = task.kind == 'remedy';
-
-    _syncQueueCount();
-    final bool empty = queue.isEmpty;
 
     // 称号（store.js `checkTitles`）
     final List<String> titles = _checkTitles(
@@ -1013,10 +1060,16 @@ class QuestFlow {
       );
     }
 
+    // G4.1：这一单到这里就**结清**了 —— 清掉执行中、记流水、发一次存档，
+    // 然后才去 await 续拆 / 收官的拆解。原来 `_active = null` 排在 await 后面，
+    // 拆解一抛，存档里执行中那单还在，重启（或从大厅点回执行页）能再交一次、
+    // 奖励再入账一次。拆解失败现在只影响「下一段 / 下一条主线」本身，
+    // 读档时 [applyFinaleOutcome] 会补拆。
     _active = null;
 
     // 交掉一张就补一张（保持在手窗口）。⚠️ 必须放在 `_active = null` **之后**：
     // 窗口把"正在执行的那张"也算在内，早一步补发就会每交一张少一格。
+    // （窗口走完 / 收官时这里补不出东西，下面续拆 / 收官各自补发）
     if (!finale && planSlot) publishPlanTasks();
 
     // A6：写入执行历史（fire-and-forget——写盘失败不阻塞结算演出）
@@ -1034,8 +1087,8 @@ class QuestFlow {
       ),
     );
 
-    _notify();
-    return QuestResult(
+    _syncQueueCount();
+    QuestResult resultOf({required bool windowNext}) => QuestResult(
       quest: task,
       beforeLv: beforeLv,
       beforeExp: beforeExp,
@@ -1047,8 +1100,8 @@ class QuestFlow {
       streakUp: streakUp,
       crit: crit,
       dbl: a.dbl,
-      photos: a.photos,
-      verified: a.verifiedCount,
+      photos: photos,
+      verified: verified,
       chance: chance,
       near: near,
       ups: ups,
@@ -1057,7 +1110,8 @@ class QuestFlow {
       finale: finale,
       windowNext: windowNext,
       redeemed: redeemed,
-      empty: empty,
+      // 读的是**这一刻**的队列：续拆 / 收官补发之后再调就是补发后的口径
+      empty: queue.isEmpty,
       // 打卡单本来就可能瞬间做完（称重/拍照），不拆穿「太快」
       tooFast: task.timed && held.inMilliseconds < 60000,
       held: held,
@@ -1065,6 +1119,64 @@ class QuestFlow {
       afterNeed: needFor(lv),
       endExp: curExp,
     );
+
+    // 结清的这一刻先落一次盘（之后 await 拆解期间被杀进程也不会留下可再交的单）
+    _notify();
+    if (!windowEnd && !finale) return resultOf(windowNext: false);
+
+    // 收官时清掉上一条主线留下的收官结论：这次没铸成，界面不能读到旧的那份
+    if (finale) _finaleOutcome = null;
+    final bool windowNext;
+    try {
+      // 窗口走完 → 续拆下一段（复用收官同一条「结算里 await 拆解」的路）。
+      windowNext = windowEnd && await extendWindow();
+      // 收官 → 第二目标闭环（TODO-01）：铸下一条主线、撤旧主线单、首环钉队首。
+      // 结算**当场落库**（不是等界面点一下）——否则结算页读到的 `empty` 是错的，
+      // 宿主会看到【收工。】而其实新主线已经在手上。
+      if (finale) {
+        // 提档读的是「走过了几张 / 一共几张」——兑现单交掉时就是全部。
+        await _applyFinale(
+          cleared: goal.doneCount,
+          total: goal.plan.length,
+          level: host.lv,
+        );
+      }
+    } catch (e, st) {
+      // 拆解失败：结算已经落账，**下一份计划拿不出来**这件事必须让调用方看见
+      // （旧版是静默停在终点）。把已入账的结果一并交出去，结算页照常演这一单。
+      _syncQueueCount();
+      throw SettleFollowUpFailed(
+        result: resultOf(windowNext: false),
+        error: e,
+        stackTrace: st,
+      );
+    }
+    _syncQueueCount();
+    _notify();
+    return resultOf(windowNext: windowNext);
+  }
+
+  // ── G3.1 老档迁移：累计 EXP ────────────────────────────────
+
+  /// 老档缺 `totalExp`（[HostState.totalExpKnown] 为 false）→ 用执行历史流水
+  /// 求和补一次，并与 [HostState.expFloor]（升到当前等级至少花掉的 + 余额）取大。
+  ///
+  /// 为什么取大：流水只留最近 [HistoryLog.maxEntries] 条，攒过 400 单的老档
+  /// 光靠求和会少算；等级下界按现行曲线算，曲线改过的老档可能偏小 —— 两个都是
+  /// 下界，取大最接近真值。已经有值 → 什么都不做，返回 false；补上了 → 通知存档。
+  Future<bool> backfillTotalExp() async {
+    if (host.totalExpKnown) return false;
+    int sum = 0;
+    for (final HistoryEntry e in await historyLog.entriesSettled()) {
+      if (e.exp > 0) sum += e.exp;
+    }
+    // await 期间可能已经有人补过了（重复调用）—— 别覆盖
+    if (host.totalExpKnown) return false;
+    host = host.copyWith(
+      totalExp: math.max(sum, HostState.expFloor(host.lv, host.exp)),
+    );
+    _notify();
+    return true;
   }
 
   // ── 第二目标闭环（TODO-01：finale → 自动续主线 / 换目标落库）────────
@@ -1189,6 +1301,25 @@ class QuestFlow {
       return _finaleOutcome?.goal != null;
     }
     return false;
+  }
+
+  /// D3.2：会话里当场补拆（[canResumePlan] 时调）。只做两件事：
+  /// 窗口走完 → [extendWindow]；整条走完 → 铸下一条主线。
+  ///
+  /// 不走 [applyFinaleOutcome]：它的分支 ① 会拿**上一次收官**留下的结论
+  /// 「补钉首环」，本会话里收官过一次之后就可能被误触发、返回 true 却没续拆。
+  /// 钩子抛什么就往上抛什么；返回这次是否真的拆上了。
+  Future<bool> resumePlan() async {
+    if (!canResumePlan) return false;
+    if (goal.windowExhausted) return extendWindow();
+    if (nextGoalHook == null) return false;
+    await _applyFinale(
+      cleared: goal.doneCount,
+      total: goal.plan.length,
+      level: host.lv,
+    );
+    _notify();
+    return _finaleOutcome?.goal != null;
   }
 
   /// 换目标（原型 `Store.newGoal` 的落库语义；TODO-01 的「换目标」入口）：
@@ -1347,10 +1478,11 @@ class QuestFlow {
   /// C4 + C7：后台校验回来，按 [id] 找槽里那张证据落结论 ——
   ///  · 不符 → 从槽里撤掉（[EvidenceApply.rejected]，调用方让她说明原因）；
   ///  · 拿不准 / 已校验 / 没校验成 → 换上新状态照收（[EvidenceApply.kept]）；
-  ///  · 找不到（宿主已撤掉那张 / 那单已结算或认输）→ [EvidenceApply.gone]，什么都不动。
+  ///  · 找不到（宿主已撤掉那张 / 那单已结算或认输）→ [EvidenceApply.gone]，什么都不动；
+  ///  · 那单已交（[ActiveQuest.sealed]，结算还在 await 拆解）→ 同样 gone、不动。
   EvidenceApply applyVerdict(String id, vision.VisionVerdict v) {
     final ActiveQuest? a = _active;
-    if (a == null) return EvidenceApply.gone;
+    if (a == null || a.sealed) return EvidenceApply.gone;
     final int i = a.evidence.indexWhere((vision.EvidenceShot s) => s.id == id);
     if (i < 0) return EvidenceApply.gone;
     if (!v.status.accepted) {
@@ -1617,6 +1749,9 @@ class HistoryLog {
     _tail = next.catchError((Object _) {});
     return next;
   }
+
+  /// 等在途追加落完再读（G3.1 迁移求和用：别漏掉刚结算、还没写盘的那一条）
+  Future<List<HistoryEntry>> entriesSettled() => _tail.then((_) => entries());
 
   /// 清空（重置存档用，E1.2）：排在在途追加之后，免得清完又被旧追加写回。
   Future<void> clear() {

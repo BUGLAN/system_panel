@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:system_panel/design/ref.dart';
 import 'package:system_panel/widgets/type_text.dart';
 
 /// 打字机（`ui.js` L77-112 `Line.say`）。
@@ -101,6 +102,25 @@ void main() {
       expect(em.style!.color!.b, 1); // 青
       expect(em.style!.fontVariations!.first.value, 650);
       expect(em.style!.shadows, isNotEmpty);
+    });
+
+    // 2026-11-06 安装包瘦身：默认字体从 FangYuan（已撤出包）换成 v3 正文
+    // NotoSansSC。它是可变字体，字重只认 fontVariations —— 漏写就全是默认字重。
+    testWidgets('默认样式走 NotoSansSC（Ref.fc），字重写在 fontVariations', (
+      WidgetTester tester,
+    ) async {
+      await _mount(tester, const TypeText(text: '甲[[乙]]'));
+      await tester.pumpAndSettle();
+      final Text t = tester.widget<Text>(find.byType(Text).first);
+      final List<InlineSpan> kids = (t.textSpan! as TextSpan).children!;
+      final TextSpan plain = kids[0] as TextSpan;
+      final TextSpan em = kids[1] as TextSpan;
+      expect(plain.style!.fontFamily, Ref.fc);
+      expect(em.style!.fontFamily, Ref.fc);
+      expect(
+        plain.style!.fontVariations,
+        contains(const FontVariation('wght', 500)),
+      );
     });
 
     testWidgets('soft 台词里高亮片段改成灰白、无辉光', (WidgetTester tester) async {

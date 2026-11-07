@@ -43,8 +43,9 @@ class Rewards {
   static int coinOf(String rank) => kCoinByRank[rank] ?? 3;
 
   /// 升级曲线：`need(lv) = 12 + lv × 6`（单一可调常数，验收后可微调）。
-  /// 节奏校验：首目标 3 天得 1+2+4=7 EXP + 日常 2~8
-  /// → 第 3~5 天升 LV2，正反馈对齐「首目标 3 天」。
+  /// 节奏校验：LV1 → LV2 要 18 EXP。首目标第一段只出 E~C 档（每单 1~4 EXP，
+  /// 一天一张主线）+ 每天日常 1~2 单 → 大约第一周内升 LV2。
+  /// （旧注释写的「首目标定死 3 天」已随 C1 滚动生成作废，见 docs/50 D1.3）
   static int needFor(int lv) => 12 + lv * 6;
 
   /// 结算乘区（store.js:281-283 原样）

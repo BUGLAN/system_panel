@@ -651,7 +651,8 @@ void main() {
       expect(line.source, CopySource.llm);
       expect(line.emotion, 'smug');
       expect(line.text, '行吧，这单算你过关。明天继续。');
-      expect(llm.lastTemperature, 0.8);
+      // G2.3：台词不再硬编码 0.8 —— 不覆盖 = 用设置页的温度（默认仍是 0.8）
+      expect(llm.lastTemperature, isNull, reason: '不覆盖 = 用设置页的温度');
       // 台词链路：预算给足 + **档位跟随设置页**（不再硬编码关思考）。
       // 历史是 120 → 512，都是「拿一个小 max_tokens 硬扛思考」；宿主
       // 2026-10-12 定调不用为省 token 做取舍，于是给足 + 保留抬预算兜底网。

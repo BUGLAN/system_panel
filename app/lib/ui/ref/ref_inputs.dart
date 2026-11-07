@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../design/ref.dart';
 import 'ref_kit.dart' show cutCornerPath, refPressSound;
@@ -458,6 +460,95 @@ String refCommittedText(TextEditingValue v) {
   return v.composing.textBefore(v.text) + v.composing.textAfter(v.text);
 }
 
+/// G2.2：输入上限（按**已上屏**的字数算，组字中的拼音不计）。
+/// 原来全仓没有一处上限，粘一篇长文进目标框 / 聊天框会原样发给模型白耗 token。
+/// 这两个是主会话先定的默认，要调就改这里。
+const int kGoalInputMaxChars = 50;
+const int kChatInputMaxChars = 200;
+
+/// G2.2：把一次编辑夹到 [max] 个已上屏字以内；没超返回 null（原样用 [next]）。
+/// 纯函数，[RefCommittedLengthFormatter] 与测试共用。
+///
+///  · **正在组字就放行**：这时候截断会把拼音切成半截，输入法直接乱掉；
+///    选完字（组字结束）那一下再按上限截 —— 与 E2.6「组字中不计数」同一口径
+///  · 超了只从**这次新加进来的那一段**尾巴上砍：粘贴到中间时原文一个字不动，
+///    光标停在留下的新字后面；算不出新增段（比如删字后仍超）就保留前 [max] 个字
+///  · 按字素簇（characters）数：一个 emoji、一个带组合符的字都算 1
+TextEditingValue? refClampCommitted(
+  TextEditingValue prev,
+  TextEditingValue next,
+  int max,
+) {
+  if (max <= 0 || refIsComposing(next)) return null;
+  final List<String> n = next.text.characters.toList();
+  if (n.length <= max) return null;
+  final List<String> o = prev.text.characters.toList();
+  // 新增段 = 去掉新旧共同前缀 / 后缀后，新文本中间剩下的那一截 n[head, addEnd)
+  int head = 0;
+  while (head < o.length && head < n.length && o[head] == n[head]) {
+    head++;
+  }
+  int tail = 0;
+  while (tail < o.length - head &&
+      tail < n.length - head &&
+      o[o.length - 1 - tail] == n[n.length - 1 - tail]) {
+    tail++;
+  }
+  final int over = n.length - max;
+  final int addEnd = n.length - tail;
+  final List<String> kept;
+  final int caret;
+  if (addEnd - head >= over) {
+    kept = <String>[...n.sublist(0, addEnd - over), ...n.sublist(addEnd)];
+    caret = addEnd - over;
+  } else {
+    kept = n.sublist(0, max);
+    caret = max;
+  }
+  return TextEditingValue(
+    text: kept.join(),
+    selection: TextSelection.collapsed(
+      offset: kept.sublist(0, caret).join().length,
+    ),
+  );
+}
+
+/// G2.2：按已上屏字数限长的 formatter（见 [refClampCommitted]）。
+///
+/// 不用 Flutter 自带的 `LengthLimitingTextInputFormatter`：它数的是含拼音的
+/// 总长，Android 上默认 `MaxLengthEnforcement.enforced` 组字中也照截（拼音被
+/// 切断）；超长时还一律留开头、砍结尾（粘到中间会把原文尾巴砍掉）——
+/// 与 E2.6 的「只认已上屏」口径对不上。
+class RefCommittedLengthFormatter extends TextInputFormatter {
+  RefCommittedLengthFormatter(this.max, {this.onClipped});
+
+  final int max;
+
+  /// 真的截掉了东西时调一次（输入框亮「已截到 N 字」的轻提示）
+  final VoidCallback? onClipped;
+
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    final TextEditingValue? clamped = refClampCommitted(
+      oldValue,
+      newValue,
+      max,
+    );
+    if (clamped == null) return newValue;
+    final VoidCallback? cb = onClipped;
+    // 回调里通常要 setState；formatter 是在框架更新文本的途中被调的，
+    // 推到微任务里，免得撞上「build 期间 setState」
+    if (cb != null) scheduleMicrotask(cb);
+    return clamped;
+  }
+}
+
+/// G2.2：截断后的轻提示亮多久
+const Duration kRefClipHintHold = Duration(milliseconds: 2400);
+
 class RefTextField extends StatefulWidget {
   const RefTextField({
     super.key,
@@ -473,6 +564,7 @@ class RefTextField extends StatefulWidget {
     this.focusNode,
     this.onSubmitted,
     this.enabled = true,
+    this.maxChars,
   });
 
   final TextEditingController controller;
@@ -494,6 +586,10 @@ class RefTextField extends StatefulWidget {
   /// false = 只读（加载中锁输入，边框压暗）
   final bool enabled;
 
+  /// G2.2：已上屏字数上限（null = 不限）。超长粘贴会被截到这个数，
+  /// 框内右侧亮一下「已截到 N 字」（边框同时转 hot），[kRefClipHintHold] 后自己收
+  final int? maxChars;
+
   @override
   State<RefTextField> createState() => _RefTextFieldState();
 }
@@ -503,10 +599,18 @@ class _RefTextFieldState extends State<RefTextField> {
   FocusNode get _focus => widget.focusNode ?? (_own ??= FocusNode());
   bool _hidden = true;
 
+  /// formatter 实例要稳定：每次 build 新建一份，EditableText 会当成配置变了
+  RefCommittedLengthFormatter? _limiter;
+
+  /// 刚截过一次（轻提示亮着）
+  bool _clipped = false;
+  Timer? _clipTimer;
+
   @override
   void initState() {
     super.initState();
     _focus.addListener(_onFocus);
+    _syncLimiter();
   }
 
   @override
@@ -517,6 +621,23 @@ class _RefTextFieldState extends State<RefTextField> {
       prev.removeListener(_onFocus);
       _focus.addListener(_onFocus);
     }
+    if (old.maxChars != widget.maxChars) _syncLimiter();
+  }
+
+  void _syncLimiter() {
+    final int? max = widget.maxChars;
+    _limiter = max == null
+        ? null
+        : RefCommittedLengthFormatter(max, onClipped: _onClipped);
+  }
+
+  void _onClipped() {
+    if (!mounted) return;
+    _clipTimer?.cancel();
+    setState(() => _clipped = true);
+    _clipTimer = Timer(kRefClipHintHold, () {
+      if (mounted) setState(() => _clipped = false);
+    });
   }
 
   void _onFocus() {
@@ -525,6 +646,7 @@ class _RefTextFieldState extends State<RefTextField> {
 
   @override
   void dispose() {
+    _clipTimer?.cancel();
     _focus.removeListener(_onFocus);
     _own?.dispose();
     super.dispose();
@@ -533,6 +655,7 @@ class _RefTextFieldState extends State<RefTextField> {
   @override
   Widget build(BuildContext context) {
     final Color accent = widget.accent ?? Ref.acid;
+    final RefCommittedLengthFormatter? limiter = _limiter;
     return Container(
       height: widget.height,
       padding: EdgeInsets.only(left: 12, right: widget.obscure ? 4 : 12),
@@ -540,7 +663,9 @@ class _RefTextFieldState extends State<RefTextField> {
         color: Ref.ink,
         borderRadius: BorderRadius.circular(10),
         border: Border.all(
-          color: _focus.hasFocus && widget.enabled ? accent : Ref.line,
+          color: _clipped
+              ? Ref.hot
+              : (_focus.hasFocus && widget.enabled ? accent : Ref.line),
         ),
         boxShadow: _focus.hasFocus
             ? <BoxShadow>[BoxShadow(color: Ref.a(accent, .22), blurRadius: 14)]
@@ -553,6 +678,9 @@ class _RefTextFieldState extends State<RefTextField> {
               controller: widget.controller,
               focusNode: _focus,
               obscureText: widget.obscure && _hidden,
+              inputFormatters: limiter == null
+                  ? null
+                  : <TextInputFormatter>[limiter],
               onChanged: widget.onChanged,
               onSubmitted: widget.onSubmitted,
               textInputAction: widget.onSubmitted == null
@@ -583,6 +711,22 @@ class _RefTextFieldState extends State<RefTextField> {
               ),
             ),
           ),
+          // G2.2 轻提示：超长粘贴被截断后亮一下，到点自己收（不弹窗、不挡输入）
+          if (_clipped && limiter != null)
+            Padding(
+              key: const Key('ref.input.clipHint'),
+              padding: const EdgeInsets.only(left: 8),
+              child: Text(
+                '已截到 ${limiter.max} 字',
+                style: refText(
+                  family: Ref.fc,
+                  size: 11,
+                  wght: 500,
+                  height: 1,
+                  color: Ref.hot,
+                ),
+              ),
+            ),
           if (widget.obscure)
             GestureDetector(
               onTap: () => setState(() => _hidden = !_hidden),
