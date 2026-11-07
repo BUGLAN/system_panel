@@ -39,7 +39,7 @@ node tools/comfyui/gen_game_bg.mjs --seed 42
 node tools/comfyui/gen_game_bg.mjs --out E:\tmp
 ```
 
-游戏内引用：`prototype/opus-v2-dir/css/app.css` 的 `#bg .sky`（图片垫底，CSS 扫描线/轨道环/地面网格等动态层继续叠在上面）。
+游戏内引用：`prototype/opus-v2-dir/css/app.css` 的 `#bg .sky`（图片垫底，CSS 扫描线/轨道环/地面网格等动态层继续叠在上面）。原型已于 2026-11-06 移出 git，只在本机副本里。
 
 ## 重设计提示词库（`prompts/shots.json` + `gen_shots.mjs`）
 
@@ -64,4 +64,4 @@ node gen_shots.mjs --shot A1-fx-burst --no-upscale
 
 - 背景图必须**无人物、无文字**（角色是 Live2D 独立图层；大字 SYSTEM 由 CSS 叠加）
 - 中心保持低对比，给 UI 文字留可读性；整体压暗，`#app.dim` 还会再降到 0.35 透明度
-- 仓库只收网页版 JPEG（`prototype/opus-v2-dir/img/bg-void.jpg`），PNG 母版留在 ComfyUI output，不入库
+- 网页版 JPEG 落在 `prototype/opus-v2-dir/img/bg-void.jpg`（原型已移出 git，现在**不入库**，只在本机副本里），PNG 母版留在 ComfyUI output

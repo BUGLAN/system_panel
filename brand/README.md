@@ -9,8 +9,8 @@ node brand/build.mjs          # 矢量母版 → App 图标 → 原型 favicon �
 ```
 
 分步可用：`node brand/build.mjs sheet`（概念对照）/ `masters`（只出 SVG 母版）/
-`card`（只出规格卡）。产物**直接写进** `app/android`、`app/ios`、`prototype/opus-v2-dir`
-与 `brand/png`，全部入库、可以直接提交。
+`card`（只出规格卡）。产物**直接写进** `app/android`、`app/ios` 与 `brand/png`，全部入库、
+可以直接提交；本机有 `prototype/opus-v2-dir/` 时还会顺带写原型 favicon（原型已移出 git，不入库，没有就跳过）。
 
 首次运行前装一次渲染依赖（node_modules 不入库）：
 
@@ -44,8 +44,8 @@ npm pack @resvg/resvg-js-darwin-arm64@2.6.2 && tar xzf resvg-resvg-js-darwin-arm
   （108-432）＋ `mipmap-anydpi-v26/ic_launcher.xml`（API 25 及以下自动回落旧图）。
 - **iOS** `app/ios/Runner/Assets.xcassets/AppIcon.appiconset/`：Contents.json 里
   19 格全部重生成，文件名不动、已去 alpha。
-- **原型** `prototype/opus-v2-dir/`：`favicon.svg` / `favicon-16|32|48.png` /
-  `apple-touch-icon.png`（index.html 的 `<link rel="icon">` 已接上）。
+- **原型** `prototype/opus-v2-dir/`（仅本地副本，2026-11-06 起不入库）：`favicon.svg` /
+  `favicon-16|32|48.png` / `apple-touch-icon.png`（index.html 的 `<link rel="icon">` 已接上）。
 
 ## 改动的第一原则
 

@@ -5,6 +5,10 @@ node_modules/
 .env
 .env.*
 
+# 原型（2026-11-06 宿主定案：整个 prototype/ 移出 git，只留各机本地副本，历史版本在 git 历史里）
+# 下面几条 prototype/* 规则随之冗余，留着说明来历；有人想把它重新入库时先删这一行
+prototype/
+
 # Stitch 生成产物原始响应
 prototype/stitch-bridge/results/
 

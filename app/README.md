@@ -29,5 +29,5 @@ flutter build apk --debug
 - 包名 / bundle id：`com.systempanel.app`（Android `namespace` + `applicationId`，iOS `PRODUCT_BUNDLE_IDENTIFIER`）——这是占位 ID，上架前需换成自有域名
 - 字体在 `assets/fonts/`，以 `pubspec.yaml` 为准：ChakraPetch（显示/数字）、NotoSansSC 与 JetBrainsMono（可变字重，粗体用 `FontVariation('wght', N)`）等
 - 入口 `lib/main.dart` 是应用主壳（状态机 `Moment` + 场景编排），界面在 `lib/ui/ref/`
-- 动效参数真源是 `../prototype/motion-demo/index.html`，移植时逐时刻对照，不许凭感觉改
+- 动效参数以 `../AGENTS.md`「动效参数」一节为准（原样机 `prototype/motion-demo` 已移出 git，只在本机副本 / git 历史里），不许凭感觉改
 - 视觉基准是仓库根目录的 `宿主养成系统_重设计.html` → `lib/design/ref.dart`；项目约定见 `../AGENTS.md`
