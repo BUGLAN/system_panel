@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="markarc" x1="0" y1="0" x2="0.35" y2="1">
+      <stop offset="0" stop-color="#B6F7FF"/>
+      <stop offset=".45" stop-color="#38E1FF"/>
+      <stop offset="1" stop-color="#1E9BFF"/>
+    </linearGradient>
+    <linearGradient id="markcore" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#EAFDFF"/>
+      <stop offset=".55" stop-color="#7FE9FF"/>
+      <stop offset="1" stop-color="#38E1FF"/>
+    </linearGradient>
+    <filter id="markblur" x="-70%" y="-70%" width="240%" height="240%">
+      <feGaussianBlur stdDeviation="20"/>
+    </filter>
+  </defs>
+  <g filter="url(#markblur)" opacity="0.5">
+      <path d="M256 84 L404.96 170 L404.96 342 L256 428 L107.04 342 L107.04 170Z" fill="none" stroke="#38E1FF" stroke-width="22" stroke-dasharray="774 258" stroke-linecap="round"/>
+      <path d="M256 198 L306.23 227 L306.23 285 L256 314 L205.77 285 L205.77 227Z"  fill="#38E1FF"/>
+      <circle cx="107.04" cy="256" r="19" fill="#38E1FF"/>
+    </g>
+    <path d="M256 84 L404.96 170 L404.96 342 L256 428 L107.04 342 L107.04 170Z" fill="none" stroke="#38E1FF" stroke-opacity="0.26" stroke-width="22"/>
+    <path d="M256 84 L404.96 170 L404.96 342 L256 428 L107.04 342 L107.04 170Z" fill="none" stroke="url(#markarc)" stroke-width="22" stroke-dasharray="774 258" stroke-linecap="round"/>
+    <path d="M256 198 L306.23 227 L306.23 285 L256 314 L205.77 285 L205.77 227Z"  fill="url(#markcore)"/>
+    <circle cx="107.04" cy="256" r="19" fill="#EAF7FF"/>
+</svg>

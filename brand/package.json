@@ -1,0 +1,16 @@
+{
+  "name": "system-panel-brand",
+  "version": "1.0.0",
+  "private": true,
+  "description": "宿主 SYSTEM · 品牌标识与图标生成器（唯一真源 brand/build.mjs；产物入库，本包只是它的渲染依赖）",
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "sheet": "node build.mjs sheet",
+    "card": "node build.mjs card",
+    "masters": "node build.mjs masters"
+  },
+  "dependencies": {
+    "@resvg/resvg-js": "^2.6.2"
+  }
+}

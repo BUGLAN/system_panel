@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="108" height="108" viewBox="0 0 108 108">
+  <defs>
+    <linearGradient id="afmarc" x1="0" y1="0" x2="0.35" y2="1">
+      <stop offset="0" stop-color="#B6F7FF"/>
+      <stop offset=".45" stop-color="#38E1FF"/>
+      <stop offset="1" stop-color="#1E9BFF"/>
+    </linearGradient>
+    <linearGradient id="afmcore" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#EAFDFF"/>
+      <stop offset=".55" stop-color="#7FE9FF"/>
+      <stop offset="1" stop-color="#38E1FF"/>
+    </linearGradient>
+    <filter id="afmblur" x="-70%" y="-70%" width="240%" height="240%">
+      <feGaussianBlur stdDeviation="0"/>
+    </filter></defs>
+  <g transform="translate(54 54) scale(0.16) translate(-256 -256)">
+    <path d="M256 84 L404.96 170 L404.96 342 L256 428 L107.04 342 L107.04 170Z" fill="none" stroke="#38E1FF" stroke-opacity="0.34" stroke-width="40"/>
+    <path d="M256 84 L404.96 170 L404.96 342 L256 428 L107.04 342 L107.04 170Z" fill="none" stroke="url(#afmarc)" stroke-width="40" stroke-dasharray="774 258" stroke-linecap="round"/>
+    <path d="M256 192 L311.43 224 L311.43 288 L256 320 L200.57 288 L200.57 224Z"  fill="url(#afmcore)"/>
+    <circle cx="107.04" cy="256" r="28" fill="#EAF7FF"/></g>
+</svg>

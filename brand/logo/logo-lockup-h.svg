@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="648" height="300" viewBox="0 0 648 300">
+  <defs>
+    <linearGradient id="lkarc" x1="0" y1="0" x2="0.35" y2="1">
+      <stop offset="0" stop-color="#B6F7FF"/>
+      <stop offset=".45" stop-color="#38E1FF"/>
+      <stop offset="1" stop-color="#1E9BFF"/>
+    </linearGradient>
+    <linearGradient id="lkcore" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#EAFDFF"/>
+      <stop offset=".55" stop-color="#7FE9FF"/>
+      <stop offset="1" stop-color="#38E1FF"/>
+    </linearGradient>
+    <filter id="lkblur" x="-70%" y="-70%" width="240%" height="240%">
+      <feGaussianBlur stdDeviation="20"/>
+    </filter></defs>
+  <g transform="translate(150 150) scale(0.58) translate(-256 -256)"><g filter="url(#lkblur)" opacity="0.5">
+      <path d="M256 84 L404.96 170 L404.96 342 L256 428 L107.04 342 L107.04 170Z" fill="none" stroke="#38E1FF" stroke-width="26" stroke-dasharray="774 258" stroke-linecap="round"/>
+      <path d="M256 198 L306.23 227 L306.23 285 L256 314 L205.77 285 L205.77 227Z"  fill="#38E1FF"/>
+      <circle cx="107.04" cy="256" r="19" fill="#38E1FF"/>
+    </g>
+    <path d="M256 84 L404.96 170 L404.96 342 L256 428 L107.04 342 L107.04 170Z" fill="none" stroke="#38E1FF" stroke-opacity="0.26" stroke-width="26"/>
+    <path d="M256 84 L404.96 170 L404.96 342 L256 428 L107.04 342 L107.04 170Z" fill="none" stroke="url(#lkarc)" stroke-width="26" stroke-dasharray="774 258" stroke-linecap="round"/>
+    <path d="M256 198 L306.23 227 L306.23 285 L256 314 L205.77 285 L205.77 227Z"  fill="url(#lkcore)"/>
+    <circle cx="107.04" cy="256" r="19" fill="#EAF7FF"/></g>
+  <rect x="288" y="72" width="3" height="156" fill="#38E1FF" opacity=".55"/>
+  <text x="330" y="152" font-family="ShuHei" font-size="104" fill="#EAF7FF">宿主</text>
+  <text x="334" y="212" font-family="Tektur" font-size="46" letter-spacing="16" fill="#38E1FF">SYSTEM</text>
+</svg>
