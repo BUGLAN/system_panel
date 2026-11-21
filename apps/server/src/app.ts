@@ -8,6 +8,7 @@ import { ApiError, forbidden, notFound, unauthorized } from './http/errors';
 import type { AppEnv, Deps } from './http/context';
 import { errInfo, log } from './log';
 import { authRoutes, meRoute, readSessionCookie } from './routes/auth';
+import { evidenceRoutes } from './routes/evidence';
 import { flowRoutes } from './routes/flow';
 import { healthRoute } from './routes/health';
 import { consentRoutes, llmRoutes } from './routes/llm';
@@ -70,9 +71,9 @@ export function createApp(deps: Deps): Hono<AppEnv> {
       }
     }
     if (!c.get('user') && !PUBLIC.has(c.req.path)) throw unauthorized();
-    // API 响应一律不缓存（Service Worker 与浏览器都不许存）
-    c.header('Cache-Control', 'no-store');
     await next();
+    // API 响应默认不缓存（Service Worker 与浏览器都不许存）；证据图自己声明 private 缓存
+    if (!c.res.headers.get('Cache-Control')) c.header('Cache-Control', 'no-store');
   });
 
   app.route('/api/health', healthRoute);
@@ -83,6 +84,7 @@ export function createApp(deps: Deps): Hono<AppEnv> {
   app.route('/api/consent', consentRoutes);
   app.route('/api/plan', planRoutes);
   app.route('/api/stream', streamRoute);
+  app.route('/api/evidence', evidenceRoutes);
 
   app.all('/api/*', () => {
     throw notFound();

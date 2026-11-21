@@ -34,6 +34,8 @@ export interface Deps {
   jobs: PlanJobs;
   /** 调 LLM 用的 fetch（测试里换成假端点） */
   fetch: (input: string, init?: RequestInit) => Promise<Response>;
+  /** 交单时最多等在途视觉校验多久（缺省 20 秒） */
+  submitWaitMs?: number;
   /** LLM 重试间隔（测试里设 0；缺省 800ms） */
   llmRetryDelayMs?: number;
 }

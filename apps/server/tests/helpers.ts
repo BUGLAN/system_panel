@@ -1,6 +1,9 @@
 /**
  * 接口测试脚手架：内存 SQLite + app.request()，带一个按用户分开的 Cookie 罐子。
  */
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { createApp } from '../src/app';
 import { createInvite, createUser } from '../src/auth/accounts';
 import { testConfig, type Config } from '../src/config';
@@ -50,12 +53,16 @@ export interface Client {
 export function testServer(over: Partial<Config> = {}, depsOver: Partial<Deps> = {}): TestServer {
   const clock = { t: T0 };
   const dbh = openDb(':memory:');
-  const deps: Deps = makeDeps(testConfig({ origin: ORIGIN, ...over }), dbh, {
-    now: () => clock.t,
-    rnd: () => 0.99,
-    llmRetryDelayMs: 0,
-    ...depsOver,
-  });
+  const deps: Deps = makeDeps(
+    testConfig({ origin: ORIGIN, dataDir: mkdtempSync(join(tmpdir(), 'host-test-')), ...over }),
+    dbh,
+    {
+      now: () => clock.t,
+      rnd: () => 0.99,
+      llmRetryDelayMs: 0,
+      ...depsOver,
+    },
+  );
   const app = createApp(deps);
 
   const client = (): Client => {

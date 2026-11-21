@@ -24,7 +24,7 @@ export async function submitQuest(
     activeIs(f, serial, '这一单已经交过了。');
     return f.active!.evidence.map((e) => e.id);
   });
-  await deps.checks.waitFor(user.id, pre.value);
+  await deps.checks.waitFor(user.id, pre.value, deps.submitWaitMs);
   const r = await runFlow(deps, user, (f, now) => {
     activeIs(f, serial, '这一单已经交过了。');
     if (!f.active!.evidence.length) throw rejected('没有证据，她不收。先上传截图。');

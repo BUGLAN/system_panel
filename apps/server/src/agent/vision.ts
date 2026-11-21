@@ -75,7 +75,10 @@ export async function verifyEvidence(o: {
       timeoutMs: VERIFY_TIMEOUT_MS,
       ...(o.signal ? { signal: o.signal } : {}),
     });
-    if (!r.ok) return unverified(`校验失败：${r.detail}`);
+    if (!r.ok)
+      return unverified(
+        r.failure === 'quota' ? '今天验图的额度用完了，先按未校验收' : `校验失败：${r.detail}`,
+      );
     return parseVerdict(r.text);
   } catch {
     return unverified('校验失败');
