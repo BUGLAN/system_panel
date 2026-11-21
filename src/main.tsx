@@ -4,6 +4,9 @@ import './design/fonts';
 import './design/tokens.css';
 import './design/base.css';
 import { App } from './App';
+import { setupPwa } from './pwa';
+
+setupPwa();
 
 const root = document.getElementById('root');
 if (!root) throw new Error('找不到 #root');

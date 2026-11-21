@@ -61,3 +61,10 @@ svg {
     scroll-behavior: auto !important;
   }
 }
+
+/* 页面不可见时暂停常驻循环动画（省电、不掉帧） */
+.page-hidden *,
+.page-hidden *::before,
+.page-hidden *::after {
+  animation-play-state: paused !important;
+}

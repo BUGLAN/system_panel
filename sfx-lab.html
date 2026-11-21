@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>音效试听 · 开发用</title>
+    <style>
+      body { margin: 0; padding: 24px 18px 60px; background: #06050c; color: #f4f1ff; font: 14px/1.6 system-ui, sans-serif; }
+      h1 { font-size: 20px; margin: 0 0 6px; }
+      p { color: #8c88aa; margin: 0 0 18px; }
+      table { width: 100%; border-collapse: collapse; }
+      td, th { padding: 9px 6px; border-bottom: 1px solid rgba(255,255,255,.08); text-align: left; vertical-align: top; }
+      th { color: #8c88aa; font-weight: 500; font-size: 12px; }
+      button { background: #d6ff3d; color: #0a0910; border: 0; border-radius: 8px; padding: 8px 14px; font-weight: 700; cursor: pointer; }
+      .tier { font: 700 11px monospace; padding: 2px 6px; border-radius: 4px; background: rgba(255,255,255,.08); }
+      .critical { color: #ff3b7a; } .event { color: #ffcc4d; } .ui { color: #3be8ff; } .texture, .loop { color: #8c88aa; }
+      .row { display: flex; gap: 10px; margin-bottom: 16px; align-items: center; }
+    </style>
+  </head>
+  <body>
+    <h1>音效试听</h1>
+    <p>开发环境专用（npm run dev 后打开 /sfx-lab.html），不进构建产物。素材由 tools/audio/gen-sfx.mjs 合成。</p>
+    <div class="row">
+      <button id="hold">按住试「按住认输」</button>
+      <button id="amb">底噪 开 / 关</button>
+      <label>音量 <input id="vol" type="range" min="0" max="1" step="0.05" value="0.8" /></label>
+    </div>
+    <table>
+      <thead><tr><th>事件</th><th>层级</th><th>什么时候响 / 对应的画面反馈</th><th></th></tr></thead>
+      <tbody id="list"></tbody>
+    </table>
+    <script type="module" src="/src/dev/sfxLab.ts"></script>
+  </body>
+</html>
