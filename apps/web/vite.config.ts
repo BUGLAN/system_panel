@@ -37,7 +37,10 @@ export default defineConfig({
         // 预缓存应用壳和音效；字体分片不预缓存（太多），走运行时 CacheFirst
         globPatterns: ['**/*.{js,css,html,ico,png,svg,mp3,wav,webmanifest}'],
         navigateFallback: '/index.html',
+        // 接口一律走网络：不缓存、不拿 index.html 顶替（断网时由前端提示「需要联网」）
+        navigateFallbackDenylist: [/^\/api\//],
         cleanupOutdatedCaches: true,
+        // /api/* 不注册任何路由：Service Worker 不接管（SSE 长连接、图片鉴权都由浏览器直连）
         runtimeCaching: [
           {
             urlPattern: ({ request, url }) =>

@@ -1,14 +1,20 @@
 #!/usr/bin/env node
 /**
  * 构建产物检查（npm run build 之后跑）：
+ *  前端（apps/web/dist）
  *  - manifest：应用名「宿主养成系统」、display standalone、192 / 512 / maskable 图标齐
- *  - Service Worker 预缓存：有 index.html 与全部音效，没有任何 .woff2 字体分片
- *  - 产物里没有疑似 API Key（sk- 开头的长串）
+ *  - Service Worker：预缓存有 index.html 与全部音效、没有 .woff2；导航回退排除 /api；不缓存任何 /api
+ *  - 前端不再直连模型：产物里没有 chat/completions、Authorization: Bearer
+ *  - 没有疑似 Key（sk- 长串）；环境里配了密钥时逐字扫描它们的值
+ *  服务端（apps/server/dist）
+ *  - 没有疑似 Key、没有硬编码的默认端点；环境里的密钥值不在产物里
  */
-import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
-const dist = new URL('../apps/web/dist/', import.meta.url).pathname;
+const root = new URL('../', import.meta.url).pathname;
+const dist = join(root, 'apps/web/dist');
+const serverDist = join(root, 'apps/server/dist');
 const fail = (m) => {
   console.error(`✗ ${m}`);
   process.exitCode = 1;
@@ -35,14 +41,47 @@ const missing = audio.filter((a) => !urls.includes(`audio/${a}`));
 if (missing.length) fail(`音效没进预缓存：${missing.join(', ')}`);
 else ok(`音效 ${audio.length} 件全部预缓存`);
 if (!urls.includes('index.html')) fail('预缓存缺 index.html');
+if (urls.some((u) => u.startsWith('api/'))) fail('预缓存里出现了 /api');
+if (!/denylist:\[\/\^\\\/api\\\/\/\]/.test(sw)) fail('Service Worker 的导航回退没有排除 /api');
+else ok('Service Worker 导航回退排除 /api，不缓存接口');
 
 const walk = (d) =>
   readdirSync(d).flatMap((f) => {
     const p = join(d, f);
     return statSync(p).isDirectory() ? walk(p) : [p];
   });
-const leaks = walk(dist)
-  .filter((p) => /\.(js|html|css|webmanifest)$/.test(p))
-  .filter((p) => /sk-[A-Za-z0-9]{20,}/.test(readFileSync(p, 'utf8')));
-if (leaks.length) fail(`疑似 Key 泄漏：${leaks.join(', ')}`);
-else ok('产物里没有疑似 API Key');
+const textFiles = (d) => walk(d).filter((p) => /\.(js|mjs|html|css|webmanifest|json)$/.test(p));
+
+const webFiles = textFiles(dist);
+const read = (p) => readFileSync(p, 'utf8');
+const direct = webFiles.filter((p) =>
+  /chat\/completions|Bearer \$\{|Authorization:\s*`Bearer/.test(read(p)),
+);
+if (direct.length) fail(`前端产物里还有直连模型的代码：${direct.join(', ')}`);
+else ok('前端不直连模型（没有 chat/completions、Bearer）');
+
+const secrets = ['LLM_API_KEY', 'APP_ENCRYPTION_KEY', 'ADMIN_PASSWORD']
+  .map((k) => process.env[k])
+  .filter((v) => v && v.length >= 8);
+const scan = (files, label) => {
+  const leaks = files.filter((p) => {
+    const t = read(p);
+    return /sk-[A-Za-z0-9]{20,}/.test(t) || secrets.some((s) => t.includes(s));
+  });
+  if (leaks.length) fail(`${label}疑似 Key 泄漏：${leaks.join(', ')}`);
+  else
+    ok(
+      `${label}没有疑似 Key${secrets.length ? `（另逐字扫了 ${secrets.length} 个环境密钥）` : ''}`,
+    );
+};
+scan(webFiles, '前端产物里');
+
+if (existsSync(serverDist)) {
+  const serverFiles = textFiles(serverDist).filter((p) => !p.endsWith('.map'));
+  scan(serverFiles, '服务端产物里');
+  const hard = serverFiles.filter((p) =>
+    /https:\/\/api\.(openai|deepseek|anthropic|moonshot)\./.test(read(p)),
+  );
+  if (hard.length) fail(`服务端产物里有硬编码的默认端点：${hard.join(', ')}`);
+  else ok('服务端产物里没有硬编码的默认端点');
+} else fail('没有服务端产物（先 npm run build）');

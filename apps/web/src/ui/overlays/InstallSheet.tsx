@@ -1,5 +1,5 @@
 /**
- * 「添加到主屏幕」引导：iOS 不会弹安装提示，得手动加；说清楚不加的话浏览器可能清掉数据。
+ * 「添加到主屏幕」引导：iOS 不会弹安装提示，得手动加。数据在服务器上，添加只是为了全屏 + 断网能打开。
  * Android Chrome 支持 beforeinstallprompt 时直接给安装按钮。
  */
 import { setPrefs } from '../../store/services';
@@ -50,9 +50,9 @@ export function InstallSheet() {
       ) : (
         <>
           <p className="sheet-note">
-            这个 App 的数据只存在这个浏览器里。
-            <b>不添加到主屏幕的话，浏览器在空间紧张或长时间没打开时可能把数据清掉。</b>
-            添加之后全屏运行、断网也能打开，记得也定期在设置里「导出存档」。
+            存档在服务器上，换设备登录都还在。
+            <b>添加到主屏幕之后像 App 一样全屏运行，断网也能打开、看最近一次的状态。</b>
+            离线时只能看、不能改，连上网自动同步。
           </p>
           {isIos() ? (
             <ol className="install-steps">
