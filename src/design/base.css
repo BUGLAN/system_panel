@@ -1,0 +1,61 @@
+/* 全局基础样式（参考稿 L21-26） */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body {
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+body {
+  color: var(--txt);
+  font-family: var(--fc);
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-text-size-adjust: 100%;
+  background:
+    radial-gradient(1200px 700px at 15% 10%, rgba(143, 107, 255, 0.2), transparent 60%),
+    radial-gradient(900px 600px at 90% 90%, rgba(59, 232, 255, 0.12), transparent 60%), #030208;
+}
+
+#root {
+  height: 100%;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  outline: none;
+}
+
+input,
+textarea {
+  font: inherit;
+  color: inherit;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+svg {
+  display: block;
+}
+
+/* 尊重系统「减弱动态效果」：组件在此基础上自行降级（见 ui/hooks/useReducedMotion） */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+  }
+}
