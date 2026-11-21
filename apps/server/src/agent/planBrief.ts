@@ -17,7 +17,7 @@ import {
   type PlanSegment,
   type PlanWindow,
 } from '@host/core/goal/plan';
-import { PLAN_GUARD } from './guardrail';
+import { PLAN_GUARD } from '@host/core/agent/guardrail';
 
 /** 兑现单的时限下限（提示词里写给模型） */
 export const PLAN_FINAL_MINUTES = 120;

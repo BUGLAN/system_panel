@@ -7,7 +7,7 @@ import { z } from 'zod';
 import type { MatchView } from '@host/core/api/types';
 import { interviewCardsFor, isVagueGoal } from '@host/core/goal/categories';
 import { asPlanFailure } from '../agent/goalBuilder';
-import { CRISIS_CARE_LINE, isCrisisText } from '../agent/guardrail';
+import { CRISIS_CARE_LINE, isCrisisText } from '@host/core/agent/guardrail';
 import { matchGoal } from '../agent/planAgent';
 import { me, type AppEnv } from '../http/context';
 import { ApiError, notFound } from '../http/errors';

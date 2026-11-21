@@ -4,8 +4,8 @@ import {
   CRISIS_CHAT_LINE,
   isCrisisText,
   refusalOf,
-} from '../../src/agent/guardrail';
-import { BACKSTORY, buildConversation, splitTag, systemPrompt } from '../../src/agent/persona';
+} from '@host/core/agent/guardrail';
+import { BACKSTORY, buildConversation, splitTag, systemPrompt } from '@host/core/agent/persona';
 import { parseVerdict, verifyEvidence } from '../../src/agent/vision';
 import { MemoryStore, keywords, memoryBackendInMemory } from '../../src/agent/memory';
 import { respondChat } from '../../src/agent/chatService';

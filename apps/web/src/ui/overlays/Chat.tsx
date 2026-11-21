@@ -4,8 +4,8 @@
  */
 import { AnimatePresence, motion } from 'motion/react';
 import { useEffect, useRef, useState } from 'react';
-import { CHAT_MAX_CHARS, type ChatMessage } from '../../agent/chatService';
-import type { StatusSummary } from '../../agent/chatTools';
+import { CHAT_MAX_CHARS, type ChatMessage } from '@host/core/agent/chat';
+import type { StatusSummary } from '@host/core/agent/status';
 import { EASE } from '../../design/tokens';
 import { ensureChatLoaded, quickStatus, sendChat, useChat } from '../../store/actions/chat';
 import { setUi, useUi } from '../../store/uiStore';

@@ -1,6 +1,7 @@
 /** 只挂当前场景（离开即卸载，常驻动画随之停掉） */
 import { useUi } from '../../store/uiStore';
 import { Archive } from '../scenes/Archive';
+import { Auth } from '../scenes/Auth';
 import { Board } from '../scenes/Board';
 import { Boot } from '../scenes/Boot';
 import { Consent } from '../scenes/Consent';
@@ -15,6 +16,8 @@ export function SceneHost() {
   switch (scene) {
     case 'boot':
       return <Boot />;
+    case 'auth':
+      return <Auth />;
     case 'consent':
       return <Consent />;
     case 'onboard':

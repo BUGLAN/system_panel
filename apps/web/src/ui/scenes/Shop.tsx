@@ -4,9 +4,8 @@
  */
 import { useRef, useState } from 'react';
 import { ITEMS } from '@host/core/data/items';
-import { QuestFlow } from '@host/core/flow/questFlow';
 import { useGame } from '../../store/gameStore';
-import { now } from '../../store/game';
+import { flowOf, now } from '../../store/game';
 import { back } from '../../store/actions/nav';
 import { buyItem, applyPatchTicket } from '../../store/actions/goals';
 import { Btn, Tap } from '../kit/Btn';
@@ -27,9 +26,9 @@ export function Shop() {
   const locked = it.lv > 0 && host.lv < it.lv;
   const short = it.price - host.coins;
   const bad = locked || short > 0;
-  const patch = new QuestFlow(g).patchStatus(now());
-  const buy = () => {
-    if (buyItem(it.id)) {
+  const patch = flowOf(g).patchStatus(now());
+  const buy = async () => {
+    if (await buyItem(it.id)) {
       const el = car.current?.cardEl(i);
       if (el) {
         el.classList.remove('pop');
@@ -66,7 +65,7 @@ export function Shop() {
           count={ITEMS.length}
           start={0}
           onFocus={setI}
-          onTap={() => buy()}
+          onTap={() => void buy()}
           cardStyle={(k) => ({ ['--gc' as string]: ITEMS[k]?.color ?? '#fff' })}
           render={(k) => {
             const x = ITEMS[k];
@@ -107,13 +106,13 @@ export function Shop() {
       )}
       <div className="shop-foot rv">
         {it.id === 'patch' && (host.items['patch'] ?? 0) > 0 && (
-          <Btn kind="ghost" sm disabled={!patch.ok} onClick={() => applyPatchTicket()}>
+          <Btn kind="ghost" sm disabled={!patch.ok} onClick={() => void applyPatchTicket()}>
             使用
           </Btn>
         )}
         <Btn
           kind="pri"
-          onClick={buy}
+          onClick={() => void buy()}
           style={
             bad
               ? { ['--bd' as string]: '#2c2944', ['--bb' as string]: '#2c2944', color: '#8c88aa' }

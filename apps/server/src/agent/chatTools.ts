@@ -4,71 +4,15 @@
  * 安全钳制：工具只改队列（换单、改时限、降档），不直接改经验 / 晶核——数值只能经结算入账。
  */
 import { RANK_ATTR_POINTS, isRank } from '@host/core/data/rank';
-import { needFor } from '@host/core/data/rewards';
-import { attrName } from '@host/core/data/attrs';
-import { weakestAttr } from '@host/core/goal/daily';
+import { statusSummary } from '@host/core/agent/status';
 import { splitAttrs } from '@host/core/goal/split';
 import { QuestFlow } from '@host/core/flow/questFlow';
 import type { HistoryEntry } from '@host/core/flow/types';
-import { goalDoneCount, goalTotalTasks } from '@host/core/model/goal';
 import type { SaveData } from '@host/core/save/saveData';
 import type { MemoryStore } from './memory';
 import { ToolRegistry, objSchema, toolFail, toolOk, type ToolOutcome } from './tools';
 
-export interface StatusSummary extends Record<string, unknown> {
-  name: string;
-  lv: number;
-  exp: number;
-  expNeed: number;
-  coins: number;
-  streak: number;
-  bestStreak: number;
-  queue: number;
-  goal: string;
-  planDone: number;
-  planTotal: number;
-  weakest: string;
-  weakestValue: number;
-  doneCount: number;
-  failCount: number;
-  items: Record<string, number>;
-  executing: string;
-}
-
-export function statusSummary(s: SaveData): StatusSummary {
-  const h = s.host;
-  const [wk, wv] = weakestAttr(h.attrs);
-  return {
-    name: h.name,
-    lv: h.lv,
-    exp: h.exp,
-    expNeed: needFor(h.lv),
-    coins: h.coins,
-    streak: h.streak,
-    bestStreak: h.bestStreak,
-    queue: s.queue.length,
-    goal: s.goal.text,
-    planDone: goalDoneCount(s.goal),
-    planTotal: goalTotalTasks(s.goal),
-    weakest: attrName(wk),
-    weakestValue: wv,
-    doneCount: h.doneCount,
-    failCount: h.failCount,
-    items: { ...h.items },
-    executing: s.active?.task.name ?? '',
-  };
-}
-
-/** 她的宿主档案一行（系统提示词【宿主档案】位） */
-export function statusLineOf(s: SaveData): string {
-  const st = statusSummary(s);
-  return (
-    `${st.name} · LV${st.lv} · 连击 ${st.streak} · 手里 ${st.queue} 单` +
-    (s.goal.short ? ` · 主线「${s.goal.short}」` : '') +
-    (st.planTotal ? ` · 主线进度 ${st.planDone}/${st.planTotal} 单` : '') +
-    ` · 最弱维 ${st.weakest} ${st.weakestValue} · 连败 ${st.failCount} 次`
-  );
-}
+export { statusLineOf, statusSummary, type StatusSummary } from '@host/core/agent/status';
 
 /** 工具读写存档的接缝：store 侧实现（读最新存档、提交新存档） */
 export interface ChatToolContext {

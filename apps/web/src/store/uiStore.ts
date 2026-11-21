@@ -7,11 +7,11 @@ import { createStore } from 'zustand/vanilla';
 import { useStore } from 'zustand';
 import type { FailOutcome, QuestResult } from '@host/core/flow/types';
 import type { Quest } from '@host/core/model/quest';
-import type { PlanProgress } from '../agent/goalBuilder';
+import type { PlanProgress } from '@host/core/api/types';
 import type { PlanFailure } from '@host/core/goal/planFailure';
 
 export type Scene =
-  'boot' | 'consent' | 'onboard' | 'home' | 'main' | 'board' | 'exec' | 'archive' | 'shop';
+  'boot' | 'auth' | 'consent' | 'onboard' | 'home' | 'main' | 'board' | 'exec' | 'archive' | 'shop';
 
 export interface SceneMeta {
   hud: boolean;
@@ -23,6 +23,7 @@ export interface SceneMeta {
 
 export const SCENES: Record<Scene, SceneMeta> = {
   boot: { hud: false, ghost: '系统', acc: '#d6ff3d', title: '唤醒', sub: 'BOOT' },
+  auth: { hud: false, ghost: '登录', acc: '#3be8ff', title: '登录', sub: 'SIGN IN' },
   consent: { hud: false, ghost: '告知', acc: '#3be8ff', title: '告知', sub: 'NOTICE' },
   onboard: { hud: false, ghost: '绑定', acc: '#d6ff3d', title: '绑定仪式', sub: 'BINDING' },
   home: { hud: true, ghost: '系统', acc: '#d6ff3d', title: '大厅', sub: 'LOBBY' },
@@ -51,7 +52,8 @@ export interface ConfirmReq {
 }
 
 /** 底板类叠层（同一时间只开一个） */
-export type SheetKind = 'system' | 'llm' | 'notice' | 'install' | 'evidence' | 'goalSwap';
+export type SheetKind =
+  'system' | 'llm' | 'notice' | 'install' | 'evidence' | 'goalSwap' | 'account';
 
 /** 全屏演出叠层 */
 export type Show =
@@ -66,7 +68,7 @@ export type Show =
   | { kind: 'fail'; outcome: FailOutcome; line: string };
 
 /** 等 LLM 时的整屏加载卡 */
-export interface PlanJobView {
+export interface PlanJobUi {
   kind: 'match' | 'bind' | 'retry' | 'window' | 'finale' | 'swap';
   title: string;
   progress: PlanProgress;
@@ -80,7 +82,7 @@ export interface UiState {
   confirm: ConfirmReq | null;
   briefing: Quest | null;
   show: Show | null;
-  planJob: PlanJobView | null;
+  planJob: PlanJobUi | null;
   chatOpen: boolean;
   toasts: Toast[];
   /** 新解锁、还没展示的称号 */

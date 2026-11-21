@@ -1,29 +1,30 @@
 /**
- * 接单 → 执行 → 交单 / 认输 / 超时 的编排。
- *  - 所有接单入口先弹「接单前简报」，点【开始计时】才记 startAt（B6）
- *  - 交单：先等在途校验（≤20s）→ 没证据不收 → 结算（当场落盘）→ 窗口走完 / 收官再续拆 → 结算演出
- *  - 认输 / 超时：补救单顶替这一环（主线）；护盾在计时单到点时挡一次（docs/01 Q3）
+ * 接单 → 执行 → 交单 / 认输 / 超时 的编排（规则都在服务端跑，这里管界面节奏与演出）。
+ *  - 所有接单入口先弹「接单前简报」，点【开始计时】才记 startAt（服务器时间，B6）
+ *  - 交单：服务端等在途校验（≤20s）→ 没证据不收 → 结算落库 → 窗口走完 / 收官起续拆任务 → 等任务 → 结算演出
+ *  - 认输 / 超时：补救单顶替这一环（主线）；护盾在计时单到点时挡一次（docs/01 Q3），到点由服务端判
  */
 import { createStore } from 'zustand/vanilla';
 import { useStore } from 'zustand';
+import type { FlowEvent, GiveUpOk, SubmitOk } from '@host/core/api/types';
 import { LINES, fillLine } from '@host/core/data/lines';
 import { itemById, type ItemId } from '@host/core/data/items';
 import { goalFirstOpenIndex } from '@host/core/model/goal';
 import type { Quest } from '@host/core/model/quest';
-import type { QuestResult } from '@host/core/flow/types';
-import { checkTimeout, fail, settle } from '@host/core/flow/settle';
-import { QuestFlow } from '@host/core/flow/questFlow';
+import type { FailOutcome, QuestResult } from '@host/core/flow/types';
+import { deadlineOf } from '@host/core/flow/settle';
 import { dayKey } from '@host/core/time/day';
 import { pad2 } from '@host/core/format';
 import type { PlanFailure } from '@host/core/goal/planFailure';
 import { sfx } from '../../audio/sfx';
 import { haptic } from '../../ui/haptics';
 import { flash, shake } from '../../ui/fx/fx';
-import { commitFlow, game, now, runFlow } from '../game';
+import { flowOf, game, intent, now, onFlowEvents, online, tz } from '../game';
+import { onStream, setActiveReader } from '../stream';
 import { sayHome, sayMain, sayWatch, setUi, toast, uiStore } from '../uiStore';
-import { evidenceStore, evidenceUrl, resetEvidenceUi, waitForChecks } from './evidence';
+import { evidenceStore, evidenceUrl, resetEvidenceUi } from './evidence';
 import { go } from './nav';
-import { followUpPlan } from './plan';
+import { awaitFollowUp } from './plan';
 import { onSecond } from './session';
 
 export interface ExecState {
@@ -41,7 +42,7 @@ export function openBriefing(q: Quest): void {
     void go('exec');
     return;
   }
-  const f = new QuestFlow(g);
+  const f = flowOf(g);
   if (f.isMainLocked(q)) {
     sfx.play('error');
     const first = goalFirstOpenIndex(g.goal);
@@ -59,7 +60,13 @@ export async function startQuest(q: Quest): Promise<void> {
     setUi({ briefing: null });
     return;
   }
-  runFlow((f) => f.accept(q, now()));
+  const r = await intent('/api/flow/accept', { serial: q.serial });
+  if (!r.ok) {
+    sfx.play('error');
+    toast(r.err.message, 'err');
+    if (r.err.code === 'stale') setUi({ briefing: null });
+    return;
+  }
   resetEvidenceUi();
   setUi({ briefing: null });
   sfx.play('stamp');
@@ -68,17 +75,20 @@ export async function startQuest(q: Quest): Promise<void> {
   sayWatch(q.timed ? '任务开始。我会[一直]看着你。' : '打卡单不计时。做完拍下来，今天之内交。');
 }
 
-export function equipItem(id: ItemId): void {
-  const f = new QuestFlow(game());
-  const why = f.itemBlock(id);
+export async function equipItem(id: ItemId): Promise<void> {
+  const why = flowOf().itemBlock(id);
   const it = itemById(id);
   if (why) {
     sfx.play('error');
     toast(`${it?.name ?? ''}：${why}`, 'err');
     return;
   }
-  f.useItem(id);
-  commitFlow(f);
+  const r = await intent('/api/flow/equip', { item: id });
+  if (!r.ok) {
+    sfx.play('error');
+    toast(r.err.message, 'err');
+    return;
+  }
   sfx.play('coin');
   sayWatch(id === 'dbl' ? LINES.itemDbl : id === 'crit' ? LINES.itemCrit : LINES.itemShield);
 }
@@ -106,11 +116,8 @@ export function verdictLine(r: QuestResult): string {
 /** 【提交任务】 */
 export async function submitQuest(): Promise<void> {
   if (execStore.getState().settling || evidenceStore.getState().waiting) return;
-  const a0 = game().active;
-  if (!a0) return;
-  await waitForChecks(a0.evidence.map((e) => e.id));
   const a = game().active;
-  if (!a || a.task.serial !== a0.task.serial) return;
+  if (!a) return;
   if (!a.evidence.length) {
     sfx.play('error');
     haptic.fail();
@@ -119,16 +126,34 @@ export async function submitQuest(): Promise<void> {
     sayWatch('空手来交差？先[上传截图]。');
     return;
   }
+  // 有在途校验：服务端最多等 20 秒，这期间主键显示「她在验证据…」
+  const checking = evidenceStore.getState().checking.length > 0;
+  evidenceStore.setState({ waiting: checking });
   execStore.setState({ settling: true });
   try {
     const firstId = a.evidence[0]?.id ?? null;
+    const r = await intent<SubmitOk & Record<string, unknown>>('/api/flow/submit', {
+      serial: a.task.serial,
+    });
+    evidenceStore.setState({ waiting: false, checking: [] });
+    if (!r.ok) {
+      sfx.play('error');
+      if (r.err.code === 'rejected') {
+        haptic.fail();
+        shake(5, 300);
+        sayWatch('空手来交差？先[上传截图]。');
+      }
+      toast(r.err.message, 'err');
+      return;
+    }
+    const result = r.r.result;
     const evUrl = firstId ? await evidenceUrl(firstId) : null;
-    const f = new QuestFlow(game());
-    const result = settle(f, { now: now() });
-    commitFlow(f); // G4.1：结清就落盘，之后再去拆
     let followUpError: PlanFailure | null = null;
-    if (result.windowEnd || result.finale) {
-      followUpError = await followUpPlan(result.windowEnd ? 'window' : 'finale');
+    if (r.r.followUp) {
+      followUpError = await awaitFollowUp(
+        r.r.followUp.jobId,
+        result.windowEnd ? 'window' : 'finale',
+      );
       if (!followUpError && result.windowEnd) result.windowNext = true;
     }
     result.empty = game().queue.length === 0;
@@ -142,6 +167,7 @@ export async function submitQuest(): Promise<void> {
       },
     });
   } finally {
+    evidenceStore.setState({ waiting: false });
     execStore.setState({ settling: false });
   }
 }
@@ -155,7 +181,7 @@ export async function closeVerdict(): Promise<void> {
   const r = show.result;
   setUi({ show: null });
   if (r.ups.length) {
-    const today = dayKey(now());
+    const today = dayKey(now(), tz());
     const brief = lastLevelUpDay === today;
     lastLevelUpDay = today;
     pendingAfter = { r, err: show.followUpError };
@@ -195,55 +221,89 @@ async function afterSettle(r: QuestResult, followUpError: PlanFailure | null): P
   await go('board', { noHist: true });
 }
 
-/** 按住认输满了 */
-export async function giveUp(): Promise<void> {
-  const r = runFlow((f) => fail(f, { now: now(), how: 'quit' }));
-  if (!r) return;
+function showFail(outcome: FailOutcome, line: string): void {
   sfx.play('fail');
   haptic.fail();
   flash('fail');
-  shake(10, 500);
   resetEvidenceUi();
-  setUi({ show: { kind: 'fail', outcome: r, line: '认输也是一种勇气。不过，别养成习惯。' } });
+  setUi({ show: { kind: 'fail', outcome, line } });
+}
+
+/** 按住认输满了 */
+export async function giveUp(): Promise<void> {
+  const a = game().active;
+  if (!a) return;
+  const r = await intent<GiveUpOk & Record<string, unknown>>('/api/flow/give-up', {
+    serial: a.task.serial,
+  });
+  if (!r.ok) {
+    sfx.play('error');
+    toast(r.err.message, 'err');
+    if (r.err.code === 'stale') void go('home');
+    return;
+  }
+  shake(10, 500);
+  showFail(r.r.outcome, '认输也是一种勇气。不过，别养成习惯。');
 }
 
 /** 失败页：【接下补救单 · 现在做】→ 回大厅直接弹简报（B5） */
 export async function takeRemedyNow(): Promise<void> {
-  const q = runFlow((f) => f.takeRemedy(true));
+  const r = await intent<{ quest: Quest | null }>('/api/flow/take-remedy', { now: true });
   setUi({ show: null });
   await go('home', { noHist: true });
-  if (q) setUi({ briefing: q });
+  if (!r.ok) toast(r.err.message, 'err');
+  else if (r.r.quest) setUi({ briefing: r.r.quest });
 }
 
 /** 失败页：「先放委托板，回大厅」 */
 export async function takeRemedyLater(): Promise<void> {
-  runFlow((f) => f.takeRemedy(false));
+  const r = await intent('/api/flow/take-remedy', { now: false });
   setUi({ show: null });
   await go('home', { noHist: true });
-  sayHome('补救单放委托板上了。[24 小时]，别让它过期。');
+  if (!r.ok) toast(r.err.message, 'err');
+  else sayHome('补救单放委托板上了。[24 小时]，别让它过期。');
 }
 
-// ── 每秒：计时单到点 → 护盾挡一次 / 超时判负 ──────────────────
+// ── 服务端判出来的事：护盾碎 / 超时判负 ─────────────────────────
 
+onFlowEvents((events: FlowEvent[]) => {
+  for (const e of events) {
+    if (e.kind === 'shield') {
+      sfx.play('shield');
+      flash();
+      toast(`护盾碎了：再给你 ${e.extendMin} 分钟。`, 'ok');
+      sayWatch(fillLine(LINES.shieldBreak, { m: `${e.extendMin} 分钟` }));
+    } else if (e.kind === 'timeout') {
+      if (uiStore.getState().show) continue;
+      showFail(e.outcome, '时间到了。……下次别拖到最后一秒。');
+    }
+  }
+});
+
+// ── 每秒：本地走到截止时刻 → 请服务端判（护盾挡一次 / 超时判负）──────────
+
+let tickAt = 0;
 onSecond((t) => {
   const a = game().active;
   if (!a || !a.task.timed) return;
   if (execStore.getState().settling || evidenceStore.getState().waiting) return;
   if (uiStore.getState().show) return;
-  const f = new QuestFlow(game());
-  const out = checkTimeout(f, t);
-  if (out.kind === 'none') return;
-  commitFlow(f);
-  if (out.kind === 'shield') {
-    sfx.play('shield');
-    flash();
-    toast(`护盾碎了：再给你 ${out.extendMin} 分钟。`, 'ok');
-    sayWatch(fillLine(LINES.shieldBreak, { m: `${out.extendMin} 分钟` }));
-    return;
-  }
-  sfx.play('fail');
-  haptic.fail();
-  flash('fail');
-  resetEvidenceUi();
-  setUi({ show: { kind: 'fail', outcome: out.outcome, line: '时间到了。……下次别拖到最后一秒。' } });
+  if (t < deadlineOf(a) || !online()) return;
+  if (Date.now() - tickAt < 5_000) return;
+  tickAt = Date.now();
+  void intent('/api/flow/tick');
+});
+
+// ── 另一台设备改了存档：本地已同步；执行页上的这一单没了就回大厅 ──────────
+
+setActiveReader(() => game().active?.task.serial ?? null);
+onStream({
+  remote: (prev) => {
+    if (prev === null || game().active?.task.serial === prev) return;
+    const ui = uiStore.getState();
+    if (ui.show) return;
+    resetEvidenceUi();
+    if (ui.scene === 'exec') void go('home', { noHist: true });
+    toast('另一台设备刚改过存档，已同步。');
+  },
 });

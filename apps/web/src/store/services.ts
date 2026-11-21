@@ -1,40 +1,31 @@
 /**
- * 运行时服务：LLM 设置 / 同意记录 / 偏好（各自独立存，重置不清）、长期记忆、LLM 客户端工厂。
+ * 运行时服务：账号（我是谁 / 同意记录）、模型设置（服务端存，Key 不回浏览器）、本机偏好（音量等）。
  */
 import { createStore } from 'zustand/vanilla';
 import { useStore } from 'zustand';
-import { LlmClient } from '../agent/llmClient';
-import { MemoryStore } from '../agent/memory';
-import { SystemCopy } from '../agent/copy';
-import { emptySettings, textReady, visionReady, type LlmSettings } from '../agent/settings';
-import { sfx } from '../audio/sfx';
-import { appDb } from './db';
 import {
-  consentValid,
-  defaultPrefs,
-  loadConsent,
-  loadLlmSettings,
-  loadPrefs,
-  memoryBackend,
-  saveConsent,
-  saveLlmSettings,
-  savePrefs,
-  withdrawConsent,
-  type ConsentRecord,
-  type Prefs,
-} from './sideRepos';
+  CONSENT_VERSION,
+  type LlmSettingsForm,
+  type LlmSettingsView,
+  type LlmTestView,
+  type MeView,
+  type UsageView,
+} from '@host/core/api/types';
+import { sfx } from '../audio/sfx';
+import { api } from './api';
+import { defaultPrefs, loadPrefs, rememberMe, savePrefs, type Prefs } from './cache';
+import { syncStore } from './game';
 
 export interface ServicesState {
   loaded: boolean;
-  llm: LlmSettings;
-  consent: ConsentRecord | null;
+  /** 模型设置（打开设置页时拉；没拉过 = null） */
+  llm: LlmSettingsView | null;
   prefs: Prefs;
 }
 
 export const servicesStore = createStore<ServicesState>()(() => ({
   loaded: false,
-  llm: emptySettings(),
-  consent: null,
+  llm: null,
   prefs: defaultPrefs(),
 }));
 
@@ -43,79 +34,66 @@ export function useServices<T>(sel: (s: ServicesState) => T): T {
 }
 
 export async function loadServices(): Promise<void> {
-  const db = appDb();
-  const [llm, consent, prefs] = await Promise.all([
-    loadLlmSettings(db),
-    loadConsent(db),
-    loadPrefs(db),
-  ]);
-  servicesStore.setState({ loaded: true, llm, consent, prefs });
+  const prefs = await loadPrefs();
+  servicesStore.setState({ loaded: true, prefs });
   sfx.setMuted(prefs.muted);
   sfx.setVolume(prefs.volume);
 }
 
-export const hasConsent = () => consentValid(servicesStore.getState().consent);
+export const me = () => syncStore.getState().me;
 
-export async function setLlmSettings(s: LlmSettings): Promise<void> {
-  servicesStore.setState({ llm: s });
-  await saveLlmSettings(appDb(), s);
+export function setMe(m: MeView | null): void {
+  syncStore.setState({ me: m });
+  if (m) void rememberMe(m);
 }
 
+export const hasConsent = () => me()?.consent?.version === CONSENT_VERSION;
+
 export async function giveConsent(): Promise<void> {
-  const rec = await saveConsent(appDb(), Date.now());
-  servicesStore.setState({ consent: rec });
+  const r = await api<{ me: MeView }>('POST', '/api/consent');
+  setMe(r.me);
 }
 
 export async function revokeConsent(): Promise<void> {
-  await withdrawConsent(appDb());
-  servicesStore.setState({ consent: null });
+  const r = await api<{ me: MeView }>('DELETE', '/api/consent');
+  setMe(r.me);
 }
+
+export async function loadLlmSettings(): Promise<LlmSettingsView | null> {
+  try {
+    const r = await api<{ settings: LlmSettingsView }>('GET', '/api/llm/settings');
+    servicesStore.setState({ llm: r.settings });
+    return r.settings;
+  } catch {
+    return servicesStore.getState().llm;
+  }
+}
+
+export async function saveLlmSettings(f: LlmSettingsForm): Promise<LlmSettingsView> {
+  const r = await api<{ settings: LlmSettingsView }>('PUT', '/api/llm/settings', f);
+  servicesStore.setState({ llm: r.settings });
+  return r.settings;
+}
+
+/** 由已存的设置拼一份表单（Key 不带 = 不改） */
+export function formOf(s: LlmSettingsView): LlmSettingsForm {
+  return {
+    useOwn: s.useOwn,
+    base: s.base,
+    textModel: s.textModel,
+    visionModel: s.visionModel,
+    temperature: s.temperature,
+    visionEnabled: s.visionEnabled,
+  };
+}
+
+export const testLlm = (f: LlmSettingsForm) => api<LlmTestView>('POST', '/api/llm/test', f);
+export const llmUsage = () => api<UsageView>('GET', '/api/llm/usage');
 
 export async function setPrefs(p: Partial<Prefs>): Promise<void> {
   const next = { ...servicesStore.getState().prefs, ...p };
   servicesStore.setState({ prefs: next });
   sfx.setMuted(next.muted);
   sfx.setVolume(next.volume);
-  await savePrefs(appDb(), next);
-}
-
-function client(model: string, temperature?: number): LlmClient {
-  const s = servicesStore.getState().llm;
-  return new LlmClient(
-    {
-      base: s.base,
-      apiKey: s.apiKey,
-      model,
-      ...(temperature !== undefined ? { temperature } : {}),
-    },
-    { consent: hasConsent },
-  );
-}
-
-/** 文本模型客户端（端点 / Key / 模型没填全 = null，但 noKey 由调用方按失败卡处理时可用 textClientAny） */
-export function textClient(): LlmClient | null {
-  const s = servicesStore.getState().llm;
-  return textReady(s) ? client(s.textModel, s.temperature) : null;
-}
-
-/** 不管填没填全都给一个（拆解链路要拿到 noKey 失败去走失败卡） */
-export function textClientAny(): LlmClient {
-  const s = servicesStore.getState().llm;
-  return client(s.textModel, s.temperature);
-}
-
-/** 视觉校验客户端（开关关了 / 没配视觉模型 = null → 证据按未校验照收） */
-export function visionClient(): LlmClient | null {
-  const s = servicesStore.getState().llm;
-  return visionReady(s) ? client(s.visionModel) : null;
-}
-
-let mem: MemoryStore | null = null;
-export function memory(): MemoryStore {
-  mem ??= new MemoryStore(memoryBackend(appDb()));
-  return mem;
-}
-
-export function copy(): SystemCopy {
-  return new SystemCopy(textClient(), memory());
+  await savePrefs(next);
 }

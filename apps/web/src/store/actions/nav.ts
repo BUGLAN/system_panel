@@ -37,7 +37,8 @@ export async function go(
       cur.scene !== 'boot' &&
       !opt.noHist &&
       cur.scene !== 'onboard' &&
-      cur.scene !== 'consent'
+      cur.scene !== 'consent' &&
+      cur.scene !== 'auth'
     ) {
       hist = [...hist, cur.scene].slice(-10);
     }
@@ -82,7 +83,13 @@ export function handleBackKey(): void {
   if (s.sheet) return setUi({ sheet: null });
   if (s.chatOpen) return setUi({ chatOpen: false });
   if (s.scene === 'exec') return void go('home');
-  if (s.scene === 'home' || s.scene === 'boot' || s.scene === 'onboard' || s.scene === 'consent')
+  if (
+    s.scene === 'home' ||
+    s.scene === 'boot' ||
+    s.scene === 'onboard' ||
+    s.scene === 'consent' ||
+    s.scene === 'auth'
+  )
     return;
   back();
 }

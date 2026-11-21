@@ -88,3 +88,69 @@ export interface MatchView {
   days: number;
   quota: number;
 }
+
+// ── 账号 / 设置 / 证据（前端看到的形状）─────────────────────────
+
+/** 告知文案有实质修改时 +1，已同意的人要重签（v2：数据改存服务器） */
+export const CONSENT_VERSION = 2;
+
+export interface MeView {
+  username: string;
+  role: 'admin' | 'user';
+  tz: string;
+  consent: { version: number; at: number } | null;
+}
+
+/** 模型设置（接口永远不回 Key 明文） */
+export interface LlmSettingsView {
+  useOwn: boolean;
+  base: string;
+  hasOwnKey: boolean;
+  /** 末 4 位：…abcd */
+  keyHint: string;
+  textModel: string;
+  visionModel: string;
+  temperature: number;
+  visionEnabled: boolean;
+  /** 服务器默认配好了没有 */
+  serverDefault: { text: boolean; vision: boolean };
+}
+
+export interface LlmSettingsForm {
+  useOwn: boolean;
+  base: string;
+  /** 不传 = 不改；空串 = 清掉 */
+  apiKey?: string;
+  textModel: string;
+  visionModel: string;
+  temperature: number;
+  visionEnabled: boolean;
+}
+
+export interface ProbeLine {
+  ok: boolean;
+  line: string;
+}
+
+export interface LlmTestView {
+  mode: 'own' | 'server';
+  text: ProbeLine;
+  vision: ProbeLine;
+}
+
+export interface UsageView {
+  day: string;
+  used: { text: number; vision: number };
+  /** null = 不限（自己的 Key / 管理员） */
+  limits: { text: number; vision: number } | null;
+}
+
+/** 后台视觉校验的结论（SSE verdict） */
+export interface VerdictEvent {
+  id: string;
+  serial: number;
+  /** kept 照收 / rejected 不符撤槽 / gone 已交单或已撤，结论丢弃 */
+  result: 'kept' | 'rejected' | 'gone';
+  status: string;
+  note: string;
+}

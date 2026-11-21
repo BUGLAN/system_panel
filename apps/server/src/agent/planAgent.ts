@@ -12,7 +12,7 @@ import {
   type PlanFailureCode,
 } from '@host/core/goal/planFailure';
 import { PLAN_SEGMENT_CONCURRENCY, planSegmentsFor, type TaskSpec } from '@host/core/goal/plan';
-import { MATCH_GUARD, refusalOf } from './guardrail';
+import { MATCH_GUARD, refusalOf } from '@host/core/agent/guardrail';
 import type { LlmClient, LlmFailure, LlmMessage } from './llmClient';
 import {
   newMatchDraft,
@@ -21,7 +21,7 @@ import {
   setPlanTool,
   type GoalMatch,
 } from './mainlineTools';
-import { buildConversation, splitTag, type WireMessage } from './persona';
+import { buildConversation, splitTag, type WireMessage } from '@host/core/agent/persona';
 import { briefScenario, briefUserText, briefWindow, type PlanBrief } from './planBrief';
 import { StrictToolRegistry } from './tools';
 

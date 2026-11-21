@@ -13,7 +13,7 @@
   ],
   "scripts": {
     "dev": "node scripts/dev.mjs",
-    "dev:web": "npm run dev -w @host/web",
+    "dev:web": "npm run dev -w @host/web --",
     "dev:server": "tsx watch --clear-screen=false --env-file-if-exists=.env apps/server/src/main.ts",
     "build": "npm run build -w @host/web && npm run build -w @host/server",
     "start": "node --env-file-if-exists=.env apps/server/dist/main.mjs",

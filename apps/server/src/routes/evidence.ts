@@ -8,6 +8,7 @@ import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { MAX_EVIDENCE } from '@host/core/flow/questFlow';
 import type { Quest } from '@host/core/model/quest';
+import type { VerdictEvent } from '@host/core/api/types';
 import { unverified, verifyEvidence } from '../agent/vision';
 import type { AuthUser } from '../auth/accounts';
 import {
@@ -25,13 +26,7 @@ import { runFlow } from '../flow/runner';
 import { llmFor } from '../llm/gateway';
 import { errInfo, log } from '../log';
 
-export interface VerdictEvent {
-  id: string;
-  serial: number;
-  result: 'kept' | 'rejected' | 'gone';
-  status: string;
-  note: string;
-}
+export type { VerdictEvent };
 
 /** 后台校验一张：结论在锁内落到槽上，推给前端 */
 function startCheck(

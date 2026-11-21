@@ -5,7 +5,7 @@
 import { useState } from 'react';
 import { ONBOARD_PRESETS } from '@host/core/goal/categories';
 import { goalDoneCount, goalPassedDays, goalTotalTasks } from '@host/core/model/goal';
-import { planFailLine, planFailTitle } from '../../agent/goalBuilder';
+import { planFailLine, planFailTitle } from '@host/core/goal/planFailCopy';
 import { useGame } from '../../store/gameStore';
 import { now } from '../../store/game';
 import { submitGoalSwap, swapStore, useSwap } from '../../store/actions/goals';

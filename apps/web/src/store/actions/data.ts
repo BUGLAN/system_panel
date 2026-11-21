@@ -1,11 +1,9 @@
 /**
- * 存档的整体操作：重置、导出、导入（PWA 的数据只在这个浏览器里，导出是唯一的备份手段）。
+ * 存档的整体操作：重置、导出、导入（数据在服务器上；导出包与旧版格式一致，可以互相导）。
  */
 import { bundleFileName } from '@host/core/save/bundle';
-import { freshSave } from '@host/core/save/saveData';
-import { dataRepo } from '../app';
-import { game, resetHistoryCache } from '../game';
-import { gameStore } from '../gameStore';
+import { api } from '../api';
+import { now, resetHistoryCache, syncStore } from '../game';
 import { confirmBox, setUi, toast } from '../uiStore';
 import { resetBind } from './bind';
 import { clearChatState } from './chat';
@@ -15,18 +13,22 @@ import { cancelPlanJob } from './planJob';
 export async function resetAll(): Promise<void> {
   const ok = await confirmBox({
     title: '重置存档？',
-    body: '等级、晶核、主线、名牒、聊天记录、证据照片——\n[她记住的你，全部清空]。\n模型设置和告知同意会保留。',
+    body: '等级、晶核、主线、名牒、聊天记录、证据照片——\n[她记住的你，全部清空]。\n账号、模型设置和告知同意会保留。',
     yes: '重置',
     no: '算了',
     danger: true,
   });
   if (!ok) return;
+  try {
+    await api('POST', '/api/data/reset', { baseVersion: syncStore.getState().version });
+  } catch (e) {
+    toast(e instanceof Error ? e.message : '重置没成功。', 'err');
+    return;
+  }
   cancelPlanJob();
   setUi({ sheet: null, show: null, briefing: null, chatOpen: false });
-  await dataRepo.wipe();
   resetHistoryCache();
   clearChatState();
-  gameStore.getState().hydrate(freshSave(Date.now()), 'none');
   resetBind();
   await go('onboard', { noHist: true });
   toast('存档已清空。她假装不认识你了。');
@@ -34,20 +36,21 @@ export async function resetAll(): Promise<void> {
 
 export async function exportSave(): Promise<void> {
   try {
-    const text = await dataRepo.exportText(game());
-    const blob = new Blob([text], { type: 'application/json' });
+    const res = await fetch('/api/data/export', { credentials: 'same-origin' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const blob = await res.blob();
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = bundleFileName(Date.now());
+    a.download = bundleFileName(now());
     document.body.appendChild(a);
     a.click();
     a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 4000);
-    toast('存档已导出。收好这份文件，换设备或清了浏览器数据就靠它。', 'ok');
+    toast('存档已导出。这是服务器上数据的一份离线备份（不含 Key）。', 'ok');
   } catch (e) {
     console.error(e);
-    toast('导出失败了。再试一次？', 'err');
+    toast('导出失败了。联网后再试一次？', 'err');
   }
 }
 
@@ -68,15 +71,19 @@ export async function importSave(file: File): Promise<void> {
   }
   const ok = await confirmBox({
     title: '导入存档？',
-    body: '会用这份文件整体覆盖当前的存档、聊天、流水、记忆和照片。\n导入前会先自动留一份当前数据的备份。\n模型设置不受影响。',
+    body: '会用这份文件整体覆盖服务器上你的存档、聊天、流水、记忆和照片。\n导入前会先自动留一份当前数据的备份。\n账号和模型设置不受影响。',
     yes: '导入',
     no: '算了',
     danger: true,
   });
   if (!ok) return;
-  const res = await dataRepo.importBundle(parsed, game());
-  if (!res.ok) {
-    toast(res.reason, 'err');
+  try {
+    await api('POST', '/api/data/import', {
+      baseVersion: syncStore.getState().version,
+      bundle: parsed,
+    });
+  } catch (e) {
+    toast(e instanceof Error ? e.message : '导入失败了。', 'err');
     return;
   }
   toast('导入成功，马上重新载入。', 'ok');

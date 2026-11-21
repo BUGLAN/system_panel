@@ -6,7 +6,7 @@
  */
 import { useLayoutEffect, useRef } from 'react';
 import { attrsText, kindLabel, lootText, questCode, timeLabel } from '@host/core/flow/questText';
-import { QuestFlow } from '@host/core/flow/questFlow';
+import { flowOf } from '../../store/game';
 import type { Quest } from '@host/core/model/quest';
 import { RANK_COLORS } from '../../design/tokens';
 import { sfx } from '../../audio/sfx';
@@ -84,7 +84,7 @@ export function Board() {
       ind.style.transform = `translateX(${b.offsetLeft - 4}px)`;
     }
   }, [filter]);
-  const f = new QuestFlow(g);
+  const f = flowOf(g);
   const all = g.queue;
   const shown = all.filter((q) => filter === 'all' || q.kind === filter);
   const noGoal = g.goal.plan.length === 0;
@@ -156,7 +156,7 @@ export function Board() {
                   去立目标
                 </Btn>
               ) : (
-                <Btn kind="ghost" sm onClick={refillDailies}>
+                <Btn kind="ghost" sm onClick={() => void refillDailies()}>
                   再要一批委托
                 </Btn>
               )}

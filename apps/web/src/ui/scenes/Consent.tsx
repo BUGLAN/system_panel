@@ -1,21 +1,22 @@
 /**
- * 首启告知页（简化版，docs/00 第六节）：目标、聊天、照片会发给你自己配置的模型服务商；
- * 同意后才发请求。不同意就留在本页（没有这些她没法工作）。
+ * 首启告知页（v2，docs/05 Q5）：数据存在这台服务器上；目标 / 聊天 / 照片经服务器发给模型服务商；
+ * 服务器管理员在技术上能接触到数据。同意记录跟账号走，同意后才发请求；不同意就留在本页。
  */
 import { useRef, useState } from 'react';
 import { giveConsent } from '../../store/services';
 import { game } from '../../store/game';
 import { go } from '../../store/actions/nav';
+import { toast } from '../../store/uiStore';
 import { Btn } from '../kit/Btn';
 import { Typewriter } from '../kit/Typewriter';
 import { useReveal } from '../hooks/useReveal';
 
 export const NOTICE_ROWS: Array<[string, string]> = [
-  ['目标原文与访谈答案', '发给你配置的模型服务商，拆成任务清单'],
-  ['聊天内容', '发给你配置的模型服务商，生成她的回复'],
-  ['证据照片', '压缩后发给你配置的视觉模型，核对和任务对不对得上'],
-  ['API Key', '只存在这台设备的浏览器里，直接发给服务商，不经过任何中转'],
-  ['存档', '等级、主线、记录、照片都只存在这台设备的浏览器里'],
+  ['存档', '等级、主线、记录、照片存在这台服务器上，换设备登录还在'],
+  ['目标原文与访谈答案', '经服务器发给模型服务商（服务器配的，或你自己填的），拆成任务清单'],
+  ['聊天内容', '经服务器发给模型服务商，生成她的回复'],
+  ['证据照片', '压缩后存在服务器，并发给视觉模型核对；只有你自己的账号能看到'],
+  ['谁能看到', '服务器管理员在技术上能接触到数据库和照片；App 里没有任何查看别人数据的功能'],
 ];
 
 export function NoticeList() {
@@ -34,11 +35,16 @@ export function NoticeList() {
 export function Consent() {
   const ref = useRef<HTMLElement>(null);
   const [line, setLine] = useState(
-    '拆任务、陪你说话、验证据，都要把内容交给[你自己配置的模型服务商]过一遍。',
+    '你的档存在[这台服务器]上。拆任务、陪你说话、验证据，都要经服务器交给模型服务商过一遍。',
   );
   useReveal(ref);
   const agree = async () => {
-    await giveConsent();
+    try {
+      await giveConsent();
+    } catch (e) {
+      toast(e instanceof Error ? e.message : '没记上，再点一次。', 'err');
+      return;
+    }
     const g = game();
     await go(g.goal.plan.length === 0 && !g.pendingGoal ? 'onboard' : g.active ? 'exec' : 'home');
   };

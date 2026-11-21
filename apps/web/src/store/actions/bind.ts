@@ -1,33 +1,22 @@
 /**
  * 绑定仪式（首次立目标）：输入目标 → 匹配类目 → 3 张访谈卡 → 拆第一段 → 大厅。
  * 拆解失败停在复核态（B1）：错误卡 + 已答的卡 +【重试拆解】【换个说法】「改答案」「先跳过」，答案不清空。
- * 「先跳过」记住目标、先发当天日常（C5）。移植自 flutter-final main.dart 的绑定编排。
+ * 「先跳过」记住目标、先发当天日常（C5）。匹配与拆解都在服务端跑，这里只管界面节奏。
  */
 import { createStore } from 'zustand/vanilla';
 import { useStore } from 'zustand';
-import { buildGoalWithAgent, asPlanFailure } from '../../agent/goalBuilder';
-import { CRISIS_CARE_LINE, isCrisisText } from '../../agent/guardrail';
-import type { GoalMatch } from '../../agent/mainlineTools';
-import { matchGoal } from '../../agent/planAgent';
+import type { MatchView } from '@host/core/api/types';
+import { CRISIS_CARE_LINE, isCrisisText } from '@host/core/agent/guardrail';
 import { LINES } from '@host/core/data/lines';
 import type { InterviewCard } from '@host/core/data/categoryTypes';
-import {
-  BIND_GIFT,
-  applyBindGift,
-  interviewCardsFor,
-  isVagueGoal,
-  memoriesFromInterview,
-} from '@host/core/goal/categories';
+import { BIND_GIFT, isVagueGoal } from '@host/core/goal/categories';
 import type { PlanFailure } from '@host/core/goal/planFailure';
-import type { Goal } from '@host/core/model/goal';
-import { dayKey } from '@host/core/time/day';
 import { sfx } from '../../audio/sfx';
-import { saveRepo } from '../app';
-import { game, now, runFlow } from '../game';
-import { memory, textClientAny } from '../services';
+import { ApiError, api } from '../api';
+import { game, intent } from '../game';
 import { sayHome, toast } from '../uiStore';
 import { go } from './nav';
-import { withPlanJob } from './planJob';
+import { asFailure, startServerJob, withPlanJob } from './planJob';
 
 export type BindStage = 'ask' | 'interview' | 'review';
 
@@ -37,7 +26,8 @@ export interface BindState {
   text: string;
   /** 已经交给她的那句（复核态 / 换个说法回来用） */
   goalText: string;
-  match: GoalMatch | null;
+  /** 匹配出的类目（服务端记着同一句的匹配结果，拆第一段时不再匹配） */
+  match: MatchView | null;
   cards: InterviewCard[];
   answers: Record<string, string>;
   idx: number;
@@ -89,20 +79,23 @@ export async function submitGoal(): Promise<void> {
   // 换个说法回来、还是同一句：类目卡组没变就直接复核，不重答
   set({ error: null, goalText: typed, line: '……我看看这是哪一类。' });
   const r = await withPlanJob({ kind: 'match', title: '她在看这条目标' }, () =>
-    matchGoal({ client: textClientAny(), goalText: typed }),
+    api<{ match: MatchView; cards: InterviewCard[] }>('POST', '/api/plan/match', { text: typed }),
   );
   if (!r) return;
   if (!r.ok) {
+    if (r.error instanceof ApiError && r.error.code === 'crisis') {
+      set({ error: null, line: CRISIS_CARE_LINE });
+      return;
+    }
     sfx.play('error');
     set({
-      error: asPlanFailure(r.error),
+      error: asFailure(r.error),
       line: '这一步没走通。答案还没开始答，[重试]或者先跳过。',
     });
     return;
   }
-  const m = r.value;
-  const cards = interviewCardsFor(m.cat, game().host.lv);
-  const sameDeck = prev.match?.cat.id === m.cat.id && cards.every((c) => prev.answers[c.id]);
+  const { match: m, cards } = r.value;
+  const sameDeck = prev.match?.catId === m.catId && cards.every((c) => prev.answers[c.id]);
   sfx.play('deal');
   if (sameDeck) {
     set({
@@ -148,60 +141,28 @@ export function prevCard(): void {
   if (s.idx > 0) set({ idx: s.idx - 1 });
 }
 
-/** ③ 拆第一段（首目标：只出 E~C） */
+/** ③ 拆第一段（首目标：只出 E~C）；服务端拆好直接落库（主线 + 当天日常 + 见面礼 + 访谈记忆） */
 export async function startBuild(): Promise<void> {
   const s = bindStore.getState();
-  const m = s.match;
-  if (!m) return;
+  if (!s.match) return;
   set({ error: null, line: '……行，让我把这条拆开。' });
   const r = await withPlanJob({ kind: 'bind', title: '拆第一段' }, (onProgress) =>
-    buildGoalWithAgent({
-      client: textClientAny(),
-      text: s.goalText,
-      at: now(),
-      firstGoal: true,
-      answers: s.answers,
-      match: m,
-      onProgress,
-    }),
+    startServerJob({ kind: 'bind', text: s.goalText, answers: s.answers }, onProgress),
   );
   if (!r) return;
   if (!r.ok) {
     sfx.play('error');
-    const e = asPlanFailure(r.error);
+    const e = asFailure(r.error);
     set({ stage: 'review', error: e, line: '这次没拆明白。答案我都记着——[重试]，或者换个说法。' });
     return;
   }
-  await landFirstGoal(r.value.goal, s.answers);
+  await afterFirstGoal();
 }
 
-/** 首目标落库：主线进在手窗口 + 当天日常 + 见面礼 + 访谈记忆，进大厅 */
-export async function landFirstGoal(goal: Goal, answers: Record<string, string>): Promise<void> {
-  saveRepo.unfreeze();
-  const t = now();
-  runFlow((f) => {
-    const live = f.queue.length > 0 || f.save.pendingGoal.length > 0;
-    f.newGoal(goal);
-    if (!live) f.queue.push(...f.genTodaysDailies());
-    f.host.items = applyBindGift(f.host.items);
-    f.meta.lastRollDay = dayKey(t);
-    f.notify();
-  });
+/** 首目标落库之后：进大厅，她报数，见面礼 toast */
+export async function afterFirstGoal(): Promise<void> {
   sfx.play('unlock');
-  const cat = bindStore.getState().match?.cat;
-  if (cat) {
-    for (const text of memoriesFromInterview({
-      cat,
-      answers,
-      goalText: goal.text,
-      days: goal.days,
-    })) {
-      await memory()
-        .add(text, 'interview', 2)
-        .catch(() => undefined);
-    }
-  }
-  const n = goal.plan.length;
+  const n = game().goal.plan.length;
   await go('home');
   resetBind();
   sayHome(`排好了。先排 [[${n}]] 张，一天一张；做完我再往下拆。`);
@@ -236,11 +197,12 @@ export function editAnswers(): void {
 export async function skipBind(): Promise<void> {
   const s = bindStore.getState();
   const keep = (s.goalText || s.text).trim();
-  saveRepo.unfreeze();
-  runFlow((f) => {
-    f.skipPlan(keep);
-    f.meta.lastRollDay = dayKey(now());
-  });
+  const r = await intent('/api/flow/skip-plan', { text: keep });
+  if (!r.ok) {
+    sfx.play('error');
+    toast(r.err.message, 'err');
+    return;
+  }
   await go('home');
   resetBind();
   sayHome(

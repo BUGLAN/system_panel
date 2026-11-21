@@ -3,9 +3,7 @@
  */
 import { createStore } from 'zustand/vanilla';
 import { useStore } from 'zustand';
-import { asPlanFailure, buildGoalWithAgent } from '../../agent/goalBuilder';
-import { statusLineOf } from '../../agent/chatTools';
-import { CRISIS_CARE_LINE, isCrisisText } from '../../agent/guardrail';
+import { CRISIS_CARE_LINE, isCrisisText } from '@host/core/agent/guardrail';
 import { itemById } from '@host/core/data/items';
 import { titleName } from '@host/core/data/titles';
 import { isVagueGoal } from '@host/core/goal/categories';
@@ -13,66 +11,70 @@ import { DAILY_CAP } from '@host/core/goal/daily';
 import type { PlanFailure } from '@host/core/goal/planFailure';
 import { goalHasMoreWindows } from '@host/core/model/goal';
 import { sfx } from '../../audio/sfx';
-import { game, now, runFlow } from '../game';
-import { memory, textClientAny } from '../services';
+import { flowOf, game, intent, now } from '../game';
 import { confirmBox, sayMain, setUi, toast } from '../uiStore';
 import { resetBind, setBindText } from './bind';
 import { go } from './nav';
-import { withPlanJob } from './planJob';
+import { asFailure, startServerJob, withPlanJob } from './planJob';
 
 /** 委托板清空后「再要一批委托」：补 2 张日常（日上限 6） */
-export function refillDailies(): void {
+export async function refillDailies(): Promise<void> {
   const inQueue = game().queue.filter((q) => q.kind === 'daily').length;
-  const room = Math.max(0, DAILY_CAP - inQueue);
-  if (room === 0) {
+  if (Math.max(0, DAILY_CAP - inQueue) === 0) {
     toast('今天的日常已经给满了。', 'err');
     return;
   }
-  runFlow((f) => {
-    f.queue.push(...f.genDailies(Math.min(2, room)));
-    f.notify();
-  });
+  const r = await intent('/api/flow/refill');
+  if (!r.ok) {
+    sfx.play('error');
+    toast(r.err.message, 'err');
+    return;
+  }
   sfx.play('success');
   toast('她叹了口气，又塞给你几单。', 'ok');
 }
 
-export function buyItem(id: string): boolean {
+export async function buyItem(id: string): Promise<boolean> {
   const it = itemById(id);
-  const ok = runFlow((f) => {
-    const why = f.buyBlock(id);
-    if (why) {
-      sfx.play('error');
-      toast(why === '晶核不够。' ? '钱包比你的决心还薄。' : `${it?.name ?? ''}：${why}`, 'err');
-      return false;
-    }
-    return f.buy(id);
-  });
-  if (ok) {
-    sfx.play('buy');
-    toast(`${it?.name ?? ''} ×1 入库。别浪费。`, 'ok');
+  const why = flowOf().buyBlock(id);
+  const say = (w: string) =>
+    toast(w === '晶核不够。' ? '钱包比你的决心还薄。' : `${it?.name ?? ''}：${w}`, 'err');
+  if (why) {
+    sfx.play('error');
+    say(why);
+    return false;
   }
-  return ok;
+  const r = await intent('/api/flow/buy', { item: id });
+  if (!r.ok) {
+    sfx.play('error');
+    if (r.err.code === 'rejected') say(r.err.message);
+    else toast(r.err.message, 'err');
+    return false;
+  }
+  sfx.play('buy');
+  toast(`${it?.name ?? ''} ×1 入库。别浪费。`, 'ok');
+  return true;
 }
 
-export function applyPatchTicket(): boolean {
-  const t = now();
-  const r = runFlow((f) => {
-    const st = f.patchStatus(t);
-    if (!st.ok) {
-      sfx.play('error');
-      toast(st.reason, 'err');
-      return false;
-    }
-    return f.usePatch(t);
-  });
-  if (r) {
-    sfx.play('success');
-    toast(`补签成功，连胜回到 ${game().host.streak} 天。这叫补救，不叫作弊。`, 'ok');
+export async function applyPatchTicket(): Promise<boolean> {
+  const st = flowOf().patchStatus(now());
+  if (!st.ok) {
+    sfx.play('error');
+    toast(st.reason, 'err');
+    return false;
   }
-  return r;
+  const r = await intent('/api/flow/patch');
+  if (!r.ok) {
+    sfx.play('error');
+    toast(r.err.message, 'err');
+    return false;
+  }
+  sfx.play('success');
+  toast(`补签成功，连胜回到 ${game().host.streak} 天。这叫补救，不叫作弊。`, 'ok');
+  return true;
 }
 
-export function wearTitle(id: string): void {
+export async function wearTitle(id: string): Promise<void> {
   const h = game().host;
   if (!h.ownedTitles.includes(id)) {
     sfx.play('error');
@@ -88,7 +90,12 @@ export function wearTitle(id: string): void {
     toast('已经戴着了。再戴一次也不会更帅。');
     return;
   }
-  runFlow((f) => f.equip(id));
+  const r = await intent('/api/flow/wear', { title: id });
+  if (!r.ok) {
+    sfx.play('error');
+    toast(r.err.message, 'err');
+    return;
+  }
   sfx.play('unlock');
   toast(`已佩戴「${titleName(id)}」。她瞥了一眼，没说话。`, 'ok');
 }
@@ -146,30 +153,20 @@ export async function submitGoalSwap(): Promise<void> {
     danger: true,
   });
   if (!ok) return;
-  const prevId = game().goal.at;
   swapStore.setState({ error: null, line: '……行，让我把这条拆开。' });
   const r = await withPlanJob({ kind: 'swap', title: '换一条主线' }, (onProgress) =>
-    buildGoalWithAgent({
-      client: textClientAny(),
-      text: typed,
-      at: now(),
-      statusLine: statusLineOf(game()),
-      digest: (q) => memory().digest(q),
-      onProgress,
-    }),
+    startServerJob({ kind: 'swap', text: typed }, onProgress),
   );
   if (!r) return;
   if (!r.ok) {
     sfx.play('error');
     swapStore.setState({
-      error: asPlanFailure(r.error),
+      error: asFailure(r.error),
       line: '拆不动。[换个说法]再来，或者先问问我。',
     });
     return;
   }
-  if (game().goal.at !== prevId) return; // 等待期间目标变了：作废
-  const g = r.value.goal;
-  runFlow((f) => f.newGoal(g));
+  const g = game().goal;
   sfx.play('unlock');
   setUi({ sheet: null });
   await go('main');

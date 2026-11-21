@@ -6,8 +6,10 @@ import { eq } from 'drizzle-orm';
 import type { Db } from '../db/client';
 import { consents } from '../db/schema';
 
+import { CONSENT_VERSION } from '@host/core/api/types';
+
 /** v2：数据改存服务器、经服务器转发给模型服务商（docs/05 Q5） */
-export const CONSENT_VERSION = 2;
+export { CONSENT_VERSION };
 
 export interface ConsentRecord {
   version: number;

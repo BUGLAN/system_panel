@@ -1,83 +1,27 @@
 /**
- * 本机数据库（IndexedDB / Dexie）。
- *
- *  kv        存档主档 / 备份 / 坏档原串、同意记录、LLM 设置、偏好
- *  chat      聊天记录
- *  history   流水（结算 / 认输）
- *  memory    长期记忆
- *  evidence  证据照片（压缩后的 JPEG Blob）
- *  snapshots 导入前的整份快照
- *
- * 「重置存档」清：存档三件套、chat、history、memory、evidence、snapshots；
- * 不清：同意记录、LLM 设置、偏好（音量等）。
+ * 本机数据库（IndexedDB / Dexie）——服务端版只剩两样东西：
+ *  - 偏好（静音 / 音量 / 看过安装引导）：本来就是「这台设备」的设置，不上服务器
+ *  - 离线只读缓存：最近一次的状态、流水、账号（按用户名分键，退出登录清掉）
+ * 业务数据的真源在服务器。库名换了新的：旧版 PWA 的本机数据库原样留着，不碰（要迁就「导出 → 登录后导入」）。
  */
 import Dexie, { type Table } from 'dexie';
-import type { BackupBundle } from '@host/core/save/bundle';
-
-export const KV = {
-  save: 'save',
-  saveBak: 'save.bak',
-  saveCorrupt: 'save.corrupt',
-  consent: 'consent',
-  llm: 'llm',
-  prefs: 'prefs',
-} as const;
 
 export interface KvRow {
   key: string;
   value: unknown;
 }
 
-/** 聊天 / 流水的一行（具体字段由各自模块定义） */
-export interface LogRow {
-  seq?: number;
-  at: number;
-  [k: string]: unknown;
-}
-
-export interface MemoryRow {
-  id: string;
-  at: number;
-  [k: string]: unknown;
-}
-
-export interface EvidenceRow {
-  id: string;
-  blob: Blob;
-  type: string;
-  takenAt: number;
-}
-
-export interface SnapshotRow {
-  key: string;
-  at: number;
-  bundle: BackupBundle;
-}
-
 export class HostDb extends Dexie {
   kv!: Table<KvRow, string>;
-  chat!: Table<LogRow, number>;
-  history!: Table<LogRow, number>;
-  memory!: Table<MemoryRow, string>;
-  evidence!: Table<EvidenceRow, string>;
-  snapshots!: Table<SnapshotRow, string>;
 
-  constructor(name = 'host-system') {
+  constructor(name = 'host-system-server') {
     super(name);
-    this.version(1).stores({
-      kv: '&key',
-      chat: '++seq, at',
-      history: '++seq, at',
-      memory: '&id, at',
-      evidence: '&id, takenAt',
-      snapshots: '&key',
-    });
+    this.version(1).stores({ kv: '&key' });
   }
 }
 
 let shared: HostDb | null = null;
 
-/** App 运行时共用的那一个库 */
 export function appDb(): HostDb {
   shared ??= new HostDb();
   return shared;

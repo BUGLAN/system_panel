@@ -56,7 +56,9 @@ export default defineConfig({
   ],
   server: {
     // 开发时 API 走本机的服务端（npm run dev:server）
-    proxy: { '/api': { target: 'http://localhost:8787', changeOrigin: false } },
+    proxy: {
+      '/api': { target: process.env['API_TARGET'] ?? 'http://localhost:8787', changeOrigin: false },
+    },
   },
   build: {
     target: 'es2022',

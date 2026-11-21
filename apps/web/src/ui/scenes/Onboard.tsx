@@ -4,7 +4,7 @@
  */
 import { useRef, useState } from 'react';
 import { ONBOARD_PRESETS } from '@host/core/goal/categories';
-import { planFailLine, planFailTitle } from '../../agent/goalBuilder';
+import { planFailLine, planFailTitle } from '@host/core/goal/planFailCopy';
 import {
   answer,
   editAnswers,

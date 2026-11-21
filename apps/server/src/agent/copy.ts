@@ -8,7 +8,13 @@ import type { Rank } from '@host/core/data/rank';
 import { fmtMin } from '@host/core/format';
 import type { LlmClient } from './llmClient';
 import type { MemoryStore } from './memory';
-import { TONES, buildConversation, splitTag, type Emotion, type ToneKey } from './persona';
+import {
+  TONES,
+  buildConversation,
+  splitTag,
+  type Emotion,
+  type ToneKey,
+} from '@host/core/agent/persona';
 
 export const LINE_TIMEOUT_MS = 8_000;
 export const LINE_MAX_CHARS = 300;

@@ -1,15 +1,14 @@
 /**
- * 聊天面板的编排：读记录、发送（自伤闸门 → LLM 工具循环）、落库。
+ * 聊天面板的编排：读记录、发送（自伤闸门先在本机拦一次，服务端再兜底 → LLM 工具循环）。
+ * 记录存在服务器；会改存档的工具在服务端执行，回来的最新状态自动落到本地。
  */
 import { createStore } from 'zustand/vanilla';
 import { useStore } from 'zustand';
-import { chatTools, statusLineOf } from '../../agent/chatTools';
-import { hostMessage, respondChat, type ChatMessage } from '../../agent/chatService';
-import { appDb } from '../db';
-import { game, historySync, now, setGame } from '../game';
-import { memory, textClient } from '../services';
-import { appendChat, loadChat } from '../sideRepos';
-import { SCENES, uiStore } from '../uiStore';
+import { CRISIS_CHAT_LINE, isCrisisText } from '@host/core/agent/guardrail';
+import { hostMessage, sysMessage, type ChatMessage } from '@host/core/agent/chat';
+import { api } from '../api';
+import { now } from '../game';
+import { SCENES, toast, uiStore } from '../uiStore';
 
 export interface ChatState {
   loaded: boolean;
@@ -26,67 +25,62 @@ export const useChat = <T>(sel: (s: ChatState) => T) => useStore(chatStore, sel)
 
 export async function ensureChatLoaded(): Promise<void> {
   if (chatStore.getState().loaded) return;
-  const messages = await loadChat(appDb());
-  chatStore.setState({ loaded: true, messages });
+  try {
+    const r = await api<{ messages: ChatMessage[] }>('GET', '/api/chat');
+    chatStore.setState({ loaded: true, messages: r.messages });
+  } catch (e) {
+    toast(e instanceof Error ? e.message : '聊天记录读不出来。', 'err');
+  }
 }
 
 export function clearChatState(): void {
-  chatStore.setState({ loaded: true, sending: false, messages: [] });
+  chatStore.setState({ loaded: false, sending: false, messages: [] });
 }
 
 function push(msgs: ChatMessage[]): void {
   chatStore.setState((s) => ({ messages: [...s.messages, ...msgs].slice(-200) }));
-  void appendChat(appDb(), msgs).catch((e) => console.error('[chat] 落库失败', e));
 }
 
 export async function sendChat(text: string): Promise<void> {
   const t = text.trim();
   if (!t || chatStore.getState().sending) return;
   await ensureChatLoaded();
-  const history = chatStore.getState().messages;
-  push([hostMessage(t, now())]);
+  // 本机先拦：命中就当场回应（服务端也会拦，并把这两句记进记录）
+  if (isCrisisText(t)) {
+    push([
+      hostMessage(t, now()),
+      sysMessage(CRISIS_CHAT_LINE, now(), { emotion: 'focus', kind: 'care' }),
+    ]);
+  }
+  const optimistic = isCrisisText(t) ? null : hostMessage(t, now());
+  if (optimistic) push([optimistic]);
   chatStore.setState({ sending: true });
   try {
-    const client = textClient();
-    const tools = client
-      ? chatTools({ read: game, commit: setGame, history: historySync, now }, memory())
-      : null;
     const scene = SCENES[uiStore.getState().scene];
-    const out = await respondChat({
+    const r = await api<{ messages: ChatMessage[] }>('POST', '/api/chat', {
       text: t,
-      history,
-      client,
-      tools,
-      memory: memory(),
-      statusLine: statusLineOf(game()),
-      scenario: `宿主在「${scene.title}」页打开了聊天。`,
-      now,
+      scene: scene.title,
     });
-    push(out);
+    // 服务端回的第一条是宿主这句（已落库），换掉本机先放上去的那条
+    const [mine, ...rest] = r.messages;
+    chatStore.setState((s) => ({
+      messages: s.messages.map((m) => (optimistic && m.id === optimistic.id && mine ? mine : m)),
+    }));
+    if (!isCrisisText(t)) push(rest);
+  } catch (e) {
+    toast(e instanceof Error ? e.message : '没发出去。', 'err');
   } finally {
     chatStore.setState({ sending: false });
   }
 }
 
-/** 快捷查状态（本地工具，不调模型） */
+/** 快捷查状态（服务端本地工具，不调模型） */
 export async function quickStatus(): Promise<void> {
   await ensureChatLoaded();
-  const reg = chatTools({ read: game, commit: setGame, history: historySync, now }, memory());
-  const oc = await reg.execute('get_status', {});
-  push([
-    hostMessage('查状态', now()),
-    {
-      id: `s${now()}`,
-      from: 'sys',
-      text: oc.message,
-      at: now(),
-      emotion: 'neutral',
-      tool: {
-        name: 'get_status',
-        ok: oc.ok,
-        message: oc.message,
-        ...(oc.data ? { data: oc.data } : {}),
-      },
-    },
-  ]);
+  try {
+    const r = await api<{ messages: ChatMessage[] }>('POST', '/api/chat/status');
+    push(r.messages);
+  } catch (e) {
+    toast(e instanceof Error ? e.message : '查不到。', 'err');
+  }
 }

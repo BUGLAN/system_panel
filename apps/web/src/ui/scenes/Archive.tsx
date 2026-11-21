@@ -9,7 +9,7 @@ import { summarizeWeek } from '@host/core/flow/history';
 import { pad2 } from '@host/core/format';
 import { sfx } from '../../audio/sfx';
 import { useGame } from '../../store/gameStore';
-import { historyAll, now } from '../../store/game';
+import { historyAll, now, tz } from '../../store/game';
 import { back } from '../../store/actions/nav';
 import { wearTitle } from '../../store/actions/goals';
 import { toast } from '../../store/uiStore';
@@ -121,7 +121,7 @@ export function Archive() {
   }, []);
   const vals = ATTRS.map((a) => host.attrs[a.k] ?? 0);
   const max = Math.max(10, ...vals);
-  const wk = summarizeWeek(hist, now());
+  const wk = summarizeWeek(hist, now(), tz());
   const maxBar = Math.max(3, ...wk.dayDone);
   const days = '日一二三四五六';
   const owned = host.ownedTitles.length;
@@ -195,7 +195,7 @@ export function Archive() {
                       toast(`未解锁 · ${t.hint}`, 'err');
                       return;
                     }
-                    wearTitle(t.id);
+                    void wearTitle(t.id);
                   }}
                 >
                   <span className="gl" />

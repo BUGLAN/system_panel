@@ -1,4 +1,6 @@
 /** 顶栏（参考稿 #hud）：等级环 / 称号 / 连胜 / 晶核 / 聊天 / 菜单 */
+import { dayKey } from '@host/core/time/day';
+import { now, tz } from '../../store/game';
 import { needFor } from '@host/core/data/rewards';
 import { titleName } from '@host/core/data/titles';
 import { useGame } from '../../store/gameStore';
@@ -13,8 +15,8 @@ export function Hud() {
   const show = SCENES[scene].hud;
   const need = needFor(host.lv);
   const ratio = Math.min(1, host.exp / need);
-  const today = new Date();
-  const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  // 「今天」按账号时区、服务器时间算（与连胜判定同口径）
+  const todayKey = dayKey(now(), tz());
   return (
     <header id="hud" className={show ? '' : 'hide'}>
       <Tap

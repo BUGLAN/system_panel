@@ -23,7 +23,7 @@ import {
   type TaskSpec,
 } from '@host/core/goal/plan';
 import { PlanRuleError, PlanShapeError } from '@host/core/goal/planFailure';
-import { PLAN_SCHEMA_GUARD } from './guardrail';
+import { PLAN_SCHEMA_GUARD } from '@host/core/agent/guardrail';
 import { objSchema, toolOk, type AgentTool } from './tools';
 
 export interface PlanDraft {
