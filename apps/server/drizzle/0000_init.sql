@@ -15,7 +15,7 @@ CREATE TABLE `consents` (
 );
 --> statement-breakpoint
 CREATE TABLE `evidence` (
-	`id` text PRIMARY KEY NOT NULL,
+	`id` text NOT NULL,
 	`user_id` text NOT NULL,
 	`file` text NOT NULL,
 	`mime` text NOT NULL,
@@ -25,10 +25,10 @@ CREATE TABLE `evidence` (
 	`quest_serial` integer DEFAULT 0 NOT NULL,
 	`status` text DEFAULT 'unverified' NOT NULL,
 	`note` text DEFAULT '' NOT NULL,
+	PRIMARY KEY(`user_id`, `id`),
 	FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON UPDATE no action ON DELETE cascade
 );
 --> statement-breakpoint
-CREATE INDEX `evidence_user` ON `evidence` (`user_id`);--> statement-breakpoint
 CREATE TABLE `history` (
 	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
 	`user_id` text NOT NULL,

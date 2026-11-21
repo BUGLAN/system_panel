@@ -74,6 +74,8 @@ export function statusLineOf(s: SaveData): string {
 export interface ChatToolContext {
   read(): SaveData;
   commit(next: SaveData): void;
+  /** 宿主账号时区（退缩计数按它算「今天」） */
+  tz?: string;
   history(): HistoryEntry[];
   now(): number;
 }
@@ -104,7 +106,7 @@ export function chatTools(ctx: ChatToolContext, memory: MemoryStore): ToolRegist
         note: { type: 'string', description: '换单理由，可省略' },
       }),
       run(args): ToolOutcome {
-        const f = new QuestFlow(ctx.read());
+        const f = new QuestFlow(ctx.read(), ctx.tz ? { tz: ctx.tz } : {});
         const head = f.head;
         if (!head) return toolFail('队列是空的。没有可换的单。');
         if (head.kind === 'main')

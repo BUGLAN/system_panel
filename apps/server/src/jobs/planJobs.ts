@@ -41,6 +41,8 @@ const discarded = () => new PlanFailure('badResponse', '等待期间目标变了
 
 interface Job extends PlanJobView {
   userId: string;
+  /** 重置 / 导入时作废：拆好了也不落库 */
+  cancelled: boolean;
 }
 
 export class PlanJobs {
@@ -60,8 +62,14 @@ export class PlanJobs {
   }
 
   private view(j: Job): PlanJobView {
-    const { userId: _u, ...v } = j;
+    const { userId: _u, cancelled: _c, ...v } = j;
     return v;
+  }
+
+  /** 作废这个用户在跑的任务（重置存档 / 导入时） */
+  cancel(userId: string): void {
+    for (const j of this.jobs.values())
+      if (j.userId === userId && j.status === 'running') j.cancelled = true;
   }
 
   private sweep(): void {
@@ -112,6 +120,7 @@ export class PlanJobs {
       state: null,
       startedAt: this.deps.now(),
       finishedAt: null,
+      cancelled: false,
     };
     this.jobs.set(j.id, j);
     this.emit(j);
@@ -166,6 +175,7 @@ export class PlanJobs {
           ...(j.kind === 'retry' ? { digest } : {}),
           onProgress,
         });
+        if (j.cancelled) throw discarded();
         return landFirstGoal(deps, user, goal, j.kind === 'bind' ? (input.answers ?? {}) : {}, mem);
       }
       case 'swap': {
@@ -180,7 +190,7 @@ export class PlanJobs {
           onProgress,
         });
         const r = await runFlow(deps, user, (f) => {
-          if (f.goal.at !== prevAt || f.goal.plan.length === 0) throw discarded();
+          if (j.cancelled || f.goal.at !== prevAt || f.goal.plan.length === 0) throw discarded();
           f.newGoal(goal);
         });
         return r.state;
@@ -206,7 +216,7 @@ export class PlanJobs {
           next = await mintNextGoal({ client: llm.text, prev: g0, statusLine, digest, onProgress });
         }
         const r = await runFlow(deps, user, (f) => {
-          if (goalId(f.goal) !== goalId(g0) || f.goal.plan.length !== g0.plan.length)
+          if (j.cancelled || goalId(f.goal) !== goalId(g0) || f.goal.plan.length !== g0.plan.length)
             throw discarded();
           if (kind === 'window') f.applyNextWindow(next);
           else f.applyNextGoal(next);

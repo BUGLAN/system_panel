@@ -118,8 +118,8 @@ export const memory = sqliteTable(
 export const evidence = sqliteTable(
   'evidence',
   {
-    /** 服务端生成的随机 id（也是存档里 EvidenceShot.id） */
-    id: text('id').primaryKey(),
+    /** 存档里 EvidenceShot.id（新拍的由服务端生成；导入的沿用原 id，所以按用户唯一） */
+    id: text('id').notNull(),
     userId: text('user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
@@ -133,7 +133,7 @@ export const evidence = sqliteTable(
     status: text('status').notNull().default('unverified'),
     note: text('note').notNull().default(''),
   },
-  (t) => [index('evidence_user').on(t.userId)],
+  (t) => [primaryKey({ columns: [t.userId, t.id] })],
 );
 
 export const llmSettings = sqliteTable('llm_settings', {
