@@ -8,7 +8,7 @@ import { createApp } from './app';
 import { purgeExpiredSessions } from './auth/accounts';
 import { ConfigError, loadConfig } from './config';
 import { openDb } from './db/client';
-import { RateLimiter } from './http/rateLimit';
+import { makeDeps } from './deps';
 import { errInfo, log } from './log';
 import { mountStatic } from './static';
 
@@ -25,7 +25,7 @@ function start(): void {
   }
   mkdirSync(config.dataDir, { recursive: true });
   const dbh = openDb(join(config.dataDir, 'app.db'));
-  const app = createApp({ config, dbh, now: Date.now, limiter: new RateLimiter() });
+  const app = createApp(makeDeps(config, dbh));
   const hasWeb = mountStatic(app, config.webDist);
 
   const sweep = setInterval(() => purgeExpiredSessions(dbh.db, Date.now()), 6 * 3_600_000);

@@ -5,6 +5,10 @@ import type { Context } from 'hono';
 import type { Config } from '../config';
 import type { DbHandle } from '../db/client';
 import type { AuthUser } from '../auth/accounts';
+import type { EventBus } from '../events/bus';
+import type { UserLocks } from '../flow/locks';
+import type { CheckRegistry } from '../evidence/checks';
+import type { IntentCache } from './intents';
 import type { RateLimiter } from './rateLimit';
 import { unauthorized } from './errors';
 
@@ -12,7 +16,19 @@ export interface Deps {
   config: Config;
   dbh: DbHandle;
   now: () => number;
+  /** 暴击等随机数（服务端取；测试里可固定） */
+  rnd: () => number;
   limiter: RateLimiter;
+  locks: UserLocks;
+  bus: EventBus;
+  intents: IntentCache;
+  /** 在途的视觉校验 */
+  checks: CheckRegistry;
+  /**
+   * 结算后的跟进：窗口走完续拆 / 收官铸下一条，起一个拆解任务、返回任务 id；
+   * 没配拆解模块（第 2 步之前 / 测试）时返回 null。
+   */
+  followUp: (user: AuthUser, kind: 'window' | 'finale') => { jobId: string } | null;
 }
 
 export interface AppEnv {

@@ -103,18 +103,14 @@ describe('登录与会话', () => {
   it('错密码 / 不存在的用户：同一句话', async () => {
     const s = testServer();
     await s.login('alice');
-    const a = await s
-      .client()
-      .json<{ message: string }>('POST', '/api/auth/login', {
-        username: 'alice',
-        password: 'wrongpass1',
-      });
-    const b = await s
-      .client()
-      .json<{ message: string }>('POST', '/api/auth/login', {
-        username: 'nobody',
-        password: 'wrongpass1',
-      });
+    const a = await s.client().json<{ message: string }>('POST', '/api/auth/login', {
+      username: 'alice',
+      password: 'wrongpass1',
+    });
+    const b = await s.client().json<{ message: string }>('POST', '/api/auth/login', {
+      username: 'nobody',
+      password: 'wrongpass1',
+    });
     expect(a.status).toBe(401);
     expect(b.status).toBe(401);
     expect(a.body.message).toBe(b.body.message);

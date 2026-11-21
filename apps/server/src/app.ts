@@ -8,6 +8,7 @@ import { ApiError, forbidden, notFound, unauthorized } from './http/errors';
 import type { AppEnv, Deps } from './http/context';
 import { errInfo, log } from './log';
 import { authRoutes, meRoute, readSessionCookie } from './routes/auth';
+import { flowRoutes } from './routes/flow';
 import { healthRoute } from './routes/health';
 
 /** 不需要登录的接口 */
@@ -74,6 +75,7 @@ export function createApp(deps: Deps): Hono<AppEnv> {
   app.route('/api/health', healthRoute);
   app.route('/api/auth', authRoutes);
   app.route('/api/me', meRoute);
+  app.route('/api', flowRoutes);
 
   app.all('/api/*', () => {
     throw notFound();
