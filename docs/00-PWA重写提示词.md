@@ -1,7 +1,7 @@
 # PWA 重写提示词
 
 > 用法：在本仓库 `main` 分支开一个新的 Agent 会话，把下面「提示词正文」整段发给它。
-> 定稿：2026-11-16。技术栈 / LLM 接入 / 范围 / 部署四项已由宿主拍板，执行中不要再改。
+> 定稿：2026-11-16；2026-11-21 修订：main 上只保留原型 HTML 和本文，音效、字体、图标素材一律从 tag `flutter-final` 取。技术栈 / LLM 接入 / 范围 / 部署四项已由宿主拍板，执行中不要再改。
 
 ---
 
@@ -15,7 +15,7 @@
 
 | 项 | 定案 |
 |---|---|
-| 技术栈 | Vite + React 18 + TypeScript（strict）+ `vite-plugin-pwa`；动效用 Motion（framer-motion）；状态用 Zustand；本地存储用 IndexedDB（Dexie）；单测用 Vitest |
+| 技术栈 | Vite + React 19 + TypeScript（strict）+ `vite-plugin-pwa`；动效用 Motion（npm 包名 `motion`，从 `motion/react` 引入，即原 framer-motion）；状态用 Zustand；本地存储用 IndexedDB（Dexie）；单测用 Vitest |
 | LLM 接入 | **用户自己填 Key**：设置页填 OpenAI 兼容端点 / API Key / 模型名（文本模型和视觉模型分开填），存在本机 IndexedDB，浏览器直连。没有后端，前端代码和构建产物里不许出现任何 Key |
 | 范围 | **一次对齐旧版全部功能**（见第三节），不做阉割版 |
 | 用户与部署 | 先自用加少量朋友；部署到 Cloudflare Pages（静态站），不备案、不做账号系统、不做云同步 |
@@ -25,7 +25,7 @@
 
 旧版 Flutter 代码完整保存在 git tag **`flutter-final`** 里。产品机制、数值和文案一律以它为准，用 `git show flutter-final:<路径>` 读，不要凭印象重新设计。
 
-- **视觉**：仓库根目录的 `宿主养成系统_重设计.html` 是 v3 参考稿（单文件 HTML，含大厅 / 主线 / 委托板 / 执行 / 补给 / 档案六个场景，以及开机、结算、失败、底板、弹窗这些叠层）。PWA 的页面结构、配色、字体、版式**照这份稿子实现**。它本身就是 HTML/CSS，可以直接拿来拆组件
+- **视觉**：仓库根目录的 `宿主养成系统_重设计.html` 是 v3 参考稿（单文件 HTML，含大厅 / 主线 / 委托板 / 执行 / 补给 / 档案六个场景，以及开机、结算、失败、底板、弹窗这些叠层）。PWA 的页面结构、配色、字体、版式**照这份稿子实现**。它本身就是 HTML/CSS，可以直接拿来拆组件；但稿子里引 Google Fonts 的外链不要带进 PWA（字体见第四节）
 - **机制与规则**：`flutter-final:app/lib/` 下按下表找
 - **已定案的规则与历次走查结论**：`flutter-final:docs/50-新用户走查问题清单.md`，其中 A~G 节里「宿主定案」「已修」的条目都是**必须保留的行为**
 - **测试用例**：`flutter-final:app/test/`（43 个文件）。核心逻辑的断言（奖励表、评级、暴击率、连胜、补救顶替、存档迁移、护栏关键词等）要移植成 Vitest 用例
@@ -51,7 +51,7 @@
 | 聊天 | `chat/chat_service.dart`、`chat/chat_panel.dart`、`chat/tool_card.dart`、`chat/chat_history.dart` |
 | 首启同意 | `state/consent.dart`、`ui/ref/ref_consent.dart` |
 | 各页面实现（对照参考稿看交互细节） | `ui/ref/ref_*.dart` |
-| 音效总线与规则表 | `state/sfx.dart`；音效文件已在本仓库 `app/assets/audio/`（135 个 wav），生成工具在 `tools/audio/` |
+| 音效总线与规则表 | `state/sfx.dart`（只用来对照「哪些时刻要出声」，实现方式见第五节「音效」） |
 | 设计令牌 | `design/ref.dart`（配色、字体、缓动） |
 
 ### 三、必须保留的产品机制（摘要，细节以源码为准）
@@ -73,7 +73,7 @@
 
 **委托**
 - 两种：计时单（倒计时，到点判负）和打卡单（不计时，当天内随时交）。拆解时由 LLM 标注是哪种，日常池里 6 条「整天型」是打卡单
-- 档位 E~S（F 只用于补救残单），颜色读 `Ref.rank`
+- 档位 E~S（F 只用于补救残单），颜色用设计令牌里的稀有度色（见第四节）
 - 证据最多 3 张；拍照或从相册选
 
 **经济（数值一个都不许改）**
@@ -113,12 +113,15 @@
 - 每次写盘前把上一份好档滚成备份；主档读坏就把原串另存为 corrupt，再从备份恢复
 - 「重置存档」要清空：存档、备份、聊天记录、流水、长期记忆、证据照片；不清空 LLM 设置和同意记录
 - 新增导出 / 导入存档（JSON 文件）：PWA 的数据只在这个浏览器里，这是用户唯一的备份手段
+  - 导出内容和「重置存档」清空的范围一致：存档、聊天记录、流水、长期记忆、证据照片；不导出 LLM 设置（含 Key）和同意记录
+  - 证据照片转成 Base64 写进 JSON，导入时还原成 Blob。照片入库前就按「证据校验」里的规格压缩（长边不超过 1024px，JPEG），库里只存压缩后的版本，导出文件才不会太大
+  - 导入前先校验格式和版本号，不合格就拒绝并说明原因，不动现有数据；校验通过后先把当前数据存一份备份，再整体覆盖
 - 不需要迁移 Flutter 版的旧存档
 
 ### 四、视觉与动效
 
-- 配色：底色 `#06050C`、主强调 acid `#D6FF3D`、cyan `#3BE8FF`、hot `#FF3B7A`、violet `#8F6BFF`、gold `#FFCC4D`、mint `#3DFFA8`；稀有度色谱照 `Ref.rank`。全部写成 CSS 变量，作为唯一令牌源
-- 字体：显示字 / 数字用 Chakra Petch，中文正文用 Noto Sans SC，等宽用 JetBrains Mono，三套都自托管（`woff2` + `font-display: swap`）。中文字体做子集化，脚本在 `tools/fonts/`，要改成输出 `woff2`
+- 配色：底色 `#06050C`、主强调 acid `#D6FF3D`、cyan `#3BE8FF`、hot `#FF3B7A`、violet `#8F6BFF`、gold `#FFCC4D`、mint `#3DFFA8`；稀有度色谱从 `flutter-final:app/lib/design/ref.dart` 的 `Ref.rank` 移植。全部写成 CSS 变量，作为唯一令牌源
+- 字体：显示字 / 数字用 Chakra Petch，中文正文用 Noto Sans SC，等宽用 JetBrains Mono，三套都自托管，不走 Google Fonts 外链（国内访问不稳，而且要能离线）。用 Fontsource 的 npm 包引入（`@fontsource/chakra-petch`、`@fontsource-variable/noto-sans-sc`、`@fontsource-variable/jetbrains-mono`），只引用到的字重。它们自带按 `unicode-range` 切好的 `woff2` 分片，浏览器只下载用到的字，不用自己写子集化脚本；`font-display: swap`
 - 动效参数（不许凭感觉改）：
   - 弹簧 stiffness 100 / damping 20，过冲到 1.08 再回弹
   - 亮帧：全屏白色、16% 透明度、脉冲 180ms，音效踩这一帧
@@ -133,11 +136,19 @@
 
 ### 五、PWA 与浏览器适配
 
-- 写好 manifest（应用名「宿主养成系统」，`display: standalone`，图标用 `brand/` 生成的），用 Service Worker 预缓存应用壳、字体和音效，断网也能打开、能看档案
+- 写好 manifest（应用名「宿主养成系统」，`display: standalone`）。图标母版用 `git show flutter-final:brand/icon/app-icon.svg` 取出，放进 `public/`，用 `@vite-pwa/assets-generator` 生成 192 / 512 / maskable / apple-touch-icon
+- Service Worker 预缓存应用壳和音效；字体分片数量多，不要全部预缓存，用运行时缓存（CacheFirst），用过的字断网也能显示。断网要能打开 App、能看档案
 - iOS 不会弹安装提示：首次访问时引导用户「添加到主屏幕」，说清楚不添加的话浏览器可能清掉数据；启动时调用 `navigator.storage.persist()`
 - 适配安全区（`env(safe-area-inset-*)`）和 `100dvh`；键盘弹起时，输入框和 CTA 按钮要留在键盘上方
 - 相机：`<input type="file" accept="image/*" capture="environment">`，另外给一个「从相册选」入口；证据照片以 Blob 存进 IndexedDB
-- 音效：用 Web Audio 预解码后播放，第一次用户手势时解锁；iOS 上用 `navigator.audioSession.type = 'ambient'`（支持的版本才设），切到后台就停底噪。按下声由基础按钮组件自己负责，业务回调里只播结果声
+- 音效：做到这一块时先加载 `build-game-audio-feedback` skill，按它来设计和实现，不照搬旧版 `state/sfx.dart`。要覆盖这些：
+  - 事件到声音的映射，并定好优先级：结算、暴击、升级、失败这类关键反馈不能被别的声音盖掉
+  - 限制同时发声的数量，播完的节点要释放
+  - 第一次用户手势时解锁音频；iOS 上设 `navigator.audioSession.type = 'ambient'`（支持的版本才设）；切到后台就停底噪，回到前台再恢复
+  - 设置里提供静音开关和音量；有意义的提示音都要有对应的视觉反馈
+  - 按下声由基础按钮组件自己负责，业务回调里只播结果声
+  - 素材来源（沿用旧版 wav 还是重新做）写进实施计划，由我来定。旧版 135 个 wav 在 tag `flutter-final` 的 `app/assets/audio/` 下，生成脚本在 `tools/audio/`
+  - 验收清单里要列这几项：首次交互、快速连点、切后台再回来、手机实机、静音状态
 - 震动：只在支持 `navigator.vibrate` 的设备上调用（iOS 不支持，静默跳过）
 - 帧率：常驻循环动画在页面不可见时暂停
 
@@ -153,12 +164,13 @@
 - 目录分层：`src/core/`（纯逻辑，不碰 DOM：经济、评级、队列、状态机、存档模型）、`src/agent/`（LLM、提示词、工具）、`src/store/`（Zustand）、`src/ui/`（页面和组件）、`src/design/`（令牌）。核心逻辑必须能脱离 React 单测
 - 核心模块的 Vitest 覆盖要对齐旧测试的关键断言；奖励表要用「显示 = 结算」的交叉断言钉住
 - 单个文件不超过 600 行，不要再出现 4000 行的主壳
-- `npm run build` 产物能直接部署到 Cloudflare Pages；写好部署说明
-- 收尾时**重写根目录的 `AGENTS.md`**：只写 PWA 版的结构、命令、约定、定案；Flutter 版相关内容一律不留，只说明旧代码在 tag `flutter-final`
+- `npm run build` 产物能直接部署到 Cloudflare Pages；写好部署说明（实际部署由我来做，你不用登录 Cloudflare）
+- 根目录现有的 `.gitignore` 是 Flutter 时期的，第一步就换成 PWA 用的
+- 收尾时在根目录**新建 `AGENTS.md`**：只写 PWA 版的结构、命令、约定、定案；Flutter 版相关内容一律不留，只说明旧代码在 tag `flutter-final`
 
 ### 八、工作方式
 
-- 先读真源再动手：开工前读完 `宿主养成系统_重设计.html`、`docs/50`，以及第二节表里的核心文件，然后给我一份**实施计划**（模块拆分、开发顺序、每一步怎么验），我确认后再写代码
+- 先读真源再动手：开工前读完 `宿主养成系统_重设计.html`、`flutter-final:docs/50-新用户走查问题清单.md`，以及第二节表里的核心文件，然后给我一份**实施计划**（模块拆分、开发顺序、每一步怎么验），我确认后再写代码
 - 虽然要一次对齐全部功能，开发仍按依赖顺序推进，每完成一块就提交一次：
   1. 工程骨架 + 设计令牌 + 存档层
   2. 核心逻辑 + 单测
@@ -167,7 +179,7 @@
   5. 执行 / 结算 / 失败
   6. 委托板 / 主线 / 补给 / 档案 / 聊天
   7. PWA 化
-  8. 部署
-- 旧代码和本文冲突时，以本文第一节和 `docs/50` 的定案为准；两边都没写到的规则问题，列出来问我，不要自己拍板
+  8. 部署说明
+- 旧代码和本文冲突时，以本文和 `docs/50` 的定案为准；两边都没写到的规则问题，列出来问我，不要自己拍板
 - 代码级检查：每一步都要过 `tsc --noEmit`、`vitest run`、`npm run build`。不要用浏览器反复截图、量像素来自我验证，我会自己在手机上验。全部完成后，一次性列一份验收清单（做什么、看哪里、预期是什么）
-- 不要提交 `.env`、`node_modules/`、`prototype/`、任何 Key
+- 不要提交 `.env`、`node_modules/`、`dist/`、任何 Key
