@@ -94,6 +94,8 @@ export interface UiState {
   watchAt: number;
   /** 委托板筛选 */
   boardFilter: 'all' | 'main' | 'remedy' | 'daily';
+  /** 刚交掉的那一环（主线页盖章 + 解封下一张的演出） */
+  mainJustDone: number | null;
 }
 
 export const uiStore = createStore<UiState>()(() => ({
@@ -114,6 +116,7 @@ export const uiStore = createStore<UiState>()(() => ({
   watchLine: '',
   watchAt: 0,
   boardFilter: 'all',
+  mainJustDone: null,
 }));
 
 export function useUi<T>(sel: (s: UiState) => T): T {

@@ -427,3 +427,181 @@
   font: 500 10px var(--fm);
   color: var(--dim2);
 }
+
+/* 委托板 */
+.ticket.in {
+  animation: tk-in 0.5s var(--ease) backwards;
+  opacity: 1;
+  translate: 0 0;
+}
+@keyframes tk-in {
+  from {
+    opacity: 0;
+    transform: translateY(26px);
+  }
+}
+.ticket.locked {
+  opacity: 0.5;
+  filter: saturate(0.4);
+}
+.ticket.locked .tk-go {
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--dim);
+}
+.empty.gray b {
+  color: var(--dim2);
+  text-shadow: none;
+}
+.board-active {
+  margin-bottom: 12px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid var(--hot);
+  background: rgba(255, 59, 122, 0.12);
+  font: 700 13px var(--fc);
+  color: #ffd0df;
+  cursor: pointer;
+}
+
+/* 主线 */
+.segbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 10px;
+  font: 700 11px var(--fm);
+  letter-spacing: 2px;
+  color: var(--dim);
+}
+.segpips {
+  display: flex;
+  gap: 3px;
+}
+.segpips i {
+  width: 12px;
+  height: 4px;
+  border-radius: 1px;
+  background: rgba(255, 255, 255, 0.1);
+}
+.segpips i.d {
+  background: var(--cyan);
+}
+.segpips i.c {
+  background: var(--acid);
+  animation: blinkdot 1s infinite;
+}
+.sysbox .core,
+.core-main {
+  width: 46px;
+  height: 46px;
+  flex: none;
+}
+.main-empty {
+  margin-top: 30px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.main-empty p {
+  font: 500 15px/1.7 var(--fc);
+  color: var(--dim);
+  white-space: pre-line;
+}
+#mainCar .car-in {
+  position: absolute;
+  inset: 0;
+}
+
+/* 补给 */
+.shop-why {
+  margin-top: 8px;
+  font: 500 12px var(--fc);
+  color: var(--dim);
+  text-align: center;
+}
+
+/* 档案 */
+.bars div {
+  justify-content: flex-end;
+}
+.bars i {
+  flex: 1;
+  height: auto;
+  min-height: 2px;
+}
+.plate.shame.own {
+  border-color: var(--hot);
+}
+.plate.shame .nm {
+  color: var(--hot);
+}
+.weekc.recent {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.rc {
+  display: grid;
+  grid-template-columns: 20px 1fr auto;
+  gap: 8px;
+  align-items: center;
+  font: 500 12px var(--fc);
+  color: var(--dim);
+}
+.rc b {
+  color: var(--txt);
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.rc em {
+  font: 700 12px 'Chakra Petch', var(--fc);
+  font-style: normal;
+  color: var(--acid);
+}
+.rc.quit em,
+.rc.timeout em {
+  color: var(--hot);
+}
+
+/* 换目标 */
+.swap-bubble {
+  max-width: none;
+}
+.swap-cur {
+  margin-top: 14px;
+  padding: 14px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px dashed rgba(255, 59, 122, 0.45);
+}
+.swap-cur.first {
+  border-color: rgba(214, 255, 61, 0.45);
+  font: 500 13px var(--fc);
+  color: var(--dim);
+}
+.swap-cur .sc-h {
+  display: flex;
+  justify-content: space-between;
+  font: 700 10px var(--fm);
+  letter-spacing: 3px;
+  color: var(--cyan);
+}
+.swap-cur .sc-h span {
+  color: var(--hot);
+}
+.swap-cur b {
+  display: block;
+  margin-top: 6px;
+  font: 900 17px var(--fc);
+}
+.swap-cur small {
+  display: block;
+  margin-top: 4px;
+  font: 400 12px var(--fc);
+  color: var(--dim);
+}
+.swap-ask {
+  margin-top: 12px;
+}

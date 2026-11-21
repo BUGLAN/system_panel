@@ -5,6 +5,7 @@ import { PlanLoading } from '../overlays/PlanLoading';
 import { SystemSheet } from '../overlays/SystemSheet';
 import { InstallSheet } from '../overlays/InstallSheet';
 import { StageOverlays } from '../overlays/StageOverlays';
+import { GoalSwap } from '../overlays/GoalSwap';
 
 export function OverlayHost() {
   return (
@@ -13,6 +14,7 @@ export function OverlayHost() {
       <SystemSheet />
       <NoticeSheet />
       <InstallSheet />
+      <GoalSwap />
       <LlmSettingsPanel />
       <PlanLoading />
     </>

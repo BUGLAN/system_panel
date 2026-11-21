@@ -172,6 +172,7 @@ let pendingAfter: { r: QuestResult; err: PlanFailure | null } | null = null;
 async function afterSettle(r: QuestResult, followUpError: PlanFailure | null): Promise<void> {
   if (r.titles.length) setUi({ achQueue: [...uiStore.getState().achQueue, ...r.titles], archiveDot: true });
   if (r.planClear >= 0) {
+    setUi({ mainJustDone: r.planClear });
     await go('main', { noHist: true });
     if (followUpError) sayMain('这一单记上了。下一段没拆出来——[重试拆解]在这儿。');
     else if (r.finale) sayMain('整条主线走完了。下一条，我已经排好了。');
