@@ -5,3 +5,5 @@ node_modules
 package-lock.json
 宿主养成系统_重设计.html
 docs
+src/core/data/categories.ts
+src/core/data/dailyCommon.ts
