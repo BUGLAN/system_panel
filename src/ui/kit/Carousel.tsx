@@ -34,7 +34,16 @@ const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
 export function Carousel(p: CarouselProps) {
   const host = useRef<HTMLDivElement>(null);
   const cards = useRef<Array<HTMLDivElement | null>>([]);
-  const st = useRef({ pos: p.start, target: p.start, idx: -1, cw: 0, ch: 0, tilt: { x: 0, y: 0 }, raf: 0, ready: false });
+  const st = useRef({
+    pos: p.start,
+    target: p.start,
+    idx: -1,
+    cw: 0,
+    ch: 0,
+    tilt: { x: 0, y: 0 },
+    raf: 0,
+    ready: false,
+  });
   const props = useRef(p);
   useEffect(() => {
     props.current = p;
@@ -74,7 +83,15 @@ export function Carousel(p: CarouselProps) {
     });
   }
 
-  const drag = useRef<{ x: number; p: number; lx: number; lt: number; v: number; card: HTMLDivElement | null; moved: number } | null>(null);
+  const drag = useRef<{
+    x: number;
+    p: number;
+    lx: number;
+    lt: number;
+    v: number;
+    card: HTMLDivElement | null;
+    moved: number;
+  } | null>(null);
 
   function tick(): void {
     const s = st.current;
@@ -137,12 +154,20 @@ export function Carousel(p: CarouselProps) {
       const d = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
       if (t - wl < 280 || Math.abs(d) < 4) return;
       wl = t;
-      st.current.target = clamp(Math.round(st.current.target) + (d > 0 ? 1 : -1), 0, props.current.count - 1);
+      st.current.target = clamp(
+        Math.round(st.current.target) + (d > 0 ? 1 : -1),
+        0,
+        props.current.count - 1,
+      );
       kick();
     };
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
-      st.current.target = clamp(Math.round(st.current.target) + (e.key === 'ArrowRight' ? 1 : -1), 0, props.current.count - 1);
+      st.current.target = clamp(
+        Math.round(st.current.target) + (e.key === 'ArrowRight' ? 1 : -1),
+        0,
+        props.current.count - 1,
+      );
       kick();
     };
     inner.addEventListener('wheel', onWheel, { passive: false });
@@ -197,7 +222,12 @@ export function Carousel(p: CarouselProps) {
         const c = cards.current[s.idx];
         if (!c) return;
         const r = c.getBoundingClientRect();
-        if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) {
+        if (
+          e.clientX < r.left ||
+          e.clientX > r.right ||
+          e.clientY < r.top ||
+          e.clientY > r.bottom
+        ) {
           if (s.tilt.x || s.tilt.y) {
             s.tilt = { x: 0, y: 0 };
             layout();
@@ -226,7 +256,11 @@ export function Carousel(p: CarouselProps) {
             }
           }
         } else {
-          s.target = clamp(Math.round(s.pos - (d.v * 200) / (s.cw * 0.74)), 0, props.current.count - 1);
+          s.target = clamp(
+            Math.round(s.pos - (d.v * 200) / (s.cw * 0.74)),
+            0,
+            props.current.count - 1,
+          );
         }
         kick();
       }}

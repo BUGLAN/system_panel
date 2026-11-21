@@ -40,7 +40,11 @@ function Empty() {
   const busy = useUi((s) => s.planJob !== null);
   return (
     <div className="main-empty rv">
-      <p>{pending ? `「${pending}」上次没拆成。\n目标我记着，点下面重试。` : '还没有清单。先去立一个目标。'}</p>
+      <p>
+        {pending
+          ? `「${pending}」上次没拆成。\n目标我记着，点下面重试。`
+          : '还没有清单。先去立一个目标。'}
+      </p>
       {pending ? (
         <Btn kind="pri" disabled={busy} onClick={() => void retryPendingPlan()}>
           重试拆解
@@ -104,11 +108,17 @@ export function Main() {
     } else if (st === 'cur') {
       setMood('');
       setMoodText('尚可');
-      sayMain(`第 [${Math.min(goal.days || total, goalPassedDays(goal, now()))}] 天，完成 [${done}] 单。清单不会自己变短。`);
+      sayMain(
+        `第 [${Math.min(goal.days || total, goalPassedDays(goal, now()))}] 天，完成 [${done}] 单。清单不会自己变短。`,
+      );
     } else if (t.finalTask) {
       setMood('');
       setMoodText('期待');
-      sayMain(t.timed ? `终局单。[${t.minutes}] 分钟。我会在终点等你——大概。` : '终局单。[打卡]，随时交。我会在终点等你——大概。');
+      sayMain(
+        t.timed
+          ? `终局单。[${t.minutes}] 分钟。我会在终点等你——大概。`
+          : '终局单。[打卡]，随时交。我会在终点等你——大概。',
+      );
     } else {
       setMood('');
       setMoodText('冷静');
@@ -139,7 +149,9 @@ export function Main() {
         return;
       }
       const q = game().queue.find(
-        (x) => (x.kind === 'main' || (x.kind === 'remedy' && x.planIndex >= 0)) && x.planIndex === t.index,
+        (x) =>
+          (x.kind === 'main' || (x.kind === 'remedy' && x.planIndex >= 0)) &&
+          x.planIndex === t.index,
       );
       if (q) openBriefing(q);
       return;
@@ -187,7 +199,14 @@ export function Main() {
         const el = car.current?.cardEl(nextLocal);
         if (el) {
           const [x, y] = center(el);
-          burst(x, y, { type: 'star', n: 30, colors: ['#d6ff3d', '#fff', '#3be8ff'], min: 2, max: 9, sz: 3 });
+          burst(x, y, {
+            type: 'star',
+            n: 30,
+            colors: ['#d6ff3d', '#fff', '#3be8ff'],
+            min: 2,
+            max: 9,
+            sz: 3,
+          });
           ring(x, y, '#d6ff3d', 160, 3);
           flash();
         }
@@ -247,11 +266,13 @@ export function Main() {
         <b>
           {passed}/{days}
         </b>{' '}
-        天 · 完成 <b>{done}</b> 单 <span className="pill">{left > 0 ? `剩 ${left} 天` : '今天截止'}</span>
+        天 · 完成 <b>{done}</b> 单{' '}
+        <span className="pill">{left > 0 ? `剩 ${left} 天` : '今天截止'}</span>
       </div>
       <div className="segbar rv">
         <span>
-          第 {seg + 1} 段 · {pad2(seg * PLAN_WINDOW_SIZE + 1)}–{pad2(seg * PLAN_WINDOW_SIZE + tasks.length)}
+          第 {seg + 1} 段 · {pad2(seg * PLAN_WINDOW_SIZE + 1)}–
+          {pad2(seg * PLAN_WINDOW_SIZE + tasks.length)}
         </span>
         {segs <= 16 ? (
           <span className="segpips">
@@ -310,7 +331,16 @@ export function Main() {
           </div>
         </Carousel>
       </div>
-      <div className="rv" id="mainRuler" style={{ ['--pf' as string]: Math.min(1, tasks.filter((t) => t.state === 'done').length / Math.max(1, tasks.length - 1)) }}>
+      <div
+        className="rv"
+        id="mainRuler"
+        style={{
+          ['--pf' as string]: Math.min(
+            1,
+            tasks.filter((t) => t.state === 'done').length / Math.max(1, tasks.length - 1),
+          ),
+        }}
+      >
         {tasks.map((t, i) => (
           <i
             key={t.index}

@@ -41,7 +41,8 @@ function SwapForm() {
           </div>
           <b>{g.text}</b>
           <small>
-            完成 {goalDoneCount(g)}/{goalTotalTasks(g)} 单 · 已过 {Math.min(g.days, goalPassedDays(g, now()))} 天 · 等级 / 晶核 / 六维保留
+            完成 {goalDoneCount(g)}/{goalTotalTasks(g)} 单 · 已过{' '}
+            {Math.min(g.days, goalPassedDays(g, now()))} 天 · 等级 / 晶核 / 六维保留
           </small>
         </div>
       )}

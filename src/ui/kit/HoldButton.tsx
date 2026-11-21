@@ -9,7 +9,11 @@ import { appEl } from '../fx/fx';
 const HOLD_MS = 1600;
 
 /** 按住的控制器：挂在按钮元素上，事件监听在 effect 里装卸 */
-function attachHold(btn: HTMLButtonElement, done: () => void, isDisabled: () => boolean): () => void {
+function attachHold(
+  btn: HTMLButtonElement,
+  done: () => void,
+  isDisabled: () => boolean,
+): () => void {
   let on = false;
   let t0 = 0;
   let p = 0;
@@ -25,7 +29,12 @@ function attachHold(btn: HTMLButtonElement, done: () => void, isDisabled: () => 
     const app = appEl();
     if (app && p > 0.25 && Math.random() < p) {
       app.animate(
-        [{ transform: `translate(${(Math.random() - 0.5) * 6 * p}px,${(Math.random() - 0.5) * 6 * p}px)` }, { transform: 'none' }],
+        [
+          {
+            transform: `translate(${(Math.random() - 0.5) * 6 * p}px,${(Math.random() - 0.5) * 6 * p}px)`,
+          },
+          { transform: 'none' },
+        ],
         { duration: 70 },
       );
     }
@@ -69,18 +78,28 @@ function attachHold(btn: HTMLButtonElement, done: () => void, isDisabled: () => 
   };
   const ctx = (e: Event) => e.preventDefault();
   btn.addEventListener('pointerdown', down);
-  for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) btn.addEventListener(ev, release);
+  for (const ev of ['pointerup', 'pointerleave', 'pointercancel'])
+    btn.addEventListener(ev, release);
   btn.addEventListener('contextmenu', ctx);
   return () => {
     on = false;
     cancelAnimationFrame(raf);
     btn.removeEventListener('pointerdown', down);
-    for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) btn.removeEventListener(ev, release);
+    for (const ev of ['pointerup', 'pointerleave', 'pointercancel'])
+      btn.removeEventListener(ev, release);
     btn.removeEventListener('contextmenu', ctx);
   };
 }
 
-export function HoldButton({ label, onDone, disabled }: { label: string; onDone: () => void; disabled?: boolean }) {
+export function HoldButton({
+  label,
+  onDone,
+  disabled,
+}: {
+  label: string;
+  onDone: () => void;
+  disabled?: boolean;
+}) {
   const ref = useRef<HTMLButtonElement>(null);
   const doneRef = useRef(onDone);
   const disRef = useRef(!!disabled);

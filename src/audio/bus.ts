@@ -68,7 +68,9 @@ export function createAudioBus(base = '/audio/'): SfxBus {
 
   function ensure(): AudioContext | null {
     if (ctx) return ctx;
-    const AC = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    const AC =
+      window.AudioContext ??
+      (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
     if (!AC) return null;
     try {
       const session = (navigator as Navigator & { audioSession?: { type: string } }).audioSession;
@@ -185,7 +187,8 @@ export function createAudioBus(base = '/audio/'): SfxBus {
       if (tier === 'critical') duck();
       const src = ctx.createBufferSource();
       src.buffer = b;
-      if (tier === 'texture' || name === 'press') src.playbackRate.value = 0.96 + Math.random() * 0.08;
+      if (tier === 'texture' || name === 'press')
+        src.playbackRate.value = 0.96 + Math.random() * 0.08;
       const gain = ctx.createGain();
       gain.gain.value = TIER_GAIN[tier];
       src.connect(gain).connect(tier === 'ui' || tier === 'texture' ? uiBus : fxBus);

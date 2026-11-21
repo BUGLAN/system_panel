@@ -21,7 +21,14 @@ export function EvidenceSource() {
   };
   return (
     <>
-      <input ref={cam} type="file" accept="image/*" capture="environment" hidden onChange={onPick} />
+      <input
+        ref={cam}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        hidden
+        onChange={onPick}
+      />
       <input ref={lib} type="file" accept="image/*" hidden onChange={onPick} />
       <Sheet open={open} onClose={close} title="上传快照记录">
         <Tap className="srow" onClick={() => cam.current?.click()}>
@@ -51,7 +58,9 @@ export function EvidenceSource() {
             <span>›</span>
           </Tap>
         )}
-        <p className="sheet-note">照片会压缩到长边 1024 像素再存、再发给视觉模型。相机打不开就从相册选。</p>
+        <p className="sheet-note">
+          照片会压缩到长边 1024 像素再存、再发给视觉模型。相机打不开就从相册选。
+        </p>
       </Sheet>
     </>
   );

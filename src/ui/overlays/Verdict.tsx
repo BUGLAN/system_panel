@@ -77,7 +77,9 @@ export function Verdict({
   const [sub, setSub] = useState('ANALYZING EVIDENCE…');
   const [say, setSay] = useState(rm ? line : '');
   const [lvlabel, setLvlabel] = useState(`LV ${rm ? r.afterLv : r.beforeLv}`);
-  const [xpr, setXpr] = useState(rm ? `${r.endExp} / ${r.afterNeed}` : `${r.beforeExp} / ${r.beforeNeed}`);
+  const [xpr, setXpr] = useState(
+    rm ? `${r.endExp} / ${r.afterNeed}` : `${r.beforeExp} / ${r.beforeNeed}`,
+  );
   const prog = useRef<HTMLElement>(null);
   const rank = useRef<HTMLDivElement>(null);
   const ban = useRef<HTMLDivElement>(null);
@@ -90,7 +92,8 @@ export function Verdict({
   useEffect(() => {
     let alive = true;
     const tl = buildSettleTimeline({ crit: r.crit, rows: rows.length, levelUp });
-    const setBar = (p: number) => bar.current?.style.setProperty('--p', String(Math.max(0, Math.min(1, p))));
+    const setBar = (p: number) =>
+      bar.current?.style.setProperty('--p', String(Math.max(0, Math.min(1, p))));
     if (reducedMotion()) {
       rows.forEach((row, i) => {
         const el = rowEls.current[i];
@@ -103,7 +106,11 @@ export function Verdict({
       // ① 扫描
       sfx.play('scan');
       const subs = ['ANALYZING EVIDENCE…', '比对历史数据…', '检测 P 图痕迹…', '计算敷衍指数…'];
-      prog.current?.animate([{ transform: 'scaleX(0)' }, { transform: 'scaleX(1)' }], { duration: tl.scanMs, easing: 'cubic-bezier(.2,.9,.2,1)', fill: 'forwards' });
+      prog.current?.animate([{ transform: 'scaleX(0)' }, { transform: 'scaleX(1)' }], {
+        duration: tl.scanMs,
+        easing: 'cubic-bezier(.2,.9,.2,1)',
+        fill: 'forwards',
+      });
       for (let i = 0; i < subs.length; i++) {
         setSub(subs[i] as string);
         await sleep(tl.scanMs / subs.length);
@@ -138,7 +145,14 @@ export function Verdict({
       {
         const [x, y] = center(rank.current);
         const cols = r.crit ? ['#ff3b7a', '#ffcc4d', '#fff'] : ['#d6ff3d', '#fff', '#3be8ff'];
-        burst(x, y, { n: r.crit ? 60 : 40, colors: cols, min: 4, max: r.crit ? 15 : 11, life: 38, sz: 2.5 });
+        burst(x, y, {
+          n: r.crit ? 60 : 40,
+          colors: cols,
+          min: 4,
+          max: r.crit ? 15 : 11,
+          life: 38,
+          sz: 2.5,
+        });
         ring(x, y, cols[0] as string, 160, 5);
       }
       setSay(line);
@@ -146,11 +160,17 @@ export function Verdict({
       const rowJobs = rows.map(async (row, i) => {
         await sleep(i * tl.rowStagger);
         const el = rowEls.current[i] ?? null;
-        el?.parentElement?.animate([{ opacity: 0, transform: 'translateX(-40px)' }, { opacity: 1, transform: 'none' }], {
-          duration: 300,
-          easing: 'cubic-bezier(.2,1.3,.4,1)',
-          fill: 'backwards',
-        });
+        el?.parentElement?.animate(
+          [
+            { opacity: 0, transform: 'translateX(-40px)' },
+            { opacity: 1, transform: 'none' },
+          ],
+          {
+            duration: 300,
+            easing: 'cubic-bezier(.2,1.3,.4,1)',
+            fill: 'backwards',
+          },
+        );
         if (typeof row.value !== 'number') return;
         sfx.play('coin');
         if (i === 0 && tl.crit && row.base !== undefined) {
@@ -176,11 +196,14 @@ export function Verdict({
         if (!b) return;
         const from = r.beforeExp / r.beforeNeed;
         if (tl.bar.kind === 'same') {
-          await b.animate([{ transform: `scaleX(${from})` }, { transform: `scaleX(${r.endExp / r.afterNeed})` }], {
-            duration: tl.bar.ms,
-            easing: 'cubic-bezier(.2,.9,.2,1)',
-            fill: 'forwards',
-          }).finished;
+          await b.animate(
+            [{ transform: `scaleX(${from})` }, { transform: `scaleX(${r.endExp / r.afterNeed})` }],
+            {
+              duration: tl.bar.ms,
+              easing: 'cubic-bezier(.2,.9,.2,1)',
+              fill: 'forwards',
+            },
+          ).finished;
         } else {
           await b.animate([{ transform: `scaleX(${from})` }, { transform: 'scaleX(1)' }], {
             duration: tl.bar.fillMs,
@@ -192,11 +215,14 @@ export function Verdict({
           setLvlabel(`LV ${r.afterLv}`);
           setXpr('LEVEL UP!');
           await sleep(tl.bar.flashMs);
-          await b.animate([{ transform: 'scaleX(0)' }, { transform: `scaleX(${r.endExp / r.afterNeed})` }], {
-            duration: tl.bar.refillMs,
-            easing: 'cubic-bezier(.2,.9,.2,1)',
-            fill: 'forwards',
-          }).finished;
+          await b.animate(
+            [{ transform: 'scaleX(0)' }, { transform: `scaleX(${r.endExp / r.afterNeed})` }],
+            {
+              duration: tl.bar.refillMs,
+              easing: 'cubic-bezier(.2,.9,.2,1)',
+              fill: 'forwards',
+            },
+          ).finished;
         }
         setBar(r.endExp / r.afterNeed);
         setXpr(`${r.endExp} / ${r.afterNeed}`);
@@ -228,7 +254,10 @@ export function Verdict({
           <div className="vtag">VERDICT · {questCode(r.quest)}</div>
           <div style={{ position: 'relative' }}>
             <div className="critban" ref={ban}>
-              <span>CRITICAL HIT · 暴击 · CRITICAL HIT · 暴击 · CRITICAL HIT · 暴击 · CRITICAL HIT · 暴击 ·</span>
+              <span>
+                CRITICAL HIT · 暴击 · CRITICAL HIT · 暴击 · CRITICAL HIT · 暴击 · CRITICAL HIT ·
+                暴击 ·
+              </span>
             </div>
             <div className={`rank ${g}`} ref={rank} style={{ ['--rc' as string]: GRADE_COLORS[g] }}>
               {g}
@@ -243,7 +272,10 @@ export function Verdict({
                   {row.tag ? <em>{row.tag}</em> : null}
                 </span>
                 {typeof row.value === 'number' ? (
-                  <b style={{ display: 'inline-block', position: 'relative' }} ref={(el) => void (rowEls.current[i] = el)}>
+                  <b
+                    style={{ display: 'inline-block', position: 'relative' }}
+                    ref={(el) => void (rowEls.current[i] = el)}
+                  >
                     +0
                   </b>
                 ) : (
@@ -269,11 +301,21 @@ export function Verdict({
             </div>
           </div>
           {r.near > 0 && <p className="vd-near">差 {r.near}% 就暴击了。</p>}
-          {r.tooFast && <p className="vd-near">{Math.round(r.heldMs / 1000)} 秒就交了？她记下了。</p>}
-          {followUpError && <p className="vd-err">这一单记上了。下一段没拆出来：{followUpError.detail.slice(0, 40)}——回主线页可以重试拆解。</p>}
+          {r.tooFast && (
+            <p className="vd-near">{Math.round(r.heldMs / 1000)} 秒就交了？她记下了。</p>
+          )}
+          {followUpError && (
+            <p className="vd-err">
+              这一单记上了。下一段没拆出来：{followUpError.detail.slice(0, 40)}
+              ——回主线页可以重试拆解。
+            </p>
+          )}
           <Btn
             kind="pri"
-            style={{ visibility: ready ? 'visible' : 'hidden', transition: `opacity .3s cubic-bezier(${EASE.ease.join(',')})` }}
+            style={{
+              visibility: ready ? 'visible' : 'hidden',
+              transition: `opacity .3s cubic-bezier(${EASE.ease.join(',')})`,
+            }}
             onClick={() => void closeVerdict()}
           >
             收下

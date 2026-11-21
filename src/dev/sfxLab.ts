@@ -61,4 +61,6 @@ document.getElementById('amb')?.addEventListener('click', () => {
   amb = !amb;
   bus.ambient(amb);
 });
-document.getElementById('vol')?.addEventListener('input', (e) => bus.setVolume(Number((e.target as HTMLInputElement).value)));
+document
+  .getElementById('vol')
+  ?.addEventListener('input', (e) => bus.setVolume(Number((e.target as HTMLInputElement).value)));

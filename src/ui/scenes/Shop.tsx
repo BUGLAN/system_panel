@@ -36,7 +36,13 @@ export function Shop() {
         void el.offsetWidth;
         el.classList.add('pop');
         const [x, y] = center(el);
-        burst(x, y, { n: 38, colors: [getComputedStyle(el).getPropertyValue('--gc') || '#fff', '#fff'], min: 3, max: 12, life: 36 });
+        burst(x, y, {
+          n: 38,
+          colors: [getComputedStyle(el).getPropertyValue('--gc') || '#fff', '#fff'],
+          min: 3,
+          max: 12,
+          life: 36,
+        });
         ring(x, y, '#d6ff3d', 160, 4);
         shake(5, 240);
       }
@@ -82,7 +88,9 @@ export function Shop() {
                   <span className="own">
                     持有 <b>×{host.items[x.id] ?? 0}</b>
                   </span>
-                  <span className={`ptag ${lk ? 'lk' : ''}`}>{lk ? `🔒 LV${x.lv}` : `晶核 ${x.price}`}</span>
+                  <span className={`ptag ${lk ? 'lk' : ''}`}>
+                    {lk ? `🔒 LV${x.lv}` : `晶核 ${x.price}`}
+                  </span>
                 </div>
               </>
             );
@@ -94,7 +102,9 @@ export function Shop() {
           <i key={x.id} className={k === i ? 'on' : ''} onClick={() => car.current?.go(k)} />
         ))}
       </div>
-      {it.id === 'patch' && (host.items['patch'] ?? 0) > 0 && !patch.ok && <p className="shop-why rv">补签券现在用不了：{patch.ok ? '' : patch.reason}</p>}
+      {it.id === 'patch' && (host.items['patch'] ?? 0) > 0 && !patch.ok && (
+        <p className="shop-why rv">补签券现在用不了：{patch.ok ? '' : patch.reason}</p>
+      )}
       <div className="shop-foot rv">
         {it.id === 'patch' && (host.items['patch'] ?? 0) > 0 && (
           <Btn kind="ghost" sm disabled={!patch.ok} onClick={() => applyPatchTicket()}>
@@ -104,7 +114,11 @@ export function Shop() {
         <Btn
           kind="pri"
           onClick={buy}
-          style={bad ? { ['--bd' as string]: '#2c2944', ['--bb' as string]: '#2c2944', color: '#8c88aa' } : undefined}
+          style={
+            bad
+              ? { ['--bd' as string]: '#2c2944', ['--bb' as string]: '#2c2944', color: '#8c88aa' }
+              : undefined
+          }
         >
           {locked ? `LV${it.lv} 解锁` : short > 0 ? `还差晶核 ${short}` : `购买 · 晶核 ${it.price}`}
         </Btn>

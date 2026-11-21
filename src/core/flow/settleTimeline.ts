@@ -29,7 +29,9 @@ export interface SettleTimeline {
   countMs: number;
   crit: CritBeat | null;
   barAt: number;
-  bar: { kind: 'same'; ms: number } | { kind: 'cross'; fillMs: number; flashMs: number; refillMs: number };
+  bar:
+    | { kind: 'same'; ms: number }
+    | { kind: 'cross'; fillMs: number; flashMs: number; refillMs: number };
   /** 「收下」按钮出现的时刻 = 总时长 */
   totalMs: number;
 }
@@ -37,7 +39,11 @@ export interface SettleTimeline {
 export const SETTLE_MAX_MS = MOTION.settleMaxMs;
 export const LEVELUP_MAX_MS = MOTION.levelUpMaxMs;
 
-export function buildSettleTimeline(o: { crit: boolean; rows: number; levelUp: boolean }): SettleTimeline {
+export function buildSettleTimeline(o: {
+  crit: boolean;
+  rows: number;
+  levelUp: boolean;
+}): SettleTimeline {
   const scanMs = o.crit ? 200 : 300;
   const rankAt = scanMs;
   const rankMs = o.crit ? 220 : 320;
@@ -53,10 +59,27 @@ export function buildSettleTimeline(o: { crit: boolean; rows: number; levelUp: b
   const countEnd = Math.max(rowsAt + expRowMs, otherRowsEnd);
   const barAt = rowsAt + 40;
   const bar: SettleTimeline['bar'] = o.levelUp
-    ? { kind: 'cross', fillMs: MOTION.expBarFillMs, flashMs: MOTION.flash.ms, refillMs: MOTION.expBarRefillMs }
+    ? {
+        kind: 'cross',
+        fillMs: MOTION.expBarFillMs,
+        flashMs: MOTION.flash.ms,
+        refillMs: MOTION.expBarRefillMs,
+      }
     : { kind: 'same', ms: MOTION.expBarMs };
   const barEnd = barAt + (bar.kind === 'same' ? bar.ms : bar.fillMs + bar.flashMs + bar.refillMs);
-  return { scanMs, rankAt, rankMs, rowsAt, rowStagger, rows, countMs, crit, barAt, bar, totalMs: Math.max(countEnd, barEnd) };
+  return {
+    scanMs,
+    rankAt,
+    rankMs,
+    rowsAt,
+    rowStagger,
+    rows,
+    countMs,
+    crit,
+    barAt,
+    bar,
+    totalMs: Math.max(countEnd, barEnd),
+  };
 }
 
 /** 升级叠层：完整版 / 同日简版 */

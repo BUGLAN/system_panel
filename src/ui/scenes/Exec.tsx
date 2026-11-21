@@ -52,7 +52,12 @@ function Slot({ id, status, onRemove }: { id: string; status: string; onRemove: 
   }, [id]);
   const badge = status === 'verified' ? '✓' : status === 'unsure' ? '存疑' : '未校验';
   return (
-    <button type="button" className={`evi-slot has ${checking ? 'checking' : ''}`} onClick={onRemove} aria-label="撤掉这张证据">
+    <button
+      type="button"
+      className={`evi-slot has ${checking ? 'checking' : ''}`}
+      onClick={onRemove}
+      aria-label="撤掉这张证据"
+    >
       {url && <img src={url} alt="证据" />}
       <i className={`evi-badge ${status}`}>{checking ? '校验中' : badge}</i>
     </button>
@@ -95,7 +100,15 @@ function Tray({ open, onClose }: { open: boolean; onClose: () => void }) {
               <b>{it.name}</b>
               <p>{it.desc.split('。')[0]}。</p>
               <div className="eqt">
-                {eq ? '✓ 已装载' : broken ? '已碎' : off ? '打卡单用不上' : (items[id] ?? 0) > 0 ? '点击装载' : '持有 ×0'}
+                {eq
+                  ? '✓ 已装载'
+                  : broken
+                    ? '已碎'
+                    : off
+                      ? '打卡单用不上'
+                      : (items[id] ?? 0) > 0
+                        ? '点击装载'
+                        : '持有 ×0'}
               </div>
             </div>
           );
@@ -123,7 +136,9 @@ export function Exec() {
     const id = setInterval(() => setT(now()), 250);
     return () => clearInterval(id);
   }, []);
-  const quarter = a?.task.timed ? Math.floor(((t - a.startAt) / Math.max(1, a.task.minutes * 60_000)) * 4) : -1;
+  const quarter = a?.task.timed
+    ? Math.floor(((t - a.startAt) / Math.max(1, a.task.minutes * 60_000)) * 4)
+    : -1;
   useEffect(() => {
     if (quarter < 1) return;
     const m = MILESTONES[Math.min(3, quarter - 1)];
@@ -148,7 +163,12 @@ export function Exec() {
   const equipped = (a.dbl ? 1 : 0) + (a.crit ? 1 : 0) + (a.shield ? 1 : 0);
   const busy = waiting || settling;
   return (
-    <section className="scene on" id="sc-exec" ref={ref} style={{ ['--gc' as string]: RANK_COLORS[q.rank] }}>
+    <section
+      className="scene on"
+      id="sc-exec"
+      ref={ref}
+      style={{ ['--gc' as string]: RANK_COLORS[q.rank] }}
+    >
       <div className="ex-h rv">
         <span className="gbadge">{q.rank}</span>
         <span className="rec">
@@ -206,13 +226,20 @@ export function Exec() {
             <Slot key={e.id} id={e.id} status={e.status} onRemove={() => removeEvidence(e.id)} />
           ))}
           {a.evidence.length < 3 && (
-            <Tap className="evi-slot" aria-label="上传证据" disabled={picking || busy} onClick={() => setUi({ sheet: 'evidence' })}>
+            <Tap
+              className="evi-slot"
+              aria-label="上传证据"
+              disabled={picking || busy}
+              onClick={() => setUi({ sheet: 'evidence' })}
+            >
               {picking ? '…' : '+'}
             </Tap>
           )}
         </div>
         <p className="evi-tip">
-          {a.evidence.length ? '点缩略图可以撤掉。证据越多，暴击率越高。' : '拍一张或从相册选。没有证据，她不认账。'}
+          {a.evidence.length
+            ? '点缩略图可以撤掉。证据越多，暴击率越高。'
+            : '拍一张或从相册选。没有证据，她不认账。'}
         </p>
         {rejectNote && <p className="evi-reject">上一张被拒：{rejectNote}</p>}
       </div>

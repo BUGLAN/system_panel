@@ -39,9 +39,15 @@ export function setupPwa(): void {
 
   // 「添加到主屏幕」引导：第一次进大厅
   uiStore.subscribe((s, prev) => {
-    if (s.scene === 'home' && prev.scene !== 'home' && !isStandalone() && !servicesStore.getState().prefs.installHintSeen) {
+    if (
+      s.scene === 'home' &&
+      prev.scene !== 'home' &&
+      !isStandalone() &&
+      !servicesStore.getState().prefs.installHintSeen
+    ) {
       setTimeout(() => {
-        if (uiStore.getState().scene === 'home' && !uiStore.getState().sheet) setUi({ sheet: 'install' });
+        if (uiStore.getState().scene === 'home' && !uiStore.getState().sheet)
+          setUi({ sheet: 'install' });
       }, 2500);
     }
   });

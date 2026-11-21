@@ -19,7 +19,9 @@
 }
 .checkin-box b {
   display: block;
-  font: 700 italic 22px 'Chakra Petch', var(--fc);
+  font:
+    700 italic 22px 'Chakra Petch',
+    var(--fc);
   color: var(--gc, var(--cyan));
 }
 .checkin-box span {
@@ -248,7 +250,9 @@
   display: flex;
   flex-direction: column;
   padding: calc(var(--safe-top) + 18px) 18px calc(var(--safe-bottom) + 14px);
-  background: radial-gradient(circle at 50% 0%, rgba(59, 232, 255, 0.12), transparent 55%), rgba(6, 5, 12, 0.97);
+  background:
+    radial-gradient(circle at 50% 0%, rgba(59, 232, 255, 0.12), transparent 55%),
+    rgba(6, 5, 12, 0.97);
 }
 .chat-h {
   display: flex;
@@ -556,7 +560,9 @@
   text-overflow: ellipsis;
 }
 .rc em {
-  font: 700 12px 'Chakra Petch', var(--fc);
+  font:
+    700 12px 'Chakra Petch',
+    var(--fc);
   font-style: normal;
   color: var(--acid);
 }

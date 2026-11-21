@@ -67,7 +67,9 @@ async function admit(blob: Blob, verify: boolean): Promise<void> {
   const id = newId(a.task.serial);
   await putEvidence(appDb(), id, blob, now());
   urls.set(id, URL.createObjectURL(blob));
-  const ok = runFlow((f) => f.addEvidence({ id, status: 'unverified', note: verify ? '' : '演示截图', takenAt: now() }));
+  const ok = runFlow((f) =>
+    f.addEvidence({ id, status: 'unverified', note: verify ? '' : '演示截图', takenAt: now() }),
+  );
   if (!ok) return;
   evidenceStore.setState({ rejectNote: '' });
   sfx.play('success');
@@ -85,7 +87,9 @@ async function admit(blob: Blob, verify: boolean): Promise<void> {
   const quest = a.task;
   const job = (async () => {
     try {
-      const v = await verifyEvidence({ client, quest, dataUrl: await blobToDataUrl(blob) }).catch(() => unverified('校验失败'));
+      const v = await verifyEvidence({ client, quest, dataUrl: await blobToDataUrl(blob) }).catch(
+        () => unverified('校验失败'),
+      );
       const res = runFlow((f) => f.applyVerdict(id, v.status, v.note));
       if (res === 'rejected') {
         sfx.play('error');
@@ -93,7 +97,11 @@ async function admit(blob: Blob, verify: boolean): Promise<void> {
         toast(`这张不收：${v.note}。重拍一张。`, 'err');
         sayWatch(`[不符]：${v.note}。重传。`);
       } else if (res === 'kept') {
-        sayWatch(v.status === 'verified' ? `核过了：${v.note || '可信'}。` : `先收下：${v.note || '没核上'}。`);
+        sayWatch(
+          v.status === 'verified'
+            ? `核过了：${v.note || '可信'}。`
+            : `先收下：${v.note || '没核上'}。`,
+        );
       }
     } finally {
       evidenceStore.setState((s) => ({ checking: s.checking.filter((x) => x !== id) }));

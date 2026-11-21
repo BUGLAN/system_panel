@@ -33,11 +33,23 @@ function LevelUp({ from, to, brief }: { from: number; to: number; brief: boolean
     sfx.play('levelup');
     flash();
     if (!brief) confetti();
-    const t1 = setTimeout(() => {
-      const [x, y] = center(n.current);
-      burst(x, y, { type: 'star', n: brief ? 14 : 34, colors: ['#d6ff3d', '#fff'], min: 3, max: 11, g: 0.05, sz: 4, life: 50 });
-      ring(x, y, '#d6ff3d', 150, 4);
-    }, brief ? 200 : 700);
+    const t1 = setTimeout(
+      () => {
+        const [x, y] = center(n.current);
+        burst(x, y, {
+          type: 'star',
+          n: brief ? 14 : 34,
+          colors: ['#d6ff3d', '#fff'],
+          min: 3,
+          max: 11,
+          g: 0.05,
+          sz: 4,
+          life: 50,
+        });
+        ring(x, y, '#d6ff3d', 150, 4);
+      },
+      brief ? 200 : 700,
+    );
     const t2 = setTimeout(() => setCanTap(true), levelUpDurationMs(brief));
     return () => {
       clearTimeout(t1);
@@ -59,9 +71,9 @@ function LevelUp({ from, to, brief }: { from: number; to: number; brief: boolean
       <div className="lu-p">
         {perk.split('\n').map((l, i) => (
           <span key={i} style={{ display: 'block' }}>
-            {l.split(/(\[[^\]]+\])/).map((seg, j) =>
-              seg.startsWith('[') ? <b key={j}>{seg.slice(1, -1)}</b> : seg,
-            )}
+            {l
+              .split(/(\[[^\]]+\])/)
+              .map((seg, j) => (seg.startsWith('[') ? <b key={j}>{seg.slice(1, -1)}</b> : seg))}
           </span>
         ))}
       </div>
@@ -99,13 +111,20 @@ function Fail({ show }: { show: Extract<Show, { kind: 'fail' }> }) {
       {r ? (
         <>
           <div className="fail-rem-h">REMEDY · 补救单已备好</div>
-          <div className="ticket in fail-ticket" style={{ ['--gc' as string]: RANK_COLORS[r.rank] }}>
+          <div
+            className="ticket in fail-ticket"
+            style={{ ['--gc' as string]: RANK_COLORS[r.rank] }}
+          >
             <div className="tk-g">
               <b>{r.rank}</b>
               <small>{questCode(r)}</small>
             </div>
             <div className="tk-b">
-              <span className="tk-k">{r.planIndex >= 0 ? `补救 · 主线 ${String(r.planIndex + 1).padStart(2, '0')}` : '补救'}</span>
+              <span className="tk-k">
+                {r.planIndex >= 0
+                  ? `补救 · 主线 ${String(r.planIndex + 1).padStart(2, '0')}`
+                  : '补救'}
+              </span>
               <div className="tk-t">{r.name}</div>
               <div className="tk-m">
                 {timeLabel(r)} · {r.proof}

@@ -28,12 +28,22 @@ const TABS: Array<[Filter, string]> = [
 ];
 
 function Ticket({ q, locked, i }: { q: Quest; locked: boolean; i: number }) {
-  const label = q.kind === 'main' ? '主线' : q.kind === 'remedy' ? (q.planIndex >= 0 ? `补救 · 主线 ${String(q.planIndex + 1).padStart(2, '0')}` : '补救') : '日常';
+  const label =
+    q.kind === 'main'
+      ? '主线'
+      : q.kind === 'remedy'
+        ? q.planIndex >= 0
+          ? `补救 · 主线 ${String(q.planIndex + 1).padStart(2, '0')}`
+          : '补救'
+        : '日常';
   const at = attrsText(q.attrs);
   return (
     <div
       className={`ticket sr in ${locked ? 'locked' : ''}`}
-      style={{ ['--gc' as string]: RANK_COLORS[q.rank], animationDelay: `${Math.min(i, 6) * 80}ms` }}
+      style={{
+        ['--gc' as string]: RANK_COLORS[q.rank],
+        animationDelay: `${Math.min(i, 6) * 80}ms`,
+      }}
       onClick={() => {
         if (!locked) sfx.play('soft');
         openBriefing(q);
@@ -44,9 +54,7 @@ function Ticket({ q, locked, i }: { q: Quest; locked: boolean; i: number }) {
         <small>{questCode(q)}</small>
       </div>
       <div className="tk-b">
-        <span className={`tk-k ${q.kind === 'main' ? 'main' : ''}`}>
-          {label}
-        </span>
+        <span className={`tk-k ${q.kind === 'main' ? 'main' : ''}`}>{label}</span>
         <div className="tk-t">{q.name}</div>
         <div className="tk-m">
           {kindLabel(q)} · {timeLabel(q)} · {q.proof}

@@ -132,7 +132,15 @@ export async function submitQuest(): Promise<void> {
       if (!followUpError && result.windowEnd) result.windowNext = true;
     }
     result.empty = game().queue.length === 0;
-    setUi({ show: { kind: 'verdict', result, evidenceUrl: evUrl, line: verdictLine(result), followUpError } });
+    setUi({
+      show: {
+        kind: 'verdict',
+        result,
+        evidenceUrl: evUrl,
+        line: verdictLine(result),
+        followUpError,
+      },
+    });
   } finally {
     execStore.setState({ settling: false });
   }
@@ -168,9 +176,9 @@ export async function closeLevelUp(): Promise<void> {
 /** 结算演出 → 升级叠层 → 收尾，中间这一拍记着结果 */
 let pendingAfter: { r: QuestResult; err: PlanFailure | null } | null = null;
 
-
 async function afterSettle(r: QuestResult, followUpError: PlanFailure | null): Promise<void> {
-  if (r.titles.length) setUi({ achQueue: [...uiStore.getState().achQueue, ...r.titles], archiveDot: true });
+  if (r.titles.length)
+    setUi({ achQueue: [...uiStore.getState().achQueue, ...r.titles], archiveDot: true });
   if (r.planClear >= 0) {
     setUi({ mainJustDone: r.planClear });
     await go('main', { noHist: true });

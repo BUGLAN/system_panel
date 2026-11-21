@@ -5,7 +5,9 @@
 export const EVIDENCE_MAX_EDGE = 1024;
 export const EVIDENCE_QUALITY = 0.82;
 
-async function decode(file: Blob): Promise<{ draw: CanvasImageSource; w: number; h: number; close?: () => void }> {
+async function decode(
+  file: Blob,
+): Promise<{ draw: CanvasImageSource; w: number; h: number; close?: () => void }> {
   if (typeof createImageBitmap === 'function') {
     try {
       const bmp = await createImageBitmap(file, { imageOrientation: 'from-image' });
@@ -39,7 +41,9 @@ export async function compressImage(file: Blob): Promise<Blob> {
     const cx = canvas.getContext('2d');
     if (!cx) throw new Error('canvas 不可用');
     cx.drawImage(src.draw, 0, 0, w, h);
-    const blob = await new Promise<Blob | null>((r) => canvas.toBlob(r, 'image/jpeg', EVIDENCE_QUALITY));
+    const blob = await new Promise<Blob | null>((r) =>
+      canvas.toBlob(r, 'image/jpeg', EVIDENCE_QUALITY),
+    );
     if (!blob) throw new Error('压缩失败');
     return blob;
   } finally {
@@ -86,5 +90,7 @@ export async function demoShot(title: string, proof: string): Promise<Blob> {
     else x.moveTo(px, py);
   }
   x.stroke();
-  return new Promise((r, rej) => c.toBlob((b) => (b ? r(b) : rej(new Error('生成失败'))), 'image/jpeg', 0.82));
+  return new Promise((r, rej) =>
+    c.toBlob((b) => (b ? r(b) : rej(new Error('生成失败'))), 'image/jpeg', 0.82),
+  );
 }

@@ -34,7 +34,13 @@ export const SFX_TIER: Record<SfxName, Tier> = {
 };
 
 /** 同名音的最小间隔（毫秒）与同时路数 */
-const MIN_GAP: Partial<Record<SfxName, number>> = { type: 28, press: 30, tick: 40, coin: 50, soft: 40 };
+const MIN_GAP: Partial<Record<SfxName, number>> = {
+  type: 28,
+  press: 30,
+  tick: 40,
+  coin: 50,
+  soft: 40,
+};
 const MAX_SAME = 3;
 
 export const MAX_VOICES = 8;
@@ -68,7 +74,9 @@ export class VoicePool {
     if (gap !== undefined && last !== undefined && now - last < gap) return { play: false };
     if (tier === 'texture' && this.criticalPlaying) return { play: false };
     if (this.voices.filter((v) => v.name === name).length >= MAX_SAME) {
-      const oldest = this.voices.filter((v) => v.name === name).sort((a, b) => a.startedAt - b.startedAt)[0];
+      const oldest = this.voices
+        .filter((v) => v.name === name)
+        .sort((a, b) => a.startedAt - b.startedAt)[0];
       return { play: true, evict: oldest ?? null };
     }
     if (this.voices.length < this.cap) return { play: true, evict: null };

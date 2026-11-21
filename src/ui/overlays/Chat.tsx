@@ -72,7 +72,8 @@ const TOOL_LABEL: Record<string, string> = {
 
 function Bubble({ m }: { m: ChatMessage }) {
   if (m.tool) {
-    if (m.tool.name === 'get_status' && m.tool.data) return <StatusCard s={m.tool.data as StatusSummary} />;
+    if (m.tool.name === 'get_status' && m.tool.data)
+      return <StatusCard s={m.tool.data as StatusSummary} />;
     return (
       <div className={`tool-card ${m.tool.ok ? '' : 'bad'}`}>
         <div className="tc-h">系统回执 · {TOOL_LABEL[m.tool.name] ?? m.tool.name}</div>
@@ -138,10 +139,20 @@ export function ChatPanel() {
             <Tap className="chip-opt" quiet disabled={sending} onClick={() => void quickStatus()}>
               查状态
             </Tap>
-            <Tap className="chip-opt" quiet disabled={sending} onClick={() => void sendChat('帮我换一个任务')}>
+            <Tap
+              className="chip-opt"
+              quiet
+              disabled={sending}
+              onClick={() => void sendChat('帮我换一个任务')}
+            >
               换任务
             </Tap>
-            <Tap className="chip-opt" quiet disabled={sending} onClick={() => void sendChat('帮我调整一下手上这单的计划')}>
+            <Tap
+              className="chip-opt"
+              quiet
+              disabled={sending}
+              onClick={() => void sendChat('帮我调整一下手上这单的计划')}
+            >
               调整计划
             </Tap>
           </div>
@@ -158,7 +169,9 @@ export function ChatPanel() {
             <Btn kind="pri" sm disabled={composing || !text.trim() || sending} onClick={send}>
               发送
             </Btn>
-            <small className="chat-count">{composing ? '输入中…' : `${charCount(text)}/${CHAT_MAX_CHARS}`}</small>
+            <small className="chat-count">
+              {composing ? '输入中…' : `${charCount(text)}/${CHAT_MAX_CHARS}`}
+            </small>
           </div>
         </motion.section>
       )}

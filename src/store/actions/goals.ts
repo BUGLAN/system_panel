@@ -161,7 +161,10 @@ export async function submitGoalSwap(): Promise<void> {
   if (!r) return;
   if (!r.ok) {
     sfx.play('error');
-    swapStore.setState({ error: asPlanFailure(r.error), line: '拆不动。[换个说法]再来，或者先问问我。' });
+    swapStore.setState({
+      error: asPlanFailure(r.error),
+      line: '拆不动。[换个说法]再来，或者先问问我。',
+    });
     return;
   }
   if (game().goal.at !== prevId) return; // 等待期间目标变了：作废

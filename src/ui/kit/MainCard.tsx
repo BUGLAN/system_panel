@@ -30,7 +30,15 @@ function Art({ t }: { t: PlanTask }) {
     const C = 2 * Math.PI * 58;
     bg = (
       <>
-        <circle cx="120" cy="80" r="58" fill="none" stroke="currentColor" strokeWidth="1" opacity=".18" />
+        <circle
+          cx="120"
+          cy="80"
+          r="58"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1"
+          opacity=".18"
+        />
         <circle
           cx="120"
           cy="80"
@@ -72,13 +80,26 @@ function Art({ t }: { t: PlanTask }) {
   } else if (kind === 'route') {
     bg = (
       <>
-        <path className="dash" d="M22 44C60 10 84 70 120 40S182 18 218 36" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+        <path
+          className="dash"
+          d="M22 44C60 10 84 70 120 40S182 18 218 36"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.2"
+          strokeLinecap="round"
+        />
         <circle cx="22" cy="44" r="4" fill="currentColor" />
         <g className="pulse">
           <circle cx="218" cy="36" r="6" fill="none" stroke="#fff" strokeWidth="1.5" />
         </g>
         <circle cx="218" cy="36" r="3" fill="#fff" />
-        <path className="dash" d="M14 132H226" stroke="currentColor" strokeWidth="1.5" opacity=".6" />
+        <path
+          className="dash"
+          d="M14 132H226"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          opacity=".6"
+        />
       </>
     );
     lab = 'ROUTE';
@@ -251,7 +272,14 @@ export function MainCard({
               </div>
               <div>
                 完成于
-                <b>{t.doneAt ? new Date(t.doneAt).toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' }) : '—'}</b>
+                <b>
+                  {t.doneAt
+                    ? new Date(t.doneAt).toLocaleDateString('zh-CN', {
+                        month: 'numeric',
+                        day: 'numeric',
+                      })
+                    : '—'}
+                </b>
               </div>
             </div>
             <div className="rec-q">
@@ -267,12 +295,34 @@ export function MainCard({
             <div className="cb-emb">
               <svg viewBox="0 0 100 100">
                 <g className="r1">
-                  <circle cx="50" cy="50" r="46" fill="none" stroke="currentColor" strokeWidth="1.5" strokeDasharray="18 7" />
+                  <circle
+                    cx="50"
+                    cy="50"
+                    r="46"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeDasharray="18 7"
+                  />
                 </g>
                 <g className="r2">
-                  <circle cx="50" cy="50" r="37" fill="none" stroke="currentColor" strokeWidth="1" strokeDasharray="3 5" opacity=".7" />
+                  <circle
+                    cx="50"
+                    cy="50"
+                    r="37"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1"
+                    strokeDasharray="3 5"
+                    opacity=".7"
+                  />
                 </g>
-                <path d="M18 50Q50 22 82 50Q50 78 18 50Z" fill="none" stroke="#fff" strokeWidth="2" />
+                <path
+                  d="M18 50Q50 22 82 50Q50 78 18 50Z"
+                  fill="none"
+                  stroke="#fff"
+                  strokeWidth="2"
+                />
                 <circle cx="50" cy="50" r="10" fill="currentColor" />
                 <circle cx="54" cy="46" r="3" fill="#fff" />
               </svg>

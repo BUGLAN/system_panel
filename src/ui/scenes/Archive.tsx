@@ -70,7 +70,10 @@ function Radar({ vals, max }: { vals: number[]; max: number }) {
         return <line key={i} x1={cx} y1={cy} x2={x} y2={y} stroke="rgba(143,107,255,.22)" />;
       })}
       <g className="sweep">
-        <path d={`M${cx} ${cy} L${cx} ${cy - R} A${R} ${R} 0 0 1 ${pt(1, R).join(' ')} Z`} fill="url(#swg)" />
+        <path
+          d={`M${cx} ${cy} L${cx} ${cy - R} A${R} ${R} 0 0 1 ${pt(1, R).join(' ')} Z`}
+          fill="url(#swg)"
+        />
       </g>
       <polygon
         points={pts.map((p) => p.join(',')).join(' ')}
@@ -85,7 +88,13 @@ function Radar({ vals, max }: { vals: number[]; max: number }) {
         const [dx, dy] = pts[i] ?? [cx, cy];
         return (
           <g key={a.k}>
-            <circle r="4.5" cx={dx} cy={dy} fill="#fff" style={{ filter: 'drop-shadow(0 0 5px #3be8ff)' }} />
+            <circle
+              r="4.5"
+              cx={dx}
+              cy={dy}
+              fill="#fff"
+              style={{ filter: 'drop-shadow(0 0 5px #3be8ff)' }}
+            />
             <text className="lbl" x={x} y={y - 3} textAnchor="middle">
               {a.name}
             </text>
@@ -175,7 +184,12 @@ export function Archive() {
                     if (!own) {
                       sfx.play('error');
                       e.currentTarget.animate(
-                        [{ transform: 'rotate(0)' }, { transform: 'rotate(7deg)' }, { transform: 'rotate(-5deg)' }, { transform: 'rotate(0)' }],
+                        [
+                          { transform: 'rotate(0)' },
+                          { transform: 'rotate(7deg)' },
+                          { transform: 'rotate(-5deg)' },
+                          { transform: 'rotate(0)' },
+                        ],
                         { duration: 700, easing: 'ease-out' },
                       );
                       toast(`未解锁 · ${t.hint}`, 'err');
@@ -191,7 +205,9 @@ export function Archive() {
                   <div className="ht">{t.hint}</div>
                   <div className="ln" />
                   <div className="st">
-                    <span>{eq ? '已佩戴' : own ? (t.shame ? '摘不掉' : '点击佩戴') : '未解锁'}</span>
+                    <span>
+                      {eq ? '已佩戴' : own ? (t.shame ? '摘不掉' : '点击佩戴') : '未解锁'}
+                    </span>
                     <span>{eq ? '●' : ''}</span>
                   </div>
                 </div>
@@ -251,7 +267,9 @@ export function Archive() {
                 <div key={`${e.at}-${e.name}`} className={`rc ${e.result}`}>
                   <span>{e.result === 'clear' ? '✓' : e.result === 'timeout' ? '⏱' : '×'}</span>
                   <b>{e.name}</b>
-                  <em>{e.result === 'clear' ? `+${e.exp}` : e.result === 'timeout' ? '超时' : '认输'}</em>
+                  <em>
+                    {e.result === 'clear' ? `+${e.exp}` : e.result === 'timeout' ? '超时' : '认输'}
+                  </em>
                 </div>
               ))}
             </div>

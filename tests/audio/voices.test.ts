@@ -3,7 +3,8 @@ import { MAX_VOICES, SFX_TIER, VoicePool } from '../../src/audio/voices';
 
 describe('发声调度：优先级 / 上限 / 抢占 / 节流', () => {
   test('结算、暴击、升级、失败、护盾是关键层', () => {
-    for (const n of ['stamp', 'crit', 'levelup', 'fail', 'shield'] as const) expect(SFX_TIER[n]).toBe('critical');
+    for (const n of ['stamp', 'crit', 'levelup', 'fail', 'shield'] as const)
+      expect(SFX_TIER[n]).toBe('critical');
   });
 
   test('同时发声不超过 8 路；满了挤掉优先级最低、最早的那一路', () => {
