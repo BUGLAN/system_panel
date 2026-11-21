@@ -91,6 +91,7 @@ export interface UiState {
   quip: string;
   mainLine: string;
   watchLine: string;
+  watchAt: number;
   /** 委托板筛选 */
   boardFilter: 'all' | 'main' | 'remedy' | 'daily';
 }
@@ -111,6 +112,7 @@ export const uiStore = createStore<UiState>()(() => ({
   quip: '',
   mainLine: '',
   watchLine: '',
+  watchAt: 0,
   boardFilter: 'all',
 }));
 
@@ -155,5 +157,5 @@ export function sayMain(text: string): void {
   setUi({ mainLine: text });
 }
 export function sayWatch(text: string): void {
-  setUi({ watchLine: text });
+  setUi({ watchLine: text, watchAt: Date.now() });
 }

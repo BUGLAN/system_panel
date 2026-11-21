@@ -1,0 +1,429 @@
+/* 执行 / 简报 / 结算 / 失败 / 聊天：参考稿之外补的元素 */
+
+/* 执行面板 */
+#sc-exec .gbadge {
+  --gc: inherit;
+}
+.watch .core,
+.core-watch {
+  width: 34px;
+  height: 34px;
+  flex: none;
+}
+.checkin-box {
+  margin-top: 14px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  border: 1px dashed color-mix(in srgb, var(--gc, var(--cyan)) 55%, transparent);
+  background: rgba(255, 255, 255, 0.03);
+}
+.checkin-box b {
+  display: block;
+  font: 700 italic 22px 'Chakra Petch', var(--fc);
+  color: var(--gc, var(--cyan));
+}
+.checkin-box span {
+  display: block;
+  margin-top: 4px;
+  font: 500 13px/1.6 var(--fc);
+  color: var(--dim);
+}
+.evi-h {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.evi-crit {
+  margin-left: auto;
+  font: 700 11px var(--fm);
+  color: var(--hot);
+  letter-spacing: 1px;
+}
+.evi-row {
+  flex-wrap: wrap;
+}
+.evi-slot.checking img {
+  opacity: 0.45;
+}
+.evi-badge {
+  position: absolute;
+  left: 4px;
+  bottom: 4px;
+  z-index: 2;
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: rgba(6, 5, 12, 0.85);
+  font: 700 10px var(--fc);
+  font-style: normal;
+  color: var(--dim);
+}
+.evi-badge.verified {
+  color: var(--acid);
+}
+.evi-badge.unsure {
+  color: var(--gold);
+}
+.evi-slot.checking .evi-badge {
+  color: var(--cyan);
+  animation: blinkdot 1s infinite;
+}
+.evi-tip {
+  margin-top: 10px;
+  font: 500 12px/1.5 var(--fc);
+  color: var(--dim);
+}
+.evi-reject {
+  margin-top: 6px;
+  font: 500 12px/1.5 var(--fc);
+  color: var(--hot);
+}
+.icard.off {
+  opacity: 0.45;
+}
+
+/* 简报 */
+.brief .bf-h {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.brief .gbadge {
+  color: var(--gc);
+  border-color: var(--gc);
+  box-shadow: 0 0 12px var(--gc);
+}
+.bf-code {
+  font: 700 10px var(--fm);
+  letter-spacing: 2px;
+  color: var(--dim);
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.bf-mode {
+  font: 700 10px var(--fm);
+  letter-spacing: 2px;
+  padding: 3px 7px;
+  border-radius: 5px;
+  color: var(--gc);
+  border: 1px solid color-mix(in srgb, var(--gc) 50%, transparent);
+}
+.bf-t {
+  margin: 12px 0 10px !important;
+  font: 900 21px/1.35 var(--fc) !important;
+}
+.bf-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.bf-rows div {
+  display: flex;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  font: 500 12px var(--fc);
+  color: var(--dim);
+}
+.bf-rows span {
+  flex: none;
+  width: 30px;
+}
+.bf-rows b {
+  font: 700 13px/1.5 var(--fc);
+  color: var(--txt);
+}
+.bf-line {
+  margin: 12px 0 4px;
+  font: 500 14px/1.6 var(--fc);
+  color: #e7e3ff;
+}
+.bf-act {
+  display: flex;
+  gap: 10px;
+  margin-top: 8px;
+}
+.bf-act .btn {
+  margin-top: 0 !important;
+}
+.bf-act .btn.ghost {
+  width: auto !important;
+  flex: none;
+}
+.rec-tag {
+  font: 700 10px var(--fc);
+  font-style: normal;
+  padding: 1px 6px;
+  margin-left: 6px;
+  border-radius: 5px;
+  background: var(--acid);
+  color: #0a0910;
+}
+
+/* 结算 */
+.vd-scan .core,
+.core-scan {
+  width: 120px;
+  height: 120px;
+  margin-bottom: -26px;
+  z-index: 3;
+}
+.rw .r {
+  position: relative;
+}
+.r-attr {
+  font: 700 13px var(--fc) !important;
+  color: var(--mint) !important;
+}
+.crit-stamp {
+  position: absolute;
+  right: 72px;
+  top: 50%;
+  margin-top: -13px;
+  padding: 2px 8px;
+  border: 2px solid var(--hot);
+  border-radius: 6px;
+  font: 700 italic 14px 'Chakra Petch';
+  font-style: normal;
+  color: var(--hot);
+  opacity: 0;
+  text-shadow: 0 0 8px var(--hot);
+}
+.vd-near {
+  margin-top: 10px;
+  font: 500 12px var(--fc);
+  color: var(--dim);
+}
+.vd-err {
+  margin-top: 10px;
+  max-width: 330px;
+  font: 500 12px/1.6 var(--fc);
+  color: #ffb3c9;
+  text-align: center;
+}
+
+/* 升级 */
+.lu-tap {
+  transition: opacity 0.3s;
+}
+
+/* 失败 */
+.fail-flame svg {
+  display: inline-block;
+  width: 26px;
+  height: 26px;
+  margin-right: 6px;
+  fill: var(--flame-core);
+  vertical-align: -2px;
+  filter: drop-shadow(0 0 4px #ff6a00);
+}
+.fail-rem-h {
+  margin-top: 22px;
+  font: 700 11px var(--fm);
+  letter-spacing: 3px;
+  color: var(--acid);
+}
+.fail-ticket {
+  width: 100%;
+  max-width: 320px;
+  margin: 10px 0 0;
+  opacity: 1;
+  translate: 0 0;
+}
+.fail-ticket .tk-go {
+  display: none;
+}
+#fail .link.fail-later {
+  margin-top: 14px;
+}
+
+/* 聊天 */
+.chat-panel {
+  position: absolute;
+  inset: 0;
+  z-index: 78;
+  display: flex;
+  flex-direction: column;
+  padding: calc(var(--safe-top) + 18px) 18px calc(var(--safe-bottom) + 14px);
+  background: radial-gradient(circle at 50% 0%, rgba(59, 232, 255, 0.12), transparent 55%), rgba(6, 5, 12, 0.97);
+}
+.chat-h {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--line);
+}
+.chat-core {
+  width: 46px;
+  height: 46px;
+  flex: none;
+}
+.chat-h > div {
+  flex: 1;
+}
+.chat-h b {
+  display: block;
+  font: 900 18px var(--fc);
+}
+.chat-h small {
+  font: 500 11px var(--fm);
+  letter-spacing: 2px;
+  color: var(--acid);
+}
+.chat-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 14px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  scrollbar-width: none;
+}
+.msg {
+  max-width: 82%;
+  padding: 10px 14px;
+  font: 500 14px/1.6 var(--fc);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.msg.sys {
+  align-self: flex-start;
+  border-radius: 4px 16px 16px 16px;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.03));
+  border: 1px solid var(--line);
+}
+.msg.host {
+  align-self: flex-end;
+  border-radius: 16px 4px 16px 16px;
+  background: color-mix(in srgb, var(--acid) 18%, #13111f);
+  border: 1px solid color-mix(in srgb, var(--acid) 35%, transparent);
+}
+.msg.fallback {
+  color: #ffd0df;
+}
+.msg.care {
+  border-color: var(--cyan);
+}
+.msg.typing {
+  color: var(--dim);
+}
+.msg.typing .dots {
+  animation: blinkdot 1s infinite;
+}
+.tool-card {
+  align-self: flex-start;
+  width: 86%;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(59, 232, 255, 0.06);
+  border: 1px solid rgba(59, 232, 255, 0.3);
+  animation: tc-in 0.32s var(--ease);
+}
+@keyframes tc-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+.tool-card.bad {
+  background: rgba(255, 59, 122, 0.06);
+  border-color: rgba(255, 59, 122, 0.35);
+}
+.tool-card .tc-h {
+  font: 700 10px var(--fm);
+  letter-spacing: 2px;
+  color: var(--cyan);
+  margin-bottom: 6px;
+}
+.tool-card p {
+  font: 500 13px/1.6 var(--fc);
+  white-space: pre-wrap;
+}
+.st-lv {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+.st-lv b {
+  font: 700 italic 26px 'Chakra Petch';
+  color: var(--acid);
+}
+.st-lv span {
+  font: 500 12px var(--fm);
+  color: var(--dim);
+}
+.st-bar {
+  height: 6px;
+  margin: 6px 0 10px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+.st-bar i {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, var(--violet), var(--acid));
+  transform-origin: left;
+  transform: scaleX(var(--p, 0));
+}
+.st-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.st-grid div {
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+}
+.st-grid small,
+.st-row small {
+  display: block;
+  font: 500 10px var(--fc);
+  color: var(--dim);
+}
+.st-grid b {
+  font: 700 15px 'Chakra Petch';
+}
+.st-row {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  padding: 4px 0;
+  font: 500 12px var(--fc);
+}
+.st-row small {
+  flex: none;
+  width: 36px;
+}
+.chat-quick {
+  display: flex;
+  gap: 8px;
+  padding: 8px 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.chat-quick .chip-opt {
+  flex: none;
+}
+.chat-in {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  align-items: center;
+}
+.chat-in .btn {
+  height: 54px;
+}
+.chat-count {
+  grid-column: 1 / -1;
+  text-align: right;
+  font: 500 10px var(--fm);
+  color: var(--dim2);
+}

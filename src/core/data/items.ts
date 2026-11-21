@@ -67,7 +67,8 @@ export function itemById(id: string): Item | undefined {
 }
 
 /** 执行中可装载的三样，顺序照原型写死 */
-export const EXEC_ITEM_IDS: readonly ItemId[] = ['dbl', 'crit', 'shield'];
+export type ExecItemId = 'dbl' | 'crit' | 'shield';
+export const EXEC_ITEM_IDS: readonly ExecItemId[] = ['dbl', 'crit', 'shield'];
 
 /** 执行类道具的持有总数（执行页「道具」角标） */
 export function execItemCount(items: Record<string, number>): number {

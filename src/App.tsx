@@ -6,6 +6,8 @@ import './ui/styles/ref-archive.css';
 import './ui/styles/ref-overlays.css';
 import './ui/styles/ref-maincards.css';
 import './ui/styles/extra.css';
+import './ui/styles/extra-exec.css';
+import './store/actions/exec';
 import { Device } from './ui/shell/Device';
 
 export function App() {
