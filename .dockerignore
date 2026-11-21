@@ -1,0 +1,12 @@
+node_modules
+**/node_modules
+**/dist
+dev-dist
+data
+backups
+.env
+.env.*
+.git
+.claude
+coverage
+tools/audio/.out

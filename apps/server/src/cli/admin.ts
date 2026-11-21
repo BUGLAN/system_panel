@@ -67,7 +67,8 @@ async function main(): Promise<void> {
     switch (cmd) {
       case 'create-admin': {
         if (!name) throw new Error('用法：create-admin <用户名>');
-        const tz = arg('tz', Intl.DateTimeFormat().resolvedOptions().timeZone) as string;
+        // 服务器多半是 UTC，默认按北京时间建；别的时区用 --tz 指定
+        const tz = arg('tz', 'Asia/Shanghai') as string;
         const pw = await askPassword('设置密码（至少 8 位）：');
         const u = await createUser(db, { username: name, password: pw, tz, role: 'admin', now });
         console.log(`✓ 管理员「${u.username}」已创建（时区 ${u.tz}）`);

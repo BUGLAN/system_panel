@@ -1,0 +1,12 @@
+# Caddy 自动申请 / 续期 HTTPS 证书；APP_DOMAIN 来自 .env（如 host.example.com）
+{$APP_DOMAIN} {
+	encode zstd gzip
+	# 导入存档最大 50MB
+	request_body {
+		max_size 60MB
+	}
+	reverse_proxy app:8787 {
+		# SSE（/api/stream）不要缓冲
+		flush_interval -1
+	}
+}

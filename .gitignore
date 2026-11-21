@@ -11,6 +11,7 @@ coverage/
 # 凭据与本机环境：任何 Key 都不入库
 .env
 .env.*
+!.env.example
 *.local
 
 # 音效合成脚本的中间产物（wav 原件，转码后的成品放 public/audio/ 入库）

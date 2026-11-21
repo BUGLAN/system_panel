@@ -299,9 +299,23 @@ onSecond((t) => {
 setActiveReader(() => game().active?.task.serial ?? null);
 onStream({
   remote: (prev) => {
-    if (prev === null || game().active?.task.serial === prev) return;
     const ui = uiStore.getState();
     if (ui.show) return;
+    const g = game();
+    // 另一台设备重置了存档：回绑定仪式
+    if (
+      g.goal.plan.length === 0 &&
+      !g.pendingGoal &&
+      !g.active &&
+      !['onboard', 'auth', 'consent', 'boot'].includes(ui.scene)
+    ) {
+      resetEvidenceUi();
+      setUi({ sheet: null, briefing: null, chatOpen: false });
+      void go('onboard', { noHist: true });
+      toast('另一台设备刚重置了存档。');
+      return;
+    }
+    if (prev === null || g.active?.task.serial === prev) return;
     resetEvidenceUi();
     if (ui.scene === 'exec') void go('home', { noHist: true });
     toast('另一台设备刚改过存档，已同步。');

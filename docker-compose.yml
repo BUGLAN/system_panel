@@ -1,0 +1,34 @@
+# 自己的服务器上：cp .env.example .env 填好 → docker compose up -d --build
+# app：API + 前端静态文件（只在容器网络里暴露 8787）；caddy：自动 HTTPS 反代
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      TRUST_PROXY: '1'
+    volumes:
+      - ./data:/data
+      - ./backups:/backups
+    expose:
+      - '8787'
+
+  caddy:
+    image: caddy:2.10
+    restart: unless-stopped
+    depends_on:
+      - app
+    ports:
+      - '80:80'
+      - '443:443'
+      - '443:443/udp'
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  caddy_data:
+  caddy_config:
