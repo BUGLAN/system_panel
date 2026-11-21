@@ -1,0 +1,11 @@
+{
+  "name": "@host/core",
+  "private": true,
+  "version": "0.2.0",
+  "description": "宿主养成系统 · 纯逻辑（前后端共用，不碰 DOM / Node API）",
+  "type": "module",
+  "exports": {
+    "./testing/*": "./tests/*.ts",
+    "./*": "./src/*.ts"
+  }
+}

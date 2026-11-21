@@ -8,7 +8,7 @@
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
-const dist = new URL('../dist/', import.meta.url).pathname;
+const dist = new URL('../apps/web/dist/', import.meta.url).pathname;
 const fail = (m) => {
   console.error(`✗ ${m}`);
   process.exitCode = 1;

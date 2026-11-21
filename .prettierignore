@@ -1,9 +1,12 @@
-dist
-dev-dist
+**/dist
+**/dev-dist
 coverage
 node_modules
 package-lock.json
 宿主养成系统_重设计.html
 docs
-src/core/data/categories.ts
-src/core/data/dailyCommon.ts
+data
+backups
+apps/server/drizzle
+packages/core/src/data/categories.ts
+packages/core/src/data/dailyCommon.ts

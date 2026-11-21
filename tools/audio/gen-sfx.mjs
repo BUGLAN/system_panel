@@ -2,7 +2,7 @@
 /**
  * 宿主养成系统 · 音效离线合成（零依赖，同 seed 逐字节可复现）
  *
- *   node tools/audio/gen-sfx.mjs            # 合成 wav → tools/audio/.out/，再用 ffmpeg 转 mp3 → public/audio/
+ *   node tools/audio/gen-sfx.mjs            # 合成 wav → tools/audio/.out/，再用 ffmpeg 转 mp3 → apps/web/public/audio/
  *   node tools/audio/gen-sfx.mjs --wav-only # 只出 wav（没装 ffmpeg 时）
  *   node tools/audio/gen-sfx.mjs --list     # 列清单
  *
@@ -17,7 +17,7 @@ import { fileURLToPath } from 'node:url';
 const SR = 44100;
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const OUT_WAV = join(ROOT, 'tools', 'audio', '.out');
-const OUT_MP3 = join(ROOT, 'public', 'audio');
+const OUT_MP3 = join(ROOT, 'apps', 'web', 'public', 'audio');
 
 // ── 可复现的随机 ──────────────────────────────────────────
 let seed = 20261121;

@@ -1,0 +1,26 @@
+{
+  "name": "@host/server",
+  "private": true,
+  "version": "0.2.0",
+  "description": "宿主养成系统 · 服务端（Hono + SQLite）",
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "db:generate": "drizzle-kit generate"
+  },
+  "dependencies": {
+    "@hono/node-server": "2.1.6",
+    "@host/core": "*",
+    "@node-rs/argon2": "2.2.2",
+    "better-sqlite3": "13.0.3",
+    "drizzle-orm": "0.45.4",
+    "hono": "4.13.16",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "9.6.0",
+    "drizzle-kit": "0.31.11",
+    "esbuild": "0.28.2",
+    "tsx": "4.23.15"
+  }
+}

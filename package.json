@@ -1,35 +1,33 @@
 {
   "name": "host-system",
   "private": true,
-  "version": "0.1.0",
-  "description": "宿主养成系统 · PWA",
+  "version": "0.2.0",
+  "description": "宿主养成系统 · 服务器 + SQLite 多用户全栈",
   "type": "module",
   "engines": {
     "node": ">=22.12.0"
   },
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview",
-    "typecheck": "tsc --noEmit",
+    "dev": "node scripts/dev.mjs",
+    "dev:web": "npm run dev -w @host/web",
+    "dev:server": "tsx watch --clear-screen=false --env-file-if-exists=.env apps/server/src/main.ts",
+    "build": "npm run build -w @host/web && npm run build -w @host/server",
+    "start": "node --env-file-if-exists=.env apps/server/dist/main.mjs",
+    "typecheck": "tsc --noEmit -p packages/core && tsc --noEmit -p apps/web && tsc --noEmit -p apps/server",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "eslint .",
     "format": "prettier --write .",
-    "check": "tsc --noEmit && vitest run && vite build && node scripts/check-dist.mjs",
+    "check": "npm run typecheck && vitest run && npm run build && node scripts/check-dist.mjs",
     "check:dist": "node scripts/check-dist.mjs",
+    "admin": "tsx --env-file-if-exists=.env apps/server/src/cli/admin.ts",
+    "db:generate": "npm run db:generate -w @host/server",
     "sfx": "node tools/audio/gen-sfx.mjs",
-    "icons": "pwa-assets-generator"
-  },
-  "dependencies": {
-    "@fontsource-variable/jetbrains-mono": "5.3.0",
-    "@fontsource-variable/noto-sans-sc": "5.3.1",
-    "@fontsource/chakra-petch": "5.3.0",
-    "dexie": "4.4.7",
-    "motion": "14.14.0",
-    "react": "19.3.1",
-    "react-dom": "19.3.1",
-    "zustand": "5.1.0"
+    "icons": "npm run icons -w @host/web"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

@@ -24,3 +24,7 @@ tools/audio/.out/
 .claude/worktrees/
 .claude/settings.local.json
 .claude/launch.json
+
+# 服务端数据（SQLite 数据库、上传的证据照片、快照）与备份：永不入库
+data/
+backups/
