@@ -1,0 +1,1087 @@
+/* 由 宿主养成系统_重设计.html 的 <style> 原样拆出（类名不改）；改动处有「PWA 改」注释 */
+/* ---------- desktop stage decor ---------- */
+.stage-deco {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+.stage-deco .big {
+  position: absolute;
+  left: 0;
+  font: 700 17vw/0.85 'Chakra Petch';
+  color: transparent;
+  -webkit-text-stroke: 1px rgba(255, 255, 255, 0.05);
+  white-space: nowrap;
+  animation: marq 80s linear infinite;
+}
+.stage-deco .big.t {
+  top: 3vh;
+}
+.stage-deco .big.b {
+  bottom: 3vh;
+  animation-direction: reverse;
+  -webkit-text-stroke-color: rgba(214, 255, 61, 0.06);
+}
+@keyframes marq {
+  to {
+    transform: translateX(-50%);
+  }
+}
+.stage-deco .side {
+  position: absolute;
+  right: 40px;
+  top: 50%;
+  transform: translateY(-50%);
+  writing-mode: vertical-rl;
+  font: 700 12px var(--fm);
+  letter-spacing: 8px;
+  color: var(--dim2);
+}
+@media (max-width: 820px) {
+  .stage-deco {
+    display: none;
+  }
+}
+/* ---------- device ---------- */
+#app {
+  position: relative;
+  width: min(100vw, 430px);
+  height: min(100vh, 920px);
+  height: min(100dvh, 920px);
+  background: var(--bg);
+  overflow: hidden;
+  isolation: isolate;
+  --accent: var(--acid);
+}
+@media (min-width: 600px) {
+  #app {
+    height: min(calc(100vh - 48px), 920px);
+    height: min(calc(100dvh - 48px), 920px);
+    border-radius: 44px;
+    box-shadow:
+      0 0 0 1px rgba(255, 255, 255, 0.09),
+      0 0 0 11px #0c0a16,
+      0 0 0 12px rgba(255, 255, 255, 0.07),
+      0 50px 120px rgba(0, 0, 0, 0.85),
+      0 0 160px rgba(143, 107, 255, 0.18);
+  }
+}
+/* ---------- background ---------- */
+.bg {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+.bg .neb {
+  position: absolute;
+  inset: -25%;
+  background:
+    radial-gradient(
+      38% 28% at 50% 32%,
+      color-mix(in srgb, var(--accent) 22%, transparent),
+      transparent 70%
+    ),
+    radial-gradient(35% 25% at 18% 72%, rgba(143, 107, 255, 0.2), transparent 70%),
+    radial-gradient(30% 25% at 86% 55%, rgba(255, 59, 122, 0.1), transparent 70%);
+  animation: neb 16s ease-in-out infinite alternate;
+  transition: background 1s;
+}
+@keyframes neb {
+  to {
+    transform: translate3d(5%, -4%, 0) scale(1.1) rotate(5deg);
+  }
+}
+.bg .floor {
+  position: absolute;
+  left: -60%;
+  right: -60%;
+  bottom: -6%;
+  height: 52%;
+  transform: perspective(380px) rotateX(64deg);
+  transform-origin: 50% 100%;
+  background-image:
+    linear-gradient(color-mix(in srgb, var(--accent) 26%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--accent) 26%, transparent) 1px, transparent 1px);
+  background-size: 46px 46px;
+  animation: floor 2.4s linear infinite;
+  -webkit-mask-image: linear-gradient(to top, #000 5%, transparent 80%);
+  mask-image: linear-gradient(to top, #000 5%, transparent 80%);
+}
+@keyframes floor {
+  to {
+    background-position: 0 46px;
+  }
+}
+.bg .horizon {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 45%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  opacity: 0.35;
+  box-shadow: 0 0 20px var(--accent);
+}
+.bg .ghost {
+  position: absolute;
+  top: 24%;
+  left: 50%;
+  transform: translateX(-50%);
+  font: 900 200px/1 var(--fc);
+  color: transparent;
+  -webkit-text-stroke: 2px rgba(255, 255, 255, 0.05);
+  white-space: nowrap;
+  letter-spacing: -6px;
+}
+.bg .scan {
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    to bottom,
+    rgba(255, 255, 255, 0.022) 0 1px,
+    transparent 1px 3px
+  );
+}
+.bg .vig {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(120% 85% at 50% 40%, transparent 45%, rgba(0, 0, 0, 0.78));
+}
+.bg .noise {
+  position: absolute;
+  inset: -50%;
+  opacity: 0.06;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  animation: grain 0.9s steps(4) infinite;
+}
+@keyframes grain {
+  25% {
+    transform: translate(-3%, 2%);
+  }
+  50% {
+    transform: translate(2%, -3%);
+  }
+  75% {
+    transform: translate(-2%, -1%);
+  }
+}
+#bgfx,
+#fx {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+#bgfx {
+  z-index: 1;
+}
+#fx {
+  z-index: 92;
+}
+/* ---------- scenes ---------- */
+.scene {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  padding: calc(env(safe-area-inset-top) + 94px) 22px calc(env(safe-area-inset-bottom) + 20px);
+  visibility: hidden;
+  pointer-events: none;
+}
+.scene.on {
+  visibility: visible;
+  pointer-events: auto;
+}
+.scene.nohud {
+  padding-top: calc(env(safe-area-inset-top) + 30px);
+}
+.eyebrow {
+  font: 500 11px var(--fm);
+  letter-spacing: 4px;
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.eyebrow::before {
+  content: '';
+  width: 14px;
+  height: 2px;
+  background: var(--accent);
+  box-shadow: 0 0 8px var(--accent);
+}
+.h1 {
+  font: 900 28px/1.2 var(--fc);
+  letter-spacing: 0.5px;
+  margin-top: 8px;
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.4);
+}
+.sh {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.xbtn {
+  flex: none;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+  background: rgba(255, 255, 255, 0.03);
+  transition:
+    transform 0.25s var(--ease),
+    background 0.2s;
+}
+.xbtn:hover {
+  transform: rotate(90deg);
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+}
+.xbtn:active {
+  transform: scale(0.88);
+}
+.xbtn svg {
+  width: 18px;
+  height: 18px;
+  stroke: var(--txt);
+  stroke-width: 2.4;
+  fill: none;
+  stroke-linecap: round;
+}
+.link {
+  font: 500 13px var(--fc);
+  color: var(--dim);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: color 0.2s;
+}
+.link:hover {
+  color: var(--accent);
+}
+/* ---------- buttons ---------- */
+.btn {
+  --cut: 13px;
+  --bd: var(--acid);
+  --bb: var(--acid);
+  position: relative;
+  isolation: isolate;
+  height: 62px;
+  padding: 0 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  font: 900 18px var(--fc);
+  letter-spacing: 2px;
+  transition:
+    transform 0.14s var(--ease),
+    filter 0.25s;
+  overflow: visible;
+  white-space: nowrap;
+}
+.btn::before,
+.btn::after {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  clip-path: polygon(
+    var(--cut) 0,
+    100% 0,
+    100% calc(100% - var(--cut)),
+    calc(100% - var(--cut)) 100%,
+    0 100%,
+    0 var(--cut)
+  );
+}
+.btn::before {
+  inset: 0;
+  background: var(--bd);
+}
+.btn::after {
+  inset: 1.5px;
+  background: var(--bb);
+}
+.btn .sh2 {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  clip-path: polygon(
+    var(--cut) 0,
+    100% 0,
+    100% calc(100% - var(--cut)),
+    calc(100% - var(--cut)) 100%,
+    0 100%,
+    0 var(--cut)
+  );
+  pointer-events: none;
+}
+.btn .sh2::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 40%;
+  left: -60%;
+  background: linear-gradient(100deg, transparent, rgba(255, 255, 255, 0.55), transparent);
+  transform: skewX(-20deg);
+  animation: sheen 3.6s ease-in-out infinite;
+}
+@keyframes sheen {
+  0%,
+  60% {
+    left: -60%;
+  }
+  100% {
+    left: 130%;
+  }
+}
+.btn.pri {
+  color: #0a0910;
+  filter: drop-shadow(0 0 16px color-mix(in srgb, var(--bd) 55%, transparent));
+}
+.btn.pri:hover {
+  filter: drop-shadow(0 0 26px color-mix(in srgb, var(--bd) 80%, transparent)) brightness(1.06);
+}
+.btn.ghost {
+  --bd: rgba(255, 255, 255, 0.22);
+  --bb: #110e20;
+  color: var(--txt);
+}
+.btn.ghost:hover {
+  --bd: var(--accent);
+}
+.btn:active {
+  transform: translateY(3px) scale(0.965);
+}
+.btn.sm {
+  height: 56px;
+  padding: 0 18px;
+  font-size: 16px;
+}
+.btn.grow {
+  flex: 1;
+}
+.btn[disabled] {
+  filter: grayscale(1) brightness(0.6);
+  cursor: not-allowed;
+}
+.btn .tri {
+  width: 0;
+  height: 0;
+  border-left: 8px solid currentColor;
+  border-top: 6px solid transparent;
+  border-bottom: 6px solid transparent;
+}
+.shk {
+  animation: shk 0.42s;
+}
+@keyframes shk {
+  10%,
+  90% {
+    transform: translateX(-2px);
+  }
+  20%,
+  80% {
+    transform: translateX(5px);
+  }
+  30%,
+  50%,
+  70% {
+    transform: translateX(-8px);
+  }
+  40%,
+  60% {
+    transform: translateX(8px);
+  }
+}
+/* ---------- HUD ---------- */
+#hud {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: calc(env(safe-area-inset-top) + 20px) 18px 0;
+  transition:
+    transform 0.55s var(--snap),
+    opacity 0.4s;
+}
+#hud.hide {
+  transform: translateY(-130%);
+  opacity: 0;
+  pointer-events: none;
+}
+.lv {
+  position: relative;
+  width: 58px;
+  height: 58px;
+  flex: none;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(214, 255, 61, 0.1), transparent 70%);
+}
+.lv svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+}
+.lv .trk {
+  stroke: rgba(255, 255, 255, 0.09);
+}
+.lv .bar {
+  stroke: var(--acid);
+  stroke-linecap: round;
+  filter: drop-shadow(0 0 5px var(--acid));
+  transition: stroke-dashoffset 1.1s var(--ease);
+}
+.lv .n {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding-top: 10px;
+  font: 700 24px/1 'Chakra Petch';
+}
+.lv .n::before {
+  content: 'LV';
+  position: absolute;
+  top: 12px;
+  left: 0;
+  right: 0;
+  text-align: center;
+  font: 700 8px var(--fm);
+  letter-spacing: 2px;
+  color: var(--dim);
+}
+.who {
+  flex: 1;
+  min-width: 0;
+  line-height: 1.25;
+}
+.who b {
+  display: block;
+  font: 900 17px var(--fc);
+}
+.who span {
+  display: block;
+  font: 500 12px var(--fc);
+  color: var(--acid);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.chip {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 12px 0 9px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--line);
+  font: 700 16px 'Chakra Petch';
+  transition: transform 0.2s;
+}
+.chip svg {
+  width: 17px;
+  height: 17px;
+}
+.chip.coin svg {
+  fill: none;
+  stroke: var(--cyan);
+  stroke-width: 2.2;
+}
+.chip.streak {
+  color: #ffb35c;
+}
+.chip.streak svg {
+  fill: #ff8a3d;
+  filter: drop-shadow(0 0 4px #ff6a00);
+}
+.chip.bump {
+  animation: bump 0.5s var(--ease);
+}
+@keyframes bump {
+  30% {
+    transform: scale(1.25);
+  }
+}
+.iconbtn {
+  flex: none;
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.03);
+  transition:
+    background 0.2s,
+    transform 0.15s;
+}
+.iconbtn:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+.iconbtn:active {
+  transform: scale(0.9);
+}
+.iconbtn svg {
+  width: 20px;
+  height: 20px;
+  stroke: var(--txt);
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  fill: none;
+}
+/* ---------- core (system avatar) ---------- */
+.core {
+  --cc: var(--cyan);
+  --cc2: var(--acid);
+  position: relative;
+  cursor: pointer;
+  transition: filter 0.4s;
+}
+.core svg {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+.core .r {
+  transform-box: view-box;
+  transform-origin: 100px 100px;
+}
+.core .r1 {
+  animation: spin 34s linear infinite;
+}
+.core .r2 {
+  animation: spin 14s linear infinite reverse;
+}
+.core .r3 {
+  animation: spin 7s linear infinite;
+}
+.core .r4 {
+  animation: spin 22s linear infinite reverse;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.core .st {
+  stroke: var(--cc);
+  transition: stroke 0.5s;
+}
+.core .st2 {
+  stroke: var(--cc2);
+}
+.core .fl {
+  fill: var(--cc);
+  transition: fill 0.5s;
+}
+.core .eye {
+  transform-box: view-box;
+  transform-origin: 100px 100px;
+  transition:
+    transform 0.3s var(--ease),
+    opacity 0.25s;
+}
+.core .iris {
+  transition: transform 0.18s ease-out;
+}
+.core .happy,
+.core .brow,
+.core .heart {
+  opacity: 0;
+  transition: opacity 0.25s;
+}
+.core.happy {
+  --cc: var(--gold);
+}
+.core.happy .eye {
+  opacity: 0;
+}
+.core.happy .happy {
+  opacity: 1;
+}
+.core.angry {
+  --cc: var(--hot);
+}
+.core.angry .eye {
+  transform: scaleY(0.6);
+}
+.core.angry .brow {
+  opacity: 1;
+}
+.core.scan {
+  --cc: var(--acid);
+}
+.core.scan .eye {
+  transform: scaleY(0.8);
+}
+.core.love {
+  --cc: #ff7ab6;
+}
+.core.love .eye {
+  opacity: 0;
+}
+.core.love .heart {
+  opacity: 1;
+}
+.core .halo {
+  transform-box: view-box;
+  transform-origin: 100px 100px;
+  animation: breath 3.2s ease-in-out infinite;
+}
+@keyframes breath {
+  50% {
+    transform: scale(1.08);
+    opacity: 0.7;
+  }
+}
+/* ---------- HOME ---------- */
+.home-tag {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font: 500 11px var(--fm);
+  letter-spacing: 3px;
+  color: var(--dim);
+}
+.home-tag .on {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--acid);
+}
+.dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 10px currentColor;
+  animation: blinkdot 1.4s infinite;
+}
+@keyframes blinkdot {
+  50% {
+    opacity: 0.25;
+  }
+}
+.core-wrap {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  position: relative;
+}
+#coreHome {
+  width: min(230px, 30vh);
+  aspect-ratio: 1;
+}
+.core-wrap .plat {
+  position: absolute;
+  bottom: calc(50% - min(115px, 15vh) - 18px);
+  width: min(260px, 34vh);
+  height: 40px;
+  border-radius: 50%;
+  border: 1px solid color-mix(in srgb, var(--cyan) 50%, transparent);
+  box-shadow:
+    0 0 30px color-mix(in srgb, var(--cyan) 40%, transparent),
+    inset 0 0 20px color-mix(in srgb, var(--cyan) 30%, transparent);
+  transform: rotateX(70deg);
+  opacity: 0.6;
+  pointer-events: none;
+  display: none;
+}
+.bubble {
+  position: relative;
+  max-width: 310px;
+  padding: 12px 16px 12px 16px;
+  border-radius: 4px 16px 16px 16px;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.02));
+  border: 1px solid var(--line);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+.bubble .who2 {
+  font: 700 10px var(--fm);
+  letter-spacing: 3px;
+  color: var(--cyan);
+  display: block;
+  margin-bottom: 4px;
+}
+.bubble p {
+  font: 500 15px/1.6 var(--fc);
+  min-height: 24px;
+}
+.tw .c {
+  display: inline;
+  opacity: 0;
+}
+.tw .c.v {
+  opacity: 1;
+  animation: cpop 0.25s var(--ease);
+}
+.tw .c.hl {
+  color: var(--accent);
+  font: 700 1.15em 'Chakra Petch';
+  text-shadow: 0 0 12px var(--accent);
+}
+@keyframes cpop {
+  from {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+} /* PWA 改：去掉 filter */
+.tw.typing::after {
+  content: '▌';
+  color: var(--accent);
+  animation: blinkdot 0.8s steps(1) infinite;
+  margin-left: 2px;
+  font-size: 0.9em;
+}
+.quest {
+  display: block;
+  width: 100%;
+  text-align: left;
+  position: relative;
+  padding: 16px 18px;
+  border-radius: 20px;
+  background: linear-gradient(
+    120deg,
+    rgba(59, 232, 255, 0.12),
+    rgba(143, 107, 255, 0.06) 50%,
+    rgba(255, 255, 255, 0.02)
+  );
+  border: 1px solid rgba(59, 232, 255, 0.25);
+  overflow: hidden;
+  transition:
+    transform 0.2s var(--ease),
+    border-color 0.2s;
+}
+.quest:hover {
+  transform: translateY(-2px);
+  border-color: var(--cyan);
+}
+.quest:active {
+  transform: scale(0.98);
+}
+.quest::after {
+  content: '›';
+  position: absolute;
+  right: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  font: 300 30px var(--fd);
+  color: var(--cyan);
+}
+.q-h {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font: 500 10px var(--fm);
+  letter-spacing: 3px;
+  color: var(--cyan);
+  padding-right: 24px;
+}
+.q-h .left {
+  font: 500 11px var(--fc);
+  letter-spacing: 1px;
+  color: var(--txt);
+  padding: 2px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+}
+.q-t {
+  font: 900 19px var(--fc);
+  margin: 6px 0 10px;
+}
+.pips {
+  display: flex;
+  gap: 4px;
+  padding-right: 24px;
+}
+.pips i {
+  flex: 1;
+  height: 8px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.08);
+  transform: skewX(-20deg);
+}
+.pips i.d {
+  background: var(--cyan);
+  box-shadow: 0 0 8px var(--cyan);
+}
+.pips i.c {
+  background: var(--acid);
+  animation: blinkdot 1s infinite;
+}
+.q-f {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 9px;
+  font: 500 12px var(--fc);
+  color: var(--dim);
+  padding-right: 24px;
+  gap: 10px;
+}
+.q-f b {
+  color: var(--txt);
+  font: 700 13px 'Chakra Petch';
+}
+.q-f span:last-child {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.active-pill {
+  position: absolute;
+  left: 50%;
+  bottom: calc(env(safe-area-inset-bottom) + 172px);
+  transform: translate(-50%, 30px);
+  opacity: 0;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 16px;
+  border-radius: 999px;
+  background: rgba(255, 59, 122, 0.14);
+  border: 1px solid var(--hot);
+  font: 700 13px var(--fc);
+  color: #ffd0df;
+  box-shadow: 0 0 24px rgba(255, 59, 122, 0.35);
+  transition: all 0.45s var(--ease);
+  z-index: 3;
+  white-space: nowrap;
+}
+.active-pill.on {
+  transform: translate(-50%, 0);
+  opacity: 1;
+  pointer-events: auto;
+}
+.active-pill i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--hot);
+  animation: blinkdot 1s infinite;
+  box-shadow: 0 0 8px var(--hot);
+}
+.active-pill b {
+  font: 700 15px 'Chakra Petch';
+  color: #fff;
+}
+.dock {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  margin-top: 16px;
+}
+.navb {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: 66px;
+  transition: transform 0.2s var(--ease);
+}
+.navb .ring {
+  position: relative;
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: radial-gradient(
+    circle at 50% 30%,
+    rgba(255, 255, 255, 0.08),
+    rgba(255, 255, 255, 0.02)
+  );
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  transition:
+    border-color 0.2s,
+    box-shadow 0.2s,
+    background 0.2s;
+}
+.navb:hover .ring {
+  border-color: var(--cyan);
+  box-shadow: 0 0 18px rgba(59, 232, 255, 0.35);
+  background: rgba(59, 232, 255, 0.08);
+}
+.navb:active {
+  transform: scale(0.9);
+}
+.navb .ring svg.ic {
+  width: 24px;
+  height: 24px;
+  stroke: var(--txt);
+  fill: none;
+  stroke-width: 1.8;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.navb .arc {
+  position: absolute;
+  inset: -5px;
+  width: 70px;
+  height: 70px;
+  transform: rotate(-90deg);
+}
+.navb .arc circle {
+  fill: none;
+  stroke: var(--cyan);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  filter: drop-shadow(0 0 4px var(--cyan));
+  transition: stroke-dashoffset 1s var(--ease);
+}
+.navb em {
+  font: 500 13px var(--fc);
+  font-style: normal;
+  color: var(--dim);
+}
+.navb sup {
+  position: absolute;
+  top: -8px;
+  right: -4px;
+  font: 700 12px 'Chakra Petch';
+  color: var(--cyan);
+}
+.navb .newdot {
+  position: absolute;
+  top: 2px;
+  right: 6px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--hot);
+  box-shadow: 0 0 8px var(--hot);
+  display: none;
+}
+.navb .newdot.on {
+  display: block;
+  animation: blinkdot 1s infinite;
+}
+.task-orb {
+  position: relative;
+  margin-left: auto;
+  width: 128px;
+  height: 128px;
+  flex: none;
+  border-radius: 50%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.18s var(--ease);
+}
+.task-orb::before {
+  content: '';
+  position: absolute;
+  inset: 12px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 28%, #fbffd8, var(--acid) 35%, #7fae00 100%);
+  box-shadow:
+    0 0 40px rgba(214, 255, 61, 0.55),
+    inset 0 -8px 20px rgba(0, 0, 0, 0.25),
+    inset 0 4px 10px rgba(255, 255, 255, 0.6);
+  transition: box-shadow 0.2s;
+}
+.task-orb:hover::before {
+  box-shadow:
+    0 0 70px rgba(214, 255, 61, 0.8),
+    inset 0 -8px 20px rgba(0, 0, 0, 0.25),
+    inset 0 4px 10px rgba(255, 255, 255, 0.6);
+}
+.task-orb:active {
+  transform: scale(0.9);
+}
+.task-orb .rings {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 2px dashed rgba(214, 255, 61, 0.45);
+  animation: spin 18s linear infinite;
+}
+.task-orb .rings::after {
+  content: '';
+  position: absolute;
+  inset: -9px;
+  border-radius: 50%;
+  border: 1px solid rgba(214, 255, 61, 0.25);
+  border-top-color: var(--acid);
+  animation: spin 3s linear infinite reverse;
+}
+.task-orb .pulse {
+  position: absolute;
+  inset: 12px;
+  border-radius: 50%;
+  border: 2px solid var(--acid);
+  animation: pulse 2s ease-out infinite;
+}
+@keyframes pulse {
+  to {
+    transform: scale(1.5);
+    opacity: 0;
+  }
+}
+.task-orb b {
+  position: relative;
+  font: 900 30px/1 var(--fc);
+  color: #0a0910;
+  letter-spacing: 2px;
+}
+.task-orb small {
+  position: relative;
+  font: 700 10px var(--fm);
+  letter-spacing: 4px;
+  color: #0a0910;
+  opacity: 0.75;
+  margin-top: 4px;
+}
+.task-orb .badge {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: #fff;
+  color: #0a0910;
+  font: 700 17px 'Chakra Petch';
+  font-style: normal;
+  box-shadow:
+    0 0 0 4px var(--bg),
+    0 0 16px rgba(255, 255, 255, 0.5);
+}
+.orb-cap {
+  text-align: right;
+  font: 500 12px var(--fc);
+  color: var(--dim);
+  margin-top: 4px;
+  padding-right: 6px;
+}
+.orb-cap b {
+  color: var(--acid);
+  font-family: 'Chakra Petch';
+}

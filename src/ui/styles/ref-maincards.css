@@ -1,0 +1,1074 @@
+/* 由 宿主养成系统_重设计.html 的 <style> 原样拆出（类名不改）；改动处有「PWA 改」注释 */
+/* ================= MAINLINE · COLLECTIBLE CARDS v2 ================= */
+@property --ang {
+  syntax: '<angle>';
+  initial-value: 0deg;
+  inherits: false;
+}
+#mainCar {
+  margin-top: 0;
+}
+#mainCar .car-in {
+  z-index: 1;
+}
+#mainCar .gcard {
+  padding: 0;
+  background: none;
+  overflow: visible;
+  box-shadow: none;
+  transform-style: preserve-3d;
+  border-radius: 20px;
+}
+#mainCar .gcard::before,
+#mainCar .gcard::after {
+  display: none;
+}
+#mainCar .gcard.focus {
+  box-shadow: none;
+}
+.deal,
+.tc {
+  position: absolute;
+  inset: 0;
+  transform-style: preserve-3d;
+}
+.tc {
+  transition: transform 0.8s cubic-bezier(0.3, 1.3, 0.4, 1);
+}
+.gcard.fd .tc,
+.gcard.flipped .tc {
+  transform: rotateY(180deg);
+}
+.tc-face {
+  position: absolute;
+  inset: 0;
+  border-radius: 20px;
+  overflow: hidden;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  display: flex;
+  flex-direction: column;
+  opacity: var(--op, 1);
+  background: linear-gradient(165deg, #1f1a3a 0%, #110f21 55%, #09080f 100%);
+  box-shadow:
+    0 34px 60px -18px rgba(0, 0, 0, 0.9),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  transition: box-shadow 0.4s;
+}
+.tc-face::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: #05040a;
+  opacity: var(--sh, 0);
+  z-index: 20;
+  pointer-events: none;
+}
+.tc-back {
+  transform: rotateY(180deg);
+}
+.gcard.focus .tc-face {
+  box-shadow:
+    0 40px 70px -16px rgba(0, 0, 0, 0.95),
+    0 0 70px -12px var(--gc);
+}
+/* frame */
+.tc-frame {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 9;
+}
+.tc-frame::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 2px;
+  background: linear-gradient(
+    150deg,
+    var(--gc),
+    color-mix(in srgb, var(--gc) 18%, transparent) 30%,
+    transparent 50%,
+    color-mix(in srgb, var(--gc) 22%, transparent) 72%,
+    var(--gc)
+  );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+}
+.gcard.cur .tc-front .tc-frame::before {
+  background: conic-gradient(
+    from var(--ang),
+    var(--gc),
+    transparent 22%,
+    var(--acid) 45%,
+    transparent 70%,
+    var(--gc)
+  );
+  animation: tcang 3.2s linear infinite;
+}
+@keyframes tcang {
+  to {
+    --ang: 360deg;
+  }
+}
+.tc-frame::after {
+  content: '';
+  position: absolute;
+  inset: 6px;
+  border-radius: 15px;
+  border: 1px solid color-mix(in srgb, var(--gc) 20%, transparent);
+}
+.tc-frame i {
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--gc);
+  filter: drop-shadow(0 0 4px var(--gc));
+}
+.tc-frame i:nth-child(1) {
+  top: 4px;
+  left: 4px;
+  border-right: 0;
+  border-bottom: 0;
+  border-radius: 8px 0 0 0;
+}
+.tc-frame i:nth-child(2) {
+  top: 4px;
+  right: 4px;
+  border-left: 0;
+  border-bottom: 0;
+  border-radius: 0 8px 0 0;
+}
+.tc-frame i:nth-child(3) {
+  bottom: 4px;
+  left: 4px;
+  border-right: 0;
+  border-top: 0;
+  border-radius: 0 0 0 8px;
+}
+.tc-frame i:nth-child(4) {
+  bottom: 4px;
+  right: 4px;
+  border-left: 0;
+  border-top: 0;
+  border-radius: 0 0 8px 0;
+}
+/* head */
+.tc-head {
+  position: relative;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 16px 0;
+  font: 700 10px var(--fm);
+  letter-spacing: 3px;
+  color: color-mix(in srgb, var(--gc) 75%, #fff);
+}
+.tc-head b {
+  font: 700 italic 21px/1 'Chakra Petch';
+  letter-spacing: 0;
+  color: #fff;
+  margin-left: 2px;
+}
+.tc-head .of {
+  opacity: 0.45;
+  margin-right: auto;
+  letter-spacing: 1px;
+}
+.tc-rar {
+  display: flex;
+  gap: 4px;
+}
+.tc-rar s {
+  width: 7px;
+  height: 7px;
+  transform: rotate(45deg);
+  background: var(--gc);
+  box-shadow: 0 0 6px var(--gc);
+}
+.tc-rar s.o {
+  background: rgba(255, 255, 255, 0.13);
+  box-shadow: none;
+}
+.tc-cat {
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border: 1.5px solid var(--gc);
+  border-radius: 6px;
+  transform: rotate(45deg);
+  margin-left: 4px;
+}
+.tc-cat span {
+  transform: rotate(-45deg);
+  font: 900 13px var(--fc);
+  letter-spacing: 0;
+  color: var(--gc);
+}
+/* art window */
+.tc-art {
+  position: relative;
+  flex: 1;
+  min-height: 64px;
+  margin: 12px 10px 0;
+  border-radius: 13px;
+  overflow: hidden;
+  color: var(--gc);
+  background:
+    radial-gradient(
+      110% 80% at 50% 100%,
+      color-mix(in srgb, var(--gc) 30%, transparent),
+      transparent 62%
+    ),
+    linear-gradient(180deg, #15122a, #0b0a17);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+}
+.tc-art::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+  background-size: 16px 16px;
+  -webkit-mask: radial-gradient(circle at 50% 70%, #000, transparent 75%);
+  mask: radial-gradient(circle at 50% 70%, #000, transparent 75%);
+}
+.tc-art::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 40%;
+  top: -40%;
+  background: linear-gradient(
+    transparent,
+    color-mix(in srgb, var(--gc) 16%, transparent),
+    transparent
+  );
+  animation: tcscan 3.6s linear infinite;
+  animation-play-state: paused;
+}
+.gcard.focus .tc-art::after {
+  animation-play-state: running;
+}
+@keyframes tcscan {
+  to {
+    top: 110%;
+  }
+}
+.tc-art .wm {
+  position: absolute;
+  right: -8px;
+  bottom: -30px;
+  font: 900 italic 150px/1 'Chakra Petch';
+  color: transparent;
+  -webkit-text-stroke: 1.5px color-mix(in srgb, var(--gc) 26%, transparent);
+  pointer-events: none;
+}
+.tc-art svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  filter: drop-shadow(0 0 5px color-mix(in srgb, var(--gc) 70%, transparent));
+}
+.tc-art svg * {
+  vector-effect: non-scaling-stroke;
+}
+.tc-art .kind {
+  position: absolute;
+  left: 9px;
+  top: 9px;
+  z-index: 2;
+  font: 700 9px var(--fm);
+  letter-spacing: 2px;
+  padding: 3px 7px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.5);
+  color: var(--gc);
+  border: 1px solid color-mix(in srgb, var(--gc) 40%, transparent);
+}
+.tc-art .big {
+  position: absolute;
+  right: 11px;
+  top: 5px;
+  z-index: 2;
+  font: 700 italic 30px/1.1 'Chakra Petch';
+  color: #fff;
+  text-shadow: 0 0 16px var(--gc);
+}
+.tc-art .big small {
+  font-size: 12px;
+  margin-left: 2px;
+  color: var(--gc);
+  font-style: normal;
+  letter-spacing: 1px;
+}
+.tc-art .spin {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: tcspin 1.6s linear infinite;
+  animation-play-state: paused;
+}
+.tc-art .dash {
+  stroke-dasharray: 5 9;
+  animation: tcdash 1s linear infinite;
+  animation-play-state: paused;
+}
+.tc-art .pulse {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: tcpulse 1.6s ease-in-out infinite;
+  animation-play-state: paused;
+}
+.gcard.focus .tc-art .spin,
+.gcard.focus .tc-art .dash,
+.gcard.focus .tc-art .pulse {
+  animation-play-state: running;
+}
+@keyframes tcspin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes tcdash {
+  to {
+    stroke-dashoffset: -28;
+  }
+}
+@keyframes tcpulse {
+  50% {
+    transform: scale(1.35);
+    opacity: 0.5;
+  }
+}
+/* medal + meta */
+.tc-mid {
+  position: relative;
+  z-index: 4;
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  padding: 0 14px;
+  margin-top: -30px;
+}
+.tc-medal {
+  flex: none;
+  filter: drop-shadow(0 0 12px color-mix(in srgb, var(--gc) 80%, transparent))
+    drop-shadow(0 6px 10px rgba(0, 0, 0, 0.6));
+}
+.tc-medal span {
+  width: 60px;
+  height: 68px;
+  display: grid;
+  place-items: center;
+  clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%);
+  background: linear-gradient(
+    160deg,
+    #fff -20%,
+    var(--gc) 35%,
+    color-mix(in srgb, var(--gc) 40%, #000) 100%
+  );
+}
+.tc-medal span b {
+  width: 50px;
+  height: 57px;
+  display: grid;
+  place-items: center;
+  clip-path: inherit;
+  background: linear-gradient(170deg, #1c1834, #0a0914);
+  font: 700 italic 34px/1 'Chakra Petch';
+  color: var(--gc);
+  text-shadow: 0 0 14px var(--gc);
+}
+.tc-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  padding-bottom: 3px;
+  min-width: 0;
+}
+.tc-meta span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: rgba(8, 7, 16, 0.75);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  font: 500 11px var(--fc);
+  color: var(--txt);
+  white-space: nowrap;
+  backdrop-filter: blur(4px);
+}
+.tc-meta span i {
+  font-style: normal;
+  color: var(--gc);
+  font: 700 10px 'Chakra Petch';
+}
+.tc-t {
+  position: relative;
+  z-index: 3;
+  padding: 10px 16px 0;
+  font: 900 18px/1.38 var(--fc);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-wrap: balance;
+}
+.tc-stats {
+  position: relative;
+  z-index: 3;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  margin: 11px 12px 0;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+}
+.tc-stats div {
+  padding: 6px 0 5px;
+  text-align: center;
+  font: 700 16px/1.15 'Chakra Petch';
+  color: #fff;
+}
+.tc-stats div + div {
+  border-left: 1px solid rgba(255, 255, 255, 0.07);
+}
+.tc-stats small {
+  display: block;
+  font: 500 9px var(--fc);
+  color: var(--dim);
+  letter-spacing: 1px;
+  margin-bottom: 1px;
+}
+.tc-stats .x {
+  color: var(--acid);
+}
+.tc-stats .c {
+  color: var(--cyan);
+}
+.tc-stats .a {
+  color: var(--mint);
+}
+.tc-foot {
+  position: relative;
+  z-index: 3;
+  margin: 10px 12px 12px;
+  height: 40px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 10px;
+  font: 900 13px var(--fc);
+  letter-spacing: 2px;
+}
+.gcard.cur .tc-foot {
+  background: var(--acid);
+  color: #0a0910;
+  clip-path: polygon(
+    10px 0,
+    100% 0,
+    100% calc(100% - 10px),
+    calc(100% - 10px) 100%,
+    0 100%,
+    0 10px
+  );
+  animation: curp 1.6s ease-in-out infinite;
+  border-radius: 0;
+}
+.gcard.cur .tc-foot::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    105deg,
+    transparent 35%,
+    rgba(255, 255, 255, 0.7) 50%,
+    transparent 65%
+  );
+  background-size: 250% 100%;
+  animation: tcsheen 2.2s ease-in-out infinite;
+}
+@keyframes tcsheen {
+  0% {
+    background-position: 150% 0;
+  }
+  60%,
+  100% {
+    background-position: -60% 0;
+  }
+}
+.gcard.done .tc-foot {
+  border: 1px dashed color-mix(in srgb, var(--gc) 45%, transparent);
+  color: var(--dim);
+  font: 500 11px var(--fc);
+  letter-spacing: 1px;
+}
+.gcard.done .tc-foot b {
+  font: 700 italic 15px 'Chakra Petch';
+  color: var(--rc, #fff);
+  text-shadow: 0 0 10px var(--rc, #fff);
+}
+.gcard.lock .tc-foot {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--dim);
+  font: 500 12px var(--fc);
+  letter-spacing: 1px;
+}
+.gcard.lock .tc-foot svg {
+  width: 15px;
+  height: 15px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2;
+}
+#mainCar .gcard .stamp {
+  top: 26%;
+  right: 12px;
+  z-index: 12;
+}
+/* holo foil = earned by clearing */
+.tc-holo {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  pointer-events: none;
+  opacity: 0;
+  mix-blend-mode: color-dodge;
+  transition: opacity 0.5s;
+  background: linear-gradient(
+    115deg,
+    transparent 18%,
+    rgba(255, 59, 122, 0.55) 30%,
+    rgba(255, 204, 77, 0.5) 38%,
+    rgba(61, 255, 168, 0.5) 46%,
+    rgba(59, 232, 255, 0.55) 54%,
+    rgba(143, 107, 255, 0.55) 62%,
+    transparent 74%
+  );
+  background-size: 260% 260%;
+  animation: tcholo 5s ease-in-out infinite alternate;
+}
+.tc-holo::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image:
+    radial-gradient(circle, rgba(255, 255, 255, 0.9) 0 1px, transparent 1.6px),
+    radial-gradient(circle, rgba(255, 255, 255, 0.6) 0 0.8px, transparent 1.3px);
+  background-size:
+    23px 29px,
+    17px 13px;
+  background-position:
+    3px 5px,
+    9px 2px;
+  opacity: 0.55;
+  animation: tcsparkle 2.4s steps(4) infinite;
+}
+@keyframes tcholo {
+  0% {
+    background-position: 0% 30%;
+  }
+  100% {
+    background-position: 100% 70%;
+  }
+}
+@keyframes tcsparkle {
+  50% {
+    opacity: 0.15;
+  }
+}
+.gcard.done .tc-front .tc-holo,
+.gcard.boss .tc-front .tc-holo {
+  opacity: 0.22;
+}
+.gcard.done.focus .tc-front .tc-holo,
+.gcard.boss.focus .tc-front .tc-holo {
+  opacity: 0.5;
+}
+.tc-glare {
+  position: absolute;
+  inset: 0;
+  z-index: 11;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.3s;
+  mix-blend-mode: screen;
+  background: radial-gradient(
+    circle at var(--mx, 30%) var(--my, 0%),
+    rgba(255, 255, 255, 0.2),
+    transparent 46%
+  );
+}
+.gcard.focus .tc-glare {
+  opacity: 1;
+}
+.boss .tc-front {
+  background: linear-gradient(160deg, #3d2c10 0%, #1b1322 50%, #0b0a15 100%);
+}
+/* card back (sealed) */
+.tc-back.cb {
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 20px;
+  text-align: center;
+  background:
+    radial-gradient(
+      circle at 50% 40%,
+      color-mix(in srgb, var(--gc) 24%, transparent),
+      transparent 55%
+    ),
+    repeating-linear-gradient(60deg, rgba(255, 255, 255, 0.035) 0 1px, transparent 1px 14px),
+    repeating-linear-gradient(-60deg, rgba(255, 255, 255, 0.035) 0 1px, transparent 1px 14px),
+    linear-gradient(165deg, #1b1533, #0a0914);
+}
+.cb-emb {
+  position: relative;
+  width: 46%;
+  aspect-ratio: 1;
+  color: var(--gc);
+}
+.cb-emb svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  filter: drop-shadow(0 0 8px var(--gc));
+}
+.cb-emb .r1 {
+  transform-origin: 50% 50%;
+  animation: tcspin 14s linear infinite;
+}
+.cb-emb .r2 {
+  transform-origin: 50% 50%;
+  animation: tcspin 9s linear infinite reverse;
+}
+.cb-t {
+  font: 700 italic 17px 'Chakra Petch';
+  letter-spacing: 4px;
+  color: #fff;
+}
+.cb-t em {
+  color: var(--gc);
+  font-style: normal;
+}
+.cb-s {
+  font: 700 9px var(--fm);
+  letter-spacing: 3px;
+  color: var(--dim);
+}
+.cb-intel {
+  width: 100%;
+  margin-top: 6px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px dashed rgba(255, 255, 255, 0.14);
+  text-align: left;
+}
+.cb-intel small {
+  display: block;
+  font: 700 9px var(--fm);
+  letter-spacing: 2px;
+  color: var(--gc);
+  margin-bottom: 4px;
+}
+.cb-intel p {
+  font: 700 13px/1.4 var(--fc);
+  color: rgba(255, 255, 255, 0.75);
+}
+.cb-intel p i {
+  font-style: normal;
+  color: var(--dim);
+  font-weight: 400;
+  font-size: 11px;
+  display: block;
+  margin-top: 2px;
+}
+.cb-l {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  font: 500 11px var(--fc);
+  color: var(--dim);
+}
+.cb-l svg {
+  width: 14px;
+  height: 14px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2;
+}
+/* record back */
+.tc-back.tcrec {
+  padding: 16px 16px 14px;
+  background:
+    radial-gradient(
+      90% 60% at 50% 30%,
+      color-mix(in srgb, var(--rc) 20%, transparent),
+      transparent 70%
+    ),
+    linear-gradient(165deg, #1d1838, #0a0914);
+}
+.rec-h {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font: 700 10px var(--fm);
+  letter-spacing: 3px;
+  color: var(--gc);
+}
+.rec-r {
+  position: relative;
+  text-align: center;
+  margin: 8px 0 2px;
+  font: 700 italic 92px/1 'Chakra Petch';
+  color: var(--rc);
+  text-shadow: 0 0 30px var(--rc);
+}
+.rec-r small {
+  display: block;
+  font: 700 9px var(--fm);
+  letter-spacing: 4px;
+  color: var(--dim);
+  font-style: normal;
+  text-shadow: none;
+  margin-top: 4px;
+}
+.rec-crit {
+  position: absolute;
+  right: 6%;
+  top: 6%;
+  transform: rotate(12deg);
+  font: 700 10px var(--fm);
+  letter-spacing: 2px;
+  color: #fff;
+  background: var(--hot);
+  padding: 3px 7px;
+  border-radius: 4px;
+  text-shadow: none;
+}
+.rec-l {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.rec-l div {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 7px 10px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  font: 500 12px var(--fc);
+  color: var(--dim);
+}
+.rec-l b {
+  font: 700 14px 'Chakra Petch';
+  color: #fff;
+}
+.rec-q {
+  margin-top: auto;
+  padding: 10px 0 2px;
+  border-top: 1px dashed rgba(255, 255, 255, 0.12);
+  font: 500 12px/1.5 var(--fc);
+  color: rgba(255, 255, 255, 0.8);
+}
+.rec-q em {
+  font: 700 9px var(--fm);
+  letter-spacing: 2px;
+  color: var(--gc);
+  font-style: normal;
+  display: block;
+  margin-bottom: 3px;
+}
+.rec-f {
+  text-align: center;
+  font: 500 10px var(--fc);
+  color: var(--dim);
+  margin-top: 8px;
+  letter-spacing: 1px;
+}
+/* pedestal */
+.ped {
+  position: absolute;
+  left: 50%;
+  bottom: -4px;
+  width: 84%;
+  height: 64px;
+  transform: translateX(-50%);
+  pointer-events: none;
+  z-index: 0;
+  --pc: var(--cyan);
+  transition: --pc 0.4s;
+}
+.ped::before {
+  content: '';
+  position: absolute;
+  inset: 4px 0;
+  border-radius: 50%;
+  background: radial-gradient(
+    closest-side,
+    color-mix(in srgb, var(--pc) 50%, transparent),
+    transparent
+  );
+  filter: blur(4px);
+  transition: background 0.5s;
+}
+.ped i {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  border-radius: 50%;
+  border: 1.5px dashed color-mix(in srgb, var(--pc) 70%, transparent);
+  transform: translate(-50%, -50%) rotateX(78deg);
+  animation: pedspin 16s linear infinite;
+}
+.ped i:nth-child(1) {
+  width: 250px;
+  height: 250px;
+}
+.ped i:nth-child(2) {
+  width: 310px;
+  height: 310px;
+  border-style: solid;
+  border-color: color-mix(in srgb, var(--pc) 25%, transparent);
+  animation-duration: 26s;
+  animation-direction: reverse;
+}
+@keyframes pedspin {
+  to {
+    transform: translate(-50%, -50%) rotateX(78deg) rotate(360deg);
+  }
+}
+.ped b {
+  position: absolute;
+  left: 14%;
+  right: 14%;
+  bottom: 30px;
+  height: 320px;
+  background: linear-gradient(
+    to top,
+    color-mix(in srgb, var(--pc) 13%, transparent),
+    transparent 70%
+  );
+  clip-path: polygon(6% 100%, 94% 100%, 100% 0, 0 0);
+  -webkit-mask: linear-gradient(90deg, transparent, #000 25%, #000 75%, transparent);
+  mask: linear-gradient(90deg, transparent, #000 25%, #000 75%, transparent);
+  transition: background 0.5s;
+}
+/* node track */
+#mainRuler {
+  position: relative;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0;
+  margin: 12px 0 2px;
+  padding: 0 2px;
+}
+#mainRuler::before,
+#mainRuler::after {
+  content: '';
+  position: absolute;
+  left: 13px;
+  top: 50%;
+  height: 2px;
+  margin-top: -1px;
+}
+#mainRuler::before {
+  right: 13px;
+  background: rgba(255, 255, 255, 0.1);
+}
+#mainRuler::after {
+  width: calc((100% - 26px) * var(--pf, 0));
+  background: linear-gradient(90deg, var(--cyan), var(--acid));
+  box-shadow: 0 0 8px var(--cyan);
+  transition: width 1s var(--ease);
+}
+#mainRuler i {
+  position: relative;
+  z-index: 1;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font: 700 10px 'Chakra Petch';
+  font-style: normal;
+  color: var(--dim);
+  background: #0d0b18;
+  border: 1.5px solid rgba(255, 255, 255, 0.18);
+  cursor: pointer;
+  transition:
+    transform 0.35s var(--ease),
+    box-shadow 0.3s,
+    background 0.3s;
+  box-shadow: none;
+}
+#mainRuler i.d {
+  border-color: var(--cyan);
+  color: #06222a;
+  background: var(--cyan);
+  box-shadow: 0 0 8px rgba(59, 232, 255, 0.55);
+}
+#mainRuler i.c {
+  border-color: var(--acid);
+  color: var(--acid);
+}
+#mainRuler i.c::after {
+  content: '';
+  position: absolute;
+  inset: -5px;
+  border-radius: 50%;
+  border: 1.5px solid var(--acid);
+  animation: tcpulse 1.4s ease-in-out infinite;
+}
+#mainRuler i.b {
+  border-color: var(--gold);
+  color: var(--gold);
+}
+#mainRuler i.on {
+  width: 22px;
+  transform: scale(1.32);
+  box-shadow:
+    0 0 0 3px rgba(255, 255, 255, 0.12),
+    0 0 16px currentColor;
+}
+#mainRuler i.d.on {
+  box-shadow:
+    0 0 0 3px rgba(59, 232, 255, 0.25),
+    0 0 16px var(--cyan);
+}
+
+/* compact cards (short screens) */
+.gcard.compact .tc-head {
+  padding: 10px 13px 0;
+  font-size: 9px;
+}
+.gcard.compact .tc-head b {
+  font-size: 17px;
+}
+.gcard.compact .tc-cat {
+  width: 22px;
+  height: 22px;
+}
+.gcard.compact .tc-rar s {
+  width: 6px;
+  height: 6px;
+}
+.gcard.compact .tc-art {
+  margin: 8px 8px 0;
+  min-height: 40px;
+}
+.gcard.compact .tc-art .big {
+  font-size: 22px;
+}
+.gcard.compact .tc-art .kind {
+  font-size: 8px;
+  top: 6px;
+  left: 6px;
+}
+.gcard.compact .tc-mid {
+  margin-top: -20px;
+  padding: 0 10px;
+  gap: 8px;
+}
+.gcard.compact .tc-medal span {
+  width: 44px;
+  height: 50px;
+}
+.gcard.compact .tc-medal span b {
+  width: 36px;
+  height: 42px;
+  font-size: 24px;
+}
+.gcard.compact .tc-meta span {
+  padding: 3px 6px;
+  font-size: 10px;
+}
+.gcard.compact .tc-t {
+  font-size: 15px;
+  padding: 7px 12px 0;
+  -webkit-line-clamp: 2;
+}
+.gcard.compact .tc-stats {
+  margin: 7px 9px 0;
+}
+.gcard.compact .tc-stats div {
+  padding: 3px 0;
+  font-size: 13px;
+}
+.gcard.compact .tc-stats small {
+  font-size: 8px;
+}
+.gcard.compact .tc-foot {
+  height: 32px;
+  margin: 7px 9px 9px;
+  font-size: 11px;
+}
+.gcard.compact .stamp {
+  transform: rotate(-14deg) scale(0.8);
+}
+.gcard.compact .tc-back.tcrec {
+  padding: 12px 12px 10px;
+}
+.gcard.compact .rec-r {
+  font-size: 56px;
+  margin: 4px 0 0;
+}
+.gcard.compact .rec-l {
+  margin-top: 6px;
+  gap: 4px;
+}
+.gcard.compact .rec-l div {
+  padding: 4px 8px;
+  font-size: 11px;
+}
+.gcard.compact .rec-l b {
+  font-size: 12px;
+}
+.gcard.compact .rec-q {
+  font-size: 11px;
+  padding-top: 6px;
+}
+.gcard.compact .rec-f {
+  display: none;
+}
+.gcard.compact .rec-h {
+  font-size: 8px;
+  letter-spacing: 2px;
+}
+.gcard.compact .tc-back.cb {
+  gap: 7px;
+  padding: 12px;
+}
+.gcard.compact .cb-emb {
+  width: 32%;
+}
+.gcard.compact .cb-t {
+  font-size: 13px;
+}
+.gcard.compact .cb-intel {
+  padding: 7px 9px;
+  margin-top: 2px;
+}
+.gcard.compact .cb-intel p {
+  font-size: 12px;
+}

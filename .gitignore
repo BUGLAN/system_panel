@@ -23,3 +23,4 @@ tools/audio/.out/
 # Claude Code 本机状态
 .claude/worktrees/
 .claude/settings.local.json
+.claude/launch.json

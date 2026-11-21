@@ -28,6 +28,8 @@ body {
 
 #root {
   height: 100%;
+  display: grid;
+  place-items: center;
 }
 
 button {

@@ -1,0 +1,437 @@
+/* 由 宿主养成系统_重设计.html 的 <style> 原样拆出（类名不改）；改动处有「PWA 改」注释 */
+/* ---------- exec ---------- */
+.ex-h {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font: 500 13px var(--fc);
+  color: var(--dim);
+}
+.gbadge {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font: 700 italic 18px 'Chakra Petch';
+  color: var(--gc, var(--cyan));
+  border: 2px solid var(--gc, var(--cyan));
+  box-shadow: 0 0 12px var(--gc, var(--cyan));
+}
+.rec {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--hot);
+  font-weight: 700;
+}
+.rec i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--hot);
+  box-shadow: 0 0 8px var(--hot);
+  animation: blinkdot 1s infinite;
+}
+.ex-code {
+  font: 500 11px var(--fm);
+  letter-spacing: 2px;
+}
+.ex-t {
+  font-size: 26px;
+  margin-top: 10px;
+  max-width: 92%;
+}
+.timer {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-top: 6px;
+  cursor: pointer;
+}
+.timer .digits {
+  font: 700 clamp(70px, 23vw, 104px)/1 'Chakra Petch';
+  color: #fff;
+  text-shadow:
+    0 0 24px color-mix(in srgb, var(--accent) 70%, transparent),
+    0 0 60px color-mix(in srgb, var(--accent) 35%, transparent);
+  display: flex;
+}
+.timer .digits span {
+  display: inline-block;
+  width: 0.6em;
+  text-align: center;
+}
+.timer .digits span.colon {
+  width: 0.3em;
+  animation: blinkdot 1s steps(1) infinite;
+}
+.timer.hit .digits {
+  color: var(--acid);
+}
+.timer small {
+  font: 700 12px var(--fm);
+  color: var(--gold);
+  letter-spacing: 2px;
+}
+.tbar {
+  position: relative;
+  height: 8px;
+  margin: 8px 0 0;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.07);
+  overflow: visible;
+}
+.tbar .fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 100%;
+  border-radius: 4px;
+  background: linear-gradient(90deg, var(--hot), var(--gold), var(--acid));
+  box-shadow: 0 0 14px color-mix(in srgb, var(--accent) 70%, transparent);
+  transform-origin: left;
+  transform: scaleX(var(--p, 0));
+  transition: transform 0.3s var(--ease);
+} /* PWA 改：scaleX */
+.tbar .knob {
+  position: absolute;
+  inset: 0;
+  transform: translateX(calc(var(--p, 0) * 100%));
+  transition: transform 0.3s var(--ease);
+  pointer-events: none;
+}
+.tbar .knob::after {
+  content: '';
+  position: absolute;
+  left: -6px;
+  top: 50%;
+  width: 12px;
+  height: 12px;
+  margin-top: -6px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow:
+    0 0 12px #fff,
+    0 0 24px var(--acid);
+} /* PWA 改：游标独立平移 */
+.tbar .ticks {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  justify-content: space-between;
+  pointer-events: none;
+}
+.tbar .ticks i {
+  width: 2px;
+  height: 14px;
+  margin-top: -3px;
+  background: rgba(255, 255, 255, 0.18);
+}
+.tmeta {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 10px;
+  font: 500 12px var(--fm);
+  color: var(--dim);
+}
+.watch {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 16px;
+  font: 500 13px var(--fc);
+  color: var(--dim);
+}
+.watch .core {
+  width: 34px;
+  height: 34px;
+}
+.watch b {
+  font: 700 12px var(--fm);
+  letter-spacing: 3px;
+  color: var(--cyan);
+}
+.watch em {
+  font-style: normal;
+  transition: color 0.3s;
+}
+.watch.alert em {
+  color: var(--hot);
+}
+.evi {
+  margin-top: 16px;
+  padding: 14px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--line);
+}
+.evi-h {
+  font: 500 13px var(--fc);
+  color: var(--dim);
+  margin-bottom: 10px;
+}
+.evi-h b {
+  color: var(--txt);
+  font-weight: 700;
+}
+.evi-row {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+}
+.evi-slot {
+  position: relative;
+  width: 82px;
+  height: 82px;
+  flex: none;
+  border-radius: 14px;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  font: 300 34px var(--fd);
+  color: var(--cyan);
+  background:
+    linear-gradient(90deg, var(--cyan) 50%, transparent 0) repeat-x top/12px 2px,
+    linear-gradient(90deg, var(--cyan) 50%, transparent 0) repeat-x bottom/12px 2px,
+    linear-gradient(0deg, var(--cyan) 50%, transparent 0) repeat-y left/2px 12px,
+    linear-gradient(0deg, var(--cyan) 50%, transparent 0) repeat-y right/2px 12px,
+    rgba(59, 232, 255, 0.05);
+  animation: ants 1s linear infinite;
+  transition: transform 0.2s;
+}
+.evi-slot:hover {
+  transform: scale(1.05);
+}
+.evi-slot:active {
+  transform: scale(0.94);
+}
+@keyframes ants {
+  to {
+    background-position:
+      12px 0,
+      -12px 100%,
+      0 -12px,
+      100% 12px,
+      0 0;
+  }
+}
+.evi-slot img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.evi-slot.has {
+  animation: none;
+  background: #000;
+  box-shadow:
+    0 0 0 2px var(--acid),
+    0 0 20px rgba(214, 255, 61, 0.4);
+}
+.evi-slot.has::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: var(--acid);
+  box-shadow: 0 0 12px var(--acid);
+  animation: laser 1.6s ease-in-out infinite;
+}
+@keyframes laser {
+  0%,
+  100% {
+    top: 0;
+  }
+  50% {
+    top: calc(100% - 3px);
+  }
+}
+.evi-info p {
+  font: 500 14px/1.5 var(--fc);
+}
+.evi-info .ok {
+  color: var(--acid);
+}
+.ex-sp {
+  flex: 1;
+  min-height: 8px;
+}
+.ex-act .row {
+  display: flex;
+  gap: 12px;
+}
+.ex-act .row2 {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 12px;
+}
+.btn.hold {
+  --bd: rgba(255, 59, 122, 0.4);
+  --bb: #170b17;
+  height: 46px;
+  font: 700 14px var(--fc);
+  letter-spacing: 2px;
+  color: #ff9dbd;
+  padding: 0 20px;
+  --cut: 10px;
+}
+.btn.hold .fill {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: var(--hot);
+  transform-origin: left;
+  transform: scaleX(var(--p, 0));
+  clip-path: polygon(
+    var(--cut) 0,
+    100% 0,
+    100% calc(100% - var(--cut)),
+    calc(100% - var(--cut)) 100%,
+    0 100%,
+    0 var(--cut)
+  );
+}
+.btn.hold.ing {
+  color: #fff;
+}
+.eqn {
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  border-radius: 10px;
+  background: var(--hot);
+  color: #fff;
+  font: 700 12px 'Chakra Petch';
+  display: none;
+  place-items: center;
+  font-style: normal;
+  letter-spacing: 0;
+}
+.eqn.on {
+  display: grid;
+}
+.tray {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(env(safe-area-inset-bottom) + 150px);
+  height: 270px;
+  z-index: 6;
+  pointer-events: none;
+}
+.tray .tback {
+  position: absolute;
+  inset: -400px 0 -200px;
+  background: linear-gradient(transparent, rgba(6, 5, 12, 0.92) 45%);
+  opacity: 0;
+  transition: opacity 0.35s;
+}
+.tray.open {
+  pointer-events: auto;
+}
+.tray.open .tback {
+  opacity: 1;
+}
+.tray .tlabel {
+  position: absolute;
+  top: -30px;
+  left: 22px;
+  font: 700 11px var(--fm);
+  letter-spacing: 4px;
+  color: var(--hot);
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+.tray.open .tlabel {
+  opacity: 1;
+}
+.icard {
+  --gc: var(--hot);
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  width: 132px;
+  height: 196px;
+  margin-left: -66px;
+  border-radius: 18px;
+  padding: 12px;
+  background: linear-gradient(160deg, #241d3c, #0e0c19);
+  border: 1.5px solid color-mix(in srgb, var(--gc) 45%, transparent);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  transform: translate(var(--tx), 300px) rotate(var(--rot));
+  transition:
+    transform 0.55s var(--ease),
+    box-shadow 0.3s,
+    border-color 0.3s;
+  cursor: pointer;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6);
+}
+.tray.open .icard {
+  transform: translate(var(--tx), var(--ty, 0)) rotate(var(--rot));
+}
+.tray.open .icard:hover {
+  transform: translate(var(--tx), calc(var(--ty, 0px) - 10px)) rotate(calc(var(--rot) * 0.5));
+}
+.icard.eq {
+  border-color: var(--acid);
+  box-shadow:
+    0 0 30px rgba(214, 255, 61, 0.45),
+    0 20px 40px rgba(0, 0, 0, 0.6);
+}
+.tray.open .icard.eq {
+  transform: translate(var(--tx), calc(var(--ty, 0px) - 24px)) rotate(0deg);
+}
+.icard .ih {
+  font: 700 9px var(--fm);
+  letter-spacing: 2px;
+  color: var(--gc);
+  display: flex;
+  justify-content: space-between;
+}
+.icard .ih span {
+  color: var(--dim);
+}
+.icard .ii {
+  width: 52px;
+  height: 52px;
+  margin: 8px auto 2px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  border: 2px solid var(--gc);
+  box-shadow: 0 0 16px color-mix(in srgb, var(--gc) 50%, transparent);
+}
+.icard .ii svg {
+  width: 24px;
+  height: 24px;
+  fill: var(--gc);
+}
+.icard b {
+  font: 900 15px var(--fc);
+  text-align: center;
+}
+.icard p {
+  font: 400 11px/1.4 var(--fc);
+  color: var(--dim);
+  text-align: center;
+}
+.icard .eqt {
+  margin-top: auto;
+  text-align: center;
+  font: 700 11px var(--fc);
+  padding: 4px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--dim);
+}
+.icard.eq .eqt {
+  background: var(--acid);
+  color: #0a0910;
+}
