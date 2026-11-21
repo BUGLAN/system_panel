@@ -47,12 +47,14 @@ export interface Client {
   ): Promise<{ status: number; body: T }>;
 }
 
-export function testServer(over: Partial<Config> = {}): TestServer {
+export function testServer(over: Partial<Config> = {}, depsOver: Partial<Deps> = {}): TestServer {
   const clock = { t: T0 };
   const dbh = openDb(':memory:');
   const deps: Deps = makeDeps(testConfig({ origin: ORIGIN, ...over }), dbh, {
     now: () => clock.t,
     rnd: () => 0.99,
+    llmRetryDelayMs: 0,
+    ...depsOver,
   });
   const app = createApp(deps);
 

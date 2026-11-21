@@ -8,6 +8,7 @@ import type { AuthUser } from '../auth/accounts';
 import type { EventBus } from '../events/bus';
 import type { UserLocks } from '../flow/locks';
 import type { CheckRegistry } from '../evidence/checks';
+import type { PlanJobs } from '../jobs/planJobs';
 import type { IntentCache } from './intents';
 import type { RateLimiter } from './rateLimit';
 import { unauthorized } from './errors';
@@ -29,6 +30,12 @@ export interface Deps {
    * 没配拆解模块（第 2 步之前 / 测试）时返回 null。
    */
   followUp: (user: AuthUser, kind: 'window' | 'finale') => { jobId: string } | null;
+  /** 拆解任务 */
+  jobs: PlanJobs;
+  /** 调 LLM 用的 fetch（测试里换成假端点） */
+  fetch: (input: string, init?: RequestInit) => Promise<Response>;
+  /** LLM 重试间隔（测试里设 0；缺省 800ms） */
+  llmRetryDelayMs?: number;
 }
 
 export interface AppEnv {

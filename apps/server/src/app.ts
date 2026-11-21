@@ -10,6 +10,9 @@ import { errInfo, log } from './log';
 import { authRoutes, meRoute, readSessionCookie } from './routes/auth';
 import { flowRoutes } from './routes/flow';
 import { healthRoute } from './routes/health';
+import { consentRoutes, llmRoutes } from './routes/llm';
+import { planRoutes } from './routes/plan';
+import { streamRoute } from './routes/stream';
 
 /** 不需要登录的接口 */
 const PUBLIC = new Set([
@@ -76,6 +79,10 @@ export function createApp(deps: Deps): Hono<AppEnv> {
   app.route('/api/auth', authRoutes);
   app.route('/api/me', meRoute);
   app.route('/api', flowRoutes);
+  app.route('/api/llm', llmRoutes);
+  app.route('/api/consent', consentRoutes);
+  app.route('/api/plan', planRoutes);
+  app.route('/api/stream', streamRoute);
 
   app.all('/api/*', () => {
     throw notFound();

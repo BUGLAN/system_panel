@@ -55,3 +55,36 @@ export interface GiveUpOk extends IntentOk {
 
 /** 写意图去重用的请求头 */
 export const INTENT_HEADER = 'x-intent-id';
+
+// ── 拆解任务（docs/05 第 1.5 节：提交任务 → SSE 收进度 → 完成 / 失败）──────────
+
+/** 加载卡的分步进度：0 匹配 → 1 拆解（含段进度）→ 2 校验 */
+export interface PlanProgress {
+  stage: 0 | 1 | 2;
+  segDone?: number;
+  segTotal?: number;
+}
+
+/** bind 首目标 / retry 重试记着的目标 / swap 换目标 / resume 当场补拆 / window 续拆 / finale 收官铸下一条 */
+export type PlanJobKind = 'bind' | 'retry' | 'swap' | 'resume' | 'window' | 'finale';
+
+export interface PlanJobView {
+  id: string;
+  kind: PlanJobKind;
+  status: 'running' | 'done' | 'failed';
+  progress: PlanProgress;
+  /** 失败时：PlanFailureCode + 细节（失败卡按 code 出标题和她那句） */
+  failure: { code: string; detail: string } | null;
+  /** 成功落库后的最新状态 */
+  state: StateView | null;
+  startedAt: number;
+  finishedAt: number | null;
+}
+
+/** 匹配类目的结果（绑定仪式第一步） */
+export interface MatchView {
+  catId: string;
+  short: string;
+  days: number;
+  quota: number;
+}

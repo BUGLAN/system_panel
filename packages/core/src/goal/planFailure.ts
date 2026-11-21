@@ -23,7 +23,9 @@ export type PlanFailureCode =
   /** 目标没通过前置校验 / 她拒拆 */
   | 'badGoal'
   /** 宿主没同意告知页，请求没发出 */
-  | 'noConsent';
+  | 'noConsent'
+  /** 超了限速 / 今天的额度（服务器默认 Key 才有每日上限），请求没发出 */
+  | 'quota';
 
 export class PlanFailure extends Error {
   constructor(
