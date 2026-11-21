@@ -10,7 +10,7 @@ import { questCode } from '@host/core/flow/questText';
 import { deadlineOf } from '@host/core/flow/settle';
 import { RANK_COLORS } from '../../design/tokens';
 import { useGame } from '../../store/gameStore';
-import { now } from '../../store/game';
+import { now, useSync } from '../../store/game';
 import { evidenceUrl, removeEvidence, useEvidence } from '../../store/actions/evidence';
 import { equipItem, giveUp, minimize, submitQuest, useExec } from '../../store/actions/exec';
 import { sayWatch, setUi, useUi } from '../../store/uiStore';
@@ -128,6 +128,7 @@ export function Exec() {
   const picking = useEvidence((s) => s.picking);
   const rejectNote = useEvidence((s) => s.rejectNote);
   const settling = useExec((s) => s.settling);
+  const online = useSync((s) => s.online);
   const [t, setT] = useState(now());
   const [tray, setTray] = useState(false);
   const hit = useRef(new Set<number>());
@@ -154,6 +155,8 @@ export function Exec() {
   const limitMs = q.minutes * 60_000 + a.extraMs;
   const p = q.timed ? elapsed / Math.max(1, q.minutes * 60_000) : 0;
   const left = Math.max(0, deadlineOf(a) - t);
+  // 断网时到点：本地不判负，等联网后由服务端按服务器时间判（护盾 / 超时）
+  const waitNet = q.timed && left === 0 && !online;
   const counts = {
     verified: a.evidence.filter((e) => e.status === 'verified').length,
     unverified: a.evidence.filter((e) => e.status === 'unverified').length,
@@ -200,7 +203,8 @@ export function Exec() {
             <div className="tmeta">
               <span>{Math.floor(Math.min(p, 9.99) * 100)}%</span>
               <span>
-                目标 {fmtClock(q.minutes * 60_000)} · 剩 {fmtClock(left)}
+                目标 {fmtClock(q.minutes * 60_000)} ·{' '}
+                {waitNet ? '00:00 · 联网后结算' : `剩 ${fmtClock(left)}`}
               </span>
             </div>
           </div>

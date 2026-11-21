@@ -89,7 +89,7 @@ docs/         00 重写提示词 · 01 PWA 实施计划与定案 · 02 部署 ·
 - LLM 只在服务端调；前端产物里不许出现模型端点、Bearer、任何 Key（`check:dist` 会扫）。等 LLM 的地方前端走 `store/actions/planJob.ts`（整屏加载卡 + 防连点 + 迟到结果丢弃），服务端走拆解任务（不持锁等 LLM，回来重读存档核对前提再落库）。
 - 视觉照仓库根的 `宿主养成系统_重设计.html`：类名原样沿用；参考稿没有的页面（告知、绑定仪式、简报、加载卡、设置、聊天、换目标）用同一套令牌做。
 - 颜色只从令牌取；稀有度色谱：F 灰 / E 薄荷 / D 青 / C 紫 / B 金 / A 品红 / S 白；评级色：S 白 / A acid / B cyan / C hot。
-- 动效参数在 `design/tokens.ts` 的 `MOTION`，不许凭感觉改：弹簧 100/20 过冲 1.08；亮帧白 16% 180ms（音效踩这一帧）；count-up 800ms ease-out cubic；暴击定格 200ms + CRIT 印章 2.2→1；经验条 520 / 360+420；结算 ≤1.6s（`core/flow/settleTimeline.ts` 单测钉住）；升级 ≤2s，同日简版；发布 ≤800ms；失败亮度 1/3；打字机 34ms/字。只动 transform / opacity，禁线性匀速；尊重 `prefers-reduced-motion`；页面不可见时暂停常驻动画。
+- 动效参数在 `design/tokens.ts` 的 `MOTION`，不许凭感觉改：弹簧 100/20 过冲 1.08；亮帧白 16% 180ms（音效踩这一帧）；count-up 800ms ease-out cubic；暴击定格 200ms + CRIT 印章 2.2→1；经验条 520 / 360+420；结算 ≤1.6s（`apps/web/src/ui/fx/settleTimeline.ts` 单测钉住）；升级 ≤2s，同日简版；发布 ≤800ms；失败亮度 1/3；打字机 34ms/字。只动 transform / opacity，禁线性匀速；尊重 `prefers-reduced-motion`；页面不可见时暂停常驻动画。
 - 按下声由基础按钮（`ui/kit/Btn.tsx` 的 Btn / Tap）自己出；业务回调里只播结果声。有意义的提示音都有对应的画面反馈。
 - 不提交 `.env`、`data/`、`backups/`、`node_modules/`、`dist/`、任何 Key；密钥只从环境变量读，日志不打印 Key / Cookie / 口令 / 照片。
 - 改表结构：改 `apps/server/src/db/schema.ts` → `npm run db:generate` → 迁移文件一起提交。
