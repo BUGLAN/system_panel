@@ -5,7 +5,6 @@
  */
 import { useEffect, useState } from 'react';
 import type { LlmSettingsForm, LlmSettingsView, UsageView } from '@host/core/api/types';
-import { sfx } from '../../audio/sfx';
 import {
   formOf,
   hasConsent,
@@ -126,11 +125,9 @@ function LlmForm({ saved }: { saved: LlmSettingsView }) {
     setBusy(true);
     try {
       await saveLlmSettings(form());
-      sfx.play('success');
       toast('模型设置已保存。Key 加密存在服务器上，不会再回到浏览器。', 'ok');
       setUi({ sheet: null });
     } catch (e) {
-      sfx.play('error');
       toast(e instanceof Error ? e.message : '没保存成功。', 'err');
     } finally {
       setBusy(false);
@@ -143,13 +140,11 @@ function LlmForm({ saved }: { saved: LlmSettingsView }) {
       const r = await testLlm(form());
       setPt({ state: r.text.ok ? 'ok' : 'err', text: r.text.line });
       setPv({ state: r.vision.ok ? 'ok' : 'err', text: r.vision.line });
-      sfx.play(r.text.ok ? 'success' : 'error');
       void llmUsage().then(setUsage, () => undefined);
     } catch (e) {
       const text = e instanceof Error ? e.message : '测不了。';
       setPt({ state: 'err', text });
       setPv({ state: 'idle' });
-      sfx.play('error');
     }
   };
   const def = saved.serverDefault;
@@ -215,7 +210,7 @@ function LlmForm({ saved }: { saved: LlmSettingsView }) {
             label="文本模型"
             value={d.textModel}
             onChange={(v) => patch({ textModel: v })}
-            placeholder="拆解 / 聊天用"
+            placeholder="拆解用"
           />
           <Field
             label="视觉模型"
@@ -238,7 +233,7 @@ function LlmForm({ saved }: { saved: LlmSettingsView }) {
           onChange={(e) => patch({ temperature: Number(e.currentTarget.value) })}
         />
         <small className="fld-h">
-          聊天用（默认 {DEFAULT_TEMPERATURE}）；拆解、匹配、校验各自固定
+          暂时没有功能用到（默认 {DEFAULT_TEMPERATURE}）；拆解、匹配、校验各自固定
         </small>
       </label>
       {usage && <small className="fld-h">{usageText(usage)}</small>}

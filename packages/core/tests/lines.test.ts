@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { COPY, LINES, defaultHold, fillLine, mainlineLine, pickBySeed } from '../src/data/lines';
+import { LINES, defaultHold, fillLine, mainlineLine, pickBySeed } from '../src/data/lines';
 import { awayKind, awayLine, awayText } from '../src/time/away';
 import { fmtClock, fmtDur, fmtMin } from '../src/format';
 import { summarizeWeek, historyFromRow } from '../src/flow/history';
@@ -12,27 +12,20 @@ const DAY = 24 * HOUR;
 
 describe('台词的高亮与填空', () => {
   test('页面字幕带 [[…]] 高亮', () => {
-    for (const s of [
-      LINES.holding,
-      LINES.askGoal,
-      LINES.remedyLine,
-      LINES.execNear,
-      mainlineLine(5, 10),
-    ]) {
+    for (const s of [LINES.holding, LINES.askGoal, mainlineLine(5, 10)]) {
       expect(s).toMatch(/\[\[.+?\]\]/);
     }
   });
 
-  test('金额一律写「晶核」，不再用 ◈ 符号（A12）', () => {
-    const all = JSON.stringify(COPY) + JSON.stringify(LINES);
-    expect(all).not.toContain('◈');
-    expect(all).not.toContain('◆');
+  test('台词里不再提已拿掉的玩法（晶核 / 暴击 / 道具 / 补救）', () => {
+    const all = JSON.stringify(LINES);
+    for (const w of ['晶核', '暴击', '护盾', '双倍卡', '补救', '◈']) expect(all).not.toContain(w);
   });
 
   test('fillLine 换掉全部 {key}；pickBySeed 同种子稳定', () => {
     expect(fillLine(LINES.holding, { n: 3 })).toBe('我手里有 [[3]] 单。都是给你的。');
-    const a = pickBySeed(COPY.roast, 'lv3|st2');
-    expect(pickBySeed(COPY.roast, 'lv3|st2')).toBe(a);
+    const a = pickBySeed(LINES.poke, 'lv3|st2');
+    expect(pickBySeed(LINES.poke, 'lv3|st2')).toBe(a);
   });
 
   test('默认停顿 = clamp(420 + 字数 × 42, 900, 2400)，高亮标记不计字数', () => {
@@ -82,28 +75,23 @@ describe('7 天战报', () => {
     at,
     name: 'x',
     rank: 'E',
-    kind: 'daily',
     exp: 1,
-    coin: 5,
     streak: 1,
     result: 'clear',
-    attrs: { 力: 1 },
     ...over,
   });
 
-  test('7 日窗口 / 完成数 / 出账 / 连胜峰 / 六维日增量；认输不算完成', () => {
+  test('7 日窗口 / 完成数 / 出账 / 连胜峰；旧版认输记录不算完成', () => {
     const all = [
       e(T0 - 9 * DAY),
       e(T0 - 6 * DAY, { streak: 4 }),
-      e(T0 - DAY, { result: 'quit', exp: 0, coin: 0, attrs: {} }),
-      e(T0, { exp: 4, attrs: { 力: 1, 智: 1 } }),
+      e(T0 - DAY, { result: 'quit', exp: 0 }),
+      e(T0, { exp: 4 }),
     ];
     const s = summarizeWeek(all, T0);
     expect(s.doneCount).toBe(2);
-    expect([s.totalExp, s.totalCoin, s.bestStreak]).toEqual([5, 10, 4]);
+    expect([s.totalExp, s.bestStreak]).toEqual([5, 4]);
     expect(s.dayDone).toEqual([1, 0, 0, 0, 0, 0, 1]);
-    expect(s.dayAttrs['力']).toBe(2);
-    expect(s.dayAttrsByDay[6]).toEqual({ 力: 1, 智: 1 });
     expect(s.recent.map((x) => x.at)).toEqual([T0, T0 - DAY, T0 - 6 * DAY, T0 - 9 * DAY]);
   });
 

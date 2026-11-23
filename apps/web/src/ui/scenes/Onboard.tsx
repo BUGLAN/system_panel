@@ -89,7 +89,7 @@ function AskStage() {
       <div className="kb-dock rv">
         {error && (
           <Tap className="link ob-skip" onClick={() => void skipBind()}>
-            先跳过，今天先做日常 ›
+            先跳过，回头再拆 ›
           </Tap>
         )}
         <Btn kind="pri" disabled={!can} onClick={() => void submitGoal()}>

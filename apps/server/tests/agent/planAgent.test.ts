@@ -7,7 +7,6 @@ import {
 } from '../../src/agent/goalBuilder';
 import { generatePlanTasks, matchGoal, matchPrompt } from '../../src/agent/planAgent';
 import { briefUserText } from '../../src/agent/planBrief';
-import { parseTaskMode } from '../../src/agent/mainlineTools';
 import { categoryOf } from '@host/core/goal/categories';
 import { PlanFailure } from '@host/core/goal/planFailure';
 import { planSegmentsFor, planWindowFor, type PlanSegment } from '@host/core/goal/plan';
@@ -15,7 +14,7 @@ import { T0 } from '@host/core/testing/fixtures';
 import { autoPlan, fakeClient, fakeEndpoint, matchReply, tasks } from './fakeLlm';
 
 describe('拆解提示词', () => {
-  test('窗口 / 段 / 档位上限 / 打卡规则 / 护栏都写进正文', () => {
+  test('窗口 / 段 / 档位上限 / 耗时说明 / 护栏都写进正文', () => {
     const w = planWindowFor({ total: 180 });
     const seg = planSegmentsFor(w)[0] as PlanSegment;
     const t = briefUserText({
@@ -31,19 +30,14 @@ describe('拆解提示词', () => {
     expect(t).toContain('第 1/13 段：第 1~14 张');
     expect(t).toContain('你只负责第 1 份：第 1~7 张');
     expect(t).toContain('D ≤ 40 分钟');
-    expect(t).toContain('"checkin"');
+    expect(t).toContain('只作参考、不倒计时');
+    expect(t).not.toContain('checkin');
     expect(t).toContain('每周最多减约 1 公斤');
     expect(t).toContain('60kg');
   });
 
   test('匹配提示词带护栏条款', () => {
     expect(matchPrompt('x')).toContain('〔不拆〕');
-  });
-
-  test('mode：checkin → 打卡；缺省 / 非法 / 大小写空白都容忍', () => {
-    expect(parseTaskMode(' CheckIn ')).toBe(false);
-    expect(parseTaskMode(undefined)).toBe(true);
-    expect(parseTaskMode('weird')).toBe(true);
   });
 });
 
@@ -58,7 +52,7 @@ describe('工具循环', () => {
     window: planWindowFor({ total: n, firstGoal }),
   });
 
-  test('一次交对就收工；打卡标记一路带上', async () => {
+  test('一次交对就收工；多余的旧字段（mode）忽略', async () => {
     const ep = fakeEndpoint([
       {
         text: '',
@@ -66,11 +60,8 @@ describe('工具循环', () => {
       },
     ]);
     const r = await generatePlanTasks({ client: fakeClient(ep), brief: brief(3) });
-    expect(r.tasks.map((t) => [t.rank, t.timed])).toEqual([
-      ['E', false],
-      ['D', false],
-      ['C', false],
-    ]);
+    expect(r.tasks.map((t) => t.rank)).toEqual(['E', 'D', 'C']);
+    expect(r.tasks[0]).not.toHaveProperty('timed');
     expect(ep.calls).toHaveLength(1);
   });
 

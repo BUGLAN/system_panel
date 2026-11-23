@@ -45,7 +45,7 @@ export function game(): SaveData {
   return gameStore.getState().game;
 }
 
-/** 只读推导用（主线锁、暴击率、补签可用性…），与服务端同一套规则、同一个时区 */
+/** 只读推导用（主线锁…），与服务端同一套规则、同一个时区 */
 export function flowOf(g: SaveData = game()): QuestFlow {
   const t = tz();
   return new QuestFlow(g, t ? { tz: t } : {});
@@ -67,7 +67,7 @@ export function applyState(v: StateView, o: { force?: boolean; fromCache?: boole
   if (!o.fromCache && s.me) void cacheState(s.me.username, v);
 }
 
-// ── 顺带发生的事（换日 / 护盾碎 / 超时判负）由执行编排器注册处理 ──────────
+// ── 顺带发生的事（目前只有换日）：需要时由编排器注册处理 ──────────
 
 type EventHandler = (events: FlowEvent[]) => void;
 let eventHandler: EventHandler = () => {};

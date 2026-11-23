@@ -1,10 +1,9 @@
 /**
  * 主线（参考稿 #sc-main）：已过 x/总 天、分段标识（第 k 段 · 01–14 + 段进度格，B7）、
- * 当前这一段的收藏卡轮播 + 底座 + 节点轨、她的点评、去委托板 / 换目标。
+ * 当前这一段的收藏卡轮播 + 底座 + 节点轨、她的点评、接下当前这一张 / 换目标。
  * 没主线：【立目标】；记着目标：【重试拆解】；清单走完没续上：【重试拆解】（D3.2）。
  */
 import { useEffect, useRef, useState } from 'react';
-import { attrName } from '@host/core/data/attrs';
 import { PLAN_WINDOW_SIZE } from '@host/core/goal/plan';
 import {
   goalDoneCount,
@@ -13,12 +12,11 @@ import {
   goalTotalTasks,
   goalWindowExhausted,
 } from '@host/core/model/goal';
-import { pad2 } from '@host/core/format';
-import { sfx } from '../../audio/sfx';
+import { fmtDur, pad2 } from '@host/core/format';
 import { useGame } from '../../store/gameStore';
 import { game, now } from '../../store/game';
 import { back, go } from '../../store/actions/nav';
-import { openBriefing } from '../../store/actions/exec';
+import { openBriefing, openCurrentQuest } from '../../store/actions/exec';
 import { openGoalSwap } from '../../store/actions/goals';
 import { resumePlan, retryPendingPlan } from '../../store/actions/plan';
 import { resetBind } from '../../store/actions/bind';
@@ -114,11 +112,7 @@ export function Main() {
     } else if (t.finalTask) {
       setMood('');
       setMoodText('期待');
-      sayMain(
-        t.timed
-          ? `终局单。[${t.minutes}] 分钟。我会在终点等你——大概。`
-          : '终局单。[打卡]，随时交。我会在终点等你——大概。',
-      );
+      sayMain(`终局单。约 [${t.minutes}] 分钟。我会在终点等你——大概。`);
     } else {
       setMood('');
       setMoodText('冷静');
@@ -136,10 +130,12 @@ export function Main() {
       if (f) next.add(local);
       else next.delete(local);
       setFlipped(next);
-      sfx.play('swipe');
       const [x, y] = center(el);
       burst(x, y, { type: 'star', n: 16, colors: ['#3be8ff', '#fff'], g: 0.04, sz: 3 });
-      if (f) sayMain(`第 [${t.index + 1}] 单战报：评级 [${t.grade ?? '—'}]。`);
+      if (f)
+        sayMain(
+          `第 [${t.index + 1}] 单战报：用时 [${t.heldMs === null ? '—' : fmtDur(t.heldMs)}]。`,
+        );
       return;
     }
     if (st === 'cur') {
@@ -148,16 +144,11 @@ export function Main() {
         void go('exec');
         return;
       }
-      const q = game().queue.find(
-        (x) =>
-          (x.kind === 'main' || (x.kind === 'remedy' && x.planIndex >= 0)) &&
-          x.planIndex === t.index,
-      );
+      const q = game().queue.find((x) => x.planIndex === t.index);
       if (q) openBriefing(q);
       return;
     }
     shakeEl(el);
-    sfx.play('error');
     setMood('angry');
     setTimeout(() => setMood(''), 1500);
     sayMain('还没解锁。[别急着越级]，宿主。');
@@ -182,7 +173,6 @@ export function Main() {
           ],
           { duration: 320, easing: 'cubic-bezier(.6,0,.8,.4)', fill: 'backwards' },
         ).finished;
-        sfx.play('stamp');
         shake(9, 380);
         const [x, y] = center(stamp);
         burst(x, y, { n: 34, colors: ['#ff3b7a', '#fff'], min: 3, max: 11 });
@@ -195,7 +185,6 @@ export function Main() {
       if (nextLocal < tasks.length) {
         car.current?.go(nextLocal);
         await sleep(650);
-        sfx.play('unlock');
         const el = car.current?.cardEl(nextLocal);
         if (el) {
           const [x, y] = center(el);
@@ -312,14 +301,12 @@ export function Main() {
             const t = tasks[i];
             if (!t) return null;
             const a = g.active;
-            const at = Object.keys(t.attrs)[0];
             return (
               <MainCard
                 t={t}
                 total={total}
                 state={stateOf(i)}
                 executing={!!a && a.task.planIndex === t.index}
-                catChar={at ? attrName(at).slice(0, 1) : '主'}
               />
             );
           }}
@@ -347,7 +334,6 @@ export function Main() {
             className={`${t.state === 'done' ? 'd' : ''} ${t.index === first ? 'c' : ''} ${t.finalTask ? 'b' : ''} ${i === focus ? 'on' : ''}`}
             onClick={() => {
               car.current?.go(i);
-              sfx.play('soft');
             }}
           >
             {t.finalTask ? '★' : t.index + 1}
@@ -370,8 +356,8 @@ export function Main() {
             {goalWindowExhausted(goal) ? '重试拆解 · 下一段' : '重试拆解 · 下一条'}
           </Btn>
         ) : (
-          <Btn kind="pri" onClick={() => void go('board')}>
-            去委托板 <span className="tri" />
+          <Btn kind="pri" onClick={() => void (openCurrentQuest() || go('home'))}>
+            {g.active ? '继续这一单' : '接下这一单'} <span className="tri" />
           </Btn>
         )}
         <Btn kind="ghost" onClick={openGoalSwap}>

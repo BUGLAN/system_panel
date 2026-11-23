@@ -1,7 +1,7 @@
 /**
  * 绑定仪式（首次立目标）：输入目标 → 匹配类目 → 3 张访谈卡 → 拆第一段 → 大厅。
  * 拆解失败停在复核态（B1）：错误卡 + 已答的卡 +【重试拆解】【换个说法】「改答案」「先跳过」，答案不清空。
- * 「先跳过」记住目标、先发当天日常（C5）。匹配与拆解都在服务端跑，这里只管界面节奏。
+ * 「先跳过」记住目标、先进大厅（C5）。匹配与拆解都在服务端跑，这里只管界面节奏。
  */
 import { createStore } from 'zustand/vanilla';
 import { useStore } from 'zustand';
@@ -9,9 +9,8 @@ import type { MatchView } from '@host/core/api/types';
 import { CRISIS_CARE_LINE, isCrisisText } from '@host/core/agent/guardrail';
 import { LINES } from '@host/core/data/lines';
 import type { InterviewCard } from '@host/core/data/categoryTypes';
-import { BIND_GIFT, isVagueGoal } from '@host/core/goal/categories';
+import { isVagueGoal } from '@host/core/goal/categories';
 import type { PlanFailure } from '@host/core/goal/planFailure';
-import { sfx } from '../../audio/sfx';
 import { ApiError, api } from '../api';
 import { game, intent } from '../game';
 import { sayHome, toast } from '../uiStore';
@@ -71,7 +70,6 @@ export async function submitGoal(): Promise<void> {
     return;
   }
   if (isVagueGoal(typed)) {
-    sfx.play('error');
     set({ line: '太空了。说点具体的——[一句话]。' });
     return;
   }
@@ -87,7 +85,6 @@ export async function submitGoal(): Promise<void> {
       set({ error: null, line: CRISIS_CARE_LINE });
       return;
     }
-    sfx.play('error');
     set({
       error: asFailure(r.error),
       line: '这一步没走通。答案还没开始答，[重试]或者先跳过。',
@@ -96,7 +93,6 @@ export async function submitGoal(): Promise<void> {
   }
   const { match: m, cards } = r.value;
   const sameDeck = prev.match?.catId === m.catId && cards.every((c) => prev.answers[c.id]);
-  sfx.play('deal');
   if (sameDeck) {
     set({
       match: m,
@@ -126,7 +122,6 @@ export function answer(cardId: string, value: string): void {
   if (!v) return;
   const answers = { ...s.answers, [cardId]: v };
   const idx = s.idx + 1;
-  sfx.play('soft');
   if (idx >= s.cards.length) {
     set({ answers, idx, editing: false });
     void startBuild();
@@ -141,7 +136,7 @@ export function prevCard(): void {
   if (s.idx > 0) set({ idx: s.idx - 1 });
 }
 
-/** ③ 拆第一段（首目标：只出 E~C）；服务端拆好直接落库（主线 + 当天日常 + 见面礼 + 访谈记忆） */
+/** ③ 拆第一段（首目标：只出 E~C）；服务端拆好直接落库 */
 export async function startBuild(): Promise<void> {
   const s = bindStore.getState();
   if (!s.match) return;
@@ -151,7 +146,6 @@ export async function startBuild(): Promise<void> {
   );
   if (!r) return;
   if (!r.ok) {
-    sfx.play('error');
     const e = asFailure(r.error);
     set({ stage: 'review', error: e, line: '这次没拆明白。答案我都记着——[重试]，或者换个说法。' });
     return;
@@ -159,14 +153,12 @@ export async function startBuild(): Promise<void> {
   await afterFirstGoal();
 }
 
-/** 首目标落库之后：进大厅，她报数，见面礼 toast */
+/** 首目标落库之后：进大厅，她报数 */
 export async function afterFirstGoal(): Promise<void> {
-  sfx.play('unlock');
   const n = game().goal.plan.length;
   await go('home');
   resetBind();
   sayHome(`排好了。先排 [[${n}]] 张，一天一张；做完我再往下拆。`);
-  toast(`${BIND_GIFT.kicker}：${BIND_GIFT.text}`, 'ok');
 }
 
 /** 【重试拆解】同一组答案再交 */
@@ -193,19 +185,16 @@ export function editAnswers(): void {
   });
 }
 
-/** 「先跳过」：记住目标、先发当天日常、进大厅（C5） */
+/** 「先跳过」：记住目标、进大厅，回头再重试拆解（C5） */
 export async function skipBind(): Promise<void> {
   const s = bindStore.getState();
   const keep = (s.goalText || s.text).trim();
   const r = await intent('/api/flow/skip-plan', { text: keep });
   if (!r.ok) {
-    sfx.play('error');
     toast(r.err.message, 'err');
     return;
   }
   await go('home');
   resetBind();
-  sayHome(
-    keep ? '目标我记着了。今天先把日常做了，回头[重试拆解]。' : '先从日常开始。目标想好了再来。',
-  );
+  sayHome(keep ? '目标我记着了。缓一缓，回头[重试拆解]。' : '目标想好了再来。我等着。');
 }

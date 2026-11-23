@@ -1,5 +1,5 @@
 /**
- * 大厅（参考稿 #sc-home）：她 + 气泡、主线卡（或待拆卡 / 立目标卡）、执行中药丸、底栏、委托球。
+ * 大厅（参考稿 #sc-home）：她 + 气泡、主线卡（或待拆卡 / 立目标卡）、执行中药丸、底栏、委托球（直接打开当前这一张）。
  */
 import { useEffect, useRef, useState } from 'react';
 import { LINES, fillLine, pickBySeed } from '@host/core/data/lines';
@@ -10,14 +10,14 @@ import {
   goalTotalTasks,
   goalWindowExhausted,
 } from '@host/core/model/goal';
-import { fmtClock, pad2 } from '@host/core/format';
-import { sfx } from '../../audio/sfx';
+import { pad2 } from '@host/core/format';
 import { useGame } from '../../store/gameStore';
 import { game, now } from '../../store/game';
 import { go } from '../../store/actions/nav';
+import { openCurrentQuest } from '../../store/actions/exec';
 import { retryPendingPlan, resumePlan } from '../../store/actions/plan';
 import { resetBind } from '../../store/actions/bind';
-import { sayHome, setUi, uiStore, useUi } from '../../store/uiStore';
+import { sayHome, uiStore, useUi } from '../../store/uiStore';
 import { Btn, Tap } from '../kit/Btn';
 import { Core, type CoreMood } from '../kit/Core';
 import { Typewriter } from '../kit/Typewriter';
@@ -70,7 +70,6 @@ function HomeCore() {
       ],
       { duration: 440, easing: 'cubic-bezier(.3,1.6,.5,1)' },
     );
-    sfx.play('soft');
     const [x, y] = center(ref.current);
     burst(x, y, {
       n: 10 + n * 3,
@@ -93,7 +92,6 @@ function HomeCore() {
           lp.current = window.setTimeout(() => {
             long.current = true;
             setMood('love');
-            sfx.play('unlock');
             sayHome('……别、别一直按着。我只是在[充电]。');
             setTimeout(() => setMood(''), 3600);
           }, 900);
@@ -203,8 +201,7 @@ export function Home() {
   const ref = useRef<HTMLElement>(null);
   const g = useGame((s) => s.game);
   const quip = useUi((s) => s.quip);
-  const dot = useUi((s) => s.archiveDot);
-  const t = useNow(1000);
+  const t = useNow(60_000);
   useReveal(ref, 0);
   useEffect(() => {
     if (!uiStore.getState().quip) sayHome(idleLine(0));
@@ -236,23 +233,14 @@ export function Home() {
       <div className="core-wrap">
         <HomeCore />
         <div className="bubble rv">
-          <span className="who2">
-            SYSTEM · 她说
-            <Tap className="link ask-her" quiet onClick={() => setUi({ chatOpen: true })}>
-              先问问她 ›
-            </Tap>
-          </span>
+          <span className="who2">SYSTEM · 她说</span>
           <Typewriter text={quip} />
         </div>
       </div>
       <QuestCard />
       <Tap className={`active-pill ${g.active ? 'on' : ''}`} onClick={() => void go('exec')}>
         <i />
-        执行中{' '}
-        <b>
-          {g.active ? (g.active.task.timed ? fmtClock(t - g.active.startAt) : '打卡') : '00:00'}
-        </b>{' '}
-        点我返回 ›
+        执行中 <b>{g.active ? '待交差' : '—'}</b> 点我返回 ›
       </Tap>
       <nav className="dock rv">
         <Tap className="navb" onClick={() => void go('main')}>
@@ -278,30 +266,14 @@ export function Home() {
             </sup>
           )}
         </Tap>
-        <Tap
-          className="navb"
-          onClick={() => {
-            setUi({ archiveDot: false });
-            void go('archive');
-          }}
-        >
+        <Tap className="navb" onClick={() => void go('archive')}>
           <span className="ring">
             <svg className="ic" viewBox="0 0 24 24">
               <path d="M12 2.5l8.2 4.75v9.5L12 21.5l-8.2-4.75v-9.5z" />
               <path d="M12 8l3.5 2v4L12 16l-3.5-2v-4z" />
             </svg>
-            <i className={`newdot ${dot ? 'on' : ''}`} />
           </span>
           <em>档案</em>
-        </Tap>
-        <Tap className="navb" onClick={() => void go('shop')}>
-          <span className="ring">
-            <svg className="ic" viewBox="0 0 24 24">
-              <rect x="4" y="8" width="16" height="12" rx="2.5" />
-              <path d="M9 8V6a3 3 0 0 1 6 0v2M4 13h16" />
-            </svg>
-          </span>
-          <em>补给</em>
         </Tap>
         <Tap
           ref={orbRef}
@@ -310,12 +282,12 @@ export function Home() {
             const [x, y] = center(orbRef.current);
             burst(x, y, { n: 30, colors: ['#d6ff3d', '#fff'], min: 3, max: 10 });
             ring(x, y, '#d6ff3d', 110, 4);
-            if (g.active) return void go('exec');
-            if (goal.plan.length === 0 && !g.pendingGoal && n === 0) {
+            if (openCurrentQuest()) return;
+            if (goal.plan.length === 0 && !g.pendingGoal) {
               sayHome('还没有目标，哪来的单。先去主线立一个。');
               return;
             }
-            void go('board');
+            void go('main');
           }}
         >
           <span className="rings" />

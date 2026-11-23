@@ -1,5 +1,5 @@
 /**
- * 流水（结算 / 认输 / 超时）：每人最多 HISTORY_MAX 条，超出删最旧的。
+ * 流水（结算；旧版还有认输 / 超时记录）：每人最多 HISTORY_MAX 条，超出删最旧的。
  */
 import { asc, count, eq, inArray } from 'drizzle-orm';
 import { HISTORY_MAX, historyFromRow } from '@host/core/flow/history';

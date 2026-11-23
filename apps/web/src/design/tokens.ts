@@ -2,7 +2,7 @@
  * 设计令牌的 TS 镜像。唯一源是 tokens.css；这里给 JS 侧（canvas 粒子、Motion 参数、
  * 结算时间轴）用，tests/design/tokens.test.ts 逐项比对两边，改色只改 CSS 再同步这里。
  */
-import type { Grade, Rank } from '@host/core/data/rank';
+import type { Rank } from '@host/core/data/rank';
 
 export const COLORS = {
   bg: '#06050c',
@@ -30,14 +30,6 @@ export const RANK_COLORS: Record<Rank, string> = {
   B: '#ffcc4d',
   A: '#ff3b7a',
   S: '#ffffff',
-};
-
-/** 评级色（S/A/B/C） */
-export const GRADE_COLORS: Record<Grade, string> = {
-  S: '#ffffff',
-  A: '#d6ff3d',
-  B: '#3be8ff',
-  C: '#ff3b7a',
 };
 
 export function rankColor(r: Rank): string {
@@ -69,9 +61,6 @@ export const MOTION = {
   flash: { color: '#ffffff', opacity: 0.16, ms: 180 },
   /** EXP count-up：800ms、ease-out cubic */
   countUpMs: 800,
-  /** 暴击：定格 200ms → CRIT 印章 scale 2.2 → 1 → 续滚双倍 */
-  critFreezeMs: 200,
-  critStampFrom: 2.2,
   /** 经验条：不跨级 520ms；跨级先涨满 360ms → 白闪 + 升级 → 归零 → 再涨到余额 420ms */
   expBarMs: 520,
   expBarFillMs: 360,
@@ -80,8 +69,6 @@ export const MOTION = {
   settleMaxMs: 1600,
   levelUpMaxMs: 2000,
   publishMaxMs: 800,
-  /** 失败：更短、更暗、更安静（亮度是成功的 1/3） */
-  failBrightness: 1 / 3,
   /** 打字机：标准每字 34ms */
   typeMsPerChar: 34,
 } as const;

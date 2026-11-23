@@ -35,7 +35,7 @@ export default defineConfig({
       },
       workbox: {
         // 预缓存应用壳和音效；字体分片不预缓存（太多），走运行时 CacheFirst
-        globPatterns: ['**/*.{js,css,html,ico,png,svg,mp3,wav,webmanifest}'],
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,webmanifest}'],
         navigateFallback: '/index.html',
         // 接口一律走网络：不缓存、不拿 index.html 顶替（断网时由前端提示「需要联网」）
         navigateFallbackDenylist: [/^\/api\//],

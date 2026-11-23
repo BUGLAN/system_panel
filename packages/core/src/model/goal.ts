@@ -2,21 +2,8 @@
  * 目标 = 一句话 + 期限 + 任务清单（滚动生成：清单里只有已拆出来的窗口）。
  * 移植自 flutter-final:app/lib/state/goal.dart。
  */
-import type { AttrMap } from '../data/attrs';
-import { isGrade, type Grade, type Rank } from '../data/rank';
-import {
-  arr,
-  attrMap,
-  bool,
-  int,
-  intOrNull,
-  isObj,
-  rank,
-  str,
-  strMap,
-  strOrNull,
-  type Json,
-} from '../save/json';
+import type { Rank } from '../data/rank';
+import { arr, bool, int, intOrNull, isObj, rank, str, strMap, type Json } from '../save/json';
 
 /** todo 待发布 / 在队列等接；active 正在执行；done 已完成；abandoned 随放弃主线作废 */
 export type PlanState = 'todo' | 'active' | 'done' | 'abandoned';
@@ -28,18 +15,15 @@ export interface PlanTask {
   short: string;
   title: string;
   proof: string;
+  /** 预计耗时（分钟，只作参考） */
   minutes: number;
   rank: Rank;
-  attrs: AttrMap;
   state: PlanState;
   /** 兑现单：它完成 = 目标完成 */
   finalTask: boolean;
   /** 已完成：用时（毫秒）/ 完成时刻（epoch ms） */
   heldMs: number | null;
   doneAt: number | null;
-  timed: boolean;
-  /** 结算时落库的评级（S/A/B/C，与结算页同一口径） */
-  grade: Grade | null;
 }
 
 export interface Goal {
@@ -149,21 +133,17 @@ export function planTaskToJson(t: PlanTask): Json {
     title: t.title,
     proof: t.proof,
     minutes: t.minutes,
-    ...(t.timed ? {} : { mode: 'checkin' }),
     rank: t.rank,
-    ...(Object.keys(t.attrs).length ? { attrs: { ...t.attrs } } : {}),
     state: t.state,
     final: t.finalTask,
     ...(t.heldMs !== null ? { heldMs: t.heldMs } : {}),
     ...(t.doneAt !== null ? { doneAt: t.doneAt } : {}),
-    ...(t.grade !== null ? { grade: t.grade } : {}),
   };
 }
 
 export function planTaskFromJson(v: unknown, index: number): PlanTask | null {
   if (!isObj(v)) return null;
   const state = str(v, 'state', 'todo');
-  const grade = strOrNull(v, 'grade');
   return {
     index: int(v, 'index', index),
     short: str(v, 'short', ''),
@@ -171,13 +151,10 @@ export function planTaskFromJson(v: unknown, index: number): PlanTask | null {
     proof: str(v, 'proof', ''),
     minutes: int(v, 'minutes', 0),
     rank: rank(v, 'rank', 'F'),
-    attrs: attrMap(v, 'attrs', {}),
     state: (PLAN_STATES as readonly string[]).includes(state) ? (state as PlanState) : 'todo',
     finalTask: bool(v, 'final', false),
     heldMs: intOrNull(v, 'heldMs'),
     doneAt: intOrNull(v, 'doneAt'),
-    timed: v['mode'] !== 'checkin',
-    grade: isGrade(grade) ? grade : null,
   };
 }
 

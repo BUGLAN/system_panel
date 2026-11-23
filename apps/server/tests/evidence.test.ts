@@ -124,25 +124,25 @@ describe('证据上传', () => {
 });
 
 describe('交单与在途校验', () => {
-  it('交单最多等这么久：等不到的按未校验评级；迟到的结论不改档', async () => {
+  it('交单最多等这么久：等不到的按未校验算；迟到的结论不改档', async () => {
     const { s, c, serial } = await setup(visionFetch([{ match: true, note: '晚到的' }], 150), 30);
     const seen = verdicts(s, c);
     const up = await upload(c, serial);
-    s.clock.t += 10 * 60_000; // 用时够 1/4，不因「太快」降档
+    s.clock.t += 10 * 60_000;
     const sub = await c.json<{ result: QuestResult }>('POST', '/api/flow/submit', { serial });
     expect(sub.status).toBe(200);
-    expect(sub.body.result.grade).toBe('B'); // 只有未校验
+    expect([sub.body.result.photos, sub.body.result.verified]).toEqual([1, 0]); // 只有未校验
     await s.deps.checks.waitFor(c.userId, [up.body['shotId'] as string], 1000);
     expect(seen[0]).toMatchObject({ result: 'gone' });
     expect(s.saveOf(c).active).toBeNull();
   });
 
-  it('校验按时回来：判真计入评级', async () => {
+  it('校验按时回来：判真计入结算读数', async () => {
     const { s, c, serial } = await setup(visionFetch([{ match: true, note: '' }], 5));
     await upload(c, serial);
     s.clock.t += 10 * 60_000;
     const sub = await c.json<{ result: QuestResult }>('POST', '/api/flow/submit', { serial });
-    expect(sub.body.result.grade).toBe('A');
+    expect([sub.body.result.photos, sub.body.result.verified]).toEqual([1, 1]);
     expect(s.saveOf(c).active).toBeNull();
   });
 });

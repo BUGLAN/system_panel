@@ -96,11 +96,11 @@ describe('存档镜像', () => {
 });
 
 describe('本机缓存', () => {
-  it('偏好：默认值、越界钳制', async () => {
+  it('偏好：默认值；旧版的静音 / 音量字段读出来时丢掉', async () => {
     const db = new HostDb(`t-${Math.random()}`);
     expect(await loadPrefs(db)).toEqual(defaultPrefs());
-    await savePrefs({ muted: true, volume: 3, installHintSeen: true }, db);
-    expect(await loadPrefs(db)).toEqual({ muted: true, volume: 1, installHintSeen: true });
+    await savePrefs({ installHintSeen: true, muted: true, volume: 3 } as never, db);
+    expect(await loadPrefs(db)).toEqual({ installHintSeen: true });
   });
 
   it('离线缓存按用户分开；退出登录清掉自己的', async () => {

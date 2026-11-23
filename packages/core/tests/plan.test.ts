@@ -1,14 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import { CATEGORIES } from '../src/data/categories';
-import { DAILY_COMMON } from '../src/data/dailyCommon';
 import { RANKS, rankIndex, type Rank } from '../src/data/rank';
-import {
-  applyBindGift,
-  categoryOf,
-  interviewCardsFor,
-  isVagueGoal,
-  memoriesFromInterview,
-} from '../src/goal/categories';
+import { categoryOf, interviewCardsFor, isVagueGoal } from '../src/goal/categories';
 import {
   buildGoalFromPlan,
   extendGoalWithWindow,
@@ -26,7 +19,6 @@ import {
   windowTo,
 } from '../src/goal/plan';
 import { PlanRuleError } from '../src/goal/planFailure';
-import { splitAttrs } from '../src/goal/split';
 import { T0 } from './fixtures';
 import { specs } from './helpers';
 
@@ -79,15 +71,7 @@ describe('类目表（11 类）', () => {
         expect(ids.has(card.id)).toBe(false);
         ids.add(card.id);
       }
-      expect(c.daily.length).toBeGreaterThanOrEqual(8);
     }
-  });
-
-  test('运动类（跑步 / 减重 / 力量）首属性是「力」= 体质；早起类留「体」= 意志（C1）', () => {
-    const top = (id: string) =>
-      Object.entries(categoryOf(id).tilt).sort((a, b) => (b[1] ?? 0) - (a[1] ?? 0))[0]?.[0];
-    expect(['run', 'slim', 'fit'].map(top)).toEqual(['力', '力', '力']);
-    expect(top('sleep')).toBe('体');
   });
 
   test('C2 练技能：访谈问的是「练」', () => {
@@ -96,30 +80,6 @@ describe('类目表（11 类）', () => {
       '一周能练几次？',
       '想先练会什么？',
     ]);
-  });
-
-  test('通用池 30 条；整天型 6 条是打卡单（D3.3）', () => {
-    expect(DAILY_COMMON).toHaveLength(30);
-    const checkin = [...DAILY_COMMON, ...CATEGORIES.flatMap((c) => c.daily)]
-      .filter((d) => d.timed === false)
-      .map((d) => d.title);
-    expect(checkin).toHaveLength(6);
-    expect(checkin).toEqual(
-      expect.arrayContaining([
-        '喝水 6 杯，拿杯子凑数不算',
-        '早睡 30 分钟，就今晚',
-        '睡前不吃东西，渴了只喝水',
-      ]),
-    );
-  });
-
-  test('池内容合规：题面非空、时限 5~180、档位在 F~S', () => {
-    for (const d of [...DAILY_COMMON, ...CATEGORIES.flatMap((c) => c.daily)]) {
-      expect(d.title.trim()).not.toBe('');
-      expect(d.minutes).toBeGreaterThanOrEqual(5);
-      expect(d.minutes).toBeLessThanOrEqual(180);
-      expect(RANKS).toContain(d.rank);
-    }
   });
 
   test('未知类目兜底到 gen', () => {
@@ -149,26 +109,6 @@ describe('空泛判定与访谈卡组', () => {
         .map((c) => c.id)
         .slice(-2),
     ).toEqual(['common.slot', 'common.history']);
-  });
-
-  test('记忆导出：目标一句 + 逐卡问答，跳过未答的卡', () => {
-    const mem = memoriesFromInterview({
-      cat: categoryOf('run'),
-      answers: { 'run.now': '3 公里以内', 'run.slot': '' },
-      goalText: ' 三个月跑完半马 ',
-      days: 90,
-    });
-    expect(mem).toEqual([
-      '宿主立了新目标：「三个月跑完半马」（奔跑向，期限 90 天）。',
-      '现在能跑多远？——3 公里以内。',
-    ]);
-  });
-
-  test('见面礼：双倍卡 +1，原表不动', () => {
-    const items = { dbl: 2 };
-    expect(applyBindGift(items)).toEqual({ dbl: 3 });
-    expect(items).toEqual({ dbl: 2 });
-    expect(applyBindGift({})).toEqual({ dbl: 1 });
   });
 });
 
@@ -279,7 +219,7 @@ describe('校验 fail fast', () => {
 });
 
 describe('铸计划与续拆', () => {
-  test('首目标 3 天：E/D/C，末张不算兑现门；六维按类目倾向分', () => {
+  test('首目标 3 天：E/D/C，末张不算兑现门', () => {
     const g = buildGoalFromPlan({
       text: '三天早睡',
       short: '',
@@ -291,7 +231,7 @@ describe('铸计划与续拆', () => {
     });
     expect(g.short).toBe('三天早睡');
     expect(g.plan.some((t) => t.finalTask)).toBe(false);
-    expect(g.plan[1]?.attrs).toEqual(splitAttrs(categoryOf('sleep').tilt, 2));
+    expect(g.cat).toBe('sleep');
   });
 
   test('滚动生成：180 天只铸第一段 14 张，总张数存 planTotal；续拆接上第 15 张起', () => {
@@ -307,7 +247,7 @@ describe('铸计划与续拆', () => {
     expect([g.plan.length, g.planTotal]).toEqual([14, 180]);
     const nw = nextPlanWindow(g);
     expect(nw.from).toBe(15);
-    const g2 = extendGoalWithWindow(g, categoryOf('slim'), specs(ladder(nw.size, nw.lo, nw.lo)));
+    const g2 = extendGoalWithWindow(g, specs(ladder(nw.size, nw.lo, nw.lo)));
     expect(g2.plan.map((t) => t.index).slice(13, 16)).toEqual([13, 14, 15]);
     expect(g2.plan[g2.plan.length - 1]?.finalTask).toBe(false);
   });
@@ -339,14 +279,5 @@ describe('铸计划与续拆', () => {
     expect(d).toContain('现在是第 2/30 天；已拆 14/30 张，完成 1 张。');
     expect(d).toContain('- 第 1 张 [E]「跑 1 公里」，用时 21 分钟');
     expect(d).toContain('上一段最后一张是第 14 张');
-  });
-});
-
-describe('六维分配 splitAttrs', () => {
-  test('按权重分、首维至少 1、余数补首维', () => {
-    expect(splitAttrs({ 力: 2, 敏: 1, 体: 1 }, 1)).toEqual({ 力: 1 });
-    expect(splitAttrs({ 力: 2, 敏: 1, 体: 1 }, 2)).toEqual({ 力: 1, 敏: 1 });
-    expect(splitAttrs({ 力: 2, 敏: 1, 体: 1 }, 6)).toEqual({ 力: 3, 敏: 2, 体: 1 });
-    expect(splitAttrs({}, 3)).toEqual({});
   });
 });

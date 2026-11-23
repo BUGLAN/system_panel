@@ -1,7 +1,6 @@
 /**
  * 场景路由：斜切 wipe 转场（参考稿 go/back），返回栈，浏览器返回键 → 先关叠层再返回。
  */
-import { sfx } from '../../audio/sfx';
 import { game } from '../game';
 import { SCENES, setUi, uiStore, type Scene } from '../uiStore';
 
@@ -45,7 +44,6 @@ export async function go(
     setUi({ scene: target, hist, briefing: null });
   };
   setUi({ navBusy: true });
-  sfx.play('whoosh');
   try {
     if (wipe && s.scene !== 'boot') {
       await wipe({
@@ -81,7 +79,6 @@ export function handleBackKey(): void {
   if (s.planJob) return;
   if (s.briefing) return setUi({ briefing: null });
   if (s.sheet) return setUi({ sheet: null });
-  if (s.chatOpen) return setUi({ chatOpen: false });
   if (s.scene === 'exec') return void go('home');
   if (
     s.scene === 'home' ||

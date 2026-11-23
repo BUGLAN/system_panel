@@ -1,13 +1,11 @@
 /**
- * 基础按钮：按下声与轻震由它自己负责（业务回调里只播结果声）。
+ * 基础按钮：按下的轻震由它自己负责。
  * 外观沿用参考稿 .btn / .btn.pri / .btn.ghost / .btn.sm。
  */
 import type { ButtonHTMLAttributes, ReactNode, Ref } from 'react';
-import { sfx } from '../../audio/sfx';
 import { haptic } from '../haptics';
 
 export function pressFeedback(): void {
-  sfx.play('press');
   haptic.tap();
 }
 
@@ -41,7 +39,7 @@ export function Btn({
   );
 }
 
-/** 不带外框的小按钮（.link / .xbtn / .iconbtn / .srow 等），同样自带按下声 */
+/** 不带外框的小按钮（.link / .xbtn / .iconbtn / .srow 等），同样自带按下轻震（quiet = 不震） */
 export function Tap({
   className = '',
   children,
@@ -58,10 +56,7 @@ export function Tap({
       type="button"
       className={className}
       onPointerDown={(e) => {
-        if (!rest.disabled) {
-          if (quiet) sfx.play('soft');
-          else pressFeedback();
-        }
+        if (!rest.disabled && !quiet) pressFeedback();
         onPointerDown?.(e);
       }}
       {...rest}

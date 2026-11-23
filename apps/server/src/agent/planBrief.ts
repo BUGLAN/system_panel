@@ -97,12 +97,7 @@ export function briefUserText(b: PlanBrief): string {
   L.push(RANKS.map((r) => `${r} ≤ ${rankCapMinutes(r)} 分钟`).join(' · '));
   if (seg ? seg.last : windowIsLast(w))
     L.push(`兑现单（最后一张）时限必须 ≥ ${PLAN_FINAL_MINUTES} 分钟。`);
-  L.push(
-    '每张标 mode：一天内分散完成、或瞬间就能完成的动作' +
-      '（称重、拍三餐、量腰围、早睡打卡）标 "checkin"（打卡：不计时、随时传证据提交）；' +
-      '需要连续投入一段时间的（跑步、练琴、刷题）标 "timed"（计时）。',
-  );
-  L.push('打卡单的 minutes 照样填预计耗时（同样不许超档位上限），只作参考、不倒计时。');
+  L.push('minutes 是预计耗时，只作参考、不倒计时：做完拍证据交单即可。');
   L.push(PLAN_GUARD, '');
   L.push(
     seg
@@ -124,6 +119,6 @@ export function briefScenario(b: PlanBrief): string {
   return (
     `拆计划：把宿主的目标「${b.goalText}」拆成单次可执行的任务，` +
     `期限 ${b.days} 天、整条主线共 ${w.total} 张${span}。` +
-    '他现在的状态（等级/连败/最弱维）与相关记忆已经写在上面的宿主档案里，直接据此拆，用 set_plan 一次交上来。'
+    '他现在的状态（等级/连击/主线进度）已经写在上面的宿主档案里，直接据此拆，用 set_plan 一次交上来。'
   );
 }

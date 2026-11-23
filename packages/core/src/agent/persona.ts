@@ -43,12 +43,9 @@ export const RULES =
   '情绪只能是：neutral/smug/cold/annoyed/pleased/tsun/joy/proud/' +
   'surprised/sad/focus/sleep 之一。';
 
-export function systemPrompt(
-  o: { scenario?: string; statusLine?: string; memoryDigest?: string } = {},
-): string {
+export function systemPrompt(o: { scenario?: string; statusLine?: string } = {}): string {
   const lines = [BACKSTORY, '', '【四种固定语气】', ...Object.values(TONES), '', RULES, ''];
   lines.push(`【宿主档案】${o.statusLine || '（未知）'}`);
-  lines.push(`【长期记忆】${o.memoryDigest ? o.memoryDigest : '（暂无）'}`);
   if (o.scenario) lines.push(`【当前场合】${o.scenario}`);
   return lines.join('\n').trim();
 }
@@ -61,14 +58,11 @@ export interface WireMessage {
 /** 一轮对话：system 在首、历史居中、本轮用户输入收尾 */
 export function buildConversation(o: {
   userText: string;
-  history?: WireMessage[];
   statusLine?: string;
-  memoryDigest?: string;
   scenario?: string;
 }): WireMessage[] {
   return [
     { role: 'system', text: systemPrompt(o) },
-    ...(o.history ?? []),
     { role: 'user', text: o.userText },
   ];
 }

@@ -3,7 +3,6 @@
  * 卡片内容由 render(i) 给（React 节点），物理与布局在 effect 里直接改 transform。
  */
 import { useEffect, useImperativeHandle, useRef, type ReactNode, type Ref } from 'react';
-import { sfx } from '../../audio/sfx';
 
 export interface CarouselApi {
   go(i: number): void;
@@ -106,7 +105,6 @@ export function Carousel(p: CarouselProps) {
     const idx = clamp(Math.round(s.pos), 0, props.current.count - 1);
     if (idx !== s.idx) {
       s.idx = idx;
-      if (s.ready) sfx.play('swipe');
       props.current.onFocus?.(idx);
     }
     if (drag.current || s.pos !== s.target) s.raf = requestAnimationFrame(tick);
@@ -252,7 +250,6 @@ export function Carousel(p: CarouselProps) {
             if (i === s.idx) props.current.onTap?.(i, d.card);
             else {
               s.target = i;
-              sfx.play('soft');
             }
           }
         } else {

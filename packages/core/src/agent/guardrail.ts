@@ -87,4 +87,3 @@ export function isCrisisText(text: string): boolean {
 
 /** 命中时她认真说的一句（不写热线号码） */
 export const CRISIS_CARE_LINE = '我认真听到了。你很重要——先找身边信任的人说说，或找专业心理援助。';
-export const CRISIS_CHAT_LINE = `${CRISIS_CARE_LINE}这件事比任何任务都要紧。`;

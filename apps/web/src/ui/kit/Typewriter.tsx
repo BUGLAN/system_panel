@@ -4,7 +4,6 @@
  */
 import { useEffect, useRef, useState } from 'react';
 import { MOTION } from '../../design/tokens';
-import { sfx } from '../../audio/sfx';
 import { reducedMotion } from '../fx/fx';
 
 interface Ch {
@@ -36,14 +35,12 @@ export function Typewriter({
   as: Tag = 'p',
   className = '',
   speed = MOTION.typeMsPerChar,
-  sound = true,
   id,
 }: {
   text: string;
   as?: 'p' | 'span' | 'em' | 'div';
   className?: string;
   speed?: number;
-  sound?: boolean;
   id?: string;
 }) {
   const chars = parseHighlight(text);
@@ -60,7 +57,6 @@ export function Typewriter({
     let i = 0;
     timer.current = window.setInterval(() => {
       i++;
-      if (sound && i % 2 === 0) sfx.play('type');
       setState({ text, shown: i });
       if (i >= n && timer.current) {
         clearInterval(timer.current);
@@ -70,7 +66,7 @@ export function Typewriter({
     return () => {
       if (timer.current) clearInterval(timer.current);
     };
-  }, [text, speed, sound]);
+  }, [text, speed]);
 
   const typing = shown < chars.length;
   return (

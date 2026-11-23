@@ -5,7 +5,7 @@
  * 拆解只有 LLM 一条路：这里只判规则，任何不合规都抛 PlanRuleError，不修正、不降级。
  */
 import type { GoalCategory } from '../data/categoryTypes';
-import { RANK_ATTR_POINTS, RANKS, isRank, rankIndex, type Rank } from '../data/rank';
+import { RANKS, isRank, rankIndex, type Rank } from '../data/rank';
 import {
   goalDoneCount,
   goalHasMoreWindows,
@@ -15,23 +15,21 @@ import {
   type PlanTask,
 } from '../model/goal';
 import { PlanRuleError } from './planFailure';
-import { splitAttrs } from './split';
 
 /** 一张任务的原料（= set_plan 工具 item 的形状） */
 export interface TaskSpec {
   short: string;
   title: string;
   proof: string;
+  /** 预计耗时（分钟） */
   minutes: number;
   rank: string;
-  /** false = 打卡单；缺省 = 计时单 */
-  timed?: boolean;
 }
 
 export const PLAN_MIN_TASKS = 2;
 export const PLAN_MAX_TASKS = 400;
 
-/** 各档位的时限上限（分钟） */
+/** 各档位的预计耗时上限（分钟） */
 export function rankCapMinutes(rank: string): number {
   switch (rank) {
     case 'F':
@@ -241,7 +239,7 @@ function validateRange(o: {
     const cap = rankCapMinutes(t.rank);
     if (t.minutes < 5 || t.minutes > cap) {
       throw new PlanRuleError(
-        `第 ${n} 张「${t.short}」的时限 ${t.minutes} 分钟越界（${t.rank} 档允许 5~${cap}）`,
+        `第 ${n} 张「${t.short}」的预计耗时 ${t.minutes} 分钟越界（${t.rank} 档允许 5~${cap}）`,
       );
     }
     const prev = o.tasks[i - 1];
@@ -296,9 +294,8 @@ export function validatePlan(o: {
   );
 }
 
-/** 已校验的任务池 → 清单（六维按类目倾向与档位点数分配，生成时定死） */
+/** 已校验的任务池 → 清单 */
 export function buildPlanTasks(o: {
-  cat: GoalCategory;
   tasks: TaskSpec[];
   firstGoal?: boolean;
   from?: number;
@@ -315,14 +312,11 @@ export function buildPlanTasks(o: {
       proof: t.proof,
       minutes: t.minutes,
       rank,
-      attrs: splitAttrs(o.cat.tilt, RANK_ATTR_POINTS[rank]),
       state: 'todo',
       // 首目标第一段不摆兑现门；其余整条主线的末张 = 兑现单
       finalTask: !o.firstGoal && from + i === total - 1,
       heldMs: null,
       doneAt: null,
-      timed: t.timed ?? true,
-      grade: null,
     };
   });
 }
@@ -349,7 +343,7 @@ export function buildGoalFromPlan(o: {
     text: clean,
     short: o.short.trim() || clean,
     at: o.at,
-    plan: buildPlanTasks({ cat: o.cat, tasks: o.tasks, firstGoal: o.firstGoal ?? false, total }),
+    plan: buildPlanTasks({ tasks: o.tasks, firstGoal: o.firstGoal ?? false, total }),
     cat: o.cat.id,
     days: o.days,
     interview: { ...(o.answers ?? {}) },
@@ -360,16 +354,13 @@ export function buildGoalFromPlan(o: {
 }
 
 /** 续拆：把下一个窗口的任务接到清单后面（身份、期限、总张数都不变） */
-export function extendGoalWithWindow(g: Goal, cat: GoalCategory, tasks: TaskSpec[]): Goal {
+export function extendGoalWithWindow(g: Goal, tasks: TaskSpec[]): Goal {
   if (!goalHasMoreWindows(g)) {
     throw new Error(`目标「${g.text}」已经拆满 ${goalTotalTasks(g)} 张，没有下一段`);
   }
   validatePlanWindow(nextPlanWindow(g), tasks);
   return {
     ...g,
-    plan: [
-      ...g.plan,
-      ...buildPlanTasks({ cat, tasks, from: g.plan.length, total: goalTotalTasks(g) }),
-    ],
+    plan: [...g.plan, ...buildPlanTasks({ tasks, from: g.plan.length, total: goalTotalTasks(g) })],
   };
 }

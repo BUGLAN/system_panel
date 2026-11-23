@@ -5,8 +5,7 @@ import type { StateView } from '@host/core/api/types';
 import { saveFromJson } from '@host/core/save/saveData';
 import { boundSave } from '@host/core/testing/helpers';
 import { dayKey } from '@host/core/time/day';
-import { llmSettings } from '../src/db/schema';
-import { completion, fakeEndpoint } from './agent/fakeLlm';
+import { chat, llmSettings, memory } from '../src/db/schema';
 import { testServer, type Client, type TestServer } from './helpers';
 
 const LLM = {
@@ -38,8 +37,20 @@ async function richUser(s: TestServer, name = 'alice'): Promise<Client> {
   fd.set('file', new File([Buffer.from(JPEG)], 'a.jpg', { type: 'image/jpeg' }));
   fd.set('serial', String(serial));
   await c.req('POST', '/api/evidence', fd);
-  await c.json('POST', '/api/flow/give-up', { serial });
-  await c.json('POST', '/api/chat/status');
+  await c.json('POST', '/api/flow/submit', { serial });
+  // 已停用功能留在库里的旧数据（聊天 / 长期记忆）
+  s.deps.dbh.db.insert(chat).values({ userId: c.userId, at: s.clock.t, data: '{}' }).run();
+  s.deps.dbh.db
+    .insert(memory)
+    .values({
+      id: 'm1',
+      userId: c.userId,
+      text: '旧记忆',
+      at: s.clock.t,
+      source: 'chat',
+      weight: 1,
+    })
+    .run();
   return c;
 }
 
@@ -47,7 +58,7 @@ const version = async (c: Client) =>
   (await c.json<{ state: StateView }>('GET', '/api/state')).body.state.version;
 
 describe('导出', () => {
-  it('范围：存档 + 聊天 + 流水 + 记忆 + 照片（Base64）；永远不含 Key / 同意 / 账号', async () => {
+  it('范围：存档 + 流水 + 照片（Base64）；永远不含 Key / 同意 / 账号 / 旧聊天', async () => {
     const s = testServer({ llm: LLM });
     const c = await richUser(s);
     const res = await c.req('GET', '/api/data/export');
@@ -57,7 +68,7 @@ describe('导出', () => {
     expect(b).toMatchObject({ app: 'host-system', kind: 'backup', version: 1 });
     expect(b.save.goal.plan.length).toBeGreaterThan(0);
     expect(b.history).toHaveLength(1);
-    expect(b.chat.length).toBeGreaterThanOrEqual(2);
+    expect('chat' in b || 'memory' in b).toBe(false);
     expect(b.evidence).toHaveLength(1);
     expect(b.evidence[0].data).toBe(Buffer.from(JPEG).toString('base64'));
     expect(text).not.toContain('sk-very-secret');
@@ -67,7 +78,7 @@ describe('导出', () => {
 });
 
 describe('重置', () => {
-  it('清存档 / 聊天 / 流水 / 记忆 / 照片（磁盘也删）/ 快照；不清账号、设置、同意', async () => {
+  it('清存档 / 流水 / 照片（磁盘也删）/ 快照 / 旧聊天与记忆；不清账号、设置、同意', async () => {
     const s = testServer({ llm: LLM });
     const c = await richUser(s);
     const v = await version(c);
@@ -79,9 +90,8 @@ describe('重置', () => {
     expect((await c.json<{ entries: unknown[] }>('GET', '/api/history')).body.entries).toHaveLength(
       0,
     );
-    expect((await c.json<{ messages: unknown[] }>('GET', '/api/chat')).body.messages).toHaveLength(
-      0,
-    );
+    expect(s.deps.dbh.db.select().from(chat).all()).toHaveLength(0);
+    expect(s.deps.dbh.db.select().from(memory).all()).toHaveLength(0);
     expect(existsSync(join(s.deps.config.dataDir, 'uploads', c.userId))).toBe(false);
     expect(s.deps.dbh.db.select().from(llmSettings).all()).toHaveLength(1);
     expect(
@@ -119,7 +129,7 @@ describe('导入', () => {
     );
   });
 
-  it('导出 → 重置 → 导入：等级 / 主线 / 聊天 / 流水 / 照片都回来；导入前先存快照', async () => {
+  it('导出 → 重置 → 导入：等级 / 主线 / 流水 / 照片都回来；导入前先存快照', async () => {
     const s = testServer({ llm: LLM });
     const c = await richUser(s);
     const text = await (await c.req('GET', '/api/data/export')).text();
@@ -132,7 +142,8 @@ describe('导入', () => {
     expect(r.status).toBe(200);
     const after = s.saveOf(c);
     expect(after.goal.text).toBe(before.goal.text);
-    expect(after.host.failCount).toBe(before.host.failCount);
+    expect(after.host.doneCount).toBe(before.host.doneCount);
+    expect(after.host.doneCount).toBe(1);
     expect((await c.json<{ entries: unknown[] }>('GET', '/api/history')).body.entries).toHaveLength(
       1,
     );
@@ -157,57 +168,5 @@ describe('导入', () => {
     const id = JSON.parse(text).evidence[0].id;
     expect((await b.req('GET', `/api/evidence/${id}`)).status).toBe(200);
     expect((await a.req('GET', `/api/evidence/${id}`)).status).toBe(200);
-  });
-});
-
-describe('聊天', () => {
-  it('自伤闸门：认真回应、不调模型；查状态不调模型', async () => {
-    const ep = fakeEndpoint([{ text: '[annoyed]少废话。' }]);
-    const s = testServer({ llm: LLM }, { fetch: ep.fetch });
-    const c = await s.login();
-    await c.json('POST', '/api/consent');
-    const r = await c.json<{ messages: Array<{ kind?: string; from: string }> }>(
-      'POST',
-      '/api/chat',
-      { text: '不想活了', scene: '大厅' },
-    );
-    expect(r.body.messages.at(-1)).toMatchObject({ from: 'sys', kind: 'care' });
-    await c.json('POST', '/api/chat/status');
-    expect(ep.calls).toHaveLength(0);
-    const ok = await c.json<{ messages: Array<{ text: string }> }>('POST', '/api/chat', {
-      text: '今天干嘛',
-      scene: '大厅',
-    });
-    expect(ok.body.messages.at(-1)!.text).toBe('少废话。');
-    expect(ep.calls).toHaveLength(1);
-    const all = await c.json<{ messages: unknown[] }>('GET', '/api/chat');
-    expect(all.body.messages).toHaveLength(6);
-    expect((await c.json('POST', '/api/chat', { text: '字'.repeat(201) })).status).toBe(400);
-  });
-
-  it('工具改存档（换一个）在服务端执行并回最新状态', async () => {
-    const ep = fakeEndpoint([
-      { text: '', tools: [{ name: 'swap_quest', args: {} }] },
-      { text: '[annoyed]换了。' },
-    ]);
-    const s = testServer({ llm: LLM }, { fetch: ep.fetch });
-    const c = await s.login();
-    await c.json('POST', '/api/consent');
-    const save = boundSave();
-    save.meta.lastRollDay = dayKey(s.clock.t, 'Asia/Shanghai');
-    s.seed(c, save);
-    await c.json('POST', '/api/flow/refill');
-    const g = s.saveOf(c);
-    g.queue = g.queue.filter((q) => q.kind === 'daily'); // 队首是日常才能换
-    s.seed(c, g);
-    const r = await c.json<{ state?: StateView; messages: Array<{ tool?: { name: string } }> }>(
-      'POST',
-      '/api/chat',
-      { text: '换个任务', scene: '委托板' },
-    );
-    expect(r.body.messages.some((m) => m.tool?.name === 'swap_quest')).toBe(true);
-    expect(r.body.state).toBeDefined();
-    expect(s.saveOf(c).meta.retreatTotal).toBe(1);
-    expect(completion('x')).toContain('choices');
   });
 });

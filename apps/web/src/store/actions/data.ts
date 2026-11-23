@@ -6,14 +6,13 @@ import { api } from '../api';
 import { now, resetHistoryCache, syncStore } from '../game';
 import { confirmBox, setUi, toast } from '../uiStore';
 import { resetBind } from './bind';
-import { clearChatState } from './chat';
 import { go } from './nav';
 import { cancelPlanJob } from './planJob';
 
 export async function resetAll(): Promise<void> {
   const ok = await confirmBox({
     title: '重置存档？',
-    body: '等级、晶核、主线、名牒、聊天记录、证据照片——\n[她记住的你，全部清空]。\n账号、模型设置和告知同意会保留。',
+    body: '等级、连胜、主线、流水、证据照片——\n[她记住的你，全部清空]。\n账号、模型设置和告知同意会保留。',
     yes: '重置',
     no: '算了',
     danger: true,
@@ -26,9 +25,8 @@ export async function resetAll(): Promise<void> {
     return;
   }
   cancelPlanJob();
-  setUi({ sheet: null, show: null, briefing: null, chatOpen: false });
+  setUi({ sheet: null, show: null, briefing: null });
   resetHistoryCache();
-  clearChatState();
   resetBind();
   await go('onboard', { noHist: true });
   toast('存档已清空。她假装不认识你了。');
@@ -71,7 +69,7 @@ export async function importSave(file: File): Promise<void> {
   }
   const ok = await confirmBox({
     title: '导入存档？',
-    body: '会用这份文件整体覆盖服务器上你的存档、聊天、流水、记忆和照片。\n导入前会先自动留一份当前数据的备份。\n账号和模型设置不受影响。',
+    body: '会用这份文件整体覆盖服务器上你的存档、流水和照片。\n导入前会先自动留一份当前数据的备份。\n账号和模型设置不受影响。',
     yes: '导入',
     no: '算了',
     danger: true,

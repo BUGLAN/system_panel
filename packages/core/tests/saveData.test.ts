@@ -21,37 +21,38 @@ describe('存取往返', () => {
     expect(back).toEqual({ ...s, lastSeen: T0 + 99 });
   });
 
-  test('计划单的状态、用时、评级、打卡标记都能回来', () => {
+  test('计划单的状态、用时都能回来', () => {
     const back = roundtrip();
     const [t0, t1] = back!.goal.plan;
-    expect(t0).toMatchObject({ state: 'done', heldMs: 754_000, doneAt: T0 + 1000, grade: 'A' });
-    expect(t1).toMatchObject({ state: 'todo', timed: false, rank: 'D', grade: null });
+    expect(t0).toMatchObject({ state: 'done', heldMs: 754_000, doneAt: T0 + 1000 });
+    expect(t1).toMatchObject({ state: 'todo', rank: 'D', heldMs: null });
   });
 
-  test('执行中单据：道具标记、护盾顺延、证据状态都在；sealed 不进档', () => {
+  test('执行中单据：接单时刻、证据状态都在；sealed 不进档', () => {
     const s = sampleSave();
     s.active!.sealed = true;
     const back = roundtrip(s)!;
-    expect(back.active).toMatchObject({ dbl: true, shield: true, extraMs: 600_000, sealed: false });
+    expect(back.active).toMatchObject({ startAt: T0 + 5000, sealed: false });
     expect(back.active!.evidence.map((e) => e.status)).toEqual(['verified', 'unsure']);
-    expect(back.active!.task.timed).toBe(false);
   });
 
   test('运行时字段入档（旧版漏存导致重启后连胜被算成 1）', () => {
     const back = roundtrip()!;
-    expect(back.meta).toMatchObject({
+    expect(back.meta).toEqual({
+      nextSerial: 54,
       lastDoneDay: '2026-11-20',
-      retreatTotal: 2,
       lastRollDay: '2026-11-21',
     });
   });
 
-  test('打卡单只写 mode: checkin，计时单不写', () => {
+  test('存档里不再写已拿掉的玩法字段', () => {
     const j = saveToJson(sampleSave());
-    const active = j['active'] as { task: Record<string, unknown> };
-    expect(active.task['mode']).toBe('checkin');
-    const q0 = (j['queue'] as Record<string, unknown>[])[0]!;
-    expect('mode' in q0).toBe(false);
+    const active = j['active'] as Record<string, unknown> & { task: Record<string, unknown> };
+    for (const k of ['mode', 'kind', 'attrs', 'timed']) expect(k in active.task).toBe(false);
+    for (const k of ['dbl', 'crit', 'shield', 'extraMs']) expect(k in active).toBe(false);
+    const host = j['host'] as Record<string, unknown>;
+    for (const k of ['coins', 'items', 'title', 'ownedTitles', 'attrs'])
+      expect(k in host).toBe(false);
   });
 
   test('全新档 = 未绑定：没有目标、没有队列、单号从 41 起', () => {
@@ -69,8 +70,7 @@ describe('在默认值上合并', () => {
   test('缺字段走默认，不崩', () => {
     const s = saveFromJson({ host: { lv: 4 } }, T0)!;
     expect(s.host.lv).toBe(4);
-    expect(s.host.coins).toBe(0);
-    expect(s.host.items).toEqual({ dbl: 0, crit: 0, shield: 0, patch: 0 });
+    expect(s.host.streak).toBe(0);
     expect(s.goal.plan).toEqual([]);
     expect(s.meta.nextSerial).toBe(FIRST_SERIAL);
   });
@@ -78,22 +78,21 @@ describe('在默认值上合并', () => {
   test('类型不对的字段也走默认（不抛）', () => {
     const s = saveFromJson(
       {
-        host: { lv: 'x', coins: -5, attrs: { 力: 'a', 魅: 3, 乱: 9 }, ownedTitles: [1, 'first'] },
-        queue: [42, { serial: 'x', kind: 'weird', rank: 'Z' }],
+        host: { lv: 'x', streak: -5, totalExp: 'a' },
+        queue: [42, { serial: 'x', rank: 'Z' }],
         active: { task: 'nope' },
-        meta: { lastDoneDay: '昨天', retreatTotal: 'many' },
+        meta: { lastDoneDay: '昨天', nextSerial: 'many' },
       },
       T0,
     )!;
     expect(s.host.lv).toBe(1);
-    expect(s.host.coins).toBe(0);
-    expect(s.host.attrs).toEqual({ 力: 0, 体: 0, 智: 0, 知: 0, 魅: 3, 敏: 0 });
-    expect(s.host.ownedTitles).toEqual(['first']);
+    expect(s.host.streak).toBe(0);
+    expect(s.host.totalExp).toBe(0);
     expect(s.queue).toHaveLength(1);
-    expect(s.queue[0]).toMatchObject({ kind: 'daily', rank: 'F', minutes: 15, timed: true });
+    expect(s.queue[0]).toMatchObject({ rank: 'F', minutes: 15, planIndex: -1 });
     expect(s.active).toBeNull();
     expect(s.meta.lastDoneDay).toBeNull();
-    expect(s.meta.retreatTotal).toBe(0);
+    expect(s.meta.nextSerial).toBe(FIRST_SERIAL);
   });
 
   test('整个串读坏 / 是数组不是对象 / 空串 → null（交给仓库层走坏档流程）', () => {
@@ -113,11 +112,11 @@ describe('在默认值上合并', () => {
       {
         queue: [{ serial: 90 }],
         active: { task: { serial: 120 }, startAt: T0 },
-        meta: { nextSerial: 60, remedyOffer: { serial: 130, kind: 'remedy' } },
+        meta: { nextSerial: 60 },
       },
       T0,
     )!;
-    expect(s.meta.nextSerial).toBe(131);
+    expect(s.meta.nextSerial).toBe(121);
   });
 
   test('有主线时丢掉记着的待拆目标（防脏档）；没主线时保留', () => {
@@ -142,7 +141,7 @@ describe('在默认值上合并', () => {
   });
 
   test('队列里的单字段齐全往返', () => {
-    const q = quest(77, { kind: 'remedy', hinted: true, reason: '', attrs: { 智: 2 } });
+    const q = quest(77, { reason: '', rank: 'B', minutes: 45 });
     const s = roundtrip({ ...sampleSave(), queue: [q] })!;
     expect(s.queue[0]).toEqual(q);
   });

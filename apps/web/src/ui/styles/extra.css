@@ -57,25 +57,6 @@ textarea.lim-input {
   }
 }
 
-/* 耻辱称号 */
-.who span.shame {
-  color: var(--hot);
-}
-.ach.shame {
-  background: linear-gradient(110deg, #3a0816, #1a1424 60%);
-  border-color: var(--hot);
-  box-shadow:
-    0 0 34px rgba(255, 59, 122, 0.35),
-    0 14px 40px rgba(0, 0, 0, 0.6);
-}
-.ach.shame .medal {
-  background: var(--hot);
-  box-shadow: 0 0 18px var(--hot);
-}
-.ach.shame small {
-  color: var(--hot);
-}
-
 /* 大厅 */
 .core-home-wrap {
   width: min(230px, 30vh);
@@ -90,11 +71,6 @@ textarea.lim-input {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-}
-.ask-her {
-  font: 500 11px var(--fc);
-  letter-spacing: 0;
-  color: var(--dim);
 }
 .quest.pending {
   border: 1.5px dashed color-mix(in srgb, var(--acid) 60%, transparent);
@@ -509,9 +485,6 @@ textarea.lim-input {
   overflow-y: auto;
   min-height: 0;
   scrollbar-width: none;
-}
-.srow.vol input {
-  width: 46%;
 }
 .sheet-note {
   margin: 4px 0 14px;

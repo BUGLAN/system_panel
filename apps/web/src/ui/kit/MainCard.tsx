@@ -1,23 +1,17 @@
 /**
  * 主线收藏卡（参考稿 MAINLINE · COLLECTIBLE CARDS v2）：正面 = 题面；
- * 已完成翻面 = 战报（评级 / 用时 / 完成于）；未解封翻面 = 封印 + 情报。
- * 插图按题面泛化：计时单画表盘、带距离画路线、兑现单画终局光芒（不画具体运动器材）。
+ * 已完成翻面 = 战报（用时 / 完成于）；未解封翻面 = 封印 + 情报。
+ * 插图按题面泛化：一般单画表盘（预计耗时）、带距离画路线、兑现单画终局光芒（不画具体运动器材）。
  */
-import { attrName } from '@host/core/data/attrs';
 import type { PlanTask } from '@host/core/model/goal';
-import { payout } from '@host/core/data/rewards';
+import { expFor } from '@host/core/data/rewards';
 import { fmtDur, pad2 } from '@host/core/format';
-import { GRADE_COLORS, RANK_PIPS } from '../../design/tokens';
+import { COLORS, RANK_PIPS } from '../../design/tokens';
 import { IconLock } from './icons';
 
 export type CardState = 'done' | 'cur' | 'lock';
 
-const REC_Q: Record<string, [string, string]> = {
-  S: ['……我无话可说。这次算你狠。', '暴击收场。别得意，我只是记下了。'],
-  A: ['达标。我记下了，别指望我夸你。', '节奏稳定。勉强像个宿主了。'],
-  B: ['及格线上蹭过去的。我看见了。', '下次别让我等这么久。'],
-  C: ['到此一游式完成。我很宽容。', '这也算？……算吧。'],
-};
+const REC_Q: readonly string[] = ['达标。我记下了，别指望我夸你。', '节奏稳定。勉强像个宿主了。'];
 
 function Art({ t }: { t: PlanTask }) {
   const km = /(\d+(?:\.\d+)?)\s*(公里|km|KM)/.exec(t.title)?.[1];
@@ -68,14 +62,12 @@ function Art({ t }: { t: PlanTask }) {
         </g>
       </>
     );
-    lab = t.timed ? 'TIME TRIAL' : 'CHECK-IN';
-    big = t.timed ? (
+    lab = 'ETA';
+    big = (
       <>
         {t.minutes}
         <small>MIN</small>
       </>
-    ) : (
-      <small>打卡</small>
     );
   } else if (kind === 'route') {
     bg = (
@@ -163,18 +155,14 @@ export function MainCard({
   total,
   state,
   executing,
-  catChar,
 }: {
   t: PlanTask;
   total: number;
   state: CardState;
   executing: boolean;
-  catChar: string;
 }) {
   const pips = RANK_PIPS[t.rank];
-  const attr = Object.entries(t.attrs)[0];
-  const p = payout({ rank: t.rank, crit: false, dbl: false });
-  const g = t.grade ?? 'B';
+  const exp = expFor(t.rank);
   const foot =
     state === 'cur' ? (
       <>
@@ -182,9 +170,7 @@ export function MainCard({
         {executing ? '执行中 · 点击返回' : '当前目标 · 点击接取'}
       </>
     ) : state === 'done' ? (
-      <>
-        评级 <b>{g}</b> · 点击翻看战报 ⟲
-      </>
+      <>已验收 · 点击翻看战报 ⟲</>
     ) : (
       <>
         <IconLock />
@@ -206,7 +192,7 @@ export function MainCard({
               ))}
             </span>
             <span className="tc-cat">
-              <span>{catChar}</span>
+              <span>主</span>
             </span>
           </div>
           <Art t={t} />
@@ -218,8 +204,7 @@ export function MainCard({
             </div>
             <div className="tc-meta">
               <span>
-                <i>⏱</i>
-                {t.timed ? `${t.minutes} 分钟` : '打卡'}
+                <i>⏱</i>约 {t.minutes} 分钟
               </span>
               <span>
                 <i>EV</i>
@@ -231,15 +216,7 @@ export function MainCard({
           <div className="tc-stats">
             <div>
               <small>经验 EXP</small>
-              <span className="x">+{p.exp}</span>
-            </div>
-            <div>
-              <small>晶核</small>
-              <span className="c">{p.coin}</span>
-            </div>
-            <div>
-              <small>{attr ? attrName(attr[0]) : '六维'}</small>
-              <span className="a">+{attr?.[1] ?? 0}</span>
+              <span className="x">+{exp}</span>
             </div>
           </div>
           <div className="tc-foot">{foot}</div>
@@ -253,14 +230,13 @@ export function MainCard({
           <Frame />
         </div>
         {state === 'done' ? (
-          <div className="tc-face tc-back tcrec" style={{ ['--rc' as string]: GRADE_COLORS[g] }}>
+          <div className="tc-face tc-back tcrec" style={{ ['--rc' as string]: COLORS.cyan }}>
             <div className="rec-h">
               <span>RECORD · 战报</span>
               <span>MAIN {pad2(t.index + 1)}</span>
             </div>
             <div className="rec-r">
-              {g}
-              <small>验收评级 · GRADE</small>
+              ✓<small>已验收 · CLEAR</small>
             </div>
             <div className="rec-l">
               <div>
@@ -268,7 +244,7 @@ export function MainCard({
                 <b>{t.heldMs !== null ? fmtDur(t.heldMs) : '—'}</b>
               </div>
               <div>
-                目标<b>{t.timed ? `${t.minutes} 分钟` : '打卡'}</b>
+                预计<b>{t.minutes} 分钟</b>
               </div>
               <div>
                 完成于
@@ -284,7 +260,7 @@ export function MainCard({
             </div>
             <div className="rec-q">
               <em>SYSTEM 批注</em>
-              {(REC_Q[g] ?? REC_Q['B'])?.[t.index % 2]}
+              {REC_Q[t.index % 2]}
             </div>
             <div className="rec-f">点击翻回正面</div>
             <div className="tc-glare" />
@@ -334,13 +310,11 @@ export function MainCard({
               MAIN {pad2(t.index + 1)} · {t.finalTask ? 'FINAL ' : ''}SEALED
             </div>
             <div className="cb-intel">
-              <small>
-                情报 · {t.rank} 级 · {attr ? attrName(attr[0]) : ''}
-              </small>
+              <small>情报 · {t.rank} 级</small>
               <p>
                 {t.title}
                 <i>
-                  {t.timed ? `${t.minutes} 分钟` : '打卡'} · {t.proof}
+                  约 {t.minutes} 分钟 · {t.proof}
                 </i>
               </p>
             </div>

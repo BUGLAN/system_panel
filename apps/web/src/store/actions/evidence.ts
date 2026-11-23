@@ -8,7 +8,6 @@ import { createStore } from 'zustand/vanilla';
 import { useStore } from 'zustand';
 import type { VerdictEvent } from '@host/core/api/types';
 import { MAX_EVIDENCE } from '@host/core/flow/questFlow';
-import { sfx } from '../../audio/sfx';
 import { game, intent } from '../game';
 import { onStream } from '../stream';
 import { sayWatch, toast } from '../uiStore';
@@ -51,7 +50,6 @@ function onVerdict(v: VerdictEvent): void {
   if (!evidenceStore.getState().checking.includes(v.id)) return;
   doneChecking(v.id);
   if (v.result === 'rejected') {
-    sfx.play('error');
     evidenceStore.setState({ rejectNote: v.note });
     toast(`这张不收：${v.note}。重拍一张。`, 'err');
     sayWatch(`[不符]：${v.note}。重传。`);
@@ -76,12 +74,10 @@ async function upload(blob: Blob, demo: boolean): Promise<void> {
   if (demo) fd.set('demo', '1');
   const r = await intent<{ shotId: string; checking: boolean }>('/api/evidence', fd);
   if (!r.ok) {
-    sfx.play('error');
     toast(r.err.message, 'err');
     return;
   }
   evidenceStore.setState({ rejectNote: '' });
-  sfx.play('success');
   if (demo) {
     sayWatch('收下了。她会盯着看。');
     return;
@@ -101,7 +97,6 @@ async function upload(blob: Blob, demo: boolean): Promise<void> {
 export async function addEvidenceFile(file: File): Promise<void> {
   if (evidenceStore.getState().picking) return;
   if (file.type && !file.type.startsWith('image/')) {
-    sfx.play('error');
     toast('这不是图片。她不收奇怪的东西。', 'err');
     return;
   }
@@ -111,7 +106,6 @@ export async function addEvidenceFile(file: File): Promise<void> {
     await upload(blob, false);
   } catch (e) {
     console.error(e);
-    sfx.play('error');
     toast('图片读不出来。换一张？', 'err');
   } finally {
     evidenceStore.setState({ picking: false });
@@ -127,6 +121,5 @@ export async function addDemoEvidence(): Promise<void> {
 
 export async function removeEvidence(id: string): Promise<void> {
   const r = await intent(`/api/evidence/${encodeURIComponent(id)}`, undefined, 'DELETE');
-  if (r.ok) sfx.play('soft');
-  else toast(r.err.message, 'err');
+  if (!r.ok) toast(r.err.message, 'err');
 }

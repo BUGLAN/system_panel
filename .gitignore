@@ -14,8 +14,6 @@ coverage/
 !.env.example
 *.local
 
-# 音效合成脚本的中间产物（wav 原件，转码后的成品放 public/audio/ 入库）
-tools/audio/.out/
 
 # 日志与系统杂项
 *.log

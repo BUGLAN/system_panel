@@ -1,6 +1,5 @@
 /** 开机屏（参考稿 #boot）：日志逐行 360ms、进度条，点击唤醒 */
 import { useEffect, useRef, useState } from 'react';
-import { sfx } from '../../audio/sfx';
 import { bootData, bootLines, enterAfterBoot } from '../../store/actions/boot';
 import { Core } from '../kit/Core';
 import { burst, center, flash, reducedMotion, ring } from '../fx/fx';
@@ -37,8 +36,6 @@ export function Boot() {
     if (started.current) return;
     started.current = true;
     await bootData();
-    sfx.unlock();
-    sfx.play('boot');
     setHappy(true);
     flash();
     const [x, y] = center(coreRef.current);

@@ -1,6 +1,5 @@
 /** 账号底板：用户名 / 时区 / 修改密码（改完其他设备下线）。忘了密码找管理员命令行重置。 */
 import { useState } from 'react';
-import { sfx } from '../../audio/sfx';
 import { changePassword } from '../../store/actions/auth';
 import { useSync } from '../../store/game';
 import { setUi, toast, useUi } from '../../store/uiStore';
@@ -23,10 +22,8 @@ export function AccountSheet() {
     setBusy(true);
     try {
       await changePassword(old, next);
-      sfx.play('success');
       close();
     } catch (e) {
-      sfx.play('error');
       toast(e instanceof Error ? e.message : '没改成。', 'err');
     } finally {
       setBusy(false);
@@ -38,7 +35,7 @@ export function AccountSheet() {
         {me ? `${me.username} · 时区 ${me.tz}` : ''}
         {me?.role === 'admin' ? ' · 管理员' : ''}
         <br />
-        换日、连胜、补签都按这个时区算；要改找管理员。
+        换日、连胜都按这个时区算；要改找管理员。
       </p>
       <label className="fld">
         <span className="fld-l">旧密码</span>

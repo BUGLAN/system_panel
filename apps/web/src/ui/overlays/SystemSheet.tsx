@@ -1,26 +1,18 @@
 /**
- * 系统设置抽屉（参考稿 #sheet）：账号、音效开关 + 音量、证据视觉校验、模型设置、告知与同意、
+ * 系统设置抽屉（参考稿 #sheet）：账号、证据视觉校验、模型设置、告知与同意、
  * 导出 / 导入存档、添加到主屏幕、重置存档、退出登录。
  */
 import { useEffect, useRef } from 'react';
-import { sfx } from '../../audio/sfx';
 import { exportSave, importSave, resetAll } from '../../store/actions/data';
 import { logout } from '../../store/actions/auth';
 import { useSync } from '../../store/game';
-import {
-  formOf,
-  loadLlmSettings,
-  saveLlmSettings,
-  setPrefs,
-  useServices,
-} from '../../store/services';
+import { formOf, loadLlmSettings, saveLlmSettings, useServices } from '../../store/services';
 import { setUi, toast, useUi } from '../../store/uiStore';
 import { Tap } from '../kit/Btn';
 import { Sheet } from '../kit/Sheet';
 
 export function SystemSheet() {
   const open = useUi((s) => s.sheet === 'system');
-  const prefs = useServices((s) => s.prefs);
   const llm = useServices((s) => s.llm);
   const me = useSync((s) => s.me);
   const online = useSync((s) => s.online);
@@ -37,7 +29,6 @@ export function SystemSheet() {
   /** 写操作要联网：断网时点了只提示（在点击时判断，不在渲染时） */
   const netOk = (): boolean => {
     if (online) return true;
-    sfx.play('error');
     toast('需要联网。连上网再试。', 'err');
     return false;
   };
@@ -50,35 +41,6 @@ export function SystemSheet() {
           </span>
           <span>›</span>
         </Tap>
-        <Tap
-          className="srow"
-          onClick={() => {
-            void setPrefs({ muted: !prefs.muted });
-            if (prefs.muted) sfx.play('success');
-            toast(prefs.muted ? '音效已开启。' : '音效已关闭。她的毒舌不受影响。');
-          }}
-        >
-          <span>
-            音效<small>按下、结算、暴击、升级……关键提示都有画面反馈</small>
-          </span>
-          <i className={`sw ${prefs.muted ? '' : 'on'}`} />
-        </Tap>
-        <div className="srow vol">
-          <span>
-            音量<small>{Math.round(prefs.volume * 100)}%</small>
-          </span>
-          <input
-            type="range"
-            min={0}
-            max={1}
-            step={0.05}
-            value={prefs.volume}
-            disabled={prefs.muted}
-            aria-label="音量"
-            onChange={(e) => void setPrefs({ volume: Number(e.currentTarget.value) })}
-            onPointerUp={() => sfx.play('coin')}
-          />
-        </div>
         <Tap
           className="srow"
           onClick={() => {
@@ -109,7 +71,7 @@ export function SystemSheet() {
                   ? llm.useOwn
                     ? `${llm.textModel} · 用我自己的`
                     : '用服务器默认'
-                  : '还没配：拆解、聊天、校验都用不了'}
+                  : '还没配：拆解、校验都用不了'}
             </small>
           </span>
           <span>›</span>
@@ -123,7 +85,7 @@ export function SystemSheet() {
         <Tap className="srow" onClick={() => netOk() && void exportSave()}>
           <span>
             导出存档
-            <small>服务器上的存档、聊天、流水、记忆、照片打包成一个 JSON 文件（不含 Key）</small>
+            <small>服务器上的存档、流水、照片打包成一个 JSON 文件（不含 Key）</small>
           </span>
           <span>›</span>
         </Tap>

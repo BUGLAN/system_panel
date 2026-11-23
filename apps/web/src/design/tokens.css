@@ -37,12 +37,6 @@
   --rank-a: #ff3b7a;
   --rank-s: #ffffff;
 
-  /* 评级色（结算页与主线卡战报同一份：S 白 / A acid / B cyan / C hot，docs/50 A13） */
-  --grade-s: #ffffff;
-  --grade-a: #d6ff3d;
-  --grade-b: #3be8ff;
-  --grade-c: #ff3b7a;
-
   /* 字体族（自托管，见 fonts.ts） */
   --fd: 'Chakra Petch', 'Noto Sans SC Variable', system-ui, sans-serif;
   --fc: 'Noto Sans SC Variable', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;

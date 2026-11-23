@@ -1,5 +1,5 @@
 /**
- * 类目查找、访谈卡组、空泛目标判定、访谈记忆、见面礼。
+ * 类目查找、访谈卡组、空泛目标判定。
  * 移植自 flutter-final:app/lib/state/goal_gen.dart。
  */
 import { CATEGORIES } from '../data/categories';
@@ -56,26 +56,4 @@ export function isVagueGoal(text: string): boolean {
   const bare = text.replace(/[。.!！?？\s~～]/g, '');
   if ([...bare].length < 2) return true;
   return VAGUE.test(bare);
-}
-
-/** 访谈即第一批记忆：目标一句 + 逐卡问答一句 */
-export function memoriesFromInterview(o: {
-  cat: GoalCategory;
-  answers: Record<string, string>;
-  goalText: string;
-  days: number;
-}): string[] {
-  const out = [`宿主立了新目标：「${o.goalText.trim()}」（${o.cat.label}向，期限 ${o.days} 天）。`];
-  for (const card of interviewCardsFor(o.cat)) {
-    const a = o.answers[card.id];
-    if (a) out.push(`${card.question}——${a}。`);
-  }
-  return out;
-}
-
-/** 见面礼：双倍卡 ×1 */
-export const BIND_GIFT = { item: 'dbl', count: 1, kicker: '见面礼', text: '双倍卡 ×1' } as const;
-
-export function applyBindGift(items: Record<string, number>): Record<string, number> {
-  return { ...items, [BIND_GIFT.item]: (items[BIND_GIFT.item] ?? 0) + BIND_GIFT.count };
 }

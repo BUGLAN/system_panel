@@ -16,7 +16,7 @@ import { PlanFailure } from '@host/core/goal/planFailure';
 import type { Goal } from '@host/core/model/goal';
 import type { LlmClient } from './llmClient';
 import type { GoalMatch } from './mainlineTools';
-import { generatePlanTasks, matchGoal, type MemoryDigest } from './planAgent';
+import { generatePlanTasks, matchGoal } from './planAgent';
 
 import type { PlanProgress } from '@host/core/api/types';
 
@@ -31,7 +31,6 @@ export interface BuildOptions {
   /** 绑定仪式里已经匹配过（为了出访谈卡），就不再匹配 */
   match?: GoalMatch;
   statusLine?: string;
-  digest?: MemoryDigest;
   onProgress?: (p: PlanProgress) => void;
   signal?: AbortSignal;
 }
@@ -53,7 +52,6 @@ export async function buildGoalWithAgent(
         client: o.client,
         goalText: o.text,
         ...(o.statusLine ? { statusLine: o.statusLine } : {}),
-        ...(o.digest ? { digest: o.digest } : {}),
         ...(o.signal ? { signal: o.signal } : {}),
       }));
     const window = planWindowFor({
@@ -73,7 +71,6 @@ export async function buildGoalWithAgent(
         firstGoal: o.firstGoal ?? false,
         window,
       },
-      ...(o.digest ? { digest: o.digest } : {}),
       onProgress: (done, total) => o.onProgress?.({ stage: 1, segDone: done, segTotal: total }),
       ...(o.signal ? { signal: o.signal } : {}),
     });
@@ -101,7 +98,6 @@ export async function extendGoalWithAgent(o: {
   goal: Goal;
   now: number;
   statusLine?: string;
-  digest?: MemoryDigest;
   onProgress?: (p: PlanProgress) => void;
   signal?: AbortSignal;
 }): Promise<Goal> {
@@ -123,12 +119,11 @@ export async function extendGoalWithAgent(o: {
         window,
         progress: planProgressDigest(g, o.now),
       },
-      ...(o.digest ? { digest: o.digest } : {}),
       onProgress: (done, total) => o.onProgress?.({ stage: 1, segDone: done, segTotal: total }),
       ...(o.signal ? { signal: o.signal } : {}),
     });
     o.onProgress?.({ stage: 2 });
-    return extendGoalWithWindow(g, cat, tasks);
+    return extendGoalWithWindow(g, tasks);
   } catch (e) {
     throw asPlanFailure(e);
   }

@@ -6,7 +6,6 @@
  */
 import type { PlanJobView } from '@host/core/api/types';
 import type { PlanFailure } from '@host/core/goal/planFailure';
-import { sfx } from '../../audio/sfx';
 import { api } from '../api';
 import { game } from '../game';
 import { sayHome, sayMain, toast } from '../uiStore';
@@ -22,10 +21,9 @@ export async function retryPendingPlan(): Promise<void> {
   );
   if (!r) return;
   if (!r.ok) {
-    sfx.play('error');
     const e = asFailure(r.error);
     toast(`还是没拆成：${e.detail.slice(0, 40)}`, 'err');
-    sayHome('又没拆成。目标我还记着，[等会儿再试]，日常先做着。');
+    sayHome('又没拆成。目标我还记着，[等会儿再试]。');
     return;
   }
   await afterFirstGoal();
@@ -56,7 +54,6 @@ export async function awaitFollowUp(
   );
   if (!r) return null;
   if (!r.ok) return asFailure(r.error);
-  sfx.play('unlock');
   return null;
 }
 
@@ -69,14 +66,12 @@ export async function resumePlan(): Promise<void> {
   );
   if (!r) return;
   if (!r.ok) {
-    sfx.play('error');
     const err = asFailure(r.error);
     toast(`没拆成：${err.detail.slice(0, 40)}`, 'err');
     sayHome('下一段还是没拆出来。[等会儿再试]。');
     sayMain('下一段还是没拆出来。[等会儿再试]。');
     return;
   }
-  sfx.play('unlock');
   const n = game().goal.plan.length;
   const sameGoal = game().goal.at === g.goal.at;
   toast(sameGoal ? '下一段拆好了。' : '下一条主线排好了。', 'ok');

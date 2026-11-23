@@ -2,33 +2,23 @@
  * 浏览器侧的 PWA 接线：
  *  - Service Worker 注册；新版本就绪时等到「在大厅、没有执行中的单」才切，不在执行中强刷
  *  - 启动时申请持久化存储（navigator.storage.persist），离线缓存与偏好不容易被浏览器清掉
- *  - 音效总线、前后台切换（后台停底噪、挂起音频）、常驻动画在页面不可见时暂停
+ *  - 前后台切换：常驻动画在页面不可见时暂停
  *  - 第一次进大厅、没装到主屏幕时弹「添加到主屏幕」引导（iOS 不会自己弹）
  */
 import { registerSW } from 'virtual:pwa-register';
-import { createAudioBus } from './audio/bus';
-import { installSfx, sfx } from './audio/sfx';
 import { game } from './store/game';
 import { servicesStore } from './store/services';
 import { setUi, toast, uiStore } from './store/uiStore';
 import { isStandalone } from './ui/overlays/InstallSheet';
 
 export function setupPwa(): void {
-  installSfx(createAudioBus(`${import.meta.env.BASE_URL}audio/`));
-
   // 前后台
   const onVis = () => {
     const vis = document.visibilityState === 'visible';
-    sfx.setForeground(vis);
     document.documentElement.classList.toggle('page-hidden', !vis);
   };
   document.addEventListener('visibilitychange', onVis);
   onVis();
-
-  // 底噪只在大厅响
-  uiStore.subscribe((s, prev) => {
-    if (s.scene !== prev.scene) sfx.ambient(s.scene === 'home');
-  });
 
   // 持久化存储
   try {

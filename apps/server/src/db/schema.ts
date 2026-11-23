@@ -17,7 +17,7 @@ export const users = sqliteTable('users', {
   role: text('role', { enum: ['admin', 'user'] })
     .notNull()
     .default('user'),
-  /** IANA 时区：换日 / 连胜 / 补签 / 每日额度按它算「哪一天」 */
+  /** IANA 时区：换日 / 连胜 / 每日额度按它算「哪一天」 */
   tz: text('tz').notNull(),
   disabled: integer('disabled', { mode: 'boolean' }).notNull().default(false),
   createdAt: integer('created_at').notNull().default(now),
@@ -87,6 +87,7 @@ export const history = sqliteTable(
   (t) => [index('history_user_at').on(t.userId, t.at)],
 );
 
+/** 聊天记录（功能已拿掉；表暂留，重置 / 导入时清掉旧数据） */
 export const chat = sqliteTable(
   'chat',
   {
@@ -100,6 +101,7 @@ export const chat = sqliteTable(
   (t) => [index('chat_user').on(t.userId, t.id)],
 );
 
+/** 长期记忆（功能已拿掉；表暂留，重置 / 导入时清掉旧数据） */
 export const memory = sqliteTable(
   'memory',
   {

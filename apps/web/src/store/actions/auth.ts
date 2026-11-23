@@ -1,6 +1,6 @@
 /**
  * 账号：登录 / 注册（邀请码）/ 退出 / 改密码。
- * 注册时自动带上浏览器时区（换日、连胜、补签按它算；之后只能管理员改）。
+ * 注册时自动带上浏览器时区（换日、连胜按它算；之后只能管理员改）。
  */
 import type { MeView } from '@host/core/api/types';
 import { freshSave } from '@host/core/save/saveData';
@@ -12,7 +12,6 @@ import { closeStream } from '../stream';
 import { setUi, toast } from '../uiStore';
 import { afterLogin } from './boot';
 import { resetBind } from './bind';
-import { clearChatState } from './chat';
 import { go } from './nav';
 import { cancelPlanJob } from './planJob';
 
@@ -52,9 +51,8 @@ export async function logout(): Promise<void> {
   syncStore.setState({ me: null, version: -1, tz: undefined, source: null });
   gameStore.getState().hydrate(freshSave(now()), 'none');
   resetHistoryCache();
-  clearChatState();
   resetBind();
-  setUi({ sheet: null, show: null, briefing: null, chatOpen: false });
+  setUi({ sheet: null, show: null, briefing: null });
   await go('auth', { noHist: true });
   toast('已退出。这台设备上的缓存清掉了。');
 }

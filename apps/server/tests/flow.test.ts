@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm';
 import type { QuestResult } from '@host/core/flow/types';
 import { saveFromJson, type SaveData } from '@host/core/save/saveData';
 import type { StateView } from '@host/core/api/types';
+import { QuestFlow } from '@host/core/flow/questFlow';
 import { boundSave } from '@host/core/testing/helpers';
 import { dayKey } from '@host/core/time/day';
 import { history, saveCorrupt, saves } from '../src/db/schema';
@@ -77,22 +78,21 @@ describe('接单 → 交单 → 结算落库', () => {
     const v0 = (await c.json<Body>('GET', '/api/state')).body.state.version;
     const serial = await acceptWithEvidence(s, c);
     expect(s.saveOf(c).active!.startAt).toBe(T0);
-    s.clock.t += 15 * 60_000; // 20 分钟的计时单，没超时
+    s.clock.t += 15 * 60_000;
     const r = await c.json<Body & { result: QuestResult; followUp: null }>(
       'POST',
       '/api/flow/submit',
       { serial },
     );
     expect(r.status).toBe(200);
-    expect(r.body.result.grade).toBe('A');
     expect(r.body.result.exp).toBe(1); // E 级 EXP 1
-    expect(r.body.result.coin).toBe(5);
     expect(r.body.result.streak).toBe(1);
+    expect(r.body.result.heldMs).toBe(15 * 60_000);
     expect(r.body.followUp).toBeNull();
     const g = saveOfView(r.body.state);
     expect(g.active).toBeNull();
     expect(g.host.exp).toBe(1);
-    expect(g.host.coins).toBe(5);
+    expect(g.queue.map((q) => q.planIndex)).toEqual([1]);
     expect(g.meta.lastDoneDay).toBe(dayKey(s.clock.t, TZ));
     expect(r.body.state.version).toBeGreaterThan(v0);
     const h = await c.json<{ entries: { result: string }[] }>('GET', '/api/history');
@@ -116,7 +116,10 @@ describe('接单 → 交单 → 结算落库', () => {
   });
 
   it('执行中再接别的单 → 409 并附最新状态；主线没解封 → 422 带原因', async () => {
-    const { s, c } = await setup();
+    const { s, c, save } = await setup();
+    const f = new QuestFlow(save);
+    f.queue.push(f.planTask(1));
+    s.seed(c, f.save);
     const q = s.saveOf(c).queue;
     const locked = await c.json<Body>('POST', '/api/flow/accept', { serial: q[1]!.serial });
     expect(locked.status).toBe(422);
@@ -127,81 +130,21 @@ describe('接单 → 交单 → 结算落库', () => {
     expect(busy.body.code).toBe('stale');
     expect(saveOfView(busy.body.state).active?.task.serial).toBe(q[0]!.serial);
   });
-
-  it('装道具扣库存；没有就拒', async () => {
-    const { s, c, save } = await setup();
-    save.host.items['dbl'] = 1;
-    s.seed(c, save);
-    await c.json('POST', '/api/flow/accept', { serial: save.queue[0]!.serial });
-    expect((await c.json('POST', '/api/flow/equip', { item: 'dbl' })).status).toBe(200);
-    expect(s.saveOf(c).host.items['dbl']).toBe(0);
-    const again = await c.json<Body>('POST', '/api/flow/equip', { item: 'crit' });
-    expect(again.status).toBe(422);
-    expect(again.body.message).toBe('暴击芯片：手里没有。');
-  });
 });
 
-describe('认输与补救', () => {
-  it('主线认输 → 补救单顶替这一环入队；补救单再认输 → 原单回来', async () => {
-    const { s, c, save } = await setup();
-    const main = save.queue[0]!;
-    await c.json('POST', '/api/flow/accept', { serial: main.serial });
-    const r = await c.json<Body & { outcome: { remedy: { kind: string; planIndex: number } } }>(
-      'POST',
-      '/api/flow/give-up',
-      { serial: main.serial },
-    );
-    expect(r.status).toBe(200);
-    expect(r.body.outcome.remedy).toMatchObject({ kind: 'remedy', planIndex: 0 });
-    let g = s.saveOf(c);
-    expect(g.queue[0]!.kind).toBe('remedy');
-    expect(g.queue.some((q) => q.kind === 'main' && q.planIndex === 0)).toBe(false);
-    expect(g.host.streak).toBe(0);
-    // 领补救单（现在做）→ 接 → 再认输
-    await c.json('POST', '/api/flow/take-remedy', { now: true });
-    const remedy = s.saveOf(c).queue[0]!;
-    await c.json('POST', '/api/flow/accept', { serial: remedy.serial });
-    await c.json('POST', '/api/flow/give-up', { serial: remedy.serial });
-    g = s.saveOf(c);
-    expect(g.queue.some((q) => q.kind === 'main' && q.planIndex === 0)).toBe(true);
-    const h = await c.json<{ entries: { result: string }[] }>('GET', '/api/history');
-    expect(h.body.entries.map((e) => e.result)).toEqual(['quit', 'quit']);
-  });
-});
-
-describe('到点：护盾与超时（服务器时间）', () => {
-  it('装着护盾到点 → 顺延 ceil(时长÷2)；再到点 → 判负', async () => {
-    const { s, c, save } = await setup();
-    save.host.items['shield'] = 1;
-    s.seed(c, save);
-    const q = save.queue[0]!;
-    expect(q.timed).toBe(true);
-    await c.json('POST', '/api/flow/accept', { serial: q.serial });
-    await c.json('POST', '/api/flow/equip', { item: 'shield' });
-    s.clock.t += q.minutes * 60_000 - 1000;
-    expect((await c.json<Body>('POST', '/api/flow/tick')).body.events).toEqual([]);
-    s.clock.t += 1000;
-    const shield = await c.json<Body>('POST', '/api/flow/tick');
-    expect(shield.body.events).toEqual([{ kind: 'shield', extendMin: Math.ceil(q.minutes / 2) }]);
-    expect(saveOfView(shield.body.state).active!.extraMs).toBe(Math.ceil(q.minutes / 2) * 60_000);
-    s.clock.t += Math.ceil(q.minutes / 2) * 60_000;
-    const out = await c.json<Body>('POST', '/api/flow/tick');
-    expect(out.body.events.map((e) => e.kind)).toEqual(['timeout']);
-    expect(saveOfView(out.body.state).active).toBeNull();
-  });
-
-  it('离开很久再回来：第一下请求就把护盾碎 + 判负一起结清', async () => {
-    const { s, c, save } = await setup();
-    save.host.items['shield'] = 1;
-    s.seed(c, save);
-    await c.json('POST', '/api/flow/accept', { serial: save.queue[0]!.serial });
-    await c.json('POST', '/api/flow/equip', { item: 'shield' });
+describe('不计时、换日', () => {
+  it('接单后隔很久再交也照收（没有倒计时、没有超时判负）', async () => {
+    const { s, c } = await setup();
+    const serial = await acceptWithEvidence(s, c);
     s.clock.t += 5 * 3_600_000;
-    const r = await c.json<Body>('GET', '/api/state');
-    expect(r.body.events.map((e) => e.kind)).toEqual(['shield', 'timeout']);
+    const st = await c.json<Body>('GET', '/api/state');
+    expect(st.body.events).toEqual([]);
+    expect(saveOfView(st.body.state).active?.task.serial).toBe(serial);
+    const r = await c.json<Body>('POST', '/api/flow/submit', { serial });
+    expect(r.status).toBe(200);
   });
 
-  it('跨过账号时区的 0 点：换日、隔夜的日常作废、断签当场归零', async () => {
+  it('跨过账号时区的 0 点：换日、断签当场归零、手上的主线单不动', async () => {
     const { s, c, save } = await setup();
     save.host.streak = 5;
     save.meta.lastDoneDay = dayKey(T0 - 86_400_000, TZ);
@@ -211,65 +154,34 @@ describe('到点：护盾与超时（服务器时间）', () => {
     expect(r.body.events).toEqual([{ kind: 'rollDay' }]);
     const g = saveOfView(r.body.state);
     expect(g.host.streak).toBe(0);
-    expect(g.meta.brokenStreak).toBe(5);
-    expect(g.queue.some((q) => q.kind === 'daily')).toBe(true);
+    expect(g.queue.map((q) => q.serial)).toEqual(save.queue.map((q) => q.serial));
   });
 });
 
-describe('补给 / 补签 / 佩戴 / 再要一批 / 先跳过', () => {
-  it('晶核不够 → 422；够了扣钱入库', async () => {
-    const { s, c, save } = await setup();
-    const poor = await c.json<Body>('POST', '/api/flow/buy', { item: 'crit' });
-    expect(poor.status).toBe(422);
-    expect(poor.body.message).toBe('晶核不够。');
-    save.host.coins = 100;
-    s.seed(c, save);
-    expect((await c.json('POST', '/api/flow/buy', { item: 'crit' })).status).toBe(200);
-    expect(s.saveOf(c).host).toMatchObject({
-      coins: 55,
-      items: expect.objectContaining({ crit: 1 }),
-    });
-  });
-
-  it('补签不可用时说明原因', async () => {
-    const { s, c, save } = await setup();
-    expect((await c.json<Body>('POST', '/api/flow/patch')).body.message).toBe('手里没有补签券。');
-    save.host.items['patch'] = 1;
-    s.seed(c, save);
-    expect((await c.json<Body>('POST', '/api/flow/patch')).body.message).toBe('没断签，用不上。');
-  });
-
-  it('口头巨人摘不掉；没解锁的戴不上', async () => {
-    const { s, c, save } = await setup();
-    expect((await c.json<Body>('POST', '/api/flow/wear', { title: 'nope' })).body.message).toBe(
-      '还没解锁。',
-    );
-    save.host.ownedTitles.push('mouth', 'first');
-    save.host.title = 'mouth';
-    s.seed(c, save);
-    expect((await c.json<Body>('POST', '/api/flow/wear', { title: 'first' })).body.message).toBe(
-      '「口头巨人」摘不掉。完成一单再说。',
-    );
-  });
-
-  it('再要一批：补 2 张日常；日上限给满后拒', async () => {
-    const { c } = await setup();
-    const r = await c.json<Body & { added: number }>('POST', '/api/flow/refill');
-    expect(r.body.added).toBe(2);
-    for (let i = 0; i < 3; i++) await c.json('POST', '/api/flow/refill');
-    const full = await c.json<Body>('POST', '/api/flow/refill');
-    expect(full.status).toBe(422);
-    expect(full.body.message).toBe('今天的日常已经给满了。');
-  });
-
-  it('先跳过：记住目标、发一张日常', async () => {
+describe('先跳过 / 已下线的接口', () => {
+  it('先跳过：只记住目标，不发单', async () => {
     const s = testServer();
     const c = await s.login();
     const r = await c.json<Body>('POST', '/api/flow/skip-plan', { text: '  三个月学会弹吉他 ' });
     const g = saveOfView(r.body.state);
     expect(g.pendingGoal).toBe('三个月学会弹吉他');
-    expect(g.queue.filter((q) => q.kind === 'daily')).toHaveLength(1);
-    expect(g.meta.lastRollDay).toBe(dayKey(T0, TZ));
+    expect(g.queue).toEqual([]);
+  });
+
+  it('道具 / 认输 / 补救 / 补给 / 补签 / 称号 / 计时 / 聊天的接口都已下线', async () => {
+    const { c } = await setup();
+    for (const p of [
+      '/api/flow/equip',
+      '/api/flow/give-up',
+      '/api/flow/take-remedy',
+      '/api/flow/refill',
+      '/api/flow/buy',
+      '/api/flow/patch',
+      '/api/flow/wear',
+      '/api/flow/tick',
+      '/api/chat',
+    ])
+      expect((await c.req('POST', p, {})).status, p).toBe(404);
   });
 });
 
@@ -286,26 +198,24 @@ describe('并发与去重', () => {
     expect([a.status, b.status].sort()).toEqual([200, 409]);
   });
 
-  it('同一个 intentId 重放：只扣一次钱，回同一份响应', async () => {
-    const { s, c, save } = await setup();
-    save.host.coins = 200;
-    s.seed(c, save);
-    const send = () =>
+  it('同一个 intentId 重放：只执行一次，回同一份响应', async () => {
+    const { c, save } = await setup();
+    const serial = save.queue[0]!.serial;
+    const send = (id: string) =>
       c
-        .req('POST', '/api/flow/buy', { item: 'dbl' }, { 'x-intent-id': 'buy-1' })
-        .then((r) => r.json());
-    const [r1, r2] = await Promise.all([send(), send()]);
+        .req('POST', '/api/flow/accept', { serial }, { 'x-intent-id': id })
+        .then(async (r) => ({ status: r.status, body: (await r.json()) as unknown }));
+    const [r1, r2] = await Promise.all([send('acc-1'), send('acc-1')]);
     expect(r1).toEqual(r2);
-    expect(s.saveOf(c).host.coins).toBe(140);
-    await c.req('POST', '/api/flow/buy', { item: 'dbl' }, { 'x-intent-id': 'buy-2' });
-    expect(s.saveOf(c).host.coins).toBe(80);
+    expect(r1.status).toBe(200);
+    expect((await send('acc-2')).status).toBe(409);
   });
 });
 
 describe('坏档保护', () => {
   it('主档坏 → 留底 + 用备份恢复，告诉前端 source=backup', async () => {
     const { s, c } = await setup();
-    await c.json('POST', '/api/flow/refill'); // 再写一次，bak 里有好档
+    await c.json('POST', '/api/flow/accept', { serial: s.saveOf(c).queue[0]!.serial }); // 再写一次，bak 里有好档
     s.deps.dbh.db.update(saves).set({ data: '{坏掉了' }).run();
     const r = await c.json<Body>('GET', '/api/state');
     expect(r.status).toBe(200);
@@ -336,7 +246,7 @@ describe('用户隔离', () => {
     expect(
       (await bob.json<{ entries: unknown[] }>('GET', '/api/history')).body.entries,
     ).toHaveLength(0);
-    const take = await bob.json<Body>('POST', '/api/flow/give-up', { serial });
+    const take = await bob.json<Body>('POST', '/api/flow/submit', { serial });
     expect(take.status).toBe(409);
     const aliceRows = s.deps.dbh.db
       .select()

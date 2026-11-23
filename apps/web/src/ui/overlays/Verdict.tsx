@@ -1,16 +1,14 @@
 /**
  * 结算演出（参考稿 #verdict）：按 ui/fx/settleTimeline 的时间轴走，总时长 ≤1.6s。
- * 扫描 → 评级印章（亮帧 + 音效踩这一帧）→ 奖励行 count-up（800ms ease-out cubic；
- * 暴击：滚到暴击前 → 定格 200ms → CRIT 印章 2.2→1 → 续滚翻倍）→ 经验条（不跨级 520ms /
+ * 扫描 → 验收印章（亮帧）→ 奖励行 count-up（800ms ease-out cubic）→ 经验条（不跨级 520ms /
  * 跨级 360 涨满 → 白闪 → 420 涨到余额）→「收下」。减弱动态效果时直接落到终态。
+ * 印章：证据判真 = acid，只有未校验 / 拿不准 = cyan。
  */
 import { useEffect, useRef, useState } from 'react';
-import { attrName } from '@host/core/data/attrs';
 import { buildSettleTimeline } from '../fx/settleTimeline';
 import type { QuestResult } from '@host/core/flow/types';
 import { questCode } from '@host/core/flow/questText';
-import { EASE, GRADE_COLORS, MOTION, easeOutCubic } from '../../design/tokens';
-import { sfx } from '../../audio/sfx';
+import { COLORS, EASE, easeOutCubic } from '../../design/tokens';
 import { closeVerdict } from '../../store/actions/exec';
 import type { PlanFailure } from '@host/core/goal/planFailure';
 import { Btn } from '../kit/Btn';
@@ -41,21 +39,12 @@ function roll(el: HTMLElement | null, from: number, to: number, ms: number): Pro
 
 interface Row {
   label: string;
-  value: number | string;
-  base?: number;
+  value: number;
   tag?: string;
 }
 
 function rowsOf(r: QuestResult): Row[] {
-  const rows: Row[] = [
-    { label: 'EXP', value: r.exp, base: r.baseExp, tag: r.dbl ? '×2' : r.crit ? 'CRIT' : '' },
-    { label: '晶核', value: r.coin, tag: r.crit ? 'CRIT' : '' },
-  ];
-  const at = Object.entries(r.attrs)
-    .filter(([, v]) => (v ?? 0) > 0)
-    .map(([k, v]) => `${attrName(k)} +${v}`)
-    .join(' · ');
-  if (at) rows.push({ label: '六维', value: at });
+  const rows: Row[] = [{ label: 'EXP', value: r.exp }];
   if (r.streakUp) rows.push({ label: '连胜天数', value: r.streak, tag: 'TODAY' });
   return rows;
 }
@@ -82,29 +71,28 @@ export function Verdict({
   );
   const prog = useRef<HTMLElement>(null);
   const rank = useRef<HTMLDivElement>(null);
-  const ban = useRef<HTMLDivElement>(null);
   const bar = useRef<HTMLElement>(null);
   const rowEls = useRef<Array<HTMLElement | null>>([]);
-  const critStamp = useRef<HTMLElement>(null);
   const rows = rowsOf(r);
+  const verified = r.verified > 0;
+  const stampColor = verified ? COLORS.acid : COLORS.cyan;
   const levelUp = r.ups.length > 0;
 
   useEffect(() => {
     let alive = true;
-    const tl = buildSettleTimeline({ crit: r.crit, rows: rows.length, levelUp });
+    const tl = buildSettleTimeline({ rows: rows.length, levelUp });
     const setBar = (p: number) =>
       bar.current?.style.setProperty('--p', String(Math.max(0, Math.min(1, p))));
     if (reducedMotion()) {
       rows.forEach((row, i) => {
         const el = rowEls.current[i];
-        if (el && typeof row.value === 'number') el.textContent = `+${row.value}`;
+        if (el) el.textContent = `+${row.value}`;
       });
       setBar(r.endExp / r.afterNeed);
       return;
     }
     void (async () => {
       // ① 扫描
-      sfx.play('scan');
       const subs = ['ANALYZING EVIDENCE…', '比对历史数据…', '检测 P 图痕迹…', '计算敷衍指数…'];
       prog.current?.animate([{ transform: 'scaleX(0)' }, { transform: 'scaleX(1)' }], {
         duration: tl.scanMs,
@@ -119,16 +107,7 @@ export function Verdict({
       setPhase('res');
       setBar(r.beforeExp / r.beforeNeed);
       await sleep(16);
-      // ② 评级印章：亮帧 + 音效踩这一帧
-      if (r.crit) {
-        ban.current?.animate(
-          [
-            { transform: 'rotate(-8deg) translateX(-120%)', opacity: 1 },
-            { transform: 'rotate(-8deg) translateX(0)', opacity: 1 },
-          ],
-          { duration: tl.rankMs, easing: 'cubic-bezier(.2,1,.3,1)', fill: 'forwards' },
-        );
-      }
+      // ② 验收印章：亮帧
       await rank.current?.animate(
         [
           { transform: 'scale(3.4) rotate(-12deg)', opacity: 0 },
@@ -139,21 +118,12 @@ export function Verdict({
       ).finished;
       if (!alive) return;
       flash();
-      sfx.play(r.crit ? 'crit' : 'stamp');
-      haptic[r.crit ? 'crit' : 'success']();
-      shake(r.crit ? 12 : 7, 380);
+      haptic.success();
+      shake(7, 380);
       {
         const [x, y] = center(rank.current);
-        const cols = r.crit ? ['#ff3b7a', '#ffcc4d', '#fff'] : ['#d6ff3d', '#fff', '#3be8ff'];
-        burst(x, y, {
-          n: r.crit ? 60 : 40,
-          colors: cols,
-          min: 4,
-          max: r.crit ? 15 : 11,
-          life: 38,
-          sz: 2.5,
-        });
-        ring(x, y, cols[0] as string, 160, 5);
+        burst(x, y, { n: 40, colors: [stampColor, '#fff'], min: 4, max: 11, life: 38, sz: 2.5 });
+        ring(x, y, stampColor, 160, 5);
       }
       setSay(line);
       // ③ 奖励行 + 经验条（并行）
@@ -171,24 +141,7 @@ export function Verdict({
             fill: 'backwards',
           },
         );
-        if (typeof row.value !== 'number') return;
-        sfx.play('coin');
-        if (i === 0 && tl.crit && row.base !== undefined) {
-          await roll(el, 0, row.base, tl.crit.baseMs);
-          await sleep(tl.crit.freezeMs);
-          critStamp.current?.animate(
-            [
-              { transform: `scale(${MOTION.critStampFrom}) rotate(-12deg)`, opacity: 0 },
-              { transform: 'scale(1) rotate(-12deg)', opacity: 1 },
-            ],
-            { duration: tl.crit.stampMs, easing: 'cubic-bezier(.6,0,.8,.4)', fill: 'forwards' },
-          );
-          sfx.play('stamp');
-          await sleep(tl.crit.stampMs);
-          await roll(el, row.base, row.value, tl.crit.restMs);
-        } else {
-          await roll(el, 0, row.value, tl.countMs);
-        }
+        await roll(el, 0, row.value, tl.countMs);
       });
       const barJob = (async () => {
         await sleep(tl.barAt - tl.rowsAt);
@@ -211,7 +164,6 @@ export function Verdict({
             fill: 'forwards',
           }).finished;
           flash();
-          sfx.play('levelup');
           setLvlabel(`LV ${r.afterLv}`);
           setXpr('LEVEL UP!');
           await sleep(tl.bar.flashMs);
@@ -236,7 +188,6 @@ export function Verdict({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const g = r.grade;
   return (
     <div className="ovl on" id="verdict">
       {phase === 'scan' ? (
@@ -253,14 +204,8 @@ export function Verdict({
         <div className="vd-res on">
           <div className="vtag">VERDICT · {questCode(r.quest)}</div>
           <div style={{ position: 'relative' }}>
-            <div className="critban" ref={ban}>
-              <span>
-                CRITICAL HIT · 暴击 · CRITICAL HIT · 暴击 · CRITICAL HIT · 暴击 · CRITICAL HIT ·
-                暴击 ·
-              </span>
-            </div>
-            <div className={`rank ${g}`} ref={rank} style={{ ['--rc' as string]: GRADE_COLORS[g] }}>
-              {g}
+            <div className="rank" ref={rank} style={{ ['--rc' as string]: stampColor }}>
+              ✓
             </div>
           </div>
           <Typewriter className="vline" text={say} />
@@ -271,23 +216,12 @@ export function Verdict({
                   {row.label}
                   {row.tag ? <em>{row.tag}</em> : null}
                 </span>
-                {typeof row.value === 'number' ? (
-                  <b
-                    style={{ display: 'inline-block', position: 'relative' }}
-                    ref={(el) => void (rowEls.current[i] = el)}
-                  >
-                    +0
-                  </b>
-                ) : (
-                  <b className="r-attr" ref={(el) => void (rowEls.current[i] = el)}>
-                    {row.value}
-                  </b>
-                )}
-                {i === 0 && r.crit && (
-                  <i className="crit-stamp" ref={critStamp}>
-                    CRIT
-                  </i>
-                )}
+                <b
+                  style={{ display: 'inline-block', position: 'relative' }}
+                  ref={(el) => void (rowEls.current[i] = el)}
+                >
+                  +0
+                </b>
               </div>
             ))}
           </div>
@@ -300,10 +234,6 @@ export function Verdict({
               <i ref={bar} />
             </div>
           </div>
-          {r.near > 0 && <p className="vd-near">差 {r.near}% 就暴击了。</p>}
-          {r.tooFast && (
-            <p className="vd-near">{Math.round(r.heldMs / 1000)} 秒就交了？她记下了。</p>
-          )}
           {followUpError && (
             <p className="vd-err">
               这一单记上了。下一段没拆出来：{followUpError.detail.slice(0, 40)}

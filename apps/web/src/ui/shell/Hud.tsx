@@ -1,12 +1,11 @@
-/** 顶栏（参考稿 #hud）：等级环 / 称号 / 连胜 / 晶核 / 聊天 / 菜单 */
+/** 顶栏（参考稿 #hud）：等级环 / 名字与完成数 / 连胜 / 菜单 */
 import { dayKey } from '@host/core/time/day';
 import { now, tz } from '../../store/game';
 import { needFor } from '@host/core/data/rewards';
-import { titleName } from '@host/core/data/titles';
 import { useGame } from '../../store/gameStore';
 import { SCENES, setUi, toast, useUi } from '../../store/uiStore';
 import { Tap } from '../kit/Btn';
-import { IconChat, IconCoin, IconFlame, IconMenu } from '../kit/icons';
+import { IconFlame, IconMenu } from '../kit/icons';
 
 export function Hud() {
   const scene = useUi((s) => s.scene);
@@ -44,7 +43,7 @@ export function Hud() {
       </Tap>
       <div className="who">
         <b>{host.name}</b>
-        <span className={host.title === 'mouth' ? 'shame' : ''}>「{titleName(host.title)}」</span>
+        <span>已完成 {host.doneCount} 单</span>
       </div>
       <Tap
         className="chip streak"
@@ -58,22 +57,6 @@ export function Hud() {
       >
         <IconFlame />
         <span>{host.streak}</span>
-      </Tap>
-      <Tap
-        className="chip coin"
-        id="hudCoin"
-        quiet
-        onClick={() =>
-          toast(
-            `晶核 ${host.coins}。${host.coins < 45 ? '穷，但是干净。' : '有点小钱了，别乱花。'}`,
-          )
-        }
-      >
-        <IconCoin />
-        <span>{host.coins}</span>
-      </Tap>
-      <Tap className="iconbtn" aria-label="和她说话" onClick={() => setUi({ chatOpen: true })}>
-        <IconChat />
       </Tap>
       <Tap className="iconbtn" aria-label="系统设置" onClick={() => setUi({ sheet: 'system' })}>
         <IconMenu />

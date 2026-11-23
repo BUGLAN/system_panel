@@ -1,5 +1,5 @@
 /**
- * 换目标（弹窗式面板，✕ 关闭）：当前主线卡（将撤下 · 等级 / 晶核 / 六维保留）+ 新目标输入；
+ * 换目标（弹窗式面板，✕ 关闭）：当前主线卡（将撤下 · 等级与连胜保留）+ 新目标输入；
  * 没有目标时切成「首次立目标」模式（B2）：不显示「将撤下」，主键「下一步 · 访谈」带原文进绑定仪式。
  */
 import { useState } from 'react';
@@ -42,7 +42,7 @@ function SwapForm() {
           <b>{g.text}</b>
           <small>
             完成 {goalDoneCount(g)}/{goalTotalTasks(g)} 单 · 已过{' '}
-            {Math.min(g.days, goalPassedDays(g, now()))} 天 · 等级 / 晶核 / 六维保留
+            {Math.min(g.days, goalPassedDays(g, now()))} 天 · 等级与连胜保留
           </small>
         </div>
       )}
@@ -73,14 +73,6 @@ function SwapForm() {
           </Tap>
         ))}
       </div>
-      <Tap
-        className="link swap-ask"
-        onClick={() => {
-          setUi({ sheet: null, chatOpen: true });
-        }}
-      >
-        先问问她 ›
-      </Tap>
       <div className="panel-act kb-dock">
         <Btn kind="pri" disabled={!can} onClick={() => void submitGoalSwap()}>
           {busy ? '拆解中…' : first ? '下一步 · 访谈' : '确认换线'}

@@ -73,16 +73,6 @@
     0 30px 60px -10px rgba(0, 0, 0, 0.85),
     0 0 46px -8px var(--gc);
 }
-.gcard .deco {
-  position: absolute;
-  right: -30px;
-  bottom: -40px;
-  font: 900 170px/1 'Chakra Petch';
-  font-style: italic;
-  color: transparent;
-  -webkit-text-stroke: 1.5px color-mix(in srgb, var(--gc) 20%, transparent);
-  pointer-events: none;
-}
 .gc-top {
   display: flex;
   justify-content: space-between;
@@ -105,13 +95,6 @@
 }
 .gc-top .cat span {
   transform: rotate(-45deg);
-}
-.grade {
-  font: 700 italic 66px/0.95 'Chakra Petch';
-  color: var(--gc);
-  text-shadow: 0 0 24px var(--gc);
-  margin: 10px 0 4px;
-  position: relative;
 }
 .gc-t {
   font: 900 20px/1.35 var(--fc);
@@ -275,27 +258,6 @@
   background: var(--acid);
   animation: blinkdot 1s infinite;
 }
-.ruler {
-  display: flex;
-  justify-content: center;
-  gap: 7px;
-  margin: 10px 0 2px;
-}
-.ruler i {
-  width: 14px;
-  height: 4px;
-  border-radius: 2px;
-  background: rgba(255, 255, 255, 0.12);
-  transition: all 0.3s var(--ease);
-}
-.ruler i.d {
-  background: color-mix(in srgb, var(--cyan) 60%, transparent);
-}
-.ruler i.on {
-  width: 30px;
-  background: var(--acid);
-  box-shadow: 0 0 10px var(--acid);
-}
 .sysbox {
   display: flex;
   gap: 12px;
@@ -341,189 +303,6 @@
   flex: 1;
 }
 /* ---------- board ---------- */
-.tabs {
-  position: relative;
-  display: flex;
-  margin: 16px 0 12px;
-  padding: 4px;
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid var(--line);
-}
-.tabs button {
-  position: relative;
-  z-index: 1;
-  flex: 1;
-  height: 36px;
-  font: 700 14px var(--fc);
-  color: var(--dim);
-  transition: color 0.25s;
-}
-.tabs button.on {
-  color: #0a0910;
-}
-.tabs .ind {
-  position: absolute;
-  top: 4px;
-  bottom: 4px;
-  left: 4px;
-  border-radius: 10px;
-  background: var(--gold);
-  box-shadow: 0 0 18px rgba(255, 204, 77, 0.5);
-  transition:
-    transform 0.4s var(--ease),
-    width 0.4s var(--ease);
-}
-.list {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  overflow-x: hidden;
-  margin: 0 -22px;
-  padding: 4px 22px 30px;
-  scrollbar-width: none;
-  -webkit-mask-image: linear-gradient(transparent, #000 14px, #000 calc(100% - 40px), transparent);
-  mask-image: linear-gradient(transparent, #000 14px, #000 calc(100% - 40px), transparent);
-}
-.list::-webkit-scrollbar {
-  display: none;
-}
-.ticket {
-  --gc: var(--cyan);
-  position: relative;
-  display: flex;
-  align-items: stretch;
-  margin-bottom: 12px;
-  border-radius: 18px;
-  min-height: 112px;
-  background: linear-gradient(100deg, color-mix(in srgb, var(--gc) 15%, #13111f), #0f0d1a 55%);
-  border: 1px solid rgba(255, 255, 255, 0.07);
-  transition:
-    transform 0.25s var(--ease),
-    border-color 0.25s,
-    opacity 0.5s,
-    translate 0.5s;
-  cursor: pointer;
-}
-.ticket:hover {
-  transform: translateX(4px);
-  border-color: color-mix(in srgb, var(--gc) 60%, transparent);
-}
-.ticket.sr {
-  opacity: 0;
-  translate: 0 26px;
-}
-.ticket.sr.in {
-  opacity: 1;
-  translate: 0 0;
-}
-.tk-g {
-  position: relative;
-  width: 76px;
-  flex: none;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  border-right: 2px dashed rgba(255, 255, 255, 0.12);
-}
-.tk-g::before,
-.tk-g::after {
-  content: '';
-  position: absolute;
-  right: -10px;
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  background: var(--bg);
-}
-.tk-g::before {
-  top: -10px;
-}
-.tk-g::after {
-  bottom: -10px;
-}
-.tk-g b {
-  font: 700 italic 42px/1 'Chakra Petch';
-  color: var(--gc);
-  text-shadow: 0 0 18px var(--gc);
-}
-.tk-g small {
-  font: 700 9px var(--fm);
-  letter-spacing: 2px;
-  color: var(--dim);
-  margin-top: 4px;
-}
-.tk-b {
-  flex: 1;
-  min-width: 0;
-  padding: 13px 12px;
-}
-.tk-k {
-  display: inline-block;
-  font: 700 9px var(--fm);
-  letter-spacing: 2px;
-  padding: 2px 6px;
-  border-radius: 4px;
-  background: color-mix(in srgb, var(--gc) 20%, transparent);
-  color: var(--gc);
-  margin-bottom: 5px;
-}
-.tk-k.main {
-  background: var(--acid);
-  color: #0a0910;
-}
-.tk-t {
-  font: 700 16px/1.35 var(--fc);
-}
-.tk-m {
-  font: 400 12px var(--fc);
-  color: var(--dim);
-  margin-top: 4px;
-}
-.tk-r {
-  display: flex;
-  gap: 5px;
-  flex-wrap: wrap;
-  margin-top: 8px;
-}
-.tk-r span {
-  font: 700 11px 'Chakra Petch';
-  padding: 2px 7px;
-  border-radius: 5px;
-  background: rgba(255, 255, 255, 0.06);
-  color: #d9d6ee;
-}
-.tk-go {
-  width: 52px;
-  flex: none;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  writing-mode: vertical-rl;
-  letter-spacing: 8px;
-  font: 900 16px var(--fc);
-  color: #0a0910;
-  background: var(--gc);
-  border-radius: 0 17px 17px 0;
-  transition: filter 0.2s;
-}
-.ticket:hover .tk-go {
-  filter: brightness(1.15);
-}
-.empty {
-  text-align: center;
-  padding: 60px 10px;
-  color: var(--dim);
-  font: 500 14px/1.8 var(--fc);
-}
-.empty b {
-  display: block;
-  font: 900 44px 'Chakra Petch';
-  color: var(--gold);
-  text-shadow: 0 0 20px var(--gold);
-  margin-bottom: 6px;
-}
 .bigstamp {
   position: absolute;
   z-index: 5;

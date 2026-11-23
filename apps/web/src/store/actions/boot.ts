@@ -111,7 +111,7 @@ setApiHooks({
     closeStream();
     const ui = uiStore.getState();
     if (ui.scene !== 'boot' && ui.scene !== 'auth') {
-      setUi({ sheet: null, show: null, briefing: null, chatOpen: false, planJob: null });
+      setUi({ sheet: null, show: null, briefing: null, planJob: null });
       void go('auth', { noHist: true });
       toast('登录过期了，重新登录一下。', 'err');
     }

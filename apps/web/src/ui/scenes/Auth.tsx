@@ -3,7 +3,6 @@
  * 注册要邀请码（找管理员要）；时区自动取这台设备的。忘了密码找管理员重置。
  */
 import { useRef, useState } from 'react';
-import { sfx } from '../../audio/sfx';
 import { ApiError } from '../../store/api';
 import { login, register } from '../../store/actions/auth';
 import { useSync } from '../../store/game';
@@ -69,9 +68,7 @@ export function Auth() {
     try {
       if (mode === 'login') await login(username.trim(), password);
       else await register(username.trim(), password, invite.trim());
-      sfx.play('unlock');
     } catch (e) {
-      sfx.play('error');
       setLine(
         e instanceof ApiError && e.offline
           ? '连不上服务器。网络通了再来。'

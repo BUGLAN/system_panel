@@ -231,14 +231,8 @@ describe('匹配与拆解任务', () => {
     expect(seen.at(-1)).toMatch(/^done/);
     const g = saveFromJson((job.state as StateView).save, 0)!;
     expect(g.goal.plan.length).toBeGreaterThan(0);
-    expect(g.queue.some((q) => q.kind === 'main')).toBe(true);
-    expect(g.queue.some((q) => q.kind === 'daily')).toBe(true);
-    expect(g.host.items['dbl']).toBe(1);
-    const mem = s.deps.dbh.db
-      .select()
-      .from((await import('../src/db/schema')).memory)
-      .all();
-    expect(mem.some((x) => x.text.includes('一周三次'))).toBe(true);
+    expect(g.goal.interview).toEqual(answers);
+    expect(g.queue.map((q) => q.planIndex)).toEqual([0]);
   });
 
   it('拆解失败停在失败态（错误分类），答案不动、可重试', async () => {
@@ -271,7 +265,7 @@ describe('匹配与拆解任务', () => {
     expect(ep.calls).toHaveLength(0);
   });
 
-  it('先跳过后重试：用记着的那句拆，成功补发见面礼', async () => {
+  it('先跳过后重试：用记着的那句拆，主线落库', async () => {
     const ep = smartEndpoint();
     const { s, c } = await setup(ep);
     await c.json('POST', '/api/flow/skip-plan', { text: '三个月跑完半马' });
@@ -280,11 +274,11 @@ describe('匹配与拆解任务', () => {
     expect(job.status).toBe('done');
     const g = s.saveOf(c);
     expect(g.pendingGoal).toBe('');
-    expect(g.host.items['dbl']).toBe(1);
-    expect(g.queue.filter((q) => q.kind === 'daily')).toHaveLength(1); // 跳过时发过日常，不再叠发
+    expect(g.goal.text).toBe('三个月跑完半马');
+    expect(g.queue.map((q) => q.planIndex)).toEqual([0]);
   });
 
-  it('换目标：旧主线全撤、日常保留；等待期间目标变了 → 结果作废', async () => {
+  it('换目标：旧主线全撤、新主线进手；等待期间目标变了 → 结果作废', async () => {
     const ep = smartEndpoint();
     const { s, c } = await setup(ep);
     await c.json('POST', '/api/plan/match', { text: '三个月跑完半马' });
@@ -302,9 +296,9 @@ describe('匹配与拆解任务', () => {
     expect(job.status).toBe('done');
     const after = s.saveOf(c);
     expect(after.goal.text).toBe('两个月学会游泳');
-    expect(after.queue.filter((q) => q.kind === 'daily').length).toBe(
-      before.queue.filter((q) => q.kind === 'daily').length,
-    );
+    expect(after.queue).toHaveLength(1);
+    expect(after.queue[0]!.serial).not.toBe(before.queue[0]!.serial);
+    expect(after.queue[0]!.name).toBe(after.goal.plan[0]!.title);
     // 并发换线：第一件还在拆时改了目标
     const slow = testServer(
       { llm: LLM },

@@ -8,7 +8,6 @@ import { ApiError, forbidden, notFound, unauthorized } from './http/errors';
 import type { AppEnv, Deps } from './http/context';
 import { errInfo, log } from './log';
 import { authRoutes, meRoute, readSessionCookie } from './routes/auth';
-import { chatRoutes } from './routes/chat';
 import { dataRoutes } from './routes/data';
 import { evidenceRoutes } from './routes/evidence';
 import { flowRoutes } from './routes/flow';
@@ -87,7 +86,6 @@ export function createApp(deps: Deps): Hono<AppEnv> {
   app.route('/api/plan', planRoutes);
   app.route('/api/stream', streamRoute);
   app.route('/api/evidence', evidenceRoutes);
-  app.route('/api/chat', chatRoutes);
   app.route('/api/data', dataRoutes);
 
   app.all('/api/*', () => {

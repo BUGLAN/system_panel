@@ -268,10 +268,10 @@ export function confetti(): void {
   burst(W, H * 0.75, { ...base, angle: (-Math.PI * 2) / 3 });
 }
 
-/** 亮帧：白色 16%、脉冲 180ms；失败档亮度 1/3 */
-export function flash(kind: 'normal' | 'fail' = 'normal'): void {
+/** 亮帧：白色 16%、脉冲 180ms */
+export function flash(): void {
   if (!flashEl) return;
-  const o = MOTION.flash.opacity * (kind === 'fail' ? MOTION.failBrightness : 1);
+  const o = MOTION.flash.opacity;
   flashEl.animate([{ opacity: o }, { opacity: 0 }], {
     duration: MOTION.flash.ms,
     easing: 'cubic-bezier(.2,.9,.2,1)',

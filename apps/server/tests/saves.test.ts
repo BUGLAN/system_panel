@@ -26,14 +26,14 @@ describe('存档仓库', () => {
   it('每次写都把上一份好档滚进 bak，版本 +1', async () => {
     const { db: d, uid } = await db();
     const a = freshSave(1);
-    a.host.coins = 1;
+    a.host.exp = 1;
     const b = freshSave(1);
-    b.host.coins = 2;
+    b.host.exp = 2;
     expect(writeSave(d, uid, a, 10)).toBe(1);
     expect(writeSave(d, uid, b, 20)).toBe(2);
     const row = d.select().from(saves).get()!;
-    expect(parseSave(row.data, 0)!.host.coins).toBe(2);
-    expect(parseSave(row.bak!, 0)!.host.coins).toBe(1);
+    expect(parseSave(row.data, 0)!.host.exp).toBe(2);
+    expect(parseSave(row.bak!, 0)!.host.exp).toBe(1);
   });
 
   it('坏掉的主档绝不滚进 bak', async () => {

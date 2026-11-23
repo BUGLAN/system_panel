@@ -1,7 +1,6 @@
 /** 斜切转场（参考稿 #wipe）：三条斜带扫入 360ms → 切场景 → 扫出 420ms */
 import { useEffect, useRef, useState } from 'react';
 import { registerWipe } from '../../store/actions/nav';
-import { sfx } from '../../audio/sfx';
 import { reducedMotion } from '../fx/fx';
 
 const E = 'cubic-bezier(.75,0,.25,1)';
@@ -47,7 +46,6 @@ export function Wipe() {
         },
       );
       await sleep(140);
-      sfx.play('swipe');
       await Promise.all(
         bars.map(
           (b, i) =>

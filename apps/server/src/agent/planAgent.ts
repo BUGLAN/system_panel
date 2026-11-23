@@ -42,9 +42,6 @@ const clip = (s: string) => {
 const toLlm = (msgs: WireMessage[]): LlmMessage[] =>
   msgs.map((m) => ({ role: m.role, text: m.text }));
 
-/** 记忆摘要的来源（可缺省） */
-export type MemoryDigest = (query: string) => Promise<string>;
-
 export interface PlanResult {
   tasks: TaskSpec[];
   /** 她顺手说的一句（可能为空） */
@@ -55,7 +52,6 @@ export interface PlanResult {
 async function runPlanLoop(o: {
   client: LlmClient;
   brief: PlanBrief;
-  digest?: MemoryDigest;
   signal?: AbortSignal;
 }): Promise<PlanResult> {
   const seg = o.brief.segment ?? null;
@@ -75,7 +71,6 @@ async function runPlanLoop(o: {
   const msgs = buildConversation({
     userText: briefUserText(o.brief),
     ...(o.brief.statusLine ? { statusLine: o.brief.statusLine } : {}),
-    memoryDigest: o.digest ? await o.digest(o.brief.goalText) : '',
     scenario: briefScenario(o.brief),
   });
   for (let round = 1; round <= PLAN_MAX_ROUNDS; round++) {
@@ -137,7 +132,6 @@ async function runPlanLoop(o: {
 export async function generatePlanTasks(o: {
   client: LlmClient;
   brief: PlanBrief;
-  digest?: MemoryDigest;
   onProgress?: (done: number, total: number) => void;
   signal?: AbortSignal;
 }): Promise<{ tasks: TaskSpec[]; line: string | null }> {
@@ -155,7 +149,6 @@ export async function generatePlanTasks(o: {
       parts[i] = await runPlanLoop({
         client: o.client,
         brief: { ...o.brief, segment: seg, window: win },
-        ...(o.digest ? { digest: o.digest } : {}),
         ...(o.signal ? { signal: o.signal } : {}),
       });
       o.onProgress?.(++done, segs.length);
@@ -180,7 +173,6 @@ export async function matchGoal(o: {
   client: LlmClient;
   goalText: string;
   statusLine?: string;
-  digest?: MemoryDigest;
   signal?: AbortSignal;
 }): Promise<GoalMatch> {
   const draft = newMatchDraft();
@@ -190,7 +182,6 @@ export async function matchGoal(o: {
   const msgs = buildConversation({
     userText: matchPrompt(o.goalText),
     ...(o.statusLine ? { statusLine: o.statusLine } : {}),
-    memoryDigest: o.digest ? await o.digest(o.goalText) : '',
     scenario: '识别目标：判断类别/短字/期限，交给 set_goal_category。',
   });
   for (let round = 1; round <= MATCH_MAX_ROUNDS; round++) {

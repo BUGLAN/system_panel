@@ -58,7 +58,6 @@ export function testServer(over: Partial<Config> = {}, depsOver: Partial<Deps> =
     dbh,
     {
       now: () => clock.t,
-      rnd: () => 0.99,
       llmRetryDelayMs: 0,
       ...depsOver,
     },

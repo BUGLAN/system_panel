@@ -1,17 +1,16 @@
 /**
  * 界面状态（不进存档）：当前场景、返回栈、叠层、toast、她的台词。
- * 主流程状态机：场景 = boot / consent / onboard / home / main / board / exec / archive / shop；
- * 叠层（底板、弹窗、结算、失败、升级、加载卡、聊天）叠在场景上，返回键先关叠层。
+ * 主流程状态机：场景 = boot / auth / consent / onboard / home / main / exec / archive；
+ * 叠层（底板、弹窗、结算、升级、加载卡）叠在场景上，返回键先关叠层。
  */
 import { createStore } from 'zustand/vanilla';
 import { useStore } from 'zustand';
-import type { FailOutcome, QuestResult } from '@host/core/flow/types';
+import type { QuestResult } from '@host/core/flow/types';
 import type { Quest } from '@host/core/model/quest';
 import type { PlanProgress } from '@host/core/api/types';
 import type { PlanFailure } from '@host/core/goal/planFailure';
 
-export type Scene =
-  'boot' | 'auth' | 'consent' | 'onboard' | 'home' | 'main' | 'board' | 'exec' | 'archive' | 'shop';
+export type Scene = 'boot' | 'auth' | 'consent' | 'onboard' | 'home' | 'main' | 'exec' | 'archive';
 
 export interface SceneMeta {
   hud: boolean;
@@ -28,10 +27,8 @@ export const SCENES: Record<Scene, SceneMeta> = {
   onboard: { hud: false, ghost: '绑定', acc: '#d6ff3d', title: '绑定仪式', sub: 'BINDING' },
   home: { hud: true, ghost: '系统', acc: '#d6ff3d', title: '大厅', sub: 'LOBBY' },
   main: { hud: false, ghost: '主线', acc: '#3be8ff', title: '主线', sub: 'MAINLINE' },
-  board: { hud: true, ghost: '委托', acc: '#ffcc4d', title: '委托板', sub: 'COMMISSION BOARD' },
   exec: { hud: true, ghost: '执行', acc: '#ff3b7a', title: '任务开始', sub: 'MISSION START' },
   archive: { hud: false, ghost: '档案', acc: '#8f6bff', title: '档案', sub: 'ARCHIVE' },
-  shop: { hud: true, ghost: '补给', acc: '#3dffa8', title: '补给站', sub: 'SUPPLY' },
 };
 
 export type ToastKind = '' | 'ok' | 'err';
@@ -64,8 +61,7 @@ export type Show =
       line: string;
       followUpError: PlanFailure | null;
     }
-  | { kind: 'levelup'; from: number; to: number; brief: boolean }
-  | { kind: 'fail'; outcome: FailOutcome; line: string };
+  | { kind: 'levelup'; from: number; to: number; brief: boolean };
 
 /** 等 LLM 时的整屏加载卡 */
 export interface PlanJobUi {
@@ -83,19 +79,12 @@ export interface UiState {
   briefing: Quest | null;
   show: Show | null;
   planJob: PlanJobUi | null;
-  chatOpen: boolean;
   toasts: Toast[];
-  /** 新解锁、还没展示的称号 */
-  achQueue: string[];
-  /** 档案入口的小红点 */
-  archiveDot: boolean;
   /** 大厅气泡 / 主线 sysbox / 执行 watch 的台词 */
   quip: string;
   mainLine: string;
   watchLine: string;
   watchAt: number;
-  /** 委托板筛选 */
-  boardFilter: 'all' | 'main' | 'remedy' | 'daily';
   /** 刚交掉的那一环（主线页盖章 + 解封下一张的演出） */
   mainJustDone: number | null;
 }
@@ -109,15 +98,11 @@ export const uiStore = createStore<UiState>()(() => ({
   briefing: null,
   show: null,
   planJob: null,
-  chatOpen: false,
   toasts: [],
-  achQueue: [],
-  archiveDot: false,
   quip: '',
   mainLine: '',
   watchLine: '',
   watchAt: 0,
-  boardFilter: 'all',
   mainJustDone: null,
 }));
 

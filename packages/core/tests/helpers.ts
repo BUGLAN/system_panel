@@ -1,5 +1,4 @@
 /** 核心逻辑测试的小工具 */
-import { categoryOf } from '../src/goal/categories';
 import { buildPlanTasks, type TaskSpec } from '../src/goal/plan';
 import { QuestFlow } from '../src/flow/questFlow';
 import type { Goal } from '../src/model/goal';
@@ -21,9 +20,6 @@ export function seeded(seed = 1): () => number {
   };
 }
 
-/** 固定值随机源（暴击判定用：返回 0.99 = 必不暴击） */
-export const fixed = (v: number) => () => v;
-
 export function specs(ranks: Rank[], over: Partial<TaskSpec> = {}): TaskSpec[] {
   return ranks.map((r, i) => ({
     short: `第${i + 1}步`,
@@ -41,7 +37,7 @@ export function runGoal(ranks: Rank[], total = ranks.length, uid = 'g-run'): Goa
     text: '三个月跑完半马',
     short: '半马',
     at: T0,
-    plan: buildPlanTasks({ cat: categoryOf('run'), tasks: specs(ranks), total }),
+    plan: buildPlanTasks({ tasks: specs(ranks), total }),
     cat: 'run',
     days: total,
     interview: {},
@@ -51,22 +47,18 @@ export function runGoal(ranks: Rank[], total = ranks.length, uid = 'g-run'): Goa
   };
 }
 
-/** 已绑定的存档：主线发到在手窗口、没有日常 */
+/** 已绑定的存档：主线发到在手窗口 */
 export function boundSave(goal: Goal = runGoal(['E', 'E', 'D', 'C', 'S'])): SaveData {
   const s = freshSave(T0);
   s.goal = goal;
-  const f = new QuestFlow(s, { rnd: seeded() });
+  const f = new QuestFlow(s);
   f.publishPlanTasks();
   return f.save;
 }
 
 /** 接下队首那一单 */
-export function flowWithActive(
-  save: SaveData = boundSave(),
-  rnd = fixed(0.99),
-  at = T0,
-): QuestFlow {
-  const f = new QuestFlow(save, { rnd });
+export function flowWithActive(save: SaveData = boundSave(), at = T0): QuestFlow {
+  const f = new QuestFlow(save);
   f.accept(f.head!, at);
   return f;
 }

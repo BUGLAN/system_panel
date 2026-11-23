@@ -500,11 +500,6 @@
   width: 17px;
   height: 17px;
 }
-.chip.coin svg {
-  fill: none;
-  stroke: var(--cyan);
-  stroke-width: 2.2;
-}
 .chip.streak {
   color: #ffb35c;
 }
@@ -964,21 +959,6 @@
   right: -4px;
   font: 700 12px 'Chakra Petch';
   color: var(--cyan);
-}
-.navb .newdot {
-  position: absolute;
-  top: 2px;
-  right: 6px;
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: var(--hot);
-  box-shadow: 0 0 8px var(--hot);
-  display: none;
-}
-.navb .newdot.on {
-  display: block;
-  animation: blinkdot 1s infinite;
 }
 .task-orb {
   position: relative;

@@ -11,7 +11,6 @@ import {
   type MeView,
   type UsageView,
 } from '@host/core/api/types';
-import { sfx } from '../audio/sfx';
 import { api } from './api';
 import { defaultPrefs, loadPrefs, rememberMe, savePrefs, type Prefs } from './cache';
 import { syncStore } from './game';
@@ -36,8 +35,6 @@ export function useServices<T>(sel: (s: ServicesState) => T): T {
 export async function loadServices(): Promise<void> {
   const prefs = await loadPrefs();
   servicesStore.setState({ loaded: true, prefs });
-  sfx.setMuted(prefs.muted);
-  sfx.setVolume(prefs.volume);
 }
 
 export const me = () => syncStore.getState().me;
@@ -93,7 +90,5 @@ export const llmUsage = () => api<UsageView>('GET', '/api/llm/usage');
 export async function setPrefs(p: Partial<Prefs>): Promise<void> {
   const next = { ...servicesStore.getState().prefs, ...p };
   servicesStore.setState({ prefs: next });
-  sfx.setMuted(next.muted);
-  sfx.setVolume(next.volume);
   await savePrefs(next);
 }

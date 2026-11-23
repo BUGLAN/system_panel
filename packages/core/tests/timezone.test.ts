@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { QuestFlow } from '../src/flow/questFlow';
 import { settle } from '../src/flow/settle';
 import { addDays, dayKey, isTimeZone } from '../src/time/day';
-import { boundSave, fixed } from './helpers';
+import { boundSave } from './helpers';
 
 // UTC 2026-11-21 17:30 = 上海 11-22 01:30 = 洛杉矶 11-21 09:30
 const AT = Date.UTC(2026, 10, 21, 17, 30);
@@ -29,7 +29,7 @@ describe('日历日按账号时区算（docs/05 Q1）', () => {
 
   it('结算记的「最近完成日」跟着时区走', () => {
     const run = (tz: string) => {
-      const f = new QuestFlow(boundSave(), { rnd: fixed(0.99), tz });
+      const f = new QuestFlow(boundSave(), { tz });
       f.accept(f.head!, AT - 60_000);
       settle(f, { now: AT });
       return f.meta.lastDoneDay;
@@ -43,30 +43,14 @@ describe('日历日按账号时区算（docs/05 Q1）', () => {
     s.host.streak = 3;
     s.meta.lastDoneDay = '2026-11-20';
     s.meta.lastRollDay = '2026-11-21';
-    // 上海已经是 22 号：昨天（21）没做 → 断签当场归零，可补 21 号
+    // 上海已经是 22 号：昨天（21）没做 → 断签当场归零
     const sh = new QuestFlow(s, { tz: 'Asia/Shanghai' });
     expect(sh.rollDay(AT)).toBe(true);
     expect(sh.host.streak).toBe(0);
-    expect(sh.meta.missedDay).toBe('2026-11-21');
     // 洛杉矶还是 21 号：同一天，不换日、不断签
     const la = new QuestFlow(s, { tz: 'America/Los_Angeles' });
     expect(la.rollDay(AT)).toBe(false);
     expect(la.host.streak).toBe(3);
     expect(addDays('2026-11-21', 1)).toBe('2026-11-22');
-  });
-
-  it('补签可用性按账号时区判断「昨天」', () => {
-    const s = boundSave();
-    s.host.items['patch'] = 1;
-    s.meta.brokenStreak = 4;
-    s.meta.missedDay = '2026-11-21';
-    expect(new QuestFlow(s, { tz: 'Asia/Shanghai' }).patchStatus(AT)).toEqual({
-      ok: true,
-      restoreTo: 5,
-    });
-    expect(new QuestFlow(s, { tz: 'America/Los_Angeles' }).patchStatus(AT)).toEqual({
-      ok: false,
-      reason: '过了补签的那一天。',
-    });
   });
 });

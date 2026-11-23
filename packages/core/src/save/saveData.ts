@@ -4,15 +4,16 @@
  * 规则（移植自 flutter-final:app/lib/state/save_file.dart，去掉旧档迁移）：
  *  - 在默认值上合并：缺字段 / 类型不对走默认，新增字段不会让旧档读崩
  *  - 版本号 `v`：比本 App 认识的版本新 → 视为读不懂（导入时拒收，读档时当坏档）
- *  - 旧版只活在内存里的运行时字段（最近完成日、退缩计数、补救单截止…）全部入档，
+ *  - 旧版只活在内存里的运行时字段（最近完成日、上次换日）全部入档，
  *    否则重启后下一单的连胜会被算成 1（docs/01 第 3 节）
+ *  - 旧档里已拿掉的玩法字段（晶核、道具、称号、日常 / 补救单…）读档时直接丢掉
  */
 import { activeFromJson, activeToJson, type ActiveQuest } from '../model/active';
 import { emptyGoal, goalFromJson, goalToJson, type Goal } from '../model/goal';
 import { emptyHost, hostFromJson, hostToJson, type HostState } from '../model/host';
-import { questFromJson, questToJson, type Quest } from '../model/quest';
+import { isLegacySideQuest, questFromJson, questToJson, type Quest } from '../model/quest';
 import { isDayKey, type DayKey } from '../time/day';
-import { arr, int, intOrNull, isObj, str, strOrNull, type Json } from './json';
+import { arr, int, intOrNull, isObj, str, type Json } from './json';
 
 /** 当前存档结构版本 */
 export const SAVE_VERSION = 1;
@@ -26,20 +27,7 @@ export interface FlowMeta {
   nextSerial: number;
   /** 最近一次完成委托的日历日（连胜判定） */
   lastDoneDay: DayKey | null;
-  /** 断签前的连胜值（补签券用；0 = 没有可补的断签） */
-  brokenStreak: number;
-  /** 断掉的那一天（补签券只补这一天） */
-  missedDay: DayKey | null;
-  /** 退缩（换一个）计数：当日 / 累计 */
-  retreatDay: DayKey | null;
-  retreatToday: number;
-  retreatTotal: number;
-  /** 「口头巨人」戴上之前的称号 */
-  titleBeforeShame: string | null;
-  /** 失败页上挂着的补救单与它的截止时刻 */
-  remedyOffer: Quest | null;
-  remedyDeadline: number | null;
-  /** 上次换日的日历日（同一天反复进出不重发日常） */
+  /** 上次换日的日历日（同一天反复进出不重复换日） */
   lastRollDay: DayKey | null;
 }
 
@@ -61,14 +49,6 @@ export function freshMeta(): FlowMeta {
   return {
     nextSerial: FIRST_SERIAL,
     lastDoneDay: null,
-    brokenStreak: 0,
-    missedDay: null,
-    retreatDay: null,
-    retreatToday: 0,
-    retreatTotal: 0,
-    titleBeforeShame: null,
-    remedyOffer: null,
-    remedyDeadline: null,
     lastRollDay: null,
   };
 }
@@ -98,14 +78,6 @@ function metaFromJson(v: unknown): FlowMeta {
   return {
     nextSerial: Math.max(FIRST_SERIAL, int(v, 'nextSerial', def.nextSerial)),
     lastDoneDay: dayOrNull(v, 'lastDoneDay'),
-    brokenStreak: Math.max(0, int(v, 'brokenStreak', 0)),
-    missedDay: dayOrNull(v, 'missedDay'),
-    retreatDay: dayOrNull(v, 'retreatDay'),
-    retreatToday: Math.max(0, int(v, 'retreatToday', 0)),
-    retreatTotal: Math.max(0, int(v, 'retreatTotal', 0)),
-    titleBeforeShame: strOrNull(v, 'titleBeforeShame'),
-    remedyOffer: questFromJson(v['remedyOffer']),
-    remedyDeadline: intOrNull(v, 'remedyDeadline'),
     lastRollDay: dayOrNull(v, 'lastRollDay'),
   };
 }
@@ -114,14 +86,6 @@ function metaToJson(m: FlowMeta): Json {
   return {
     nextSerial: m.nextSerial,
     lastDoneDay: m.lastDoneDay,
-    brokenStreak: m.brokenStreak,
-    missedDay: m.missedDay,
-    retreatDay: m.retreatDay,
-    retreatToday: m.retreatToday,
-    retreatTotal: m.retreatTotal,
-    titleBeforeShame: m.titleBeforeShame,
-    remedyOffer: m.remedyOffer ? questToJson(m.remedyOffer) : null,
-    remedyDeadline: m.remedyDeadline,
     lastRollDay: m.lastRollDay,
   };
 }
@@ -148,6 +112,7 @@ export function saveFromJson(v: unknown, now: number): SaveData | null {
   const ver = int(v, 'v', SAVE_VERSION);
   if (ver > SAVE_VERSION || ver < 1) return null;
   const queue = arr(v, 'queue')
+    .filter((q) => !isLegacySideQuest(q))
     .map(questFromJson)
     .filter((q): q is Quest => q !== null);
   const active = activeFromJson(v['active'], now);
@@ -156,7 +121,6 @@ export function saveFromJson(v: unknown, now: number): SaveData | null {
   let maxSerial = meta.nextSerial - 1;
   for (const q of queue) maxSerial = Math.max(maxSerial, q.serial);
   if (active) maxSerial = Math.max(maxSerial, active.task.serial);
-  if (meta.remedyOffer) maxSerial = Math.max(maxSerial, meta.remedyOffer.serial);
   meta.nextSerial = maxSerial + 1;
   const goal = goalFromJson(v['goal'], now);
   return {

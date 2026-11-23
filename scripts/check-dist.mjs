@@ -3,7 +3,7 @@
  * 构建产物检查（npm run build 之后跑）：
  *  前端（apps/web/dist）
  *  - manifest：应用名「宿主养成系统」、display standalone、192 / 512 / maskable 图标齐
- *  - Service Worker：预缓存有 index.html 与全部音效、没有 .woff2；导航回退排除 /api；不缓存任何 /api
+ *  - Service Worker：预缓存有 index.html、没有 .woff2；导航回退排除 /api；不缓存任何 /api
  *  - 前端不再直连模型：产物里没有 chat/completions、Authorization: Bearer
  *  - 没有疑似 Key（sk- 长串）；环境里配了密钥时逐字扫描它们的值
  *  服务端（apps/server/dist）
@@ -36,10 +36,6 @@ const sw = readFileSync(join(dist, 'sw.js'), 'utf8');
 const urls = [...sw.matchAll(/url:"([^"]+)"/g)].map((m) => m[1]);
 if (urls.some((u) => u.endsWith('.woff2'))) fail('预缓存里出现了 woff2 字体分片');
 else ok('预缓存不含字体分片');
-const audio = readdirSync(join(dist, 'audio'));
-const missing = audio.filter((a) => !urls.includes(`audio/${a}`));
-if (missing.length) fail(`音效没进预缓存：${missing.join(', ')}`);
-else ok(`音效 ${audio.length} 件全部预缓存`);
 if (!urls.includes('index.html')) fail('预缓存缺 index.html');
 if (urls.some((u) => u.startsWith('api/'))) fail('预缓存里出现了 /api');
 if (!/denylist:\[\/\^\\\/api\\\/\/\]/.test(sw)) fail('Service Worker 的导航回退没有排除 /api');

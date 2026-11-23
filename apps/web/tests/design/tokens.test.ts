@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, test } from 'vitest';
-import { COLORS, GRADE_COLORS, MOTION, RANK_COLORS, easeOutCubic } from '../../src/design/tokens';
+import { COLORS, MOTION, RANK_COLORS, easeOutCubic } from '../../src/design/tokens';
 import { RANKS } from '@host/core/data/rank';
 
 const css = readFileSync(new URL('../../src/design/tokens.css', import.meta.url), 'utf8');
@@ -60,14 +60,6 @@ describe('设计令牌：CSS 是唯一源，TS 镜像与它一致', () => {
     }
   });
 
-  test('评级色：S 白 / A acid / B cyan / C hot（docs/50 A13）', () => {
-    for (const [g, c] of Object.entries(GRADE_COLORS)) {
-      expect(cssVar(`grade-${g.toLowerCase()}`)).toBe(c);
-    }
-    expect(GRADE_COLORS.A).toBe(COLORS.acid);
-    expect(GRADE_COLORS.C).toBe(COLORS.hot);
-  });
-
   test('字体族不引外链字体名之外的东西，三套都在', () => {
     expect(cssVar('fd')).toContain('chakra petch');
     expect(cssVar('fc')).toContain('noto sans sc variable');
@@ -80,13 +72,10 @@ describe('设计令牌：CSS 是唯一源，TS 镜像与它一致', () => {
     expect(MOTION.springOvershoot).toBe(1.08);
     expect(MOTION.flash).toMatchObject({ opacity: 0.16, ms: 180 });
     expect(MOTION.countUpMs).toBe(800);
-    expect(MOTION.critFreezeMs).toBe(200);
-    expect(MOTION.critStampFrom).toBe(2.2);
     expect([MOTION.expBarMs, MOTION.expBarFillMs, MOTION.expBarRefillMs]).toEqual([520, 360, 420]);
     expect([MOTION.settleMaxMs, MOTION.levelUpMaxMs, MOTION.publishMaxMs]).toEqual([
       1600, 2000, 800,
     ]);
-    expect(MOTION.failBrightness).toBeCloseTo(1 / 3);
     expect(MOTION.typeMsPerChar).toBe(34);
   });
 

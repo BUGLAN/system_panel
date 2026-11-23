@@ -1,8 +1,7 @@
 /**
- * 服务端权威的流程执行：锁内 读档 → 换日 → 到点检查 → 跑意图 → 改了才写回 + 追加流水。
- * 「现在几点」「随机数」都以服务器为准；时区取账号的。
+ * 服务端权威的流程执行：锁内 读档 → 换日 → 跑意图 → 改了才写回 + 追加流水。
+ * 「现在几点」以服务器为准；时区取账号的。
  */
-import { checkTimeout } from '@host/core/flow/settle';
 import { QuestFlow } from '@host/core/flow/questFlow';
 import { saveToJson, type SaveData } from '@host/core/save/saveData';
 import type { FlowEvent, SaveSource, StateView } from '@host/core/api/types';
@@ -36,23 +35,12 @@ export function stateView(o: {
   };
 }
 
-/**
- * 时间驱动的事：换日（同一天幂等）+ 计时单到点（护盾碎 → 顺延后仍过点 → 判负，最多两轮）。
- * 与旧版「杀进程重开后第一拍」的行为一致。
- */
+/** 时间驱动的事：换日（同一天幂等，顺带断签检查） */
 export function housekeep(f: QuestFlow, now: number): FlowEvent[] {
-  const out: FlowEvent[] = [];
-  if (f.rollDay(now)) out.push({ kind: 'rollDay' });
-  for (let i = 0; i < 2; i++) {
-    const r = checkTimeout(f, now);
-    if (r.kind === 'none') break;
-    if (r.kind === 'shield') out.push({ kind: 'shield', extendMin: r.extendMin });
-    else out.push({ kind: 'timeout', outcome: r.outcome });
-  }
-  return out;
+  return f.rollDay(now) ? [{ kind: 'rollDay' }] : [];
 }
 
-/** 在锁内跑一段流程；fn 抛 ApiError 时它做的改动作废（但换日 / 到点的结论照样落盘） */
+/** 在锁内跑一段流程；fn 抛 ApiError 时它做的改动作废（但换日的结论照样落盘） */
 export async function runFlow<T>(
   deps: Deps,
   user: AuthUser,
@@ -65,10 +53,10 @@ export async function runFlow<T>(
     // 读档在事务外：坏档的留底 / 用备份恢复要落盘，不能被后面的回滚带走
     const loaded = loadSave(db, user.id, now);
     return db.transaction(() => {
-      const opts = { rnd: deps.rnd, tz: user.tz };
+      const opts = { tz: user.tz };
       const base = new QuestFlow(loaded.save, opts);
       const events = housekeep(base, now);
-      // 意图跑在副本上：被拒时副本整个丢掉，只留换日 / 到点的结果
+      // 意图跑在副本上：被拒时副本整个丢掉，只留换日的结果
       const g = new QuestFlow(base.save, opts);
       let value = undefined as T;
       let pending: ApiError | null = null;

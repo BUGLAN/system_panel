@@ -1,4 +1,4 @@
-/** 叠层：底板 / 面板 / 加载卡 / 演出（结算、失败、升级）/ 简报 / 聊天 */
+/** 叠层：底板 / 面板 / 加载卡 / 演出（结算、升级）/ 简报 */
 import { AccountSheet } from '../overlays/AccountSheet';
 import { LlmSettingsPanel } from '../overlays/LlmSettings';
 import { OfflineBar } from '../overlays/OfflineBar';

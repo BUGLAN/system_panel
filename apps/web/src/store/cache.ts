@@ -7,13 +7,11 @@ import { isObj } from '@host/core/save/json';
 import { appDb, type HostDb } from './db';
 
 export interface Prefs {
-  muted: boolean;
-  volume: number;
   /** 看过「添加到主屏幕」引导 */
   installHintSeen: boolean;
 }
 
-export const defaultPrefs = (): Prefs => ({ muted: false, volume: 0.8, installHintSeen: false });
+export const defaultPrefs = (): Prefs => ({ installHintSeen: false });
 
 const K = {
   prefs: 'prefs',
@@ -44,8 +42,6 @@ export async function loadPrefs(db: HostDb = appDb()): Promise<Prefs> {
   const d = defaultPrefs();
   if (!isObj(v)) return d;
   return {
-    muted: typeof v['muted'] === 'boolean' ? v['muted'] : d.muted,
-    volume: typeof v['volume'] === 'number' ? Math.min(1, Math.max(0, v['volume'])) : d.volume,
     installHintSeen:
       typeof v['installHintSeen'] === 'boolean' ? v['installHintSeen'] : d.installHintSeen,
   };

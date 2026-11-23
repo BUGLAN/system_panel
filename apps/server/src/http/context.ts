@@ -17,8 +17,6 @@ export interface Deps {
   config: Config;
   dbh: DbHandle;
   now: () => number;
-  /** 暴击等随机数（服务端取；测试里可固定） */
-  rnd: () => number;
   limiter: RateLimiter;
   locks: UserLocks;
   bus: EventBus;

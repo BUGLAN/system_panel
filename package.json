@@ -26,7 +26,6 @@
     "check:dist": "node scripts/check-dist.mjs",
     "admin": "tsx --env-file-if-exists=.env apps/server/src/cli/admin.ts",
     "db:generate": "npm run db:generate -w @host/server",
-    "sfx": "node tools/audio/gen-sfx.mjs",
     "icons": "npm run icons -w @host/web"
   },
   "devDependencies": {

@@ -1,21 +1,11 @@
 import { describe, expect, test } from 'vitest';
-import {
-  CRISIS_CARE_LINE,
-  CRISIS_CHAT_LINE,
-  isCrisisText,
-  refusalOf,
-} from '@host/core/agent/guardrail';
+import { CRISIS_CARE_LINE, isCrisisText, refusalOf } from '@host/core/agent/guardrail';
 import { BACKSTORY, buildConversation, splitTag, systemPrompt } from '@host/core/agent/persona';
 import { parseVerdict, verifyEvidence } from '../../src/agent/vision';
-import { MemoryStore, keywords, memoryBackendInMemory } from '../../src/agent/memory';
-import { respondChat } from '../../src/agent/chatService';
-import { chatTools, statusLineOf } from '../../src/agent/chatTools';
-import { SystemCopy, emptyCopyContext, fillCopy, tierOf } from '../../src/agent/copy';
-import { COPY } from '@host/core/data/lines';
+import { statusLineOf } from '@host/core/agent/status';
 import { boundSave } from '@host/core/testing/helpers';
-import { quest, T0 } from '@host/core/testing/fixtures';
+import { quest } from '@host/core/testing/fixtures';
 import { fakeClient, fakeEndpoint } from './fakeLlm';
-import type { SaveData } from '@host/core/save/saveData';
 
 describe('人设', () => {
   test('系统提示词以 backstory 原文开头，带四语气与铁律', () => {
@@ -23,7 +13,8 @@ describe('人设', () => {
     expect(p.startsWith(BACKSTORY)).toBe(true);
     expect(p).toContain('【四种固定语气】');
     expect(p).toContain('不超过 3 句');
-    expect(p).toContain('【长期记忆】（暂无）');
+    expect(p).toContain('【宿主档案】LV1');
+    expect(p).not.toContain('【长期记忆】');
     expect(buildConversation({ userText: 'hi' }).map((m) => m.role)).toEqual(['system', 'user']);
   });
 
@@ -96,7 +87,7 @@ describe('护栏', () => {
   });
 
   test('她那句：认真、不写热线号码、不带高亮', () => {
-    for (const l of [CRISIS_CARE_LINE, CRISIS_CHAT_LINE]) {
+    for (const l of [CRISIS_CARE_LINE]) {
       expect(l).toContain('信任的人');
       expect(/\d/.test(l)).toBe(false);
       expect(l.includes('[')).toBe(false);
@@ -149,145 +140,8 @@ describe('视觉校验', () => {
   });
 });
 
-describe('长期记忆', () => {
-  test('同文去重、相关度优先、digest', async () => {
-    let now = T0;
-    const m = new MemoryStore(memoryBackendInMemory(), () => now++);
-    await m.add('一周能跑三次', 'interview', 2);
-    await m.add('喜欢早上跑步');
-    await m.add('一周能跑三次', 'chat', 1);
-    expect((await m.entries()).length).toBe(2);
-    expect((await m.entries())[0]).toMatchObject({ text: '一周能跑三次', weight: 2 });
-    const rel = await m.relevant('跑步');
-    expect(rel[0]?.text).toBe('喜欢早上跑步');
-    expect(await m.digest('')).toContain('- ');
-    expect(keywords('学吉他')).toEqual(new Set(['学吉他', '学吉', '吉他']));
-  });
-});
-
-describe('聊天', () => {
-  const ctx = (s: SaveData) => {
-    let game = s;
-    return {
-      read: () => game,
-      commit: (n: SaveData) => void (game = n),
-      history: () => [],
-      now: () => T0,
-      get game() {
-        return game;
-      },
-    };
-  };
-
-  test('自伤闸门：命中不发 LLM', async () => {
-    const ep = fakeEndpoint([{ text: 'x' }]);
-    const out = await respondChat({
-      text: '我不想活了',
-      history: [],
-      client: fakeClient(ep),
-      tools: null,
-      now: () => T0,
-    });
-    expect(out[0]).toMatchObject({ kind: 'care' });
-    expect(ep.calls).toHaveLength(0);
-  });
-
-  test('没配模型 → 兜底台词带原因', async () => {
-    const out = await respondChat({
-      text: '在吗',
-      history: [],
-      client: null,
-      tools: null,
-      now: () => T0,
-    });
-    expect(out[0]).toMatchObject({ kind: 'fallback', emotion: 'annoyed' });
-  });
-
-  test('工具循环：查状态 → 工具卡 + 终答', async () => {
-    const c = ctx(boundSave());
-    const reg = chatTools(c, new MemoryStore(memoryBackendInMemory()));
-    const ep = fakeEndpoint([
-      { text: '', tools: [{ name: 'get_status', args: {} }] },
-      { text: '[smug]你还活着。' },
-    ]);
-    const out = await respondChat({
-      text: '查状态',
-      history: [],
-      client: fakeClient(ep),
-      tools: reg,
-      now: () => T0,
-    });
-    expect(out.map((m) => m.tool?.name ?? m.text)).toEqual(['get_status', '你还活着。']);
-    expect(out[0]?.tool?.data).toMatchObject({ lv: 1, queue: 3 });
-    expect(out[0]?.text).toContain('晶核');
-  });
-
-  test('swap_quest：主线单不换；日常单降一档重刻并提交', async () => {
-    const c = ctx(boundSave());
-    const reg = chatTools(c, new MemoryStore(memoryBackendInMemory()));
-    expect((await reg.execute('swap_quest', {})).ok).toBe(false);
-    const s = boundSave();
-    s.queue.unshift(quest(400, { rank: 'C' }));
-    const c2 = ctx(s);
-    const r = await chatTools(c2, new MemoryStore(memoryBackendInMemory())).execute(
-      'swap_quest',
-      {},
-    );
-    expect(r.ok).toBe(true);
-    expect(c2.game.queue[0]).toMatchObject({ serial: 400, rank: 'D' });
-  });
-
-  test('adjust_plan：改时限夹在 5~180，改档位重分六维；主线不可调', async () => {
-    const s = boundSave();
-    s.queue.unshift(quest(401, { rank: 'C', minutes: 30 }));
-    const c = ctx(s);
-    const reg = chatTools(c, new MemoryStore(memoryBackendInMemory()));
-    await reg.execute('adjust_plan', { minutes: 999, rank: 'e' });
-    expect(c.game.queue[0]).toMatchObject({ minutes: 180, rank: 'E' });
-  });
-
-  test('宿主档案一行', () => {
-    expect(statusLineOf(boundSave())).toContain('LV1 · 连击 0 · 手里 3 单 · 主线「半马」');
-  });
-});
-
-describe('台词入口', () => {
-  test('档位 → 结算 tier', () => {
-    expect(['F', 'E', 'D', 'C', 'B', 'A', 'S', '?'].map(tierOf)).toEqual([
-      'low',
-      'low',
-      'mid',
-      'mid',
-      'high',
-      'high',
-      'top',
-      'low',
-    ]);
-  });
-
-  test('填空不残留 {xx}（全池 × 空字段）', () => {
-    const c = emptyCopyContext();
-    for (const pool of Object.values(COPY)) {
-      for (const t of pool) expect(fillCopy(t, c), t).not.toMatch(/\{\w+\}/);
-    }
-  });
-
-  test('没配模型走台词库；配了就用 LLM 并剥标签', async () => {
-    const tpl = await new SystemCopy(null).settleLine({
-      ...emptyCopyContext(),
-      questRank: 'S',
-      exp: 10,
-    });
-    expect(tpl.source).toBe('template');
-    const ep = fakeEndpoint([{ text: '[proud]S 级。有点东西。' }]);
-    const l = await new SystemCopy(fakeClient(ep)).settleLine({
-      ...emptyCopyContext(),
-      questRank: 'S',
-    });
-    expect(l).toEqual({ text: 'S 级。有点东西。', source: 'llm', emotion: 'proud' });
-    const bad = fakeEndpoint([{ status: 500 }]);
-    expect((await new SystemCopy(fakeClient(bad)).roastLine(emptyCopyContext())).source).toBe(
-      'template',
-    );
+describe('宿主档案一行', () => {
+  test('等级、连击、主线与进度', () => {
+    expect(statusLineOf(boundSave())).toBe('宿主 · LV1 · 连击 0 · 主线「半马」 · 主线进度 0/5 单');
   });
 });

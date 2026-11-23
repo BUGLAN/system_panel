@@ -2,14 +2,12 @@
 import { useUi } from '../../store/uiStore';
 import { Archive } from '../scenes/Archive';
 import { Auth } from '../scenes/Auth';
-import { Board } from '../scenes/Board';
 import { Boot } from '../scenes/Boot';
 import { Consent } from '../scenes/Consent';
 import { Exec } from '../scenes/Exec';
 import { Home } from '../scenes/Home';
 import { Main } from '../scenes/Main';
 import { Onboard } from '../scenes/Onboard';
-import { Shop } from '../scenes/Shop';
 
 export function SceneHost() {
   const scene = useUi((s) => s.scene);
@@ -26,13 +24,9 @@ export function SceneHost() {
       return <Home />;
     case 'main':
       return <Main />;
-    case 'board':
-      return <Board />;
     case 'exec':
       return <Exec />;
     case 'archive':
       return <Archive />;
-    case 'shop':
-      return <Shop />;
   }
 }

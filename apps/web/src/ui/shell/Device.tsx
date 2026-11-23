@@ -3,7 +3,6 @@
  * 手机上全屏；窗口变宽时钳成 430×920 的手机比例居中。
  */
 import { useEffect, useRef, useState } from 'react';
-import { sfx } from '../../audio/sfx';
 import { useGame } from '../../store/gameStore';
 import { installBackKey } from '../../store/actions/nav';
 import { SCENES, useUi } from '../../store/uiStore';
@@ -65,7 +64,6 @@ export function Device() {
         ref={app}
         style={{ ['--accent' as string]: meta.acc }}
         onPointerDownCapture={(e) => {
-          sfx.unlock();
           const a = app.current?.getBoundingClientRect();
           if (!a) return;
           const x = e.clientX - a.left;

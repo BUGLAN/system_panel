@@ -1,8 +1,9 @@
 /**
  * 导出 / 导入存档的文件格式（JSON）与校验。纯逻辑，不碰 IndexedDB。
  *
- * 导出范围与「重置存档」清空的范围一致：存档、聊天记录、流水、长期记忆、证据照片；
+ * 导出范围与「重置存档」清空的范围一致：存档、流水、证据照片；
  * 不导出 LLM 设置（含 Key）和同意记录。证据照片转成 Base64 写进 JSON。
+ * 旧包里的聊天记录 / 长期记忆（功能已拿掉）导入时忽略。
  */
 import { isObj, type Json } from './json';
 import { parseSave, saveFromJson, type SaveData } from './saveData';
@@ -27,9 +28,7 @@ export interface BackupBundle {
   exportedAt: number;
   /** 存档对象（saveToJson 的产物）；从没绑定过 = null */
   save: Json | null;
-  chat: Json[];
   history: Json[];
-  memory: Json[];
   evidence: BundleEvidence[];
 }
 
@@ -75,23 +74,11 @@ export function checkBundle(v: unknown, now: number): BundleCheck {
     if (!save) return fail('存档内容损坏：主档读不出来，或来自更新版本的 App。');
   }
 
-  const lists: Array<[keyof BackupBundle & string, string]> = [
-    ['chat', '聊天记录'],
-    ['history', '流水'],
-    ['memory', '长期记忆'],
-  ];
-  const parsed: Record<string, Json[]> = {};
-  for (const [k, label] of lists) {
-    const list = v[k] === undefined ? [] : objList(v[k]);
-    if (!list) return fail(`存档内容损坏：${label}不是一个列表。`);
-    // 主键要对得上表结构：长期记忆按 id，聊天 / 流水的自增序号可缺省
-    const keyOk =
-      k === 'memory'
-        ? list.every((r) => typeof r['id'] === 'string' && r['id'] !== '')
-        : list.every((r) => r['seq'] === undefined || Number.isInteger(r['seq']));
-    if (!keyOk) return fail(`存档内容损坏：${label}里有读不懂的条目。`);
-    parsed[k] = list;
-  }
+  const history = v['history'] === undefined ? [] : objList(v['history']);
+  if (!history) return fail('存档内容损坏：流水不是一个列表。');
+  // 流水的自增序号可缺省
+  if (!history.every((r) => r['seq'] === undefined || Number.isInteger(r['seq'])))
+    return fail('存档内容损坏：流水里有读不懂的条目。');
 
   const rawEvidence = v['evidence'] === undefined ? [] : v['evidence'];
   if (!Array.isArray(rawEvidence)) return fail('存档内容损坏：证据照片不是一个列表。');
@@ -119,9 +106,7 @@ export function checkBundle(v: unknown, now: number): BundleCheck {
         version: ver,
         exportedAt: typeof v['exportedAt'] === 'number' ? v['exportedAt'] : 0,
         save: save ? (v['save'] as Json) : null,
-        chat: parsed['chat'] ?? [],
-        history: parsed['history'] ?? [],
-        memory: parsed['memory'] ?? [],
+        history,
         evidence,
       },
     },

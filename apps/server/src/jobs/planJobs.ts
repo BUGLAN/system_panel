@@ -19,12 +19,11 @@ import {
   extendGoalWithAgent,
   mintNextGoal,
 } from '../agent/goalBuilder';
-import { statusLineOf } from '../agent/chatTools';
+import { statusLineOf } from '@host/core/agent/status';
 import type { GoalMatch } from '../agent/mainlineTools';
 import { llmFor } from '../llm/gateway';
 import { runFlow } from '../flow/runner';
 import { loadSave } from '../repo/saves';
-import { memoryFor } from '../repo/memory';
 
 export interface JobInput {
   /** bind / swap：目标原文 */
@@ -151,8 +150,6 @@ export class PlanJobs {
   private async work(user: AuthUser, j: Job, input: JobInput) {
     const deps = this.deps;
     const llm = llmFor(deps, user);
-    const mem = memoryFor(deps.dbh.db, user.id, deps.now);
-    const digest = (q: string) => mem.digest(q);
     const onProgress = (p: PlanProgress) => {
       j.progress = p;
       this.emit(j);
@@ -172,11 +169,10 @@ export class PlanJobs {
           firstGoal: true,
           ...(input.answers ? { answers: input.answers } : {}),
           ...(match ? { match } : {}),
-          ...(j.kind === 'retry' ? { digest } : {}),
           onProgress,
         });
         if (j.cancelled) throw discarded();
-        return landFirstGoal(deps, user, goal, j.kind === 'bind' ? (input.answers ?? {}) : {}, mem);
+        return landFirstGoal(deps, user, goal);
       }
       case 'swap': {
         const text = (input.text ?? '').trim();
@@ -186,7 +182,6 @@ export class PlanJobs {
           text,
           at: deps.now(),
           statusLine: statusLineOf(snap),
-          digest,
           onProgress,
         });
         const r = await runFlow(deps, user, (f) => {
@@ -209,11 +204,10 @@ export class PlanJobs {
             goal: g0,
             now: deps.now(),
             statusLine,
-            digest,
             onProgress,
           });
         } else {
-          next = await mintNextGoal({ client: llm.text, prev: g0, statusLine, digest, onProgress });
+          next = await mintNextGoal({ client: llm.text, prev: g0, statusLine, onProgress });
         }
         const r = await runFlow(deps, user, (f) => {
           if (j.cancelled || goalId(f.goal) !== goalId(g0) || f.goal.plan.length !== g0.plan.length)

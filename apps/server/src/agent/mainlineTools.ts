@@ -33,17 +33,6 @@ export interface PlanDraft {
 
 export const newPlanDraft = (): PlanDraft => ({ tasks: null, attempts: 0 });
 
-export const TASK_MODES = ['timed', 'checkin'] as const;
-
-/** mode：checkin → 打卡单；缺省 / 非法 → 计时单（大小写与空白都容忍） */
-export function parseTaskMode(raw: unknown): boolean {
-  return (
-    String(raw ?? '')
-      .trim()
-      .toLowerCase() !== 'checkin'
-  );
-}
-
 const str = (v: unknown) =>
   typeof v === 'string' ? v.trim() : v === null || v === undefined ? '' : String(v);
 
@@ -75,20 +64,12 @@ export function setPlanSchema(taskCount: number): Record<string, unknown> {
             minutes: {
               type: 'integer',
               description:
-                '预计耗时（分钟）。**必须在该档位上限内**：F≤20 / E≤30 / D≤40 / C≤60 / B≤90 / A≤120 / S≤180',
+                '预计耗时（分钟，只作参考、不倒计时）。**必须在该档位上限内**：F≤20 / E≤30 / D≤40 / C≤60 / B≤90 / A≤120 / S≤180',
             },
             rank: {
               type: 'string',
               enum: [...RANKS],
               description: '难度档位 F~S（F 最轻、S 最重）',
-            },
-            mode: {
-              type: 'string',
-              enum: [...TASK_MODES],
-              description:
-                '计时 timed / 打卡 checkin。一天内分散完成、或瞬间就能完成的动作' +
-                '（称重、拍三餐、量腰围、早睡打卡）标 checkin：不计时、随时交证据；' +
-                '需要连续投入一段时间的（跑步、练琴、刷题）标 timed。缺省按 timed',
             },
           },
           ['short', 'title', 'proof', 'minutes', 'rank'],
@@ -175,7 +156,7 @@ export function setPlanTool(o: {
             `第 ${i + 1} 张的 minutes 不是正整数（收到 ${String(mr)}）`,
           );
         }
-        return { short, title, proof, minutes, rank, timed: parseTaskMode(it['mode']) };
+        return { short, title, proof, minutes, rank };
       });
       try {
         if (seg) validatePlanSegment(seg, out);
