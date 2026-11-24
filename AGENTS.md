@@ -88,6 +88,7 @@ docs/         00 重写提示词 · 01 PWA 实施计划与定案 · 02 部署 ·
 - 视觉照仓库根的 `宿主养成系统_重设计.html`：类名原样沿用；参考稿没有的页面（告知、绑定仪式、简报、加载卡、设置、换目标）用同一套令牌做。
 - 颜色只从令牌取；稀有度色谱：F 灰 / E 薄荷 / D 青 / C 紫 / B 金 / A 品红 / S 白；验收印章：证据判真 acid / 其余 cyan。
 - 动效参数在 `design/tokens.ts` 的 `MOTION`，不许凭感觉改：弹簧 100/20 过冲 1.08；亮帧白 16% 180ms；count-up 800ms ease-out cubic；经验条 520 / 360+420；结算 ≤1.6s（`apps/web/src/ui/fx/settleTimeline.ts` 单测钉住）；升级 ≤2s，同日简版；发布 ≤800ms；打字机 34ms/字。只动 transform / opacity，禁线性匀速；尊重 `prefers-reduced-motion`；页面不可见时暂停常驻动画。
+- 常驻（infinite）动画的性能底线（2026-11-24 iPhone PWA 卡到 15 帧、发烫后定）：只许动元素本身的 transform / opacity——不动画 background-position / left / top / box-shadow / 自定义属性，不在 `<svg>` 里转 `<g>`（要转就拆成单独一层 svg 转 svg 元素）；会扫的渐变画在伪元素上平移。主线卡片：动画只给焦点卡、只在朝外那一面跑，远处透明的卡 `visibility:hidden`；3D 卡片里不放 backdrop-filter。rAF 循环别每帧 `getComputedStyle`。
 - 按下的轻震由基础按钮（`ui/kit/Btn.tsx` 的 Btn / Tap）自己出；没有音效。
 - 不提交 `.env`、`data/`、`backups/`、`node_modules/`、`dist/`、任何 Key；密钥只从环境变量读，日志不打印 Key / Cookie / 口令 / 照片。
 - 改表结构：改 `apps/server/src/db/schema.ts` → `npm run db:generate` → 迁移文件一起提交。

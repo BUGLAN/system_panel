@@ -83,7 +83,8 @@ export function Core({
       onPointerLeave={onPointerLeave}
       onContextMenu={(e) => e.preventDefault()}
     >
-      <svg viewBox="0 0 200 200" aria-hidden="true">
+      {/* 每层一个 svg：光晕呼吸、四道环旋转都动 svg 元素本身（合成层），不再每帧重绘整个头像 */}
+      <svg className="halo" viewBox="0 0 200 200" aria-hidden="true">
         <defs>
           <radialGradient id={gid}>
             <stop offset="0" style={{ stopColor: 'var(--cc)', stopOpacity: 0.5 }} />
@@ -91,58 +92,60 @@ export function Core({
             <stop offset="1" style={{ stopColor: 'var(--cc)', stopOpacity: 0 }} />
           </radialGradient>
         </defs>
-        <circle className="halo" cx="100" cy="100" r="99" fill={`url(#${gid})`} />
-        <g className="r r1">
-          <circle
-            className="st"
-            cx="100"
-            cy="100"
-            r="93"
-            fill="none"
-            strokeWidth="1.2"
-            strokeDasharray="1 5"
-            opacity=".7"
-          />
-        </g>
-        <g className="r r2">
-          <circle
-            className="st"
-            cx="100"
-            cy="100"
-            r="81"
-            fill="none"
-            strokeWidth="2.5"
-            strokeDasharray="80 22 10 22"
-          />
-        </g>
-        <g className="r r4">
-          <path
-            className="st2"
-            d="M100 28 a72 72 0 0 1 62 36"
-            fill="none"
-            strokeWidth="3.5"
-            strokeLinecap="round"
-          />
-          <path
-            className="st2"
-            d="M100 172 a72 72 0 0 1 -62 -36"
-            fill="none"
-            strokeWidth="3.5"
-            strokeLinecap="round"
-          />
-        </g>
-        <g className="r r3">
-          <circle
-            className="st"
-            cx="100"
-            cy="100"
-            r="64"
-            fill="none"
-            strokeWidth="1.4"
-            strokeDasharray="2 8"
-            opacity=".85"
-          />
-        </g>
+        <circle cx="100" cy="100" r="99" fill={`url(#${gid})`} />
+      </svg>
+      <svg className="r r1" viewBox="0 0 200 200" aria-hidden="true">
+        <circle
+          className="st"
+          cx="100"
+          cy="100"
+          r="93"
+          fill="none"
+          strokeWidth="1.2"
+          strokeDasharray="1 5"
+          opacity=".7"
+        />
+      </svg>
+      <svg className="r r2" viewBox="0 0 200 200" aria-hidden="true">
+        <circle
+          className="st"
+          cx="100"
+          cy="100"
+          r="81"
+          fill="none"
+          strokeWidth="2.5"
+          strokeDasharray="80 22 10 22"
+        />
+      </svg>
+      <svg className="r r4" viewBox="0 0 200 200" aria-hidden="true">
+        <path
+          className="st2"
+          d="M100 28 a72 72 0 0 1 62 36"
+          fill="none"
+          strokeWidth="3.5"
+          strokeLinecap="round"
+        />
+        <path
+          className="st2"
+          d="M100 172 a72 72 0 0 1 -62 -36"
+          fill="none"
+          strokeWidth="3.5"
+          strokeLinecap="round"
+        />
+      </svg>
+      <svg className="r r3" viewBox="0 0 200 200" aria-hidden="true">
+        <circle
+          className="st"
+          cx="100"
+          cy="100"
+          r="64"
+          fill="none"
+          strokeWidth="1.4"
+          strokeDasharray="2 8"
+          opacity=".85"
+        />
+      </svg>
+      <svg viewBox="0 0 200 200" aria-hidden="true">
         <g className="eye">
           <path
             className="st"

@@ -30,6 +30,19 @@ export interface CarouselProps {
 
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
 
+/**
+ * 只在值变了才写行内样式。--sh / --op 是继承型自定义属性，写一次整张卡的子树都要重算样式；
+ * 拖动时每帧给 14 张卡都写一遍很贵，远处的卡值不变就跳过。
+ */
+const written = new WeakMap<HTMLElement, Map<string, string>>();
+function put(el: HTMLElement, k: string, v: string): void {
+  let m = written.get(el);
+  if (!m) written.set(el, (m = new Map()));
+  if (m.get(k) === v) return;
+  m.set(k, v);
+  el.style.setProperty(k, v);
+}
+
 export function Carousel(p: CarouselProps) {
   const host = useRef<HTMLDivElement>(null);
   const cards = useRef<Array<HTMLDivElement | null>>([]);
@@ -70,13 +83,22 @@ export function Carousel(p: CarouselProps) {
       const y = Math.min(a, 3) * 16;
       const sc = 1 - Math.min(a, 3) * 0.07;
       const tl = a < 0.5 ? ` rotateX(${s.tilt.y}deg) rotateY(${s.tilt.x}deg)` : '';
-      c.style.transform = `translate3d(${x}px,${y}px,${z}px) rotateY(${ry}deg) rotateZ(${rz}deg) scale(${sc})${tl}`;
-      c.style.zIndex = String(100 - Math.round(a * 10));
+      // 完全透明（a ≥ 3.2）的卡直接 visibility:hidden：不绘制、不占合成层的显存（14 张卡 × 正反两面都是 3D 层）
+      const gone = a >= 3.2;
+      put(c, 'visibility', gone ? 'hidden' : 'visible');
+      if (!gone) {
+        put(
+          c,
+          'transform',
+          `translate3d(${x}px,${y}px,${z}px) rotateY(${ry}deg) rotateZ(${rz}deg) scale(${sc})${tl}`,
+        );
+        put(c, 'z-index', String(100 - Math.round(a * 10)));
+      }
       if (props.current.shade) {
-        c.style.setProperty('--sh', (Math.min(a, 1.4) * 0.5).toFixed(3));
-        c.style.setProperty('--op', a > 2.6 ? Math.max(0, 3.2 - a).toFixed(3) : '1');
+        put(c, '--sh', (Math.min(a, 1.4) * 0.5).toFixed(3));
+        put(c, '--op', a > 2.6 ? Math.max(0, 3.2 - a).toFixed(3) : '1');
       } else {
-        c.style.opacity = String(a > 2.6 ? Math.max(0, 3.2 - a) : 1);
+        put(c, 'opacity', String(a > 2.6 ? Math.max(0, 3.2 - a) : 1));
       }
       c.classList.toggle('focus', a < 0.5);
     });

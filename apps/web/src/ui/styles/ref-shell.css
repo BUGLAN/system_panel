@@ -102,17 +102,28 @@
   height: 52%;
   transform: perspective(380px) rotateX(64deg);
   transform-origin: 50% 100%;
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(to top, #000 5%, transparent 80%);
+  mask-image: linear-gradient(to top, #000 5%, transparent 80%);
+}
+/* PWA 改：网格地面原来无限动画 background-position（每帧重绘一整块带透视 + 遮罩的大层，所有页面都在跑），
+   改成：网格画在多出一格（46px）的伪元素上，往下平移一格循环，只动 transform。网格相位与速度不变。 */
+.bg .floor::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -46px;
+  bottom: 0;
   background-image:
     linear-gradient(color-mix(in srgb, var(--accent) 26%, transparent) 1px, transparent 1px),
     linear-gradient(90deg, color-mix(in srgb, var(--accent) 26%, transparent) 1px, transparent 1px);
   background-size: 46px 46px;
   animation: floor 2.4s linear infinite;
-  -webkit-mask-image: linear-gradient(to top, #000 5%, transparent 80%);
-  mask-image: linear-gradient(to top, #000 5%, transparent 80%);
 }
 @keyframes floor {
   to {
-    background-position: 0 46px;
+    transform: translate3d(0, 46px, 0);
   }
 }
 .bg .horizon {
@@ -152,7 +163,8 @@
 }
 .bg .noise {
   position: absolute;
-  inset: -50%;
+  /* PWA 改：-50% → -8%。颗粒只抖 ±3%，留 8% 余量就够；原来是 2×2 倍屏幕大小的常驻合成层（3 倍屏上几十 MB 显存） */
+  inset: -8%;
   opacity: 0.06;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
   animation: grain 0.9s steps(4) infinite;
@@ -335,13 +347,15 @@
   transform: skewX(-20deg);
   animation: sheen 3.6s ease-in-out infinite;
 }
+/* PWA 改：原来动画 left（每帧重排 + 重绘按钮和它的外发光），改成 transform。
+   left -60% → 130% 走了按钮宽的 190% = 自身宽（40%）的 475%；先斜切再平移，和原来一致。 */
 @keyframes sheen {
   0%,
   60% {
-    left: -60%;
+    transform: translateX(0) skewX(-20deg);
   }
   100% {
-    left: 130%;
+    transform: translateX(475%) skewX(-20deg);
   }
 }
 .btn.pri {
@@ -550,14 +564,20 @@
   cursor: pointer;
   transition: filter 0.4s;
 }
+/* PWA 改：光晕、四道环、眼睛原来在同一个 <svg> 里，转的是 <g>（SVG 内部动画，每帧重绘整个头像）。
+   现在每层各是一个叠放的 <svg>（见 kit/Core.tsx），转 / 呼吸的是 svg 元素本身，走合成层。
+   各处用到头像都给了明确宽高，所以全部绝对定位叠放。 */
+.core > svg {
+  position: absolute;
+  inset: 0;
+}
 .core svg {
   width: 100%;
   height: 100%;
   overflow: visible;
 }
 .core .r {
-  transform-box: view-box;
-  transform-origin: 100px 100px;
+  transform-origin: 50% 50%;
 }
 .core .r1 {
   animation: spin 34s linear infinite;
@@ -637,8 +657,7 @@
   opacity: 1;
 }
 .core .halo {
-  transform-box: view-box;
-  transform-origin: 100px 100px;
+  transform-origin: 50% 50%;
   animation: breath 3.2s ease-in-out infinite;
 }
 @keyframes breath {

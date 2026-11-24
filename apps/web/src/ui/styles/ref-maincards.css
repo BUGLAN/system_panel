@@ -100,20 +100,49 @@
   -webkit-mask-composite: xor;
   mask-composite: exclude;
 }
+/* PWA 改：当前单的流光边框原来是动画 @property --ang 的 conic-gradient（每帧重绘整张卡 + 遮罩），
+   iPhone 上很吃 CPU。改成：边框环（.tc-frame b，同样的 padding + xor 遮罩）里转一块超大的 conic 方块，
+   只动 transform，走合成层。观感一致：同一组色标、同样 3.2s 一圈、顺时针。 */
 .gcard.cur .tc-front .tc-frame::before {
+  display: none;
+}
+.tc-frame b {
+  display: none;
+}
+.gcard.cur .tc-front .tc-frame b {
+  display: block;
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  padding: 2px;
+  overflow: hidden;
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+}
+.gcard.cur .tc-front .tc-frame b::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 200%;
+  aspect-ratio: 1;
   background: conic-gradient(
-    from var(--ang),
     var(--gc),
     transparent 22%,
     var(--acid) 45%,
     transparent 70%,
     var(--gc)
   );
+  transform: translate(-50%, -50%);
   animation: tcang 3.2s linear infinite;
 }
 @keyframes tcang {
   to {
-    --ang: 360deg;
+    transform: translate(-50%, -50%) rotate(360deg);
   }
 }
 .tc-frame::after {
@@ -253,15 +282,15 @@
     color-mix(in srgb, var(--gc) 16%, transparent),
     transparent
   );
-  animation: tcscan 3.6s linear infinite;
-  animation-play-state: paused;
 }
-.gcard.focus .tc-art::after {
-  animation-play-state: running;
+/* PWA 改：扫描线原来动画 top（每帧重排 + 重绘），改成 transform：
+   自身高 40%，从 top:-40% 走到 110% = 父高的 150% = 自身高的 375%。只有焦点卡在扫。 */
+.gcard.focus:not(.fd):not(.flipped) .tc-art::after {
+  animation: tcscan 3.6s linear infinite;
 }
 @keyframes tcscan {
   to {
-    top: 110%;
+    transform: translateY(375%);
   }
 }
 .tc-art .wm {
@@ -330,9 +359,10 @@
   animation: tcpulse 1.6s ease-in-out infinite;
   animation-play-state: paused;
 }
-.gcard.focus .tc-art .spin,
-.gcard.focus .tc-art .dash,
-.gcard.focus .tc-art .pulse {
+/* PWA 改：只在正面朝外时动（封印卡 .fd 翻着背面、已完成卡 .flipped 翻到战报时，正面看不见） */
+.gcard.focus:not(.fd):not(.flipped) .tc-art .spin,
+.gcard.focus:not(.fd):not(.flipped) .tc-art .dash,
+.gcard.focus:not(.fd):not(.flipped) .tc-art .pulse {
   animation-play-state: running;
 }
 @keyframes tcspin {
@@ -403,12 +433,13 @@
   gap: 4px;
   padding: 4px 8px;
   border-radius: 6px;
-  background: rgba(8, 7, 16, 0.75);
+  /* PWA 改：去掉 backdrop-filter: blur(4px)（每张卡两个、叠在 3D 卡层上，iPhone 每帧都要重新取背景模糊），
+     底色从 .75 提到 .86 补回遮挡感 */
+  background: rgba(8, 7, 16, 0.86);
   border: 1px solid rgba(255, 255, 255, 0.1);
   font: 500 11px var(--fc);
   color: var(--txt);
   white-space: nowrap;
-  backdrop-filter: blur(4px);
 }
 .tc-meta span i {
   font-style: normal;
@@ -486,29 +517,36 @@
     0 100%,
     0 10px
   );
-  animation: curp 1.6s ease-in-out infinite;
+  /* PWA 改：去掉 curp 呼吸外发光——外圈 box-shadow 本来就被上面的 clip-path 裁掉看不见，却每帧重绘 */
   border-radius: 0;
 }
+/* PWA 改：扫光原来动画 background-position（每帧重绘），改成 250% 宽的伪元素走 transform；
+   原 background-position 150% → -60% 等价于 translateX(-90%) → translateX(36%)。只有焦点卡在扫。 */
 .gcard.cur .tc-foot::after {
   content: '';
   position: absolute;
-  inset: 0;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 250%;
   background: linear-gradient(
     105deg,
     transparent 35%,
     rgba(255, 255, 255, 0.7) 50%,
     transparent 65%
   );
-  background-size: 250% 100%;
+  transform: translateX(-90%);
+}
+.gcard.cur.focus .tc-foot::after {
   animation: tcsheen 2.2s ease-in-out infinite;
 }
 @keyframes tcsheen {
   0% {
-    background-position: 150% 0;
+    transform: translateX(-90%);
   }
   60%,
   100% {
-    background-position: -60% 0;
+    transform: translateX(36%);
   }
 }
 .gcard.done .tc-foot {
@@ -549,6 +587,19 @@
   opacity: 0;
   mix-blend-mode: color-dodge;
   transition: opacity 0.5s;
+  overflow: hidden;
+}
+/* PWA 改：箔面原来每张卡正反两面都在无限动画 background-position（14 张卡 = 28 个整卡重绘/帧），
+   改成：彩带画在伪元素上，只给「焦点 + 已完成 / 兑现单正面」这一张卡动 transform。
+   几何等价：渐变图仍是卡的 260%×260%；伪元素只取动画会扫到的那段（宽 260%、高 164%），
+   background-position 0% 30% → 100% 70% 等价于 translate(0,0) → translate(-61.54%,-39.02%)。 */
+.tc-holo::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 260%;
+  height: 164%;
   background: linear-gradient(
     115deg,
     transparent 18%,
@@ -559,7 +610,11 @@
     rgba(143, 107, 255, 0.55) 62%,
     transparent 74%
   );
-  background-size: 260% 260%;
+  background-size: 100% 158.54%;
+  background-position: 0 50%;
+}
+.gcard.done.focus:not(.flipped) .tc-front .tc-holo::before,
+.gcard.boss.focus:not(.fd):not(.flipped) .tc-front .tc-holo::before {
   animation: tcholo 5s ease-in-out infinite alternate;
 }
 .tc-holo::after {
@@ -576,14 +631,17 @@
     3px 5px,
     9px 2px;
   opacity: 0.55;
+}
+.gcard.done.focus:not(.flipped) .tc-front .tc-holo::after,
+.gcard.boss.focus:not(.fd):not(.flipped) .tc-front .tc-holo::after {
   animation: tcsparkle 2.4s steps(4) infinite;
 }
 @keyframes tcholo {
   0% {
-    background-position: 0% 30%;
+    transform: translate(0, 0);
   }
   100% {
-    background-position: 100% 70%;
+    transform: translate(-61.54%, -39.02%);
   }
 }
 @keyframes tcsparkle {
@@ -650,12 +708,17 @@
   overflow: visible;
   filter: drop-shadow(0 0 8px var(--gc));
 }
-.cb-emb .r1 {
-  transform-origin: 50% 50%;
-  animation: tcspin 14s linear infinite;
-}
+/* PWA 改：封印徽记的两道环原来是同一个 <svg> 里的 <g> 在转（SVG 内部动画 = 每帧重绘整个 svg + 外发光），
+   且 13 张封印卡同时在转。现在两道环各自是一层 <svg>（见 MainCard.tsx），转的是 svg 元素本身（合成层），
+   且只有焦点、翻着背面的封印卡（.fd）在转。 */
+.cb-emb .r1,
 .cb-emb .r2 {
   transform-origin: 50% 50%;
+}
+.gcard.focus.fd .cb-emb .r1 {
+  animation: tcspin 14s linear infinite;
+}
+.gcard.focus.fd .cb-emb .r2 {
   animation: tcspin 9s linear infinite reverse;
 }
 .cb-t {

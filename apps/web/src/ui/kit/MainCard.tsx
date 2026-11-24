@@ -3,6 +3,7 @@
  * 已完成翻面 = 战报（用时 / 完成于）；未解封翻面 = 封印 + 情报。
  * 插图按题面泛化：一般单画表盘（预计耗时）、带距离画路线、兑现单画终局光芒（不画具体运动器材）。
  */
+import { memo } from 'react';
 import type { PlanTask } from '@host/core/model/goal';
 import { expFor } from '@host/core/data/rewards';
 import { fmtDur, pad2 } from '@host/core/format';
@@ -141,16 +142,22 @@ function Art({ t }: { t: PlanTask }) {
   );
 }
 
+/** 边框 + 四角；<b> 是当前单的流光环（只在 .gcard.cur 正面显示，转的是它里面的伪元素） */
 const Frame = () => (
   <div className="tc-frame">
     <i />
     <i />
     <i />
     <i />
+    <b />
   </div>
 );
 
-export function MainCard({
+/**
+ * memo：主线页每次换焦点卡都会整页重渲染（换心情 / 换台词），14 张卡的属性其实没变，
+ * 不 memo 的话每次都要重新比对整棵卡片树（iPhone 上切卡那一下会顿）。t 取自存档里的同一个对象，引用稳定。
+ */
+export const MainCard = memo(function MainCard({
   t,
   total,
   state,
@@ -269,30 +276,31 @@ export function MainCard({
         ) : (
           <div className="tc-face tc-back cb">
             <div className="cb-emb">
+              {/* 两道环各自一层 svg：转 svg 元素本身走合成层，不用每帧重绘 */}
+              <svg className="r1" viewBox="0 0 100 100">
+                <circle
+                  cx="50"
+                  cy="50"
+                  r="46"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeDasharray="18 7"
+                />
+              </svg>
+              <svg className="r2" viewBox="0 0 100 100">
+                <circle
+                  cx="50"
+                  cy="50"
+                  r="37"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1"
+                  strokeDasharray="3 5"
+                  opacity=".7"
+                />
+              </svg>
               <svg viewBox="0 0 100 100">
-                <g className="r1">
-                  <circle
-                    cx="50"
-                    cy="50"
-                    r="46"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.5"
-                    strokeDasharray="18 7"
-                  />
-                </g>
-                <g className="r2">
-                  <circle
-                    cx="50"
-                    cy="50"
-                    r="37"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1"
-                    strokeDasharray="3 5"
-                    opacity=".7"
-                  />
-                </g>
                 <path
                   d="M18 50Q50 22 82 50Q50 78 18 50Z"
                   fill="none"
@@ -330,4 +338,4 @@ export function MainCard({
       </div>
     </div>
   );
-}
+});
