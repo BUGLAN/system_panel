@@ -21,15 +21,22 @@ body {
   user-select: none;
   -webkit-user-select: none;
   -webkit-text-size-adjust: 100%;
+  background: #030208;
+}
+
+/* 贴满真实视口，不用 height:100%：iOS 26 起「添加到主屏幕」打开时，html 的初始包含块会被挪到状态栏下面
+   （iPhone 上 62..874），100% 跟着下移、底色到 812 就断。fixed + inset:0 取的是真实视口，背景也画在这一层；
+   Safari 里和桌面上与原来一致。（整页滚动被 iOS 带偏的事见 ui/hooks/useKeyboardInset）
+   另：iOS 有时整个网页只给 812 高、屏幕最底下一条画不到（WebKit 的问题，页面写法改不了），
+   那一条露的是 html 底色，所以 index.html 里先给了 html 同色底。（2026-11-24 在 iOS 模拟器上量的） */
+#root {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
   background:
     radial-gradient(1200px 700px at 15% 10%, rgba(143, 107, 255, 0.2), transparent 60%),
     radial-gradient(900px 600px at 90% 90%, rgba(59, 232, 255, 0.12), transparent 60%), #030208;
-}
-
-#root {
-  height: 100%;
-  display: grid;
-  place-items: center;
 }
 
 button {

@@ -89,6 +89,7 @@ docs/         00 重写提示词 · 01 PWA 实施计划与定案 · 02 部署 ·
 - 颜色只从令牌取；稀有度色谱：F 灰 / E 薄荷 / D 青 / C 紫 / B 金 / A 品红 / S 白；验收印章：证据判真 acid / 其余 cyan。
 - 动效参数在 `design/tokens.ts` 的 `MOTION`，不许凭感觉改：弹簧 100/20 过冲 1.08；亮帧白 16% 180ms；count-up 800ms ease-out cubic；经验条 520 / 360+420；结算 ≤1.6s（`apps/web/src/ui/fx/settleTimeline.ts` 单测钉住）；升级 ≤2s，同日简版；发布 ≤800ms；打字机 34ms/字。只动 transform / opacity，禁线性匀速；尊重 `prefers-reduced-motion`；页面不可见时暂停常驻动画。
 - 常驻（infinite）动画的性能底线（2026-11-24 iPhone PWA 卡到 15 帧、发烫后定）：只许动元素本身的 transform / opacity——不动画 background-position / left / top / box-shadow / 自定义属性，不在 `<svg>` 里转 `<g>`（要转就拆成单独一层 svg 转 svg 元素）；会扫的渐变画在伪元素上平移。主线卡片：动画只给焦点卡、只在朝外那一面跑，远处透明的卡 `visibility:hidden`；3D 卡片里不放 backdrop-filter。rAF 循环别每帧 `getComputedStyle`。
+- iOS 主屏幕 App 的坑（2026-11-24 在 iOS 模拟器上踩的）：`#root` fixed 贴满视口、背景画在它上面，整页不滚；输入框一聚焦 iOS 会把整页滚到 -62、点击跟着错位，`ui/hooks/useKeyboardInset.ts` 负责拉回 0。WebKit 里 `backface-visibility` 只对自己有 3D 层的元素生效——卡面要带 3D 变换（`.tc-front` 的 translateZ），卡面里铺满的混合模式子层要自己带圆角。
 - 按下的轻震由基础按钮（`ui/kit/Btn.tsx` 的 Btn / Tap）自己出；没有音效。
 - 不提交 `.env`、`data/`、`backups/`、`node_modules/`、`dist/`、任何 Key；密钥只从环境变量读，日志不打印 Key / Cookie / 口令 / 照片。
 - 改表结构：改 `apps/server/src/db/schema.ts` → `npm run db:generate` → 迁移文件一起提交。
@@ -125,6 +126,7 @@ docs/         00 重写提示词 · 01 PWA 实施计划与定案 · 02 部署 ·
 ## 已知事项
 
 - `npm audit` 报的中危都在构建 / 开发期依赖（workbox-build → glob → minimatch；drizzle-kit → @esbuild-kit → 旧 esbuild），不进产物（镜像里只装服务端生产依赖）；等上游升级。
+- iOS 26 起主屏幕 App 有时整个网页只给 812 高（iPhone 18 Pro 模拟器，屏幕 874），最底下一条画不到，是 WebKit 的问题、页面改不了；那一条露的是 html 底色（`index.html` 里给了同色）。冷启动先闪一下白是 iOS 自己的启动图（没配 `apple-touch-startup-image`）。
 - 视觉判定本身有波动（同一张图可能一次判不符、一次收下），这是模型行为，没有在代码里兜。
 - 单进程部署：每用户锁、限流、意图去重、拆解任务、SSE 都在进程内存里；不支持多实例。服务重启 = 在跑的拆解任务丢失（前端按「网络断了」失败卡处理，可重试）。
 - `APP_ENCRYPTION_KEY` 换了，用户存的 Key 全部解不开（要重填）；没有密钥轮换工具。

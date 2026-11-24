@@ -67,6 +67,11 @@
 .tc-back {
   transform: rotateY(180deg);
 }
+/* PWA 改：正面也给一个 3D 变换。WebKit 里 backface-visibility 只对自己有 3D 层的元素生效；正面原先靠卡上
+   常驻动画顺带有了层，动画只留给焦点卡后，扣着的卡（fd）正面就镜像着透过背面画出来（iOS 上，2026-11-24） */
+.tc-front {
+  transform: translateZ(0);
+}
 .gcard.focus .tc-face {
   box-shadow:
     0 40px 70px -16px rgba(0, 0, 0, 0.95),
@@ -582,6 +587,7 @@
 .tc-holo {
   position: absolute;
   inset: 0;
+  border-radius: inherit; /* PWA 改：同 .tc-glare */
   z-index: 10;
   pointer-events: none;
   opacity: 0;
@@ -660,6 +666,8 @@
 .tc-glare {
   position: absolute;
   inset: 0;
+  /* PWA 改：自己也带圆角。卡面成了 3D 层后，WebKit 不再按圆角裁混合模式的子层，方角会露在卡角外 */
+  border-radius: inherit;
   z-index: 11;
   pointer-events: none;
   opacity: 0;

@@ -10,7 +10,9 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
-  transform: translateY(calc(-1 * var(--kb)));
+  /* 只上移到刚好越过键盘：它下面本来就留着「安全区 + 20px（面板是 26px）」，扣掉安全区、留 10px 间距。
+     原来整段上移 --kb，iPhone 上会多顶 50 多 pt，把登录按钮压到输入框上。 */
+  transform: translateY(calc(-1 * max(0px, var(--kb) - var(--safe-bottom) - 10px)));
   transition: transform 0.32s var(--ease);
 }
 #app.kb-open .ob-top {
@@ -57,10 +59,20 @@ textarea.lim-input {
   }
 }
 
-/* 大厅 */
+/* 大厅。核心按高度定尺寸、宽度随正方形走，屏幕矮时跟着缩：core-wrap 装不下「核心 + 气泡」时
+   不再上顶状态行、下压主线卡（iOS 主屏幕 App 有时整页只有 812 高，2026-11-24 在模拟器上看到的） */
 .core-home-wrap {
-  width: min(230px, 30vh);
+  height: min(230px, 30vh);
   aspect-ratio: 1;
+  flex-shrink: 1;
+  min-height: 120px;
+}
+/* 气泡先留够两行，台词换行时核心不跟着一缩一放；底下留条缝，别贴着主线卡 */
+#sc-home .bubble p {
+  min-height: 3.2em;
+}
+#sc-home .core-wrap {
+  padding-bottom: 10px;
 }
 .core-home-wrap .core {
   width: 100%;
