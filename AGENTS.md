@@ -26,12 +26,13 @@ npm workspaces，全栈 TypeScript 6（strict；typescript-eslint 目前只支�
 | `npm test` | `vitest run`（core / web / server） |
 | `npm run build` | 前端构建到 `apps/web/dist`，服务端打包到 `apps/server/dist`（`main.mjs` + `cli.mjs` + `drizzle/`） |
 | `npm run check` | 类型检查 + 单测 + 构建 + 构建产物检查（每次提交前跑） |
-| `npm run check:dist` | 只跑构建产物检查（manifest / 预缓存 / SW 不碰 /api / 前端不直连模型 / 前后端无 Key） |
+| `npm run check:dist` | 只跑构建产物检查（manifest / 预缓存 / SW 不碰 /api / iOS 启动图尺寸 / 前端不直连模型 / 前后端无 Key） |
 | `npm start` | 跑打包后的服务端（读根目录 `.env`） |
 | `npm run admin -- <命令>` | 管理员命令行（开发环境；生产见 docs/02）：create-admin / invite / invites / reset-password / disable / enable / users / backup |
 | `npm run db:generate` | 改了 `apps/server/src/db/schema.ts` 后生成迁移（一起提交） |
 | `npm run lint` / `npm run format` | ESLint / Prettier |
-| `npm run icons` | 由 `apps/web/public/app-icon.svg` 重新生成 PWA 图标 |
+| `npm run icons` | 由 `apps/web/public/app-icon.svg` 重新生成 PWA 图标，顺带跑 `npm run splash` |
+| `npm run splash` | 重新生成 iOS 启动图（`apps/web/public/splash/`）并改写 `index.html` 里的 `<link>`；机型清单在 `scripts/splash.mjs` |
 
 部署见 `docs/02-部署到自己的服务器.md`，验收见 `docs/03-验收清单.md`，全栈改造的来由见 `docs/04`、`docs/05`。
 
@@ -72,7 +73,7 @@ apps/web/src/
   ui/                     styles/（参考稿 CSS 原样拆出 + 新增页样式）、kit/、fx/（含结算时间轴）、shell/、scenes/（含登录页）、overlays/
 apps/web/tests/           前端单测（设计令牌、结算时间轴、数据层）
 
-scripts/  构建产物检查、开发启动    deploy/  Caddyfile
+scripts/  构建产物检查、开发启动、iOS 启动图生成    deploy/  Caddyfile
 docs/         00 重写提示词 · 01 PWA 实施计划与定案 · 02 部署 · 03 验收清单 · 04 全栈改造提示词 · 05 全栈改造实施计划
 ```
 
@@ -121,12 +122,12 @@ docs/         00 重写提示词 · 01 PWA 实施计划与定案 · 02 部署 ·
 
 **证据**：前端压缩（长边 ≤1024、JPEG）后上传；服务端验大小（≤2MB）与文件头，文件名由服务端生成，存 `data/uploads/<用户>/`（不在公开静态目录），只有主人能读。
 
-**PWA**：Service Worker 预缓存应用壳，字体分片运行时 CacheFirst；`/api/*` 不接管（导航回退排除、不注册缓存路由）；新版本等回到大厅且没有执行中的单才切；第一次进大厅弹「添加到主屏幕」引导。离线：外壳照旧能开，显示最近一次缓存的状态（只读），写操作提示「需要联网」、不排队。
+**PWA**：Service Worker 预缓存应用壳，字体分片运行时 CacheFirst，iOS 启动图不预缓存（iOS 加主屏幕时自己取；底色和光晕照抄 `#root` 背景，改了要重跑 `npm run splash`）；`/api/*` 不接管（导航回退排除、不注册缓存路由）；新版本等回到大厅且没有执行中的单才切；第一次进大厅弹「添加到主屏幕」引导。离线：外壳照旧能开，显示最近一次缓存的状态（只读），写操作提示「需要联网」、不排队。
 
 ## 已知事项
 
 - `npm audit` 报的中危都在构建 / 开发期依赖（workbox-build → glob → minimatch；drizzle-kit → @esbuild-kit → 旧 esbuild），不进产物（镜像里只装服务端生产依赖）；等上游升级。
-- iOS 26 起主屏幕 App 有时整个网页只给 812 高（iPhone 18 Pro 模拟器，屏幕 874），最底下一条画不到，是 WebKit 的问题、页面改不了；那一条露的是 html 底色（`index.html` 里给了同色）。冷启动先闪一下白是 iOS 自己的启动图（没配 `apple-touch-startup-image`）。
+- iOS 26 起主屏幕 App 有时整个网页只给 812 高（iPhone 18 Pro 模拟器，屏幕 874），最底下一条画不到，是 WebKit 的问题、页面改不了；那一条露的是 html 底色（`index.html` 里给了同色）。冷启动的白闪（2026-11-24 iPhone 18 Pro Max 模拟器录屏逐帧量的）：已配 iOS 启动图（`npm run splash`），`index.html` 的 `#root` 里先放同一个图标——只配启动图不够，页面在「视觉上是空的」时 WebKit 不画第一帧，iOS 撤启动图会淡成网页视图的白底约 0.4 秒。现在有缓存的冷启动不再闪白；加到主屏幕后的第一次启动（外壳还没缓存、第一帧慢）仍可能淡白约半秒。网页里的图标比启动图的高约 36pt（视口比屏幕矮），交接那 2～3 帧能看到重影。
 - 视觉判定本身有波动（同一张图可能一次判不符、一次收下），这是模型行为，没有在代码里兜。
 - 单进程部署：每用户锁、限流、意图去重、拆解任务、SSE 都在进程内存里；不支持多实例。服务重启 = 在跑的拆解任务丢失（前端按「网络断了」失败卡处理，可重试）。
 - `APP_ENCRYPTION_KEY` 换了，用户存的 Key 全部解不开（要重填）；没有密钥轮换工具。

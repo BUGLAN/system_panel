@@ -4,6 +4,7 @@
  *  前端（apps/web/dist）
  *  - manifest：应用名「宿主养成系统」、display standalone、192 / 512 / maskable 图标齐
  *  - Service Worker：预缓存有 index.html、没有 .woff2；导航回退排除 /api；不缓存任何 /api
+ *  - iOS 启动图：不进预缓存；index.html 里每条都有图，像素尺寸和媒体查询对得上
  *  - 前端不再直连模型：产物里没有 chat/completions、Authorization: Bearer
  *  - 没有疑似 Key（sk- 长串）；环境里配了密钥时逐字扫描它们的值
  *  服务端（apps/server/dist）
@@ -40,6 +41,36 @@ if (!urls.includes('index.html')) fail('预缓存缺 index.html');
 if (urls.some((u) => u.startsWith('api/'))) fail('预缓存里出现了 /api');
 if (!/denylist:\[\/\^\\\/api\\\/\/\]/.test(sw)) fail('Service Worker 的导航回退没有排除 /api');
 else ok('Service Worker 导航回退排除 /api，不缓存接口');
+if (urls.some((u) => u.startsWith('splash/'))) fail('预缓存里出现了 iOS 启动图（splash/）');
+else ok('预缓存不含 iOS 启动图');
+
+// iOS 启动图：每条 <link> 指向的图都在，且像素尺寸 = 媒体查询的点尺寸 × 倍率（差一个像素 iOS 就不用）
+const indexHtml = readFileSync(join(dist, 'index.html'), 'utf8');
+const splashLinks = [...indexHtml.matchAll(/<link\b[^>]*apple-touch-startup-image[^>]*>/g)].map(
+  ([tag]) => ({
+    media: /media="([^"]+)"/.exec(tag)?.[1] ?? '',
+    href: /href="([^"]+)"/.exec(tag)?.[1] ?? '',
+  }),
+);
+const splashBad = splashLinks.flatMap(({ media, href }) => {
+  const num = (re) => Number(re.exec(media)?.[1]);
+  const [w, h, s] = [
+    /device-width:\s*(\d+)px/,
+    /device-height:\s*(\d+)px/,
+    /pixel-ratio:\s*(\d+)/,
+  ].map(num);
+  const file = join(dist, href.replace(/^\//, ''));
+  if (!w || !h || !s || !/orientation:\s*portrait/.test(media)) return [`${href} 的 media 不完整`];
+  if (!existsSync(file)) return [`${href} 不存在`];
+  const png = readFileSync(file);
+  const [pw, ph] = [png.readUInt32BE(16), png.readUInt32BE(20)]; // PNG 的 IHDR 宽高
+  return pw === w * s && ph === h * s ? [] : [`${href} 是 ${pw}×${ph}，应为 ${w * s}×${h * s}`];
+});
+if (!splashLinks.length) fail('index.html 里没有 iOS 启动图（npm run splash）');
+else if (!splashLinks.some((l) => l.href.includes('430x932@3x')))
+  fail('启动图缺 430×932@3（宿主的 iPhone 15 Pro Max）');
+else if (splashBad.length) fail(`iOS 启动图不对：${splashBad.join('；')}`);
+else ok(`iOS 启动图 ${splashLinks.length} 张，尺寸与媒体查询一致`);
 
 const walk = (d) =>
   readdirSync(d).flatMap((f) => {

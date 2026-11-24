@@ -26,7 +26,8 @@
     "check:dist": "node scripts/check-dist.mjs",
     "admin": "tsx --env-file-if-exists=.env apps/server/src/cli/admin.ts",
     "db:generate": "npm run db:generate -w @host/server",
-    "icons": "npm run icons -w @host/web"
+    "icons": "npm run icons -w @host/web && node scripts/splash.mjs",
+    "splash": "node scripts/splash.mjs"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
@@ -40,6 +41,7 @@
     "fake-indexeddb": "6.2.8",
     "globals": "17.14.0",
     "prettier": "3.10.1",
+    "sharp": "0.35.5",
     "typescript": "6.0.3",
     "typescript-eslint": "8.73.0",
     "vite": "8.3.8",

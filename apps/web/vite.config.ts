@@ -36,6 +36,9 @@ export default defineConfig({
       workbox: {
         // 预缓存应用壳和音效；字体分片不预缓存（太多），走运行时 CacheFirst
         globPatterns: ['**/*.{js,css,html,ico,png,svg,webmanifest}'],
+        // iOS 启动图（public/splash/，十几张、每张近百 KB）不预缓存：iOS 在「添加到主屏幕」时自己取，
+        // 进了预缓存只会让每台设备每次发版都白下一遍。第一项是 workbox 的默认值，覆盖时要带上
+        globIgnores: ['**/node_modules/**/*', 'splash/**'],
         navigateFallback: '/index.html',
         // 接口一律走网络：不缓存、不拿 index.html 顶替（断网时由前端提示「需要联网」）
         navigateFallbackDenylist: [/^\/api\//],

@@ -28,7 +28,8 @@ body {
    （iPhone 上 62..874），100% 跟着下移、底色到 812 就断。fixed + inset:0 取的是真实视口，背景也画在这一层；
    Safari 里和桌面上与原来一致。（整页滚动被 iOS 带偏的事见 ui/hooks/useKeyboardInset）
    另：iOS 有时整个网页只给 812 高、屏幕最底下一条画不到（WebKit 的问题，页面写法改不了），
-   那一条露的是 html 底色，所以 index.html 里先给了 html 同色底。（2026-11-24 在 iOS 模拟器上量的） */
+   那一条露的是 html 底色，所以 index.html 里先给了 html 同色底。（2026-11-24 在 iOS 模拟器上量的）
+   iOS 启动图照抄这层背景（scripts/splash.mjs 的 BG / GLOWS），改了这里要同步那边再跑 npm run splash。 */
 #root {
   position: fixed;
   inset: 0;
